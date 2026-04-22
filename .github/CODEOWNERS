@@ -1,0 +1,7 @@
+# Replace @magomedsouleymanov with the real GitHub user or team before enabling
+# branch protection.
+
+docs/specs/accepted/** @magomedsouleymanov
+docs/specs/manifest.json @magomedsouleymanov
+docs/specs/change-requests/** @magomedsouleymanov
+

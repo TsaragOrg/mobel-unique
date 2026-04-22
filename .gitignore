@@ -1,0 +1,26 @@
+node_modules/
+.DS_Store
+
+# Package manager
+package-lock.json
+yarn.lock
+bun.lockb
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*

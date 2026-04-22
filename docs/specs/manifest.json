@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "specs": [
+    {
+      "id": "SPEC-0001",
+      "title": "Repo Foundation",
+      "status": "accepted",
+      "path": "docs/specs/accepted/SPEC-0001-repo-foundation.md",
+      "areas": ["web", "api", "image-worker", "shared", "supabase", "workflow"]
+    }
+  ]
+}
+
