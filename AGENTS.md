@@ -39,6 +39,7 @@ Use `pnpm` only.
 - Run web only: `pnpm dev:web`
 - Run API only: `pnpm dev:api`
 - Run image worker only: `pnpm dev:worker`
+- Create a workflow-compliant branch: `pnpm branch:create -- --type <type> --area <area> --work "<short work description>"`
 - Typecheck all packages: `pnpm typecheck`
 - Test all packages: `pnpm test`
 - Run specification guardrails: `pnpm spec:check`
@@ -107,6 +108,24 @@ The expected flow is:
 ```text
 feature branch -> dev -> main
 ```
+
+Create branches with the repository command instead of hand-written names:
+
+```bash
+pnpm branch:create -- --type feature --area web --work "Admin catalogue upload" --spec SPEC-0002 --plan PLAN-0002
+```
+
+Branch format:
+
+```text
+type/area/spec-0000-plan-0000-work-slug
+```
+
+Allowed types: `feature`, `fix`, `chore`, `docs`, `refactor`, `test`, `spec`, `hotfix`.
+
+Allowed areas: `web`, `api`, `image-worker`, `shared`, `supabase`, `workflow`, `repo`.
+
+Use `--dry-run` to validate the generated branch name without creating it. Use `--type spec` for branches that only draft or update specifications before an accepted spec id exists.
 
 Do not commit automatically unless the user asks for a commit.
 
