@@ -5,6 +5,10 @@
       "id": "SPEC-0001",
       "title": "Repo Foundation",
       "status": "accepted",
+      "layer": "workflow",
+      "parent": null,
+      "dependsOn": [],
+      "implementationPlans": ["PLAN-0001", "PLAN-0003"],
       "path": "docs/specs/accepted/SPEC-0001-repo-foundation.md",
       "areas": ["web", "api", "image-worker", "shared", "supabase", "workflow"]
     },
@@ -12,8 +16,23 @@
       "id": "SPEC-0002",
       "title": "AI Branch Workflow",
       "status": "accepted",
+      "layer": "workflow",
+      "parent": "SPEC-0001",
+      "dependsOn": ["SPEC-0001"],
+      "implementationPlans": ["PLAN-0002"],
       "path": "docs/specs/accepted/SPEC-0002-ai-branch-workflow.md",
       "areas": ["workflow"]
+    },
+    {
+      "id": "SPEC-0003",
+      "title": "Business Context - AI Sofa Visualization",
+      "status": "accepted",
+      "layer": "business-context",
+      "parent": null,
+      "dependsOn": [],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0003-business-context.md",
+      "areas": ["web", "api", "image-worker", "supabase"]
     }
   ]
 }
