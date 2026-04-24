@@ -69,6 +69,14 @@ Frontend code may use public Supabase anon keys only. Service-role keys and othe
 - Keep shared package code small, stable, and portable. Avoid Node-only APIs in `packages/shared` unless there is a clear cross-service need.
 - Prefer explicit, boring code over abstractions that are not yet needed.
 
+## Repository Language
+
+All repository-authored content must be written in English.
+
+- Write code comments, documentation, specs, plans, roadmaps, commit messages, branch work descriptions, test names, UI copy, API messages, and operational notes in English.
+- Specs under `docs/specs` must be entirely English, including headings, prose, bullets, examples, and comments.
+- Before committing, translate any non-English spec content to English and run `pnpm spec:check`; the specification guard enforces this for `docs/specs`.
+
 ## Specification-Based Workflow
 
 Before implementing a meaningful feature, create or update the relevant spec under `docs/specs`.
