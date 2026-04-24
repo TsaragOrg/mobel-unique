@@ -14,7 +14,7 @@
     "dev:worker": "pnpm --filter @mobel-unique/image-worker dev",
     "branch:create": "node scripts/create-branch.mjs",
     "spec:check": "node scripts/spec-guard.mjs",
-    "test": "vitest run scripts/create-branch.test.mjs && pnpm -r test",
+    "test": "vitest run scripts/create-branch.test.mjs scripts/spec-guard.test.mjs && pnpm -r test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm spec:check && pnpm typecheck && pnpm test && pnpm build",
