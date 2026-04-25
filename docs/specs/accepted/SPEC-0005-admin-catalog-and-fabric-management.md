@@ -1,7 +1,7 @@
 # SPEC-0005 Admin Catalog and Fabric Management
 
 Spec: SPEC-0005
-Status: draft
+Status: accepted
 Layer: domain
 Parent Spec: SPEC-0003
 Depends On: SPEC-0003, SPEC-0004

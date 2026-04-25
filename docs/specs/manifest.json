@@ -33,6 +33,28 @@
       "implementationPlans": [],
       "path": "docs/specs/accepted/SPEC-0003-business-context.md",
       "areas": ["web", "api", "image-worker", "supabase"]
+    },
+    {
+      "id": "SPEC-0004",
+      "title": "Public Customer Experience",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0003",
+      "dependsOn": ["SPEC-0003"],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0004-public-customer-experience.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0005",
+      "title": "Admin Catalog and Fabric Management",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0003",
+      "dependsOn": ["SPEC-0003", "SPEC-0004"],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0005-admin-catalog-and-fabric-management.md",
+      "areas": ["web", "api"]
     }
   ]
 }

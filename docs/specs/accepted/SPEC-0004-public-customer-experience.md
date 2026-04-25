@@ -1,7 +1,7 @@
 # SPEC-0004 Public Customer Experience
 
 Spec: SPEC-0004
-Status: draft
+Status: accepted
 Layer: domain
 Parent Spec: SPEC-0003
 Depends On: SPEC-0003
