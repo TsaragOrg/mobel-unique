@@ -5,16 +5,17 @@ Status: draft
 Layer: technical
 Parent Spec: SPEC-0005
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0005
-Areas: api, image-worker, supabase
+Areas: api, supabase
 Implementation Plans: none yet
 
 ## Traceability
 
-This spec defines the first technical contract for the image worker area after the
-repository foundation.
+This spec defines the first technical contract for Supabase-hosted image job
+processing after the repository foundation.
 
 It follows `SPEC-0001 Repo Foundation`, which created the monorepo worker
-boundary and the initial `workers/image` service foundation.
+boundary. The first production implementation for this spec uses Supabase Edge
+Functions rather than the initial `workers/image` Node service foundation.
 
 It follows `SPEC-0003 Business Context - AI Sofa Visualization`, which defines
 the product as an AI sofa visualization tool, requires complete public render
@@ -34,10 +35,13 @@ publishing a sofa is the administrator's acceptance of the current visual
 matrix.
 
 The existing local Python worker at `C:\dev\worker` is treated as a reference
-implementation for the first fabric render generation core. Its behavior can be
-used to seed repository implementation after this spec is accepted and an
-implementation plan exists. This draft spec does not copy code and does not
-approve any implementation change by itself.
+implementation for the first fabric render generation behavior. Its behavior can
+be used to seed repository implementation after this spec is accepted and an
+implementation plan exists, but Python is not the production runtime for this
+spec. The production implementation must use Supabase Edge Functions written in
+TypeScript on the Deno runtime, with Supabase Queues as the durable job queue.
+This draft spec does not copy code and does not approve any implementation
+change by itself.
 
 ## Goal
 
@@ -68,7 +72,8 @@ This spec includes:
 - storage ownership rules for inputs, generated outputs, and worker scratch
   files;
 - retry, failure, and idempotency expectations;
-- how the current local Python worker maps to the future repository worker;
+- the Supabase Edge Functions and Supabase Queues runtime decision;
+- how the current local Python worker maps to the future repository behavior;
 - the minimum environment variables required by the worker.
 
 The first job type is limited to public sofa render preparation for the admin
@@ -92,7 +97,7 @@ This spec does not define:
 - ZIP export implementation;
 - pricing, cart, checkout, orders, or Shopify synchronization;
 - a provider cost dashboard;
-- a final decision to rewrite the reference Python worker in TypeScript.
+- a Python production worker runtime.
 
 Those details must be covered by dedicated follow-up specs or implementation
 plans when their parent behavior is approved.
@@ -154,8 +159,10 @@ Service-role credentials and AI provider keys must remain server-side only.
 
 ## Data Model
 
-The exact database schema belongs in a dedicated data model and storage spec.
-This spec defines the logical data that must exist for the worker contract.
+The exact Supabase table names, relationships, storage bucket names, storage
+paths, and database constraints belong in a dedicated Supabase data model and
+storage specification. This spec defines the logical data that must exist for
+the worker contract.
 
 ### Fabric Render Job
 
@@ -168,8 +175,11 @@ The logical job record must track:
 - sofa id;
 - fabric id;
 - visual matrix column id;
+- generation mode, either `initial` or `refine`;
 - source target sofa artifact reference;
 - source fabric AI reference sofa artifact reference;
+- refinement source render artifact reference when generation mode is `refine`;
+- optional prompt note appended to the fixed base prompt;
 - generated output artifact reference when successful;
 - provider name;
 - provider model;
@@ -209,6 +219,8 @@ A generated render artifact must track:
 - width;
 - height;
 - source type `ai_generated`;
+- generation mode, either `initial` or `refine`;
+- refinement source render artifact reference when generation mode is `refine`;
 - provider name;
 - provider model;
 - prompt version;
@@ -223,7 +235,9 @@ This spec does not approve final API route names.
 
 Future API contracts must provide server-side admin-only behavior for:
 
-- creating a fabric render job;
+- creating an initial fabric render job;
+- creating a refine fabric render job from an existing render artifact for the
+  same sofa, fabric, and visual matrix column;
 - listing relevant render jobs for admin review;
 - reading job status and failure messages;
 - retrying a failed job when retry is allowed;
@@ -244,7 +258,30 @@ storage write credentials to the browser.
 The first worker job type is `fabric_render_generation`.
 
 It generates one sofa render for one target fabric and one sofa visual matrix
-column.
+column. The job supports two generation modes:
+
+- `initial`: creates a render from the target sofa image and the fabric AI
+  reference sofa image;
+- `refine`: creates a revised render from the same target sofa image, the same
+  fabric AI reference sofa image, and an existing render artifact selected by
+  the administrator for refinement.
+
+### Runtime And Queue
+
+The first production implementation must run as Supabase Edge Functions written
+in TypeScript on the Deno runtime.
+
+Supabase Queues must provide durable job queueing. Each fabric render generation
+must be queued as an independent message so an admin batch can create many jobs
+at once while each job remains retryable, observable, and claimable on its own.
+
+The queue consumer function may process more than one queued message per
+invocation, but it must respect a configurable concurrency limit based on the
+active Gemini project rate limits and the operational needs of the MVP.
+
+The local Python worker must remain a behavior reference only. The production
+runtime must not depend on Python, Railway, or a long-running external worker
+process for this spec.
 
 ### Source Selection
 
@@ -263,6 +300,12 @@ The target sofa source image is the geometry and composition authority.
 
 The fabric AI reference sofa image is the material authority only.
 
+For a refine job, the refinement source render is an additional input that
+represents the render the administrator wants to improve. It must belong to the
+same sofa, fabric, and visual matrix column as the requested job. The target
+sofa source image remains the geometry and composition authority, and the fabric
+AI reference sofa image remains the material authority.
+
 ### Generation Core File Contract
 
 The first generation core must support the following scratch folder contract:
@@ -271,6 +314,7 @@ The first generation core must support the following scratch folder contract:
 job-folder/
   fabric_ref.jpg
   target_sofa.jpg
+  refine_source.png
   output.png
   error.txt
 ```
@@ -279,24 +323,29 @@ Rules:
 
 - `fabric_ref.jpg` is the materialized fabric AI reference sofa image input;
 - `target_sofa.jpg` is the target sofa image input;
+- `refine_source.png` is required only for `refine` mode and is the existing
+  render artifact selected by the administrator for refinement;
 - `output.png` is the successful generated output;
 - `error.txt` is the human-readable failure artifact;
 - stale `output.png` and `error.txt` must be cleared before a new initial
-  generation attempt;
-- a failed initial generation must not leave a stale `output.png`;
+  generation or refine attempt;
+- a failed generation or refine attempt must not leave a stale `output.png`;
 - a successful generation must not leave an `error.txt`.
 
 The current local Python worker also supports `.jpeg` input aliases and a
-refine mode. The first repository integration may preserve those behaviors, but
-the required production contract is the initial generation contract above.
+refine mode. The first TypeScript implementation must include refine mode as a
+required MVP behavior.
 
 ### Prompting
 
 The first prompt version is `v007`.
 
-The worker must treat `v007` as a fixed versioned prompt asset. Optional extra
-instructions may be appended as a prompt note, but they must not replace the
-base prompt.
+The worker must treat `v007` as a fixed versioned prompt asset. The base system
+prompt is not editable by administrators or operators in the MVP.
+
+An administrator may add optional extra instructions as a prompt note for a
+specific generation request. The prompt note must be appended to the fixed base
+prompt and must not replace, weaken, or override the base prompt.
 
 The prompt must instruct the AI provider to:
 
@@ -307,6 +356,10 @@ The prompt must instruct the AI provider to:
   weave, pattern, scale, and finish;
 - avoid copying physical shape, shadows, folds, buttons, or room context from
   the fabric AI reference sofa image.
+
+For `refine` mode, the prompt must also instruct the AI provider to improve the
+selected refinement source render while preserving the target sofa geometry,
+camera view, composition, dimensions, and target fabric identity.
 
 ### Provider
 
@@ -322,7 +375,8 @@ The worker must send inputs in this order:
 
 1. fabric AI reference sofa image;
 2. target sofa image;
-3. assembled prompt.
+3. refinement source render image when generation mode is `refine`;
+4. assembled prompt.
 
 The worker must provide role labels or equivalent provider instructions so the
 provider understands that the first image is the material source and the second
@@ -331,16 +385,38 @@ image is the locked target photo.
 If the provider does not return image data, the job must fail with a readable
 error.
 
+### Image Size Limits
+
+The first production worker must accept target sofa input images up to 2048 px
+on the longest edge.
+
+If the target sofa input image is smaller than or equal to 2048 px on the
+longest edge after EXIF orientation is applied, the worker must keep the target
+sofa input image's original dimensions as the generation dimensions.
+
+If the target sofa input image is larger than 2048 px on the longest edge, the
+job request must be rejected with a readable validation error. The first
+production worker must not downscale oversized target sofa input images as part
+of the generation job.
+
+The fabric AI reference sofa image must also be accepted up to 2048 px on the
+longest edge. If it is larger, the job request must be rejected with a readable
+validation error.
+
 ### Output Normalization
 
 The generated output must be saved as `output.png`.
 
-The final output dimensions must match the target sofa input dimensions after
-EXIF orientation is applied.
+Before calling the provider, the worker must read the exact target sofa input
+dimensions after EXIF orientation is applied and include those dimensions as a
+hard output requirement in the provider request.
 
-If the provider returns a different size or aspect ratio, the worker must
-normalize the output by center-cropping when necessary and resizing to the exact
-target sofa dimensions.
+The provider is responsible for generating the image at the requested
+dimensions. When the provider returns image data for a successful request, the
+worker must save that returned image as `output.png`.
+
+The worker must not crop, resize, stretch, pad, or otherwise visually transform
+the generated image after the provider returns it.
 
 ### Retries
 
@@ -358,6 +434,20 @@ error message must remain available for admin review.
 This failure record is operational. It helps administrators and operators
 understand why generation did not complete, but it must not be treated as a
 public render state or as a public-usable render cell.
+
+### Timeout
+
+The fabric render queue consumer Edge Function must be deployed with the maximum
+execution timeout allowed by the active Supabase plan and environment.
+
+The first production implementation must not introduce a shorter
+application-level provider timeout for Gemini image generation. The generation
+request may use the full Edge Function execution budget because each invocation
+is processing queued jobs rather than serving an interactive browser request.
+
+If the Supabase platform timeout interrupts an invocation before the job can be
+marked `succeeded` or `failed`, the job claim recovery and retry rules must make
+the job eligible for another attempt without exposing a stale generated output.
 
 ### Idempotency And Claiming
 
@@ -412,9 +502,12 @@ The worker environment must include:
 - `SUPABASE_URL`: Supabase project URL for the matching environment;
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase service credential;
 - `GEMINI_API_KEY`: server-only Gemini provider key;
-- `IMAGE_WORKER_POLL_INTERVAL_MS`: optional polling interval for queued jobs;
-- `IMAGE_WORKER_MAX_ATTEMPTS`: optional override for maximum attempts;
-- `IMAGE_WORKER_SCRATCH_DIR`: optional local scratch directory root.
+- `FABRIC_RENDER_QUEUE_NAME`: Supabase Queue name for fabric render jobs;
+- `FABRIC_RENDER_MAX_ATTEMPTS`: optional override for maximum attempts;
+- `FABRIC_RENDER_MAX_CONCURRENT_JOBS`: optional concurrency limit for one queue
+  consumer invocation;
+- `FABRIC_RENDER_TMP_DIR`: optional local temporary directory root, defaulting
+  to an Edge Function-compatible temporary directory when needed.
 
 DEV and PROD values must remain isolated.
 
@@ -427,36 +520,43 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The first worker job type is defined as `fabric_render_generation`.
 - The worker contract covers one sofa, one fabric, and one visual matrix column
   per job.
+- The worker contract supports both `initial` and `refine` generation modes in
+  the first implementation.
 - The source selection rule distinguishes target sofa authority from fabric
   material authority.
 - The source selection rule uses the target fabric's fabric AI reference sofa
   image, not the public fabric swatch image.
 - The scratch folder contract defines `fabric_ref.jpg`, `target_sofa.jpg`,
-  `output.png`, and `error.txt`.
+  optional `refine_source.png`, `output.png`, and `error.txt`.
+- The production runtime is Supabase Edge Functions written in TypeScript on the
+  Deno runtime, with Supabase Queues providing durable job queueing.
 - The first prompt version is fixed as `v007`.
+- The base system prompt is not editable, and admin-supplied prompt notes may
+  only be appended as additional instructions.
 - The first provider is Gemini with model `gemini-3-pro-image-preview`.
 - The required job statuses are defined.
 - Retryable and non-retryable failure categories are defined.
-- The generated output must match target sofa dimensions.
+- The fabric render queue consumer Edge Function uses the maximum execution
+  timeout allowed by the active Supabase plan and environment.
+- The first production worker accepts target sofa and fabric AI reference images
+  up to 2048 px on the longest edge and preserves the original target sofa
+  dimensions when they are below that maximum.
+- The worker must request the exact target sofa dimensions from the provider and
+  must save successful provider image data without post-processing dimensions by
+  cropping, resizing, stretching, padding, or rejecting the image solely because
+  of a post-generation dimension check.
 - Generated renders remain private until they become public-usable through the
   admin workflow and the related sofa publication rules.
 - Required worker environment variables are listed.
 - The existing local Python worker is identified as a reference implementation
-  without copying code in this spec.
+  only, and Python is not the production runtime for this spec.
 - The spec does not define public customer in-home simulation behavior.
 - The spec explicitly defers public customer in-home room simulation worker
   behavior to a separate follow-up spec.
+- The spec explicitly defers final Supabase table names, relationships, storage
+  bucket names, storage paths, and database constraints to a dedicated Supabase
+  data model and storage specification.
 
 ## Open Questions
 
-- Should the first repository implementation keep the generation core in Python,
-  invoke it from the existing Node worker boundary, or replace the current
-  worker runtime with a Python worker after a separate implementation plan?
-- What are the final Supabase table names and storage bucket names?
-- What maximum image dimensions and file sizes should the first production
-  worker accept?
-- Should prompt notes be admin-editable in MVP, or limited to internal operator
-  use?
-- Should refine mode from the local Python worker be included in the first
-  repository implementation or deferred until generated render review needs it?
-- What provider timeout should be used for Railway worker execution?
+None.
