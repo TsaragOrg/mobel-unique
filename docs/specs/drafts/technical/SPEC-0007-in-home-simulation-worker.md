@@ -5,16 +5,17 @@ Status: draft
 Layer: technical
 Parent Spec: SPEC-0004
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004
-Areas: api, image-worker, supabase
+Areas: api, supabase
 Implementation Plans: none yet
 
 ## Traceability
 
-This spec defines the second technical worker contract in the `image-worker`
-area, alongside the fabric render worker.
+This spec defines the second technical contract for Supabase-hosted image job
+processing, alongside the fabric render worker.
 
 It follows `SPEC-0001 Repo Foundation`, which created the monorepo worker
-boundary and the initial `workers/image` service foundation.
+boundary. The first production implementation for this spec uses Supabase Edge
+Functions rather than the initial `workers/image` Node service foundation.
 
 It follows `SPEC-0003 Business Context - AI Sofa Visualization`, which defines
 the in-home simulation as a product invariant, requires customer room photo and
@@ -30,10 +31,10 @@ result display, the result email delivery action, and the MVP regeneration
 limit.
 
 It is a sibling to `SPEC-0006 Fabric Render Worker`, which defines the
-admin-driven fabric render generation job in the same image-worker service.
-The two job types share the worker runtime, storage layout conventions, and
-observability conventions, but they have distinct inputs, retention rules,
-visibility rules, and failure handling.
+admin-driven fabric render generation job using the same Supabase Edge
+Functions, Supabase Queues, storage, and observability conventions. The two job
+types have distinct inputs, retention rules, visibility rules, and failure
+handling.
 
 A future domain-level `In-Home Simulation Flow` spec may emerge later to
 consolidate wizard rules, validation rules, dimension semantics, regeneration
@@ -42,10 +43,13 @@ the server-side processing contract and references SPEC-0004 for the public
 wizard.
 
 The existing local Python bench at `mebel/worker_test/` is treated as a
-reference implementation for the in-home simulation pipeline. Its behavior
-can be used to seed repository implementation after this spec is accepted and
-an implementation plan exists. This draft spec does not copy code and does
-not approve any implementation change by itself.
+reference implementation for the in-home simulation behavior. Its behavior can
+be used to seed repository implementation after this spec is accepted and an
+implementation plan exists, but Python is not the production runtime for this
+spec. The production implementation must use Supabase Edge Functions written in
+TypeScript on the Deno runtime, with Supabase Queues as the durable job queue.
+This draft spec does not copy code and does not approve any implementation
+change by itself.
 
 ## Goal
 
@@ -79,8 +83,9 @@ This spec includes:
 - retry, failure, and idempotency expectations;
 - regeneration limit enforcement per SPEC-0004;
 - 24-hour retention enforcement per SPEC-0003;
+- the Supabase Edge Functions and Supabase Queues runtime decision;
 - how the existing local Python bench at `mebel/worker_test/` maps to the
-  future repository worker;
+  future repository behavior;
 - the minimum environment variables required by the worker.
 
 ## Out Of Scope
@@ -99,8 +104,7 @@ This spec does not define:
 - ZIP export;
 - pricing, cart, checkout, orders, or Shopify synchronization;
 - a provider cost dashboard;
-- a final decision to keep the room preparation and sofa placement core in
-  Python or to reimplement it inside the existing TypeScript worker runtime.
+- a Python production worker runtime.
 
 Those details must be covered by dedicated follow-up specs or implementation
 plans when their parent behavior is approved.
@@ -173,9 +177,10 @@ defined in SPEC-0004.
 
 ## Data Model
 
-The exact database schema and storage bucket names belong in dedicated data
-model and storage specs. This spec defines the logical data the worker
-contract requires.
+The exact Supabase table names, relationships, storage bucket names, storage
+paths, and database constraints belong in a dedicated Supabase data model and
+storage specification. This spec defines the logical data the worker contract
+requires.
 
 ### In-Home Simulation Job
 
@@ -188,6 +193,7 @@ The logical job record must track:
 - selected sofa id;
 - selected fabric id;
 - selected visual matrix column id;
+- visitor session or anti-abuse subject reference;
 - prepared sofa asset reference resolved from the selected sofa, fabric,
   and visual position;
 - customer room photo asset reference;
@@ -264,6 +270,13 @@ The worker must reject a regeneration request that would exceed the MVP
 limit. The API is responsible for keeping the visible regeneration
 affordance consistent with that limit per SPEC-0004.
 
+In addition to the per-job simulation limit, the API must enforce visitor-session
+anti-abuse limits before creating an initial simulation job or accepting a
+regeneration request. This protects the system from a single visitor producing
+too many generated images by repeatedly starting new jobs. The worker enforces
+the job-level limit for the work message it is processing; the API owns
+cross-job visitor/session throttling.
+
 ### Generated Output Artifact
 
 A generated output artifact must track:
@@ -302,7 +315,8 @@ Future API contracts must provide server-side behavior for:
 The API must:
 
 - enforce the SPEC-0003 anti-abuse posture for public simulation requests
-  before queueing work;
+  before queueing work, including visitor-session generation limits across
+  initial simulation jobs and regeneration requests;
 - validate that the selected sofa, fabric, and visual matrix column form a
   published public-usable triple at job creation time;
 - never expose service-role credentials, AI provider keys, or storage write
@@ -319,18 +333,41 @@ The job type is `in_home_simulation`.
 It runs in two stages, separated by an `awaiting_dimensions` checkpoint
 that returns control to the visitor through the public wizard.
 
+### Runtime And Queue
+
+The first production implementation must run as Supabase Edge Functions written
+in TypeScript on the Deno runtime.
+
+Supabase Queues must provide durable job queueing. Stage 1 room preparation,
+stage 2 sofa placement, and placement regenerations must be queued as explicit
+work messages so each stage remains retryable, observable, and claimable on its
+own.
+
+The queue consumer function may process more than one queued message per
+invocation, but it must respect a configurable concurrency limit based on the
+active AI provider rate limits, Supabase Edge Function execution limits, and the
+operational needs of the MVP.
+
+The local Python bench must remain a behavior reference only. The production
+runtime must not depend on Python, Railway, or a long-running external worker
+process for this spec.
+
 ### Stage 1: Room Preparation
 
 The worker must, in this logical order, idempotently:
 
 1. Materialize the customer room photo into the scratch folder.
-2. Normalize the photo: convert HEIC inputs to JPEG, apply EXIF
-   orientation, validate that the short edge meets the worker minimum, and
-   validate brightness is within the worker accept band.
+2. Normalize the photo inside the worker, not at the API edge. Normalization
+   must convert unsupported-but-accepted input formats such as HEIC or HEIF to
+   the worker processing format and may compress images that exceed the
+   worker-defined maximum edge. Normalization must not rotate the image by
+   applying EXIF orientation, must not reject the image based on a minimum short
+   edge, and must not reject the image based on brightness.
 3. Validate that the photo is a usable interior of a residential room with
    a visible back wall and adequate lighting. Validation must rely on a
    vision model and produce a readable failure code when it fails.
-4. Compress the normalized photo to the worker-defined room maximum edge.
+4. Persist the normalized and, when applicable, compressed room artifact for the
+   remaining room preparation steps.
 5. Generate a cleaned-room artifact in which the room's existing furniture
    has been removed while the room geometry, openings, fixtures, and
    lighting remain visually identical.
@@ -567,11 +604,14 @@ The worker environment must include:
 - `GEMINI_API_KEY`: server-only Gemini provider key;
 - `OPENAI_API_KEY`: server-only OpenAI provider key for sub-steps that use
   OpenAI vision or image-edit models;
-- `IMAGE_WORKER_POLL_INTERVAL_MS`: optional polling interval for queued
-  jobs;
-- `IMAGE_WORKER_MAX_ATTEMPTS`: optional override for maximum attempts per
+- `IN_HOME_SIMULATION_QUEUE_NAME`: Supabase Queue name for in-home simulation
+  work messages;
+- `IN_HOME_SIMULATION_MAX_ATTEMPTS`: optional override for maximum attempts per
   stage;
-- `IMAGE_WORKER_SCRATCH_DIR`: optional local scratch directory root;
+- `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`: optional concurrency limit for one
+  queue consumer invocation;
+- `IN_HOME_SIMULATION_TMP_DIR`: optional local temporary directory root,
+  defaulting to an Edge Function-compatible temporary directory when needed;
 - `SIMULATION_RETENTION_HOURS`: optional override for the retention
   window, capped at the SPEC-0003 maximum of 24.
 
@@ -582,18 +622,20 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 ## Acceptance Criteria
 
 - The spec is traceable to `SPEC-0001`, `SPEC-0003`, and `SPEC-0004`.
-- The spec is identified as a sibling of `SPEC-0006` and shares the
-  image-worker boundary.
+- The spec is identified as a sibling of `SPEC-0006` and shares the Supabase
+  Edge Functions, Supabase Queues, storage, and observability conventions.
 - The worker job type is defined as `in_home_simulation`.
+- The production runtime is Supabase Edge Functions written in TypeScript on the
+  Deno runtime, with Supabase Queues providing durable job queueing.
 - The two-stage processing model with an `awaiting_dimensions` checkpoint
   is defined.
 - The selected sofa, fabric, and visual matrix column are required job
   inputs and the prepared sofa asset is resolved server-side from the
   catalog rather than uploaded by the visitor.
 - The customer room photo is the only image the visitor uploads.
-- Stage 1 logical sub-steps cover normalization, validation, compression,
-  cleaning, back-wall anchoring, and deterministic dimension-guide
-  rendering.
+- Stage 1 logical sub-steps cover worker-side normalization, optional
+  compression, validation, cleaning, back-wall anchoring, and deterministic
+  dimension-guide rendering.
 - Stage 2 logical sub-steps cover dimension validation, prepared sofa
   materialization, and composition.
 - The scratch folder contract names the artifacts each stage may produce.
@@ -603,32 +645,28 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - Retryable and non-retryable failure categories are defined.
 - The MVP regeneration limit of three results per simulation attempt is
   enforced and traceable to SPEC-0004.
+- Visitor-session anti-abuse limits are enforced by the API across initial
+  simulation jobs and regeneration requests to prevent one visitor from
+  producing too many generated images.
 - The 24-hour retention rule from SPEC-0003 is enforced and tied to a
   defined purge behavior and the `expired` status.
 - The output dimensions must match the cleaned room dimensions.
 - Generated outputs remain private and never become public catalog assets.
 - Required worker environment variables are listed.
 - The existing local Python bench at `mebel/worker_test/` is identified as
-  a reference implementation without copying code.
+  a reference implementation only, and Python is not the production runtime for
+  this spec.
 - The spec defers wizard UI, result email delivery, anti-abuse mechanism
   details, catalog data model, and database schema to dedicated specs.
+- The spec explicitly defers final Supabase table names, relationships, storage
+  bucket names, storage paths, and database constraints to a dedicated Supabase
+  data model and storage specification.
 
 ## Open Questions
 
-- Should the first repository implementation keep the room preparation and
-  sofa placement core in Python, invoke it from the existing Node worker
-  boundary, or replace the current worker runtime with a Python worker
-  after a separate implementation plan?
-- What are the final Supabase table names and storage bucket names for
-  in-home simulation jobs and their artifacts?
-- Should normalization happen at the API edge before queueing, or always
-  inside the worker?
 - What is the first pinned prompt version per prompt family?
 - What is the first primary provider and primary model per stage, and what
   is the documented fallback policy?
-- Should regeneration count be capped per visitor session or per job?
-  SPEC-0004 specifies per simulation attempt; should the worker enforce per
-  job or rely on the API for that enforcement?
 - Should the dimension-guide overlay carry a worker watermark to deter
   screenshot reuse outside the simulation flow?
 - Should the back-wall anchor be an admin-overridable field for failure
