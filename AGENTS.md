@@ -11,10 +11,14 @@ These instructions apply to the whole monorepo.
 This is the Mobel Unique monorepo:
 
 - `apps/web`: Next.js frontend, deployed to Vercel.
-- `apps/api`: Node.js Express API, deployed to Railway.
-- `workers/image`: Node.js image-processing worker, deployed to Railway.
+- `apps/api`: legacy local Node.js Express API foundation; production API
+  behavior targets Supabase Edge Functions.
+- `workers/image`: legacy local Node.js image-worker foundation; production
+  image job behavior targets Supabase Edge Functions and Supabase Queues.
 - `packages/shared`: shared types and utilities.
 - `supabase/migrations`: database migrations and policies.
+- `supabase/functions`: Supabase Edge Functions for production API and worker
+  behavior when implemented.
 - `docs/specs`: product and technical specifications for future work.
 - `docs/plans`: execution plans linked to accepted specs.
 - `docs/roadmap`: package-level roadmaps.
@@ -52,20 +56,25 @@ If dependencies are not installed, state that clearly instead of pretending chec
 
 The project has two isolated environments:
 
-- `dev`: Vercel DEV, Railway API DEV, Railway Worker DEV, Supabase DEV.
-- `main`: Vercel PROD, Railway API PROD, Railway Worker PROD, Supabase PROD.
+- `dev`: Vercel DEV and Supabase DEV.
+- `main`: Vercel PROD and Supabase PROD.
 
 Never mix DEV and PROD URLs, keys, databases, buckets, or service credentials.
 
 Never commit real secrets. Update `.env.example` when new environment variables are required.
 
-Frontend code may use public Supabase anon keys only. Service-role keys and other private credentials belong only in server-side services such as `apps/api` or `workers/image`.
+Frontend code may use public Supabase anon keys only. Service-role keys and
+other private credentials belong only in server-side Supabase Edge Functions or
+local server-side tooling.
 
 ## Code Boundaries
 
 - Keep browser-facing UI and admin UI in `apps/web`.
-- Keep request/response business logic in `apps/api`.
-- Keep long-running image-processing work in `workers/image`.
+- Keep production request/response business logic in Supabase Edge Functions.
+- Keep production image-processing work in Supabase Edge Functions with
+  Supabase Queues.
+- Treat `apps/api` and `workers/image` as legacy local foundations unless a
+  later accepted spec gives them a new role.
 - Keep shared package code small, stable, and portable. Avoid Node-only APIs in `packages/shared` unless there is a clear cross-service need.
 - Prefer explicit, boring code over abstractions that are not yet needed.
 

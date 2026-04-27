@@ -407,7 +407,7 @@ The following areas are expected to become dedicated specs before implementation
 - API Contracts: a `technical` area covering public routes, admin routes, upload flows, request and response payloads, auth requirements, errors, pagination, and idempotency expectations.
 - Worker Jobs And AI Providers: a `technical` area covering render generation jobs, in-home simulation jobs, provider selection, provider limits, formats, retries, failures, idempotency, and cost-sensitive controls.
 - Admin Auth And Operations: a `cross-cutting` area covering administrator access, MVP role model, operational overview, simulation monitoring, audit expectations, and basic admin security boundaries.
-- Environment And Deployment: a `technical` area covering DEV and PROD separation, required environment variables, Vercel settings, Railway settings, Supabase settings, domains, and deployment-facing checks.
+- Environment And Deployment: a `technical` area covering DEV and PROD separation, required environment variables, Vercel settings, Supabase settings, domains, and deployment-facing checks.
 
 Shopify linking does not need to be a standalone follow-up spec by default. It should be covered inside the public customer experience, admin catalog, API contracts, and environment specs unless URL behavior becomes complex enough to justify a dedicated spec.
 

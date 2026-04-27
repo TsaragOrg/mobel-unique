@@ -19,7 +19,8 @@ Establish a clean Mobel Unique monorepo foundation that supports specification-b
 
 - Product feature implementation.
 - Real Supabase schema.
-- Production deployment configuration inside Vercel or Railway.
+- Production deployment configuration inside Vercel or Supabase platform
+  services.
 - Real DEV and PROD secrets.
 
 ## Users And Permissions
@@ -64,4 +65,3 @@ Initial `.env.example` files describe local and platform variables for:
 ## Open Questions
 
 - Exact GitHub CODEOWNERS reviewers should be replaced with real GitHub handles or teams.
-

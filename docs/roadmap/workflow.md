@@ -12,4 +12,4 @@
 
 - Replace CODEOWNERS placeholders with real GitHub users or teams.
 - Enable branch protection rules on GitHub for `dev` and `main`.
-- Add deployment checks after Vercel, Railway, and Supabase projects exist.
+- Add deployment checks after Vercel and Supabase projects exist.
