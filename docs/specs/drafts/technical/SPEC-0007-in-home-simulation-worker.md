@@ -27,8 +27,8 @@ area.
 It follows `SPEC-0004 Public Customer Experience`, which defines the public
 simulation launch wizard, the prepared room intermediate state with visual
 dimension guides, the required dimension collection step, the simulation
-result display, the result email delivery action, and the MVP regeneration
-limit.
+result display, the email verification gate before generation, and the MVP
+regeneration limit.
 
 It is a sibling to `SPEC-0006 Fabric Render Worker`, which defines the
 admin-driven fabric render generation job using the same Supabase Edge
@@ -60,13 +60,14 @@ photo.
 The worker must support the two-stage public simulation flow defined in
 SPEC-0004 where:
 
-- the customer first uploads a room photo and receives a prepared room with
-  visual dimension guides;
-- the customer then provides room dimensions and receives a final placement
+- the customer first uploads a room photo and receives a dimension-guide image
+  based on the cleaned room photo;
+- the customer then provides the requested wall dimensions and receives a final placement
   of the previously selected sofa, fabric, and visual position.
 
 The output is a generated room photo with the selected sofa placed against
-the room's back wall at a size that matches the supplied room dimensions.
+the room's main wall or room corner at a size that matches the supplied wall
+dimensions.
 
 ## Scope
 
@@ -93,7 +94,8 @@ This spec includes:
 This spec does not define:
 
 - the public simulation wizard UI;
-- result email delivery, the email request form, or consent storage;
+- email verification code delivery, email consent storage, or commercial
+  contact consent storage;
 - the anti-abuse mechanism details;
 - the sofa, fabric, and visual position catalog data model;
 - the fabric render preparation flow, which belongs to SPEC-0006;
@@ -136,7 +138,7 @@ The browser must not call the worker directly. The browser must not receive
 worker credentials.
 
 The API must enforce the SPEC-0003 anti-abuse posture before creating a
-job.
+job, including the verified email simulation session required by SPEC-0004.
 
 ### Image Worker
 
@@ -152,17 +154,18 @@ This worker supports the public simulation flow defined by SPEC-0004
 §Simulation Launch. The mapping from public wizard steps to worker activity
 is:
 
-1. The visitor confirms the selected sofa, fabric, and visual position. No
-   worker activity.
-2. The visitor uploads a room photo. The API creates an in-home simulation
-   job, resolves and stores the prepared sofa asset reference for the selected
-   sofa, fabric, and visual matrix column, and queues stage 1.
+1. The visitor confirms the selected sofa, fabric, and visual position, then
+   completes email verification through the public flow. No worker activity.
+2. After the visitor has a verified simulation session, the visitor uploads a
+   room photo. The API creates an in-home simulation job, resolves and stores
+   the prepared sofa asset reference for the selected sofa, fabric, and visual
+   matrix column, and queues stage 1.
 3. The worker claims the job, runs stage 1 room preparation, and stores the
    prepared room and the dimension-guide overlay.
 4. The job status becomes `awaiting_dimensions`. The API exposes the
    dimension-guide overlay to the visitor through the public flow.
-5. The visitor provides the room dimensions through the wizard.
-6. The API attaches the dimensions to the existing job and queues stage 2.
+5. The visitor provides the requested wall dimensions through the wizard.
+6. The API attaches the wall dimensions to the existing job and queues stage 2.
 7. The worker claims the job again and runs stage 2 sofa placement.
 8. On success, the worker stores the final result artifact and marks the
    job `succeeded`. The API exposes the final result to the visitor.
@@ -193,7 +196,7 @@ The logical job record must track:
 - selected sofa id;
 - selected fabric id;
 - selected visual matrix column id;
-- visitor session or anti-abuse subject reference;
+- verified email simulation session or anti-abuse subject reference;
 - private storage prefix for all job-owned simulation artifacts;
 - prepared sofa asset reference resolved from the selected sofa, fabric,
   and visual position;
@@ -201,21 +204,35 @@ The logical job record must track:
 - normalized room asset reference;
 - compressed room asset reference;
 - cleaned room asset reference;
-- back wall anchor coordinates as the four architectural corners in the
-  cleaned room pixel space, ordered bottom-left, bottom-right, top-right,
-  top-left;
+- room geometry mode, either `back_wall` or `corner`;
+- room geometry confidence score when returned by the configured model;
+- room geometry failure reason when the room is not exploitable;
+- room geometry point coordinates in the cleaned room pixel space;
+- back-wall anchor coordinates when mode is `back_wall`, as the four
+  architectural corners of the main wall ordered bottom-left, bottom-right,
+  top-right, top-left;
+- corner anchor coordinates when mode is `corner`, as the six required
+  architectural points named `corner_floor`, `corner_ceiling`,
+  `left_wall_floor_outer`, `left_wall_ceiling_outer`,
+  `right_wall_floor_outer`, and `right_wall_ceiling_outer`;
 - prepared dimension-guide overlay asset reference exposed to the visitor
   between stages;
-- room dimensions in metres for width, depth, and height;
+- supplied wall dimensions in metres, with `wall_width` and `wall_height` for
+  `back_wall` mode, or `left_wall_width`, `right_wall_width`, and
+  `room_height` for `corner` mode;
 - generated output asset references for each generated result, ordered by
   regeneration index;
 - latest generated output index when at least one result exists;
+- generated output count;
+- reserved generation index when a placement or regeneration is in progress;
 - status;
 - regeneration count;
-- attempt count for the current stage;
+- room preparation attempt count;
+- placement attempt count;
 - maximum attempts per stage;
 - claim expiration timestamp when a worker is processing the current stage;
 - last error message;
+- last regeneration error message;
 - retention deadline computed as the job creation time plus the SPEC-0003
   retention window;
 - created timestamp;
@@ -228,10 +245,9 @@ visitor must not upload a sofa photo. The prepared sofa asset must be the
 public-usable render that already exists for the selected visual matrix cell
 at job creation time.
 
-Room `depth` is the room distance dimension represented by the visual guide in
-the camera direction. It corresponds to the `room length`, `room width or
-depth`, and optional camera-position language used by SPEC-0004, normalized here
-as width, depth, and height for the worker contract.
+The MVP does not request room depth or camera-position distance for either
+geometry mode. Scale estimation must use only the dimensions represented by the
+dimension-guide overlay.
 
 ### Job Status
 
@@ -266,12 +282,13 @@ SPEC-0004 §Simulation Launch.
 
 A regeneration:
 
-- reuses the previously stored cleaned room and back wall anchor;
+- reuses the previously stored cleaned room and room geometry points;
 - reuses the previously stored prepared sofa asset;
-- may reuse or update the room dimensions if the visitor adjusted them before
+- may reuse or update the wall dimensions if the visitor adjusted them before
   requesting regeneration;
-- counts toward the SPEC-0004 MVP limit of three total generated results
-  per simulation attempt, including the initial result;
+- counts toward the SPEC-0004 MVP limit only when it successfully produces a
+  generated output, with a maximum of three generated results per simulation
+  attempt including the initial result;
 - stores each generated result under a regeneration-indexed output path;
 - must not extend the SPEC-0003 24-hour retention deadline beyond the
   original job creation time.
@@ -280,12 +297,35 @@ The worker must reject a regeneration request that would exceed the MVP
 limit. The API is responsible for keeping the visible regeneration
 affordance consistent with that limit per SPEC-0004.
 
+The regeneration state transition must reuse the existing placement statuses
+instead of introducing new public or operational statuses:
+
+1. From `succeeded`, the API verifies that the job has not reached the MVP
+   limit of three generated outputs.
+2. The API atomically reserves the next regeneration index, stores it as the
+   reserved generation index, and transitions the job to `placement_queued`.
+3. The worker claims the job by transitioning it to `placement_processing`.
+4. On success, the worker writes `output-{index}.png`, updates
+   `latest_generated_output_index`, increments the generated output count, clears
+   the reserved generation index, and transitions the job back to `succeeded`.
+5. On failure when a previous generated output exists, the worker clears the
+   reserved generation index, records the last regeneration error, and returns
+   the job to `succeeded` so the previous result remains available to the
+   visitor.
+6. On failure when no previous generated output exists, the job becomes
+   `failed`.
+
+Technical retries of a placement attempt must not count as generated outputs.
+Only a successfully persisted generated output consumes one of the three MVP
+generated results.
+
 In addition to the per-job simulation limit, the API must enforce visitor-session
 anti-abuse limits before creating an initial simulation job or accepting a
-regeneration request. This protects the system from a single visitor producing
-too many generated images by repeatedly starting new jobs. The worker enforces
-the job-level limit for the work message it is processing; the API owns
-cross-job visitor/session throttling.
+regeneration request, and those limits must include the verified email
+simulation session required by SPEC-0004. This protects the system from a
+single visitor producing too many generated images by repeatedly starting new
+jobs. The worker enforces the job-level limit for the work message it is
+processing; the API owns cross-job visitor/session throttling.
 
 The worker must not implement cross-job per-IP or per-session deduplication in
 the MVP. Visitor-session anti-abuse and duplicate active simulation prevention
@@ -330,15 +370,25 @@ must define them.
 
 Future API contracts must provide server-side behavior for:
 
-- creating an in-home simulation job from a confirmed sofa, fabric, and
-  visual position selection plus an uploaded room photo;
-- attaching room dimensions to the job and transitioning it from
+- creating an in-home simulation job and storing the uploaded room photo in one
+  server-side operation, only from a verified email simulation session, a
+  confirmed sofa, fabric, and visual position selection, plus the uploaded room
+  photo;
+- attaching wall dimensions to the job and transitioning it from
   `awaiting_dimensions` to `placement_queued`;
 - reading job status, stage-specific artifacts, and the latest generated
   result;
-- requesting a regeneration within the SPEC-0004 MVP limit;
-- requesting result email delivery, which is the responsibility of a
-  separate result email delivery spec.
+- requesting a regeneration within the SPEC-0004 MVP limit.
+
+The MVP upload and job creation flow must be atomic from the visitor's
+perspective:
+
+- if the room photo upload fails, the API must not create a simulation job;
+- if database job creation fails after the upload object was written, the API
+  must immediately delete the uploaded object;
+- if immediate deletion fails, a cleanup process must remove orphaned room
+  upload objects older than one hour;
+- the MVP must not add a public `upload_pending` job status.
 
 The public frontend must learn simulation progress through API polling in the
 MVP. After job creation, the API returns an opaque simulation identifier and
@@ -372,8 +422,9 @@ the underlying storage bucket public.
 The API must:
 
 - enforce the SPEC-0003 anti-abuse posture for public simulation requests
-  before queueing work, including visitor-session generation limits across
-  initial simulation jobs and regeneration requests;
+  before queueing work, including verified email simulation session
+  requirements and visitor-session generation limits across initial simulation
+  jobs and regeneration requests;
 - validate that the selected sofa, fabric, and visual matrix column form a
   published public-usable triple at job creation time;
 - never expose service-role credentials, AI provider keys, or storage write
@@ -422,30 +473,47 @@ The worker must, in this logical order, idempotently:
    the image based on a minimum short edge, and must not reject the image based
    on brightness.
 3. Validate that the photo is a usable interior of a residential room with
-   a visible back wall and adequate lighting. Validation must rely on a
-   vision model and produce a readable failure code when it fails.
+   either a visible main wall or a visible room corner and adequate lighting.
+   Validation must rely on a vision model and produce a readable failure code
+   when it fails.
 4. Persist the normalized and, when applicable, compressed room artifact for the
    remaining room preparation steps.
 5. Generate a cleaned-room artifact in which the room's existing furniture
    has been removed while the room geometry, openings, fixtures, and
    lighting remain visually identical.
-6. Determine the four architectural back-wall corners of the cleaned room
-   in pixel space, ordered bottom-left, bottom-right, top-right, top-left.
-   The worker must validate the resulting quadrilateral against geometric
-   sanity rules and may retry the corner determination up to a
-   worker-defined attempt limit before failing.
-   The back-wall anchor is worker-determined only in the MVP and is not
-   admin-overridable.
-7. Render the dimension-guide overlay deterministically from the cleaned
-   room and the back wall corners. The overlay must include three labelled
-   lines for width, height, and depth, expressed as language-tagged words
-   rather than numeric measurements at this stage. The overlay must use
-   deterministic pixel rendering rather than image generation, so the
-   underlying cleaned room is not modified. The MVP does not require a worker
-   watermark on the dimension-guide overlay.
+6. Determine the room geometry mode automatically as either `back_wall` or
+   `corner`. The visitor must not choose the mode in the MVP.
+7. Run a single room-geometry detection call against the cleaned room artifact.
+   The configured image model must return structured geometry output with:
+   - `mode`, either `back_wall` or `corner`;
+   - `points`, containing four ordered main-wall points for `back_wall` mode or
+     six named room-corner points for `corner` mode;
+   - `confidence`, when the model can provide it;
+   - `failure_reason`, when the room is not exploitable.
+8. For `back_wall` mode, the four points must be the architectural corners of
+   the main wall in the cleaned room image, ordered bottom-left, bottom-right,
+   top-right, top-left.
+9. For `corner` mode, the six points must be `corner_floor`, `corner_ceiling`,
+   `left_wall_floor_outer`, `left_wall_ceiling_outer`,
+   `right_wall_floor_outer`, and `right_wall_ceiling_outer`.
+10. Validate the returned mode and points against geometric sanity rules and
+   may retry room-geometry detection up to a worker-defined attempt limit
+   before failing. The room geometry points are worker-determined only in the
+   MVP and are not admin-overridable.
+11. Render the dimension-guide overlay deterministically on the cleaned room
+   artifact. The overlay must use the detected geometry points and draw
+   labelled arrows for the exact dimensions the visitor must provide:
+   - `back_wall`: wall width and wall height;
+   - `corner`: left wall width, right wall width, and room height.
+   The overlay labels must be language-tagged words rather than numeric
+   measurements at this stage. The overlay must use deterministic pixel
+   rendering rather than image generation. The worker must preserve both the
+   clean room artifact without arrows and the separate guide artifact with
+   arrows. The MVP does not require a worker watermark on the
+   dimension-guide overlay.
 
-The stage 1 success outputs are the cleaned room artifact, the back wall
-corner anchor, and the dimension-guide overlay artifact. After stage 1
+The stage 1 success outputs are the cleaned room artifact, the room geometry
+mode and points, and the dimension-guide overlay artifact. After stage 1
 succeeds, the job becomes `awaiting_dimensions` and the API may expose the
 overlay artifact to the visitor.
 
@@ -453,15 +521,17 @@ overlay artifact to the visitor.
 
 The worker must, in this logical order, idempotently:
 
-1. Validate the supplied room dimensions against the worker accept range
-   and reject obviously inconsistent values such as a sofa wider than the
-   supplied room width or a sofa taller than the supplied ceiling.
+1. Validate the supplied wall dimensions for the job's room geometry mode
+   against the worker accept range and reject obviously inconsistent values,
+   such as a sofa wider than the supplied wall width for `back_wall` mode, a
+   corner sofa wider than the supplied left or right wall width for `corner`
+   mode, or a sofa taller than the supplied wall or room height.
 2. Materialize the prepared sofa asset that was resolved from the selected
    sofa, fabric, and visual matrix column.
-3. Compose the cleaned room, the back wall anchor, the room dimensions, and
-   the prepared sofa into a final visualization that places the sofa
-   against the back wall at a size that matches the supplied room
-   dimensions.
+3. Compose the cleaned room, the room geometry mode and points, the supplied
+   wall dimensions, and the prepared sofa into a final visualization that
+   places the sofa against the main wall or room corner at a size that matches
+   the supplied dimensions.
 
 The stage 2 success output is the final generated visualization. The
 worker must save the scratch result as `output.png`, persist it under the
@@ -479,7 +549,7 @@ job-folder/
   room_normalized.jpg
   room_compressed.jpg
   room_cleaned.png
-  back_wall.json
+  room_geometry.json
   room_guides.png
   sofa_prepared.png
   output.png
@@ -493,10 +563,12 @@ Rules:
 - `room_compressed.jpg` is the room photo at worker-defined room maximum
   edge;
 - `room_cleaned.png` is the room with existing furniture removed;
-- `back_wall.json` records the four ordered corner coordinates that anchor
-  the back wall;
-- `room_guides.png` is the dimension-guide overlay exposed to the visitor
-  between stages;
+- `room_geometry.json` records the detected geometry mode, points, confidence
+  when available, and failure reason when applicable. In
+  `back_wall` mode it records the four ordered main-wall corner coordinates.
+  In `corner` mode it records the six named room-corner coordinates;
+- `room_guides.png` is the dimension-guide image drawn on top of
+  `room_cleaned.png` and exposed to the visitor between stages;
 - `sofa_prepared.png` is the materialized prepared sofa asset for the
   selected sofa, fabric, and visual matrix column;
 - `output.png` is the successful generated visualization in the scratch folder;
@@ -509,8 +581,9 @@ Persistent storage uses the regeneration-indexed output paths defined in the
 Regeneration section. The scratch `output.png` file must not be used as the
 persistent object path.
 
-A regeneration may reuse `room_cleaned.png`, `back_wall.json`,
-`room_guides.png`, and `sofa_prepared.png` from the prior attempt. It must
+A regeneration may reuse `room_cleaned.png`, `room_geometry.json`,
+`room_guides.png`, and `sofa_prepared.png` from the prior attempt. Stage 2 must
+use `room_cleaned.png`, not `room_guides.png`, as the room image input. It must
 clear `output.png` and `error.txt` before the new placement attempt.
 
 ### Prompting
@@ -518,7 +591,7 @@ clear `output.png` and `error.txt` before the new placement attempt.
 The first in-home simulation pipeline uses two distinct prompt families:
 
 - a room preparation prompt family covering the validation, cleaning, and
-  back-wall guidance prompts;
+  room-geometry point detection prompts;
 - a sofa placement prompt family covering the final placement prompt.
 
 Both families must be treated as fixed versioned prompt assets. Optional
@@ -541,8 +614,8 @@ The placement prompt must instruct the AI provider to:
 - not introduce furniture or decoration that is not in the cleaned room;
 - preserve the prepared sofa identity, including silhouette, cushion
   arrangement, armrest profile, base style, and fabric appearance;
-- place the sofa so its back rests against the back wall anchor at a size
-  that matches the supplied room dimensions;
+- place the sofa against the detected main wall or room corner at a size that
+  matches the supplied wall dimensions;
 - not reproduce any reference scale guides, numeric labels, or annotation
   marks in the final output.
 
@@ -550,8 +623,16 @@ The placement prompt must instruct the AI provider to:
 
 The MVP uses one configured primary provider per stage. The exact primary model
 names must be pinned in the implementation plan after provider validation. The
-choice may differ between stages; for example, a vision-only model may run
-validation while an image-edit model runs cleaning and placement.
+choice may differ between stages; for example, an OpenAI image model may run
+room-geometry point detection while an image-edit model runs cleaning and
+placement.
+
+The room-geometry point detection step must request structured point
+coordinates from the configured image model in one call. The model must return
+`mode`, `points`, `confidence` when available, and `failure_reason` when the
+room is not exploitable. Deterministic application code must draw the dimension
+arrows from those points. The image model must not be responsible for rendering
+the final guide overlay.
 
 The MVP does not require a secondary provider fallback. If the configured
 primary provider for a stage is unavailable, the attempt must fail or retry
@@ -585,9 +666,20 @@ The worker must not retry errors caused by:
 - a request that would exceed the SPEC-0004 regeneration limit;
 - a job whose retention deadline has already passed.
 
-After the final failed attempt of a stage, the job status must become
-`failed` and the last error message must remain available for the visitor
-and for operational review.
+The worker must track room preparation attempts and placement attempts
+separately. `room_prep_attempt_count` increments when a worker successfully
+claims stage 1. `placement_attempt_count` increments when a worker successfully
+claims stage 2, including regeneration placement attempts.
+
+After the final failed attempt of stage 1, the job status must become `failed`
+and the last error message must remain available for the visitor and for
+operational review.
+
+After the final failed attempt of stage 2:
+
+- if no generated output exists yet, the job status must become `failed`;
+- if a previous generated output exists, the job must return to `succeeded`,
+  keep the previous result available, and record the last regeneration error.
 
 ### Idempotency And Claiming
 
@@ -599,6 +691,12 @@ The job claim operation must be atomic per stage. A worker can begin stage
 `room_prep_processing`. A worker can begin stage 2 only after it
 successfully moves the job from `placement_queued` to
 `placement_processing`.
+
+The stage claim operation must increment only the attempt counter for the stage
+being claimed:
+
+- claiming `queued` for stage 1 increments `room_prep_attempt_count`;
+- claiming `placement_queued` for stage 2 increments `placement_attempt_count`.
 
 A processing claim must set `claim_expires_at` so a crashed or timed-out worker
 cannot leave a job stuck in a processing status forever. The default claim TTL
@@ -654,6 +752,11 @@ The prefix must include the visitor upload, normalized and compressed room
 files, cleaned room, dimension-guide overlay, prepared sofa materialization,
 generated outputs, and any worker error artifact that is persisted for
 operational review.
+
+Room upload objects that were written before a database job creation failure are
+orphaned uploads, not simulation artifacts. The API must attempt immediate
+deletion, and the cleanup process must delete orphaned uploads older than one
+hour.
 
 ### Retention
 
@@ -751,14 +854,21 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The selected sofa, fabric, and visual matrix column are required job
   inputs and the prepared sofa asset is resolved server-side from the
   catalog rather than uploaded by the visitor.
+- The API creates and queues an in-home simulation job only after the visitor
+  has a verified email simulation session.
+- Room photo upload and simulation job creation are atomic from the visitor's
+  perspective, with no public `upload_pending` status.
+- Orphaned room uploads from database job creation failures are deleted
+  immediately when possible and by cleanup after one hour otherwise.
 - The prepared sofa asset reference is resolved when the simulation job is
   created and reused by stage 2.
 - The customer room photo is the only image the visitor uploads.
 - Worker room photo normalization applies EXIF orientation before downstream
   processing.
 - Stage 1 logical sub-steps cover worker-side normalization, optional
-  compression, validation, cleaning, back-wall anchoring, and deterministic
-  dimension-guide rendering.
+  compression, validation, cleaning, a single image-model room-geometry call
+  returning mode, points, confidence, and failure reason when applicable, and
+  deterministic dimension-guide rendering on the cleaned room photo.
 - Stage 2 logical sub-steps cover dimension validation, prepared sofa
   materialization, and composition.
 - The scratch folder contract names the artifacts each stage may produce.
@@ -768,17 +878,34 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - Retryable and non-retryable failure categories are defined.
 - The MVP regeneration limit of three results per simulation attempt is
   enforced and traceable to SPEC-0004.
-- Visitors may adjust room dimensions before requesting a regeneration, and the
+- Visitors may adjust wall dimensions before requesting a regeneration, and the
   regeneration remains part of the same job and retention window.
+- Regeneration reuses the existing placement statuses by transitioning from
+  `succeeded` to `placement_queued` and back to `succeeded` on success.
+- A failed regeneration keeps the previous generated result available when one
+  exists and records the regeneration error instead of making the whole job
+  unavailable.
+- Technical retries do not count as generated outputs; only successfully
+  persisted outputs consume the three-result MVP limit.
 - Generated results are stored under regeneration-indexed output paths and the
   job tracks the latest output index.
-- Visitor-session anti-abuse limits are enforced by the API across initial
-  simulation jobs and regeneration requests to prevent one visitor from
-  producing too many generated images.
+- Room preparation attempts and placement attempts are tracked separately.
+- Verified email session and visitor-session anti-abuse limits are enforced by
+  the API across initial simulation jobs and regeneration requests to prevent
+  one visitor from producing too many generated images.
 - Cross-job per-IP and per-session deduplication are API responsibilities, not
   worker responsibilities.
-- The back-wall anchor is worker-determined only in the MVP.
+- Room geometry points are worker-determined only in the MVP.
+- `back_wall` mode requires two visitor-supplied measurements: wall width and
+  wall height.
+- `corner` mode requires three visitor-supplied measurements: left wall width,
+  right wall width, and room height.
+- The MVP does not request room depth or camera-position distance for either
+  geometry mode.
 - The dimension-guide overlay does not require a worker watermark in the MVP.
+- The worker preserves both `room_cleaned.png` without arrows and
+  `room_guides.png` with arrows; stage 2 uses `room_cleaned.png` as its room
+  input.
 - The first prompt versions are `room_prep_v001` and `sofa_placement_v001`.
 - The MVP uses one configured primary provider per stage, with exact model names
   pinned in the implementation plan and no required secondary provider fallback.
@@ -798,8 +925,9 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The existing local Python bench at `mebel/worker_test/` is identified as
   a reference implementation only, and Python is not the production runtime for
   this spec.
-- The spec defers wizard UI, result email delivery, anti-abuse mechanism
-  details, catalog data model, and database schema to dedicated specs.
+- The spec defers wizard UI, email verification code delivery, email consent
+  storage, commercial contact consent storage, anti-abuse mechanism details,
+  catalog data model, and database schema to dedicated specs.
 - The spec explicitly defers final Supabase table names, relationships, storage
   bucket names, storage paths, and database constraints to a dedicated Supabase
   data model and storage specification.

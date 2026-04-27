@@ -86,7 +86,8 @@ The product scope includes:
 - a simulation-first sofa detail page;
 - fabric and visual position selection for a selected sofa;
 - in-home simulation from an uploaded customer room photo;
-- customer email delivery of the generated simulation result while the result is still retained;
+- email verification before simulation generation for anti-abuse;
+- direct browser display of generated simulation results while retained;
 - a clear secondary path back to the related Shopify product page;
 - a private administration back office;
 - sofa preparation and publication management;
@@ -118,7 +119,8 @@ The project does not include:
 The MVP also does not include:
 
 - mandatory public customer accounts;
-- mandatory customer email collection before browsing, choosing a sofa, or viewing a simulation result;
+- mandatory customer email collection before browsing or choosing a sofa;
+- result delivery by email as the primary MVP result-access mechanism;
 - a public customer profile area;
 - a default customer gallery of past simulations;
 - a default long-term admin gallery of private customer interiors;
@@ -139,8 +141,8 @@ The visitor can:
 - choose a public visual position for the selected sofa;
 - start an in-home simulation from the selected sofa, fabric, and visual position;
 - upload a room photo for that simulation;
+- verify an email address before generation;
 - view the simulation result;
-- request the generated simulation result by email while it is still available;
 - return to Shopify through the stored order URL.
 
 The visitor cannot:
@@ -183,9 +185,9 @@ This parent spec does not approve multiple administration levels. More granular 
 4. The customer sees the default public fabric and default public visual position for the sofa.
 5. The customer can switch fabric and visual position within the public options available for that sofa.
 6. The customer starts an in-home simulation from the selected sofa, fabric, and visual position.
-7. The customer uploads a room photo and follows a guided simulation preparation flow if required.
-8. The tool displays the generated simulation result.
-9. The customer can request the generated simulation result by email while it is still available.
+7. The customer verifies an email address for anti-abuse before generation.
+8. The customer uploads a room photo and follows a guided simulation preparation flow if required.
+9. The tool displays the generated simulation result directly in the browser.
 10. The customer can return to Shopify to order.
 
 ### Customer From Direct Access
@@ -196,8 +198,9 @@ This parent spec does not approve multiple administration levels. More granular 
 4. The customer opens a sofa detail page.
 5. The customer chooses a public fabric and public visual position.
 6. The customer starts the in-home simulation.
-7. The customer can request the generated simulation result by email while it is still available.
-8. The customer can return to Shopify to order.
+7. The customer verifies an email address for anti-abuse before generation.
+8. The customer views the generated simulation result directly in the browser while it is retained.
+9. The customer can return to Shopify to order.
 
 ### Administrator Preparation
 
@@ -304,13 +307,13 @@ The customer must be able to view the generated simulation result while the resu
 
 The MVP must not require direct browser download of the private generated simulation result.
 
-Instead, the customer can request the generated simulation result by email while the result is still retained.
+The MVP displays the generated simulation result directly in the browser after a successful verified simulation.
 
-Email is required only for result delivery, not for browsing, choosing a sofa, starting a simulation, or viewing the result.
+Email verification is required before simulation generation. Email is not required for browsing, choosing a sofa, or opening a sofa detail page.
 
-Result email delivery requires a consent step explaining that the private room photo and generated simulation output are retained temporarily and deleted no later than 24 hours after creation.
+Email verification requires a consent step explaining that the email address is used to verify the simulation request, limit abuse, and support operational follow-up for the simulation. The final email retention duration, deletion behavior, and consent wording must be defined by the privacy, retention, and abuse protection spec.
 
-Optional marketing or contact consent must be separate from required result-delivery consent.
+Optional marketing or contact consent must be separate from required email-verification consent.
 
 The MVP does not require public sharing links, customer galleries, or long-term customer simulation history.
 
@@ -323,7 +326,7 @@ Customer room photos and generated in-home simulation outputs are personal data.
 The MVP must minimize retention by default:
 
 - public customer accounts are not required;
-- customer email collection is required only when the customer requests result delivery by email;
+- customer email collection is required only when the customer starts simulation generation;
 - customer room photos and simulation outputs must be retained only as long as needed for the simulation purpose;
 - customer room photos and simulation outputs must not be retained for more than 24 hours in the MVP;
 - the back office must expose operational job history rather than a default gallery of private customer interiors.
@@ -348,8 +351,8 @@ The MVP must support the complete business loop:
 - the customer browses or opens a published sofa;
 - the customer selects a public fabric and visual position;
 - the customer launches an in-home simulation from that selection;
-- the customer receives a simulation result;
-- the customer can request the simulation result by email while it is still retained;
+- the customer verifies an email address before generation;
+- the customer receives a simulation result directly in the browser while it is retained;
 - the customer can return to Shopify to order;
 - an administrator can prepare sofas, fabrics, visual matrix columns, and public renders;
 - an administrator can publish only complete public sofa experiences;
@@ -398,10 +401,10 @@ SPEC-0003 business context -> follow-up specs -> accepted specs -> implementatio
 
 The following areas are expected to become dedicated specs before implementation. The final spec ids, titles, boundaries, and dependencies will be confirmed when each follow-up spec is drafted.
 
-- Public Customer Experience: a `domain` area covering the public home page, public catalog, sofa detail page, fabric selection, visual position selection, default states, mobile-first behavior, simulation result access, result email delivery, and Shopify order redirect.
+- Public Customer Experience: a `domain` area covering the public home page, public catalog, sofa detail page, fabric selection, visual position selection, default states, mobile-first behavior, email verification before simulation generation, simulation result access, and Shopify order redirect.
 - Admin Catalog And Fabric Management: a `domain` area covering admin sofa preparation, reusable fabric management, sofa metadata, fabric assignment, visual matrix column management, Shopify URL entry, draft behavior, publication, and archive behavior.
 - Render Preparation, Coverage, Generation, And Publication: a `domain` and `technical` area covering manual uploads, AI-generated renders, render source types, complete coverage rules, publication readiness, regeneration, and required admin ZIP export.
-- In-Home Simulation Flow: a `domain` and `technical` area covering room photo upload, guided simulation wizard, room references, dimensions, simulation job lifecycle, result display, result email delivery, retry, and failure states.
+- In-Home Simulation Flow: a `domain` and `technical` area covering email verification before generation, room photo upload, guided simulation wizard, room references, dimensions, simulation job lifecycle, result display, retry, and failure states.
 - Privacy, Retention, And Abuse Protection: a `cross-cutting` area covering customer photo retention, simulation output retention with a 24-hour MVP maximum, deletion rules, operational metadata, rate limiting, abuse prevention, and admin visibility boundaries.
 - Data Model And Storage: a `technical` area covering database tables, relationships, statuses, indexes, file ownership, storage buckets, public/private asset boundaries, and retention fields.
 - API Contracts: a `technical` area covering public routes, admin routes, upload flows, request and response payloads, auth requirements, errors, pagination, and idempotency expectations.
@@ -425,7 +428,8 @@ Shopify linking does not need to be a standalone follow-up spec by default. It s
 - The spec rejects a separate product type that bypasses render coverage.
 - Draft, published, and archived sofa visibility are defined at business level.
 - The in-home simulation is described without locking the detailed wizard design.
-- Customer result email delivery is included while the result is retained.
+- Email verification before simulation generation is included as the MVP anti-abuse gate.
+- Generated simulation results are displayed directly in the browser while retained.
 - Privacy-by-default is defined as an MVP principle.
 - Customer room photos and simulation outputs have a 24-hour maximum MVP retention rule.
 - Operational simulation tracking and anti-abuse are included.
@@ -440,9 +444,9 @@ The following review decisions are accepted for this parent spec:
 
 - `draft`, `published`, and `archived` are enough as business-level sofa visibility states.
 - Default public fabric and default public visual position must use the administrator-defined order.
-- The customer must be able to request the generated simulation result by email while it is still retained.
-- Email collection is required only for result delivery.
-- Required result-delivery consent and optional marketing or contact consent must be separate.
+- The customer must verify an email address before simulation generation.
+- Email collection is required only for simulation generation, not browsing or sofa selection.
+- Required email-verification consent and optional marketing or contact consent must be separate.
 - Customer room photos and simulation outputs must not be retained for more than 24 hours in the MVP.
 - Admin ZIP export of sofa render sets is required in MVP because those images may be reused on Shopify.
 - The MVP must include a global operational view, but it should stay lightweight and avoid advanced analytics or excessive controls.

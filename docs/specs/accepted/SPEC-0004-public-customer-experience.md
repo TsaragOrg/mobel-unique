@@ -23,15 +23,15 @@ This spec must preserve the `SPEC-0003` business decisions:
 - public sofas must be published;
 - public fabrics must have complete public-usable render coverage for all required visual positions;
 - Shopify links do not preselect fabric or visual position in the MVP;
-- customer simulation results can be delivered only while still retained.
+- customer simulation results can be displayed only while still retained.
 
-This spec refines the original `SPEC-0003` result-download decision through `CR-SPEC-0003-result-email-delivery`: the MVP should not provide a direct browser download button for the private generated simulation image. Instead, visitors can request the result by email while it is still retained.
+This spec refines the original `SPEC-0003` result-download decision through `CR-SPEC-0003-result-email-delivery` and supersedes the MVP result-email behavior through `CR-SPEC-0003-SPEC-0004-email-verification-before-simulation`: the MVP should not provide a direct browser download button for the private generated simulation image. Instead, visitors must verify an email address before simulation generation, and the generated result is displayed directly in the browser while it is retained.
 
 This spec feeds later specs for in-home simulation flow, privacy and retention, data model and storage, API contracts, and environment configuration.
 
 ## Goal
 
-Give visitors a simple public experience that helps them understand the visualization tool, choose a sofa, choose a fabric and visual position, start an in-home simulation, request the generated result by email while available, and return to Shopify to order.
+Give visitors a simple public experience that helps them understand the visualization tool, choose a sofa, choose a fabric and visual position, verify an email address before generation, start an in-home simulation, view the generated result directly while available, and return to Shopify to order.
 
 The public experience must be clear enough for direct visitors and focused enough for visitors arriving from a Shopify product page.
 
@@ -49,7 +49,7 @@ This spec covers:
 - visual position selector behavior;
 - simulation launch entry point;
 - public simulation result access at a domain level;
-- result email delivery at a domain level;
+- email verification before simulation generation at a domain level;
 - Shopify order redirect behavior;
 - public privacy, AI limitation, and consent messaging before simulation;
 - basic analytics expectations;
@@ -94,8 +94,8 @@ The visitor can:
 - choose a public fabric for the selected sofa;
 - choose a public visual position for the selected sofa;
 - start an in-home simulation from the selected sofa, fabric, and visual position;
+- verify an email address before simulation generation;
 - view the generated simulation result after a successful simulation;
-- request the generated simulation result by email while it is still available;
 - return to Shopify through the stored Shopify order URL.
 
 The visitor cannot:
@@ -420,29 +420,37 @@ The action must hand off the selected context to the in-home simulation flow.
 The public in-home simulation flow should guide the visitor through these visible steps:
 
 1. Confirm the selected sofa, fabric, and visual position to simulate.
-2. Upload or capture a photo of the room area where the sofa should be placed.
-3. Show a preparation screen with both the selected sofa image and the uploaded room photo.
-4. Let the visitor start the room preparation step through a clear action such as `Simuler` or `Générer`.
-5. Let the system prepare the room photo by removing large furniture and any existing sofa when possible.
-6. Show the prepared room photo, cleaned or emptied where possible, with visual dimension guides drawn directly on the image.
-7. Ask the visitor to provide the room dimensions needed for scale estimation in fields that correspond clearly to the visual guides:
-   - room length;
-   - room width or depth;
-   - room height.
-8. Ask for the camera-depth or camera-position distance when needed, so the generated placement can respect the photographed perspective.
-9. Let the visitor continue once the required guide dimensions are provided.
-10. Process the final sofa placement simulation through the backend.
-11. Show the generated in-home simulation result with the selected sofa placed in the prepared room image.
-12. Let the visitor regenerate the result if the output is not satisfactory, subject to the MVP generation limit.
-13. Let the visitor request the result by email while it is still retained.
-14. Let the visitor return to Shopify through the sofa's stored order URL.
-15. Let the visitor return to the public catalog.
+2. Ask the visitor to provide an email address for verification before generation.
+3. Ask the visitor to accept the required email-use consent for simulation verification, anti-abuse, and operational follow-up.
+4. Let the visitor optionally accept commercial follow-up or offer contact.
+5. Send a short verification code to the provided email address.
+6. Ask the visitor to check their inbox and spam folder, then enter the verification code.
+7. Upload or capture a photo of the room area where the sofa should be placed.
+8. Show a preparation screen with both the selected sofa image and the uploaded room photo.
+9. Let the visitor start the room preparation step through a clear action such as `Simuler` or `Générer`.
+10. Let the system prepare the room photo by removing large furniture and any existing sofa when possible.
+11. Show a dimension-guide image with visual arrows drawn directly on the uploaded room photo.
+12. Ask the visitor to provide only the dimensions shown by the guide:
+   - for a main-wall guide: wall width and wall height;
+   - for a room-corner guide: left wall width, right wall width, and room height.
+13. Let the visitor continue once the required guide dimensions are provided.
+14. Process the final sofa placement simulation through the backend.
+15. Show the generated in-home simulation result with the selected sofa placed in the prepared room image.
+16. Let the visitor regenerate the result if the output is not satisfactory, subject to the MVP generation limit.
+17. Let the visitor return to Shopify through the sofa's stored order URL.
+18. Let the visitor return to the public catalog.
 
 The MVP generation limit is three total generated results for one simulation attempt, including the initial result and up to two regenerations.
 
 The public UI does not need to display a numeric remaining-generation counter in the MVP.
 
 If regeneration is no longer available, the public experience should remove or disable the regeneration action and keep the latest generated result available while retained.
+
+If a regeneration fails after a previous generated result already exists, the
+public experience must keep the latest successful result visible while retained
+and may show a readable regeneration error. A failed regeneration must not count
+as one of the three generated results unless a new output was successfully
+produced.
 
 The public experience must keep the AI limitation message visible or easily discoverable around simulation preparation and result display. The message must explain that the visualization is AI-generated, can be inaccurate, and does not replace real measurements, in-store advice, or final verification before purchase.
 
@@ -453,7 +461,6 @@ This spec does not define the detailed simulation wizard implementation. The in-
 - room references;
 - dimension collection;
 - visual dimension guide behavior;
-- camera-depth or camera-position distance behavior;
 - image validation;
 - simulation processing;
 - regeneration counting and limits;
@@ -465,6 +472,9 @@ The public experience must make it clear that the visitor is preparing an in-hom
 
 Before the customer starts the in-home simulation flow, the public experience must clearly communicate:
 
+- an email address is required to verify the simulation request and limit abuse;
+- the required email-use consent is limited to verification, anti-abuse, and operational follow-up for the simulation, with final retention wording delegated to the privacy, retention, and abuse protection spec;
+- optional commercial follow-up or offer contact is separate from the required email-use consent;
 - the customer will upload a private room photo;
 - the uploaded room photo and generated simulation result are used for the simulation purpose;
 - the private simulation images are retained temporarily and deleted no later than 24 hours after creation;
@@ -487,30 +497,39 @@ The sticky CTA must be implemented carefully:
 - it must avoid excessive height and visual noise;
 - it must preserve enough space for the visitor to inspect sofa details.
 
-## Simulation Result Access And Email Delivery
+## Email Verification And Simulation Result Access
 
-After a successful in-home simulation, the visitor must be able to view the generated simulation result.
+Before simulation generation, the visitor must verify an email address inside the in-home simulation flow.
+
+The email verification step belongs to the in-home simulation flow, not to the sofa detail page.
+
+The email verification step must collect:
+
+- the visitor's email address;
+- required consent for using the email address for simulation verification, anti-abuse, and operational follow-up;
+- optional commercial follow-up or offer contact consent, kept separate from the required email-use consent.
+
+After the visitor submits the email address and required consent, the system sends a short verification code to that email address.
+
+The public UI must ask the visitor to check their email inbox and spam folder, then enter the verification code.
+
+Simulation generation must not proceed until the email verification code is accepted.
+
+The exact verification-code expiry, resend behavior, attempt limits, email retention duration, consent wording, consent storage, and deletion or suppression behavior belong in the privacy, retention, abuse protection, and API contracts specs.
+
+After a successful verified in-home simulation, the visitor must be able to view the generated simulation result.
 
 The generated result should be displayed directly in the simulation result experience.
 
 The result experience should provide these customer actions:
 
 - regenerate the result when regeneration is still available and the visitor is not satisfied;
-- request the generated result by email while it is still retained;
 - return to Shopify through a clear action such as `Commander ce canapé`;
 - return to the public catalog.
 
 The MVP must not expose direct browser download of the generated private simulation result.
 
-Instead, the visitor can request the generated result by email while it is still retained by the system.
-
-The email request form belongs to the in-home simulation flow, not to the sofa detail page.
-
-To request the result by email, the visitor must provide an email address inside the simulation flow and complete the required consent step.
-
-The required consent step must explain that the private room photo and generated result are retained temporarily for result delivery and deleted no later than 24 hours after creation.
-
-The email form may also include a separate optional marketing or contact consent checkbox for visitors who want to be contacted, receive sofa information, or receive offers. This optional consent must be separate from the required result-delivery consent.
+Result delivery by email is not the MVP result-access mechanism.
 
 The result display should use reasonable deterrents against direct image download, such as not exposing a visible download button and avoiding obvious direct asset links in the public UI. This is a deterrence requirement, not a guarantee: the product must not claim that screenshots or browser-level extraction are impossible.
 
@@ -523,7 +542,7 @@ The MVP does not require:
 - customer profiles;
 - saving results after the retention window.
 
-The in-home simulation and privacy specs must define the exact result state, email delivery behavior, consent storage, retention behavior, and deletion implementation.
+The in-home simulation and privacy specs must define the exact result state, email verification behavior, consent storage, retention behavior, and deletion implementation.
 
 ## Shopify Order Redirect
 
@@ -600,8 +619,10 @@ The MVP analytics scope must stay minimal. Recommended public analytics events a
 - sofa detail fabric selection;
 - sofa detail visual position selection;
 - simulation CTA click;
+- email verification request;
+- email verification success;
 - Shopify order click;
-- result email request.
+- simulation result view.
 
 The MVP must not send personal data, email addresses, uploaded room photo data, generated room photo URLs, or private simulation result URLs to Google Analytics.
 
@@ -609,9 +630,9 @@ The recommended consent behavior for MVP is conservative:
 
 - Google Analytics must be disabled by default until the visitor grants analytics consent;
 - advertising storage, ad user data, and ad personalization must remain disabled by default;
-- analytics consent must be separate from required result-delivery consent;
-- analytics consent must be separate from optional marketing or contact consent;
-- rejecting analytics must not block browsing, simulation, result viewing, result email request, or Shopify redirect.
+- analytics consent must be separate from required email-verification consent;
+- analytics consent must be separate from optional commercial follow-up or offer contact consent;
+- rejecting analytics must not block browsing, email verification, simulation, result viewing, or Shopify redirect.
 
 The privacy, retention, and abuse protection spec must define the final consent banner, storage, wording, and Google Consent Mode behavior. The implementation should follow the conservative "basic consent mode" approach unless a later privacy/legal decision approves another configuration.
 
@@ -677,8 +698,8 @@ The public experience requires later data-model support for:
 - Shopify order URL;
 - simulation result availability and expiry;
 - simulation regeneration count;
-- result email request data;
-- consent state for result delivery and optional marketing contact.
+- email verification request and verified simulation session state;
+- consent state for required email verification and optional commercial contact.
 
 The database schema, tables, indexes, and storage fields must be defined in the data model and storage spec.
 
@@ -696,7 +717,8 @@ The API contracts spec must define how the public frontend loads:
 - simulation dimension input state;
 - simulation result access;
 - simulation regeneration request;
-- result email request;
+- email verification request and verification-code validation;
+- verified simulation session state;
 - Shopify order URL data.
 
 ## Worker Jobs
@@ -746,21 +768,25 @@ The environment and deployment spec must define public domain, API base URL, ass
 - Changing fabric preserves the current visual position.
 - Changing visual position preserves the current fabric.
 - The simulation launch uses the currently selected sofa, fabric, and visual position.
-- The public in-home simulation flow includes room photo upload or capture, a preparation screen showing the selected sofa image and uploaded room photo, prepared-room review, dimension guide input, backend processing, result display, optional regeneration, result email request, Shopify return, and catalog return.
-- The required room dimensions are room length, room width or depth, and room height.
-- The prepared room image displays visual guides directly on the image so the visitor understands which dimension belongs in each field.
-- The flow can request camera-depth or camera-position distance when needed to scale the photographed perspective.
+- The public in-home simulation flow includes email verification before generation, required email-verification consent, optional commercial contact consent, room photo upload or capture, a preparation screen showing the selected sofa image and uploaded room photo, prepared-room review, dimension guide input, backend processing, result display, optional regeneration, Shopify return, and catalog return.
+- The required dimensions are only the dimensions shown on the guide image.
+- A main-wall guide requires wall width and wall height.
+- A room-corner guide requires left wall width, right wall width, and room height.
+- The MVP does not request room depth or camera-position distance.
+- The dimension-guide image displays visual arrows directly on the uploaded room photo so the visitor understands which dimension belongs in each field.
 - The MVP allows three total generated results for one simulation attempt, including the initial result and up to two regenerations.
 - The public UI does not need to show a numeric remaining-generation counter.
-- The result experience lets visitors regenerate when available, request the image by email, return to Shopify, or return to the catalog.
+- The result experience lets visitors regenerate when available, view the result directly while retained, return to Shopify, or return to the catalog.
+- A failed regeneration keeps the latest successful result visible when one exists and does not consume one of the three generated results unless a new output was successfully produced.
 - Mobile sofa detail pages use a carefully implemented sticky simulation CTA after the first simulation action scrolls away.
 - The public experience explains privacy handling and AI limitations before simulation.
 - The public experience states that AI visualization is an estimate and does not replace professional measurement or final verification.
 - The visitor can view a generated simulation result while it is retained.
-- The visitor can request the generated result by email while it is retained.
-- Result email capture belongs inside the in-home simulation flow.
-- Result email delivery requires email and required temporary-retention consent.
-- Optional marketing or contact consent is separate from required result-delivery consent.
+- The visitor must verify an email address before simulation generation.
+- Email verification capture belongs inside the in-home simulation flow.
+- Email verification requires email and required email-use consent for simulation verification, anti-abuse, and operational follow-up.
+- Optional commercial contact consent is separate from required email-verification consent.
+- Result delivery by email is not the MVP result-access mechanism.
 - Expired simulation results show an expired state and direct the visitor back to the catalog.
 - The Shopify order action redirects to the stored Shopify order URL without visualization parameters.
 - Public pages do not show pricing, fabric price adjustments, cart, checkout, or account requirements.
