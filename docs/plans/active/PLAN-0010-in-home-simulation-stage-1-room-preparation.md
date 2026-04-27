@@ -51,71 +51,79 @@ escalation beyond the per-stage attempt counter, claim-expiry recovery, the
 
 ## Tasks
 
-- [ ] Add or update local smoke and unit tests so they fail before any
+- [x] Add or update local smoke and unit tests so they fail before any
       implementation work begins.
-- [ ] Create `supabase/functions/in-home-simulation-worker/` with a Deno entry
+- [x] Create `supabase/functions/in-home-simulation-worker/` with a Deno entry
       point that reads queue messages from `local_in_home_simulation_jobs` and
       dispatches by current job status to the Stage 1 handler.
-- [ ] Implement the atomic Stage 1 claim, either as a Postgres function called
+- [x] Implement the atomic Stage 1 claim, either as a Postgres function called
       from the Edge Function or as a single conditional update, that moves
       `queued` -> `room_prep_processing`, increments
       `room_prep_attempt_count`, sets `claim_expires_at`, and refuses claims
       when `retention_deadline` has passed or attempts are exhausted.
-- [ ] Add the scratch folder layout helpers (`room_original.*`,
+- [x] Add the scratch folder layout helpers (`room_original.*`,
       `room_normalized.jpg`, `room_compressed.jpg`, `room_cleaned.png`,
       `room_geometry.json`, `room_guides.png`, `error.txt`) backed by
       `IN_HOME_SIMULATION_TMP_DIR` with safe per-job subdirectories and
       idempotent cleanup before each attempt.
-- [ ] Materialize the customer room photo from
+- [x] Materialize the customer room photo from
       `customer_room_original_path` into the scratch folder using a service-role
       Supabase client.
-- [ ] Implement worker-side normalization: EXIF orientation correction,
+- [~] Implement worker-side normalization: EXIF orientation correction,
       HEIC and HEIF to JPEG conversion, and optional compression to a
       worker-defined maximum edge, without rejecting on minimum short edge or
-      brightness.
-- [ ] Implement room validation through the configured vision provider with a
+      brightness. (EXIF orientation handled by imagescript decode; HEIC/HEIF
+      conversion deferred to a follow-up commit and currently rejected as a
+      non-retryable failure.)
+- [~] Implement room validation through the configured vision provider with a
       mock that always returns a usable interior result and a real-provider
-      adapter that returns a structured pass or readable failure code.
-- [ ] Implement furniture removal through the configured image-edit provider
+      adapter that returns a structured pass or readable failure code. (Mock
+      adapter shipped; live adapter deferred.)
+- [~] Implement furniture removal through the configured image-edit provider
       with a mock that copies the normalized room to `room_cleaned.png` and a
       real-provider adapter that produces a cleaned room while preserving
-      geometry, openings, fixtures, and lighting.
-- [ ] Implement a single room-geometry detection call that returns
+      geometry, openings, fixtures, and lighting. (Mock adapter shipped; live
+      adapter deferred.)
+- [~] Implement a single room-geometry detection call that returns
       `mode`, `points`, `confidence`, and `failure_reason`, including the
       ordered four-point `back_wall` shape and the six named `corner` points,
       with a mock that returns a deterministic set of points and a real-provider
-      adapter.
-- [ ] Add geometric sanity validation for the returned mode and points
+      adapter. (Mock back_wall adapter shipped; corner mock and live adapter
+      deferred.)
+- [~] Add geometric sanity validation for the returned mode and points
       (in-image bounds, ordering for `back_wall`, named keys for `corner`)
-      with a worker-defined retry limit before failing.
-- [ ] Implement deterministic dimension-guide rendering on
+      with a worker-defined retry limit before failing. (Both back_wall and
+      corner sanity validators shipped; the worker currently routes only the
+      back_wall path because the geometry mock is back_wall only.)
+- [x] Implement deterministic dimension-guide rendering on
       `room_cleaned.png` that draws labelled arrows for the per-mode required
       measurements (back_wall: wall width and wall height; corner: left wall
       width, right wall width, room height) using language-tagged words rather
       than numeric measurements and without any worker watermark, producing
       `room_guides.png` at the cleaned room dimensions.
-- [ ] Persist Stage 1 artifacts under `simulations/{job_id}/` in the
+- [x] Persist Stage 1 artifacts under `simulations/{job_id}/` in the
       `simulation-private-artifacts` bucket and record their object paths on
       the job row (`room_normalized_path`, `room_compressed_path`,
       `room_cleaned_path`, `dimension_guide_overlay_path`) plus
       `room_geometry_mode`, `room_geometry_points`, and
       `room_geometry_confidence` when present.
-- [ ] Transition the job to `awaiting_dimensions`, set
+- [x] Transition the job to `awaiting_dimensions`, set
       `awaiting_dimensions_at`, clear `claim_expires_at`, and clear any
       previous `last_error_message` on Stage 1 success.
-- [ ] On non-retryable Stage 1 failure, set `status = 'failed'`, write
+- [~] On non-retryable Stage 1 failure, set `status = 'failed'`, write
       `last_error_code` and `last_error_message`, and persist a
       `worker_error.txt` artifact under the job prefix when the failure carries
-      operator-readable detail.
-- [ ] Add prompt asset files for `room_prep_v001` covering validation, cleaning,
+      operator-readable detail. (Status and error message done; persisted
+      `worker_error.txt` deferred.)
+- [x] Add prompt asset files for `room_prep_v001` covering validation, cleaning,
       and geometry detection prompts, recording the rationale in plan notes.
-- [ ] Add a local CLI under `scripts/in-home-simulation/` and a
+- [x] Add a local CLI under `scripts/in-home-simulation/` and a
       `pnpm sim:stage1:enqueue` script that creates a verified
       `simulation_sessions` row, uploads a sample room photo to the private
       bucket, inserts an `in_home_simulation_jobs` row, sends a
       `local_in_home_simulation_jobs` queue message, and prints the resulting
-      job id.
-- [ ] Add a `pnpm sim:status` script that prints the current status, attempt
+      job id. (CLI script name is `sim:enqueue:stage1`.)
+- [x] Add a `pnpm sim:status` script that prints the current status, attempt
       counters, and signed URLs for any persisted Stage 1 artifacts of a given
       job id.
 - [ ] Update `.env.example` with the new variables required by the worker
