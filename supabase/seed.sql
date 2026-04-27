@@ -1,0 +1,2 @@
+-- Local seed file intentionally left empty.
+-- Supabase CLI runs this after migrations during `supabase db reset`.

@@ -7,7 +7,8 @@
 | Done   | SPEC-0001 | PLAN-0001 | Specification-based TDD workflow, guardrails, review docs, and CI baseline. |
 | Done   | SPEC-0002 | PLAN-0002 | Repository command for AI-safe branch creation.                             |
 | Done   | SPEC-0001 | PLAN-0003 | English-only specification language guard before commits and reviews.       |
-| Active | SPEC-0001 | PLAN-0004 | Guard accepted specs against draft-era pre-acceptance blocker language.     |
+| Done   | SPEC-0001 | PLAN-0004 | Guard accepted specs against draft-era pre-acceptance blocker language.     |
+| Done   | SPEC-0008 | PLAN-0008 | Local Supabase scripts and worker smoke-test workflow.                      |
 
 ## Next
 

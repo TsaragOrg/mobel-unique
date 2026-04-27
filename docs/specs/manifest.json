@@ -77,6 +77,17 @@
       "implementationPlans": [],
       "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
       "areas": ["api", "supabase"]
+    },
+    {
+      "id": "SPEC-0008",
+      "title": "Local Supabase Worker Development",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0001",
+      "dependsOn": ["SPEC-0001", "SPEC-0003"],
+      "implementationPlans": ["PLAN-0008"],
+      "path": "docs/specs/accepted/SPEC-0008-local-supabase-worker-development.md",
+      "areas": ["api", "supabase", "workflow"]
     }
   ]
 }

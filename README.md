@@ -89,6 +89,16 @@ pnpm dev:api
 pnpm dev:worker
 ```
 
+Run the local Supabase worker foundation:
+
+```bash
+pnpm supabase:start
+pnpm supabase:functions:serve
+pnpm test:workers:local
+```
+
+See `docs/local-supabase-worker-development.md` for setup details.
+
 Build all packages:
 
 ```bash

@@ -2,7 +2,7 @@
 
 Plan: PLAN-0004
 Spec: SPEC-0001
-Status: active
+Status: done
 Owner area: workflow
 Affected packages:
 
