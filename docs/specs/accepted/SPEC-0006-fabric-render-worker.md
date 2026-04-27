@@ -1,7 +1,7 @@
 # SPEC-0006 Fabric Render Worker
 
 Spec: SPEC-0006
-Status: draft
+Status: accepted
 Layer: technical
 Parent Spec: SPEC-0005
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0005
@@ -36,12 +36,11 @@ matrix.
 
 The existing local Python worker at `C:\dev\worker` is treated as a reference
 implementation for the first fabric render generation behavior. Its behavior can
-be used to seed repository implementation after this spec is accepted and an
-implementation plan exists, but Python is not the production runtime for this
-spec. The production implementation must use Supabase Edge Functions written in
-TypeScript on the Deno runtime, with Supabase Queues as the durable job queue.
-This draft spec does not copy code and does not approve any implementation
-change by itself.
+be used to seed repository implementation through a future implementation plan,
+but Python is not the production runtime for this spec. The production
+implementation must use Supabase Edge Functions written in TypeScript on the
+Deno runtime, with Supabase Queues as the durable job queue. This spec does not
+copy code and does not approve any implementation change by itself.
 
 ## Goal
 
