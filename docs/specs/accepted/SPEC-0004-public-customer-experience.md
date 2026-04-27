@@ -316,10 +316,10 @@ Useful sofa information may include:
 
 - dimensions;
 - public description;
-- public sofa tags assigned by the administrator, such as seat-count or configuration tags;
-- other public attributes prepared by the administrator.
+- public sofa tags assigned by the administrator, such as seat-count or configuration tags.
 
-Dimensions must be displayed in centimeters when they are public.
+Dimensions must be displayed in centimeters when they are present on a
+published sofa.
 
 The detail page should present this information in a minimal, well-organized layout below or around the simulation-first area. It must not distract from the primary simulation CTA.
 
@@ -343,27 +343,32 @@ If no public fabric or no public visual position is available, the sofa must not
 
 The same default behavior applies whether the visitor arrives from Shopify or from the catalog.
 
-## Public Sofa Attributes
+## Public Sofa Information
 
-Administrators can provide public sofa attributes that help customers choose a sofa.
+Administrators can provide public sofa information that helps customers choose a
+sofa.
 
-This spec expects the public experience to support simple, structured attributes such as:
+The MVP public sofa information model is limited to:
 
-- public sofa tags, such as seat-count or corner-configuration tags created by the administrator;
+- public sofa tags, such as seat-count or corner-configuration tags created by
+  the administrator;
 - dimensions;
-- short public description;
-- other simple public attributes prepared in the back office.
+- short public description.
 
-Public attributes may be used in two ways:
+Public tags may be used in two ways:
 
 - display on catalog cards or sofa detail pages;
 - simple catalog filtering.
 
-Public attributes must not become a complex product search system in MVP.
+The MVP does not require a generic structured public sofa attributes model.
+Additional public sofa attributes beyond tags, dimensions, and description
+require a later accepted spec or change request.
 
-The admin catalog and data model specs must define how attributes are created, typed, ordered, and marked as public.
+Public tags must not become a complex product search system in MVP.
 
-Sofa dimensions should be displayed publicly when dimensions are available and marked public by the administrator.
+Sofa dimensions should be displayed publicly when dimensions are available on a
+published sofa. The MVP does not require a separate per-sofa dimension
+visibility flag.
 
 ## Fabric Selector
 
@@ -690,7 +695,8 @@ The public experience requires later data-model support for:
 - published sofa summary;
 - public sofa detail;
 - public sofa slug;
-- public sofa attributes;
+- public sofa description;
+- public sofa dimensions;
 - public sofa tags;
 - public fabric ordering;
 - public visual position ordering;
@@ -760,7 +766,8 @@ The environment and deployment spec must define public domain, API base URL, ass
 - The public sofa detail page behavior is defined.
 - The sofa detail page displays useful administrator-provided sofa information without weakening the simulation-first flow.
 - The mobile sofa detail page keeps the simulation CTA obvious and easy to reach.
-- Public dimensions are displayed in centimeters when available and marked public.
+- Public dimensions are displayed in centimeters when present on a published
+  sofa.
 - The default public fabric and visual position use administrator-defined order.
 - Shopify links do not preselect fabric or visual position in the MVP.
 - The fabric selector shows only public fabrics with complete public-usable render coverage.
