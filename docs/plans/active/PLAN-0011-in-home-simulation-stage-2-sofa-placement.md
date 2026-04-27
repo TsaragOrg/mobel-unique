@@ -50,50 +50,57 @@ to `PLAN-0012`.
 
 ## Tasks
 
-- [ ] Add or update Stage 2 unit, contract, and smoke tests so they fail
+- [x] Add or update Stage 2 unit, contract, and smoke tests so they fail
       before implementation begins.
-- [ ] Extend the `in-home-simulation-worker` Edge Function to dispatch
+- [x] Extend the `in-home-simulation-worker` Edge Function to dispatch
       `placement_queued` queue messages to the Stage 2 handler and to ignore
       Stage 1 messages it has already completed.
-- [ ] Implement the atomic Stage 2 claim, either as a Postgres function called
+- [x] Implement the atomic Stage 2 claim, either as a Postgres function called
       from the Edge Function or as a single conditional update, that moves
       `placement_queued` -> `placement_processing`, increments
       `placement_attempt_count`, sets `claim_expires_at`, refuses to claim a
       job whose `retention_deadline` has passed, and refuses to claim a job
       whose `placement_attempt_count` already equals
       `max_attempts_per_stage`.
-- [ ] Implement dimension validation against the job's `room_geometry_mode`
+- [~] Implement dimension validation against the job's `room_geometry_mode`
       and `supplied_dimensions`, rejecting cases such as a sofa wider than the
       supplied wall width for `back_wall`, a corner sofa wider than either
       supplied wall width for `corner`, and a sofa taller than the supplied
       wall or room height, with worker accept ranges separate from per-job
-      validation.
-- [ ] Materialize the prepared sofa asset referenced by
+      validation. (SQL `submit_in_home_simulation_dimensions` enforces
+      per-mode key presence; sofa-vs-wall numeric range checks are deferred
+      until live providers and a real prepared-sofa size are wired.)
+- [~] Materialize the prepared sofa asset referenced by
       `prepared_sofa_asset_id` and `prepared_render_cell_id` into
       `sofa_prepared.png` in the scratch folder, refusing the stage when the
-      catalog row does not resolve to a public-usable render.
-- [ ] Implement the composition sub-step that calls the configured image-edit
+      catalog row does not resolve to a public-usable render. (Worker
+      attempts to download the asset when `prepared_sofa_path` is set and
+      tolerates absence under the mock placement provider; live providers
+      will hard-require the asset.)
+- [~] Implement the composition sub-step that calls the configured image-edit
       provider with `room_cleaned.png`, `room_geometry.json`, the supplied
       dimensions, and `sofa_prepared.png`, and produces `output.png`, with a
       mock that pastes the prepared sofa onto the cleaned room at a
       deterministic position scaled from the supplied dimensions and a
-      real-provider adapter that follows the placement prompt rules.
-- [ ] Add output normalization that resizes `output.png` to the cleaned
+      real-provider adapter that follows the placement prompt rules. (Mock
+      stamps a deterministic placeholder rectangle on the cleaned room;
+      live adapter deferred.)
+- [x] Add output normalization that resizes `output.png` to the cleaned
       room dimensions when the provider returns a different size or aspect
       ratio.
-- [ ] Persist the result to
+- [x] Persist the result to
       `simulations/{job_id}/outputs/output-{index}.png` where `{index}` is
       the `reserved_generation_index` for regenerations or `0` for the
       initial result, and create the matching `simulation_generated_outputs`
       row with `source_type = 'ai_generated_in_home_simulation'`,
       `provider_name`, `provider_model`, `prompt_version`,
       `generation_index`, `width_px`, `height_px`, and `content_type`.
-- [ ] Transition the job to `succeeded`, set `completed_at`, set
+- [x] Transition the job to `succeeded`, set `completed_at`, set
       `latest_generated_output_index` to the just-persisted index, increment
       `generated_output_count`, clear `reserved_generation_index`, clear
       `claim_expires_at`, and clear any prior `last_regeneration_error_message`
       after a clean success.
-- [ ] Implement the regeneration support that the API drives: when the
+- [x] Implement the regeneration support that the API drives: when the
       worker observes a `placement_queued` job whose
       `reserved_generation_index` is non-null and whose
       `generated_output_count` is greater than zero, treat it as a
@@ -101,44 +108,48 @@ to `PLAN-0012`.
       `sofa_prepared.png`, clear `output.png` and `error.txt` before the new
       attempt, and respect the wall-dimension override when
       `supplied_dimensions` differ from the prior attempt.
-- [ ] Refuse any Stage 2 attempt that would push `generated_output_count`
+- [x] Refuse any Stage 2 attempt that would push `generated_output_count`
       above three with a non-retryable error, since the SPEC-0004 MVP cap is
       three results per simulation attempt.
-- [ ] Implement the regeneration failure paths: when no previous output
+- [x] Implement the regeneration failure paths: when no previous output
       exists, transition the job to `failed`; when at least one previous
       output exists, clear `reserved_generation_index`, record
       `last_regeneration_error_message`, return the job to `succeeded`, and
       keep `latest_generated_output_index` pointing at the prior result.
-- [ ] On non-retryable Stage 2 failure with no previous output, set
+- [~] On non-retryable Stage 2 failure with no previous output, set
       `status = 'failed'`, write `last_error_code` and `last_error_message`,
       and persist a `worker_error.txt` artifact under the job prefix when the
-      failure carries operator-readable detail.
-- [ ] Add prompt asset files for `sofa_placement_v001` covering the
+      failure carries operator-readable detail. (Status and error message
+      done; persisted `worker_error.txt` deferred.)
+- [x] Add prompt asset files for `sofa_placement_v001` covering the
       placement prompt rules listed in `SPEC-0007 Prompting`.
-- [ ] Add a `pnpm sim:dimensions:submit` CLI that attaches
+- [x] Add a `pnpm sim:dimensions:submit` CLI that attaches
       `supplied_dimensions` to a job in `awaiting_dimensions`, sets
       `dimensions_submitted_at`, transitions the job to
       `placement_queued`, and enqueues a Stage 2 message.
-- [ ] Add a `pnpm sim:regenerate` CLI that, for a job in `succeeded`,
+- [x] Add a `pnpm sim:regenerate` CLI that, for a job in `succeeded`,
       verifies the three-result cap, atomically reserves the next
       `reserved_generation_index`, optionally accepts overridden
       `supplied_dimensions`, transitions the job to `placement_queued`,
       and enqueues a Stage 2 message.
-- [ ] Extend `pnpm sim:status` to also print
+- [x] Extend `pnpm sim:status` to also print
       `latest_generated_output_index`, `generated_output_count`,
       `reserved_generation_index`, `last_regeneration_error_message`, and
       signed URLs for every persisted output under the job prefix.
-- [ ] Update `.env.example` with any new placement-specific variables and
+- [x] Update `.env.example` with any new placement-specific variables and
       record the pinned Stage 2 model identifiers in the prompt asset header
       for `sofa_placement_v001`.
-- [ ] Extend `pnpm test:workers:local` so the existing smoke gate runs the
+- [~] Extend `pnpm test:workers:local` so the existing smoke gate runs the
       Stage 2 smoke test alongside the Stage 1 and worker-smoke checks,
       skipping with a clear message when local Supabase is not running and
       failing clearly when Stage 2 sub-steps, output rows, output paths, or
-      regeneration transitions are missing or broken.
-- [ ] Update the image worker and Supabase roadmaps to record this plan as
+      regeneration transitions are missing or broken. (The
+      `test:in-home-simulation:stage-2` psql smoke is wired into vitest;
+      adding it to the chained `test:workers:local` is deferred until the
+      Stage 2 Edge Function smoke is added against live local Supabase.)
+- [x] Update the image worker and Supabase roadmaps to record this plan as
       active.
-- [ ] Run the narrowest checks first
+- [x] Run the narrowest checks first
       (`pnpm --filter ./supabase/functions/... typecheck`,
       `pnpm test:workers:local`), then `pnpm spec:check`, and finally
       `pnpm check`.

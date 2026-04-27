@@ -205,11 +205,73 @@ persisted artifact and any generated outputs.
 
 - accepts only JPEG and PNG inputs. HEIC and HEIF photos must be
   converted to JPEG before enqueueing.
-- skips real room cleaning and real geometry detection. The dimension
-  guide is rendered on the original photo using a deterministic
-  placeholder back-wall geometry.
-- skips photo normalization beyond what `imagescript` performs during
-  decoding.
+- runs validation, cleaning, and geometry detection through the mock
+  provider stack by default. `IN_HOME_SIMULATION_PROVIDER_MODE=live`
+  is reserved and currently fails fast until the OpenAI/Gemini
+  adapters land.
+- relies on the deterministic placeholder back-wall geometry from the
+  mock geometry provider until the live adapter is wired.
 
-These limitations are addressed by subsequent commits inside `PLAN-0010`
-and by `PLAN-0011` and `PLAN-0012`.
+## In-Home Simulation Stage 2 Local Loop
+
+After Stage 1 reports `awaiting_dimensions`, you can drive Stage 2
+(sofa placement) and the regeneration cycle locally.
+
+Submit the visitor's wall dimensions for a back_wall job:
+
+```bash
+pnpm sim:dimensions:submit -- <job_id> --wall-width 4.0 --wall-height 2.5
+```
+
+For a corner job:
+
+```bash
+pnpm sim:dimensions:submit -- <job_id> --left-wall 3.0 --right-wall 3.0 --room-height 2.5
+```
+
+The CLI calls `submit_in_home_simulation_dimensions`, which transitions
+the job to `placement_queued` and sends the placement work message.
+
+Trigger one Edge Function invocation:
+
+```bash
+curl -X POST $(pnpm -s supabase:status | awk '/API URL/ {print $3}')/functions/v1/in-home-simulation-worker
+```
+
+On `completed`, the job is back in `succeeded`. The current placement
+implementation stamps a deterministic placeholder rectangle on the
+cleaned room as the result; replace the mock placement provider with
+the OpenAI/Gemini adapter for production-quality output.
+
+Inspect the job and grab signed URLs for every generated output:
+
+```bash
+pnpm sim:status -- <job_id>
+```
+
+Request a regeneration within the SPEC-0004 three-result cap, with an
+optional wall-dimension override:
+
+```bash
+pnpm sim:regenerate -- <job_id>
+pnpm sim:regenerate -- <job_id> --wall-width 4.5 --wall-height 2.5
+```
+
+Trigger another Edge Function invocation per regeneration request.
+
+### Limitations of the current Stage 2 implementation
+
+`PLAN-0011` is in progress. The current Stage 2 implementation:
+
+- runs placement through the mock provider that stamps a placeholder
+  rectangle. `IN_HOME_SIMULATION_PROVIDER_MODE=live` is reserved and
+  currently fails fast until the OpenAI/Gemini adapters land.
+- enforces dimension key presence per geometry mode in SQL but defers
+  numeric sofa-vs-wall range checks until the prepared-sofa physical
+  size is sourced.
+- does not persist `worker_error.txt` artifacts on failure; the
+  failure code and message are still recorded on the job row.
+
+`PLAN-0012` adds per-stage retry policy, expired-claim recovery, the
+24-hour retention purge, orphan upload cleanup, and the operational
+observability surface.
