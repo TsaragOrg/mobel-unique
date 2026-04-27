@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,32 @@ process.exit(Number(process.env.FAKE_PSQL_STATUS ?? "0"));
   chmodSync(fakePsqlPath, 0o755);
 
   return fakePsqlPath;
+}
+
+function createFakeDocker() {
+  const cwd = mkdtempSync(join(tmpdir(), "mobel-spec-0009-docker-test-"));
+  const fakeDockerPath = join(cwd, "fake-docker.mjs");
+
+  writeFileSync(
+    fakeDockerPath,
+    `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+
+if (process.env.FAKE_DOCKER_ARGS_PATH) {
+  writeFileSync(
+    process.env.FAKE_DOCKER_ARGS_PATH,
+    JSON.stringify(process.argv.slice(2)),
+  );
+}
+
+process.stdout.write(process.env.FAKE_DOCKER_STDOUT ?? "");
+process.stderr.write(process.env.FAKE_DOCKER_STDERR ?? "");
+process.exit(Number(process.env.FAKE_DOCKER_STATUS ?? "0"));
+`,
+  );
+  chmodSync(fakeDockerPath, 0o755);
+
+  return fakeDockerPath;
 }
 
 function runSmoke(env) {
@@ -117,6 +143,35 @@ describe("SPEC-0009 schema smoke script", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("SKIP SPEC-0009 schema smoke");
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "falls back to the Supabase database container when local psql is missing",
+    async () => {
+      const dockerArgsPath = join(
+        mkdtempSync(join(tmpdir(), "mobel-spec-0009-docker-args-")),
+        "args.json",
+      );
+      const result = await runSmoke({
+        FAKE_DOCKER_ARGS_PATH: dockerArgsPath,
+        PATH: "",
+        SPEC_0009_SCHEMA_SMOKE_DOCKER: createFakeDocker(),
+        SPEC_0009_SCHEMA_SMOKE_PROJECT_ID: "mobel-unique",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("PASS SPEC-0009 schema smoke");
+
+      const dockerArgs = JSON.parse(readFileSync(dockerArgsPath, "utf8"));
+      expect(dockerArgs.slice(0, 5)).toEqual([
+        "exec",
+        "-i",
+        "supabase_db_mobel-unique",
+        "psql",
+        "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
+      ]);
     },
     TEST_TIMEOUT_MS,
   );
