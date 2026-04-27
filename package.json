@@ -12,9 +12,15 @@
     "dev:web": "pnpm --filter @mobel-unique/web dev",
     "dev:api": "pnpm --filter @mobel-unique/api dev",
     "dev:worker": "pnpm --filter @mobel-unique/image-worker dev",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:status": "supabase status",
+    "supabase:functions:serve": "supabase functions serve --env-file supabase/.env.local",
+    "test:workers:local": "node scripts/local-worker-smoke.mjs",
     "branch:create": "node scripts/create-branch.mjs",
     "spec:check": "node scripts/spec-guard.mjs",
-    "test": "vitest run scripts/create-branch.test.mjs scripts/spec-guard.test.mjs && pnpm -r test",
+    "test": "vitest run scripts/create-branch.test.mjs scripts/spec-guard.test.mjs scripts/local-worker-smoke.test.mjs && pnpm -r test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm spec:check && pnpm typecheck && pnpm test && pnpm build",
@@ -23,6 +29,10 @@
   },
   "devDependencies": {
     "prettier": "^3.3.0",
+    "supabase": "^2.95.5",
     "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "supabase"]
   }
 }
