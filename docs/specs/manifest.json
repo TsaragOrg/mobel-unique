@@ -88,6 +88,25 @@
       "implementationPlans": ["PLAN-0008"],
       "path": "docs/specs/accepted/SPEC-0008-local-supabase-worker-development.md",
       "areas": ["api", "supabase", "workflow"]
+    },
+    {
+      "id": "SPEC-0009",
+      "title": "Data Model And Storage",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0003",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0008"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
+      "areas": ["web", "api", "image-worker", "supabase", "shared"]
     }
   ]
 }

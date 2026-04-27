@@ -44,7 +44,8 @@ This spec covers:
 - sofa source photo preparation at a domain level;
 - public slug behavior at a domain level;
 - public visualization link behavior at a domain level;
-- public sofa metadata managed by administrators;
+- public sofa metadata managed by administrators, limited in the MVP to public
+  name, public description, public dimensions, and public tags;
 - public sofa tags used as dynamic catalog filters;
 - fabric creation and editing at a domain level;
 - fabric AI reference image requirements at a domain level;
@@ -212,7 +213,6 @@ The admin catalog must support the following sofa information at a domain level:
 - visual matrix columns;
 - render coverage summary;
 - manual public catalog order when explicitly defined;
-- internal notes or admin-only metadata if useful;
 - created and updated timestamps.
 
 The public sofa name is shown to visitors.
@@ -221,7 +221,16 @@ The internal admin name may be the same as the public sofa name, but the domain 
 
 The public description should be concise and customer-facing.
 
-Dimensions must be entered and displayed in centimeters when they are public.
+Dimensions must be entered and displayed in centimeters when they are present on
+a published sofa.
+
+The MVP does not require a generic structured public sofa attributes model
+beyond public description, public dimensions, and public tags. Additional
+structured public attributes require a later accepted spec or change request.
+
+The MVP does not require free-form internal notes or admin-only metadata fields
+on sofas. Those fields require a later accepted spec or change request tied to a
+concrete admin workflow.
 
 The MVP sofa dimension model must focus on helping customers estimate whether the sofa can fit in their room and helping the in-home simulation respect the sofa's approximate scale.
 
@@ -353,10 +362,13 @@ The admin fabric domain must support the following information at a domain level
 - fabric swatch image;
 - fabric AI reference sofa image;
 - premium flag;
-- internal notes or admin-only metadata if useful;
 - created and updated timestamps.
 
 The public fabric name is shown to visitors.
+
+The MVP does not require free-form internal notes or admin-only metadata fields
+on fabrics. Those fields require a later accepted spec or change request tied to
+a concrete admin workflow.
 
 The swatch image helps visitors compare fabrics in selectors and catalog previews.
 
@@ -619,7 +631,8 @@ The data model and storage spec must define tables, fields, constraints, indexes
 - sofa lifecycle state;
 - sofa public slug;
 - public visualization link;
-- sofa public metadata;
+- sofa public metadata limited to public name, public description, public
+  dimensions, and tag relationships;
 - sofa dimensions;
 - sofa source photos;
 - sofa source photo original fabric references;
