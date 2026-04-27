@@ -12,9 +12,11 @@
 | Done   | SPEC-0006 | PLAN-0025 | Production fabric render worker invocation is protected by a shared secret and scheduled through Supabase Cron.                                                 |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render worker owns provider/model selection and records the actual provider metadata when claiming jobs.                                                 |
 | Done   | SPEC-0006 | PLAN-0030 | Fabric render refine jobs use the persisted refine prompt without prompt-note fallback.                                                                          |
-| Done | SPEC-0006 | PLAN-0031 | Fabric render Edge Function uses manual pump/job modes with bounded active one-job workers instead of cron-driven draining.                                      |
+| Done   | SPEC-0006 | PLAN-0031 | Fabric render Edge Function uses manual pump/job modes with bounded active one-job workers instead of cron-driven draining.                                      |
+| Active | SPEC-0007 | PLAN-0010 | In-home simulation Stage 1 room preparation Edge Function with normalization, validation, cleaning, geometry detection, and dimension-guide overlay, locally testable end to end. |
+| Active | SPEC-0007 | PLAN-0011 | In-home simulation Stage 2 sofa placement and regeneration cycle with regeneration-indexed outputs and the three-result MVP cap.                                |
+| Active | SPEC-0007 | PLAN-0012 | In-home simulation resilience: per-stage retry policy, expired-claim recovery, 24-hour retention purge, orphan upload cleanup, and the operational observability surface. |
 
 ## Next
 
 - Add public publication workflows through later plans.
-- Implement the accepted in-home simulation worker spec after the fabric render foundation proves the worker path.
