@@ -82,6 +82,24 @@ describe("in-home simulation stage 1 smoke script", () => {
     expect(result.stdout).toContain("processed=1");
   });
 
+  it("passes when the worker reports a completed Stage 1 job", async () => {
+    const result = await runSmoke({
+      IN_HOME_SIMULATION_STAGE_1_FUNCTION_URL: dataUrlFor({
+        function_name: "in-home-simulation-worker",
+        stage: "stage_1",
+        status: "completed",
+        processed: 1,
+        job_id: "00000000-0000-4000-8000-000000000007",
+        job_status: "awaiting_dimensions"
+      })
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("PASS in-home simulation stage 1 smoke");
+    expect(result.stdout).toContain("outcome=completed");
+    expect(result.stdout).toContain("processed=1");
+  });
+
   it("fails when the response is not for the in-home-simulation-worker function", async () => {
     const result = await runSmoke({
       IN_HOME_SIMULATION_STAGE_1_FUNCTION_URL: dataUrlFor({
