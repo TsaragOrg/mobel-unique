@@ -7,15 +7,20 @@ import {
   type GuideArrow
 } from "./lib/geometry.ts";
 
-type StageOutcome = "noop" | "claimed" | "completed" | "failed";
+type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
 type WorkerResponse = {
   status: StageOutcome;
   function_name: string;
   stage: "stage_1" | "stage_2" | "unknown";
   processed: number;
-  job_id?: string;
-  job_status?: string;
+  results?: Array<{
+    job_id?: string;
+    msg_id?: number;
+    outcome: "completed" | "failed" | "skipped";
+    job_status?: string;
+    error?: string;
+  }>;
   error?: string;
 };
 
@@ -29,9 +34,19 @@ type RoomPrepClaimRow = {
   claim_expires_at: string;
 };
 
+type DequeuedMessage = {
+  msg_id: number;
+  read_ct: number;
+  enqueued_at: string;
+  vt: string;
+  message: { job_id?: string; type?: string };
+};
+
 const FUNCTION_NAME = "in-home-simulation-worker";
 const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_CLAIM_TTL_SECONDS = 600;
+const DEFAULT_QUEUE_NAME = "local_in_home_simulation_jobs";
+const DEFAULT_BATCH_SIZE = 1;
 const ARROW_COLOR = 0xff3b30ff;
 const ARROW_WIDTH_PX = 6;
 const LABEL_BACKING_COLOR = 0x000000c0;
@@ -49,7 +64,7 @@ function jsonResponse(body: WorkerResponse, status = 200): Response {
   });
 }
 
-function failedResponse(error: string, status = 500): Response {
+function failedEnvelope(error: string, status = 500): Response {
   return jsonResponse(
     {
       status: "failed",
@@ -62,13 +77,11 @@ function failedResponse(error: string, status = 500): Response {
   );
 }
 
-function parseClaimTtlSeconds(): number {
-  const raw = Deno.env.get("IN_HOME_SIMULATION_CLAIM_TTL_SECONDS");
-  if (!raw) return DEFAULT_CLAIM_TTL_SECONDS;
+function parsePositiveInt(name: string, fallback: number): number {
+  const raw = Deno.env.get(name);
+  if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_CLAIM_TTL_SECONDS;
-  }
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
 
@@ -101,17 +114,53 @@ async function callRpc<T>(
   return JSON.parse(text) as T;
 }
 
-async function claimRoomPrepJob(
+async function dequeueRoomPrepMessages(
   supabaseUrl: string,
   serviceRoleKey: string,
+  queueName: string,
+  visibilitySeconds: number,
+  batchSize: number
+): Promise<DequeuedMessage[]> {
+  const rows = await callRpc<DequeuedMessage[] | null>(
+    supabaseUrl,
+    serviceRoleKey,
+    "dequeue_in_home_simulation_room_prep_messages",
+    {
+      queue_name: queueName,
+      visibility_seconds: visibilitySeconds,
+      batch_size: batchSize
+    }
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function deleteRoomPrepMessage(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  queueName: string,
+  msgId: number
+): Promise<void> {
+  await callRpc<boolean>(
+    supabaseUrl,
+    serviceRoleKey,
+    "delete_in_home_simulation_room_prep_message",
+    { queue_name: queueName, msg_id: msgId }
+  );
+}
+
+async function claimSpecificRoomPrepJob(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
   workerIdentifier: string,
   claimTtlSeconds: number
 ): Promise<RoomPrepClaimRow | null> {
   const rows = await callRpc<RoomPrepClaimRow[] | null>(
     supabaseUrl,
     serviceRoleKey,
-    "claim_in_home_simulation_room_prep_job",
+    "claim_specific_in_home_simulation_room_prep_job",
     {
+      job_id: jobId,
       worker_identifier: workerIdentifier,
       claim_ttl_seconds: claimTtlSeconds
     }
@@ -214,8 +263,6 @@ function drawArrow(image: Image, arrow: GuideArrow): void {
     Math.max(1, Math.abs(arrow.to.y - arrow.from.y) || ARROW_WIDTH_PX),
     ARROW_COLOR
   );
-  // Render the head as a small square at each endpoint as a deterministic
-  // marker. A polished arrow head will replace this in a follow-up slice.
   image.drawBox(
     Math.max(0, arrow.from.x - headSize / 2),
     Math.max(0, arrow.from.y - headSize / 2),
@@ -232,10 +279,21 @@ function drawArrow(image: Image, arrow: GuideArrow): void {
   );
 }
 
-async function drawLabel(
-  image: Image,
-  arrow: GuideArrow
-): Promise<void> {
+let cachedFont: Uint8Array | null = null;
+async function defaultFont(): Promise<Uint8Array> {
+  if (cachedFont) return cachedFont;
+  const url =
+    "https://raw.githubusercontent.com/matmen/ImageScript/master/tests/fonts/Roboto-Regular.ttf";
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`could not load default font: HTTP ${response.status}`);
+  }
+  const buffer = await response.arrayBuffer();
+  cachedFont = new Uint8Array(buffer);
+  return cachedFont;
+}
+
+async function drawLabel(image: Image, arrow: GuideArrow): Promise<void> {
   const midX = Math.round((arrow.from.x + arrow.to.x) / 2);
   const midY = Math.round((arrow.from.y + arrow.to.y) / 2);
   let labelImage: Image;
@@ -261,21 +319,7 @@ async function drawLabel(
   image.composite(labelImage, boxX + padding, boxY + padding);
 }
 
-let cachedFont: Uint8Array | null = null;
-async function defaultFont(): Promise<Uint8Array> {
-  if (cachedFont) return cachedFont;
-  const url =
-    "https://raw.githubusercontent.com/matmen/ImageScript/master/tests/fonts/Roboto-Regular.ttf";
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`could not load default font: HTTP ${response.status}`);
-  }
-  const buffer = await response.arrayBuffer();
-  cachedFont = new Uint8Array(buffer);
-  return cachedFont;
-}
-
-async function processStage1(
+async function processClaimedJob(
   supabaseUrl: string,
   serviceRoleKey: string,
   workerIdentifier: string,
@@ -310,8 +354,7 @@ async function processStage1(
   try {
     image = (await decode(sourceBytes)) as Image;
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     await failJobNonRetryable(
       supabaseUrl,
       serviceRoleKey,
@@ -330,12 +373,8 @@ async function processStage1(
     BACK_WALL_LABELS
   );
 
-  for (const arrow of arrows) {
-    drawArrow(image, arrow);
-  }
-  for (const arrow of arrows) {
-    await drawLabel(image, arrow);
-  }
+  for (const arrow of arrows) drawArrow(image, arrow);
+  for (const arrow of arrows) await drawLabel(image, arrow);
 
   const overlayBytes = await image.encode(0);
   const guidesPath = `${claim.storage_prefix}/room_guides.png`;
@@ -365,6 +404,17 @@ async function processStage1(
   );
 }
 
+function aggregateOutcome(
+  results: Array<{ outcome: "completed" | "failed" | "skipped" }>
+): StageOutcome {
+  if (results.length === 0) return "noop";
+  const allCompleted = results.every((r) => r.outcome === "completed");
+  if (allCompleted) return "completed";
+  const allFailed = results.every((r) => r.outcome === "failed");
+  if (allFailed) return "failed";
+  return "mixed";
+}
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return jsonResponse(
@@ -383,58 +433,163 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return failedResponse("Missing local Supabase function environment", 500);
+    return failedEnvelope("Missing local Supabase function environment", 500);
   }
 
-  const claimTtlSeconds = parseClaimTtlSeconds();
+  const claimTtlSeconds = parsePositiveInt(
+    "IN_HOME_SIMULATION_CLAIM_TTL_SECONDS",
+    DEFAULT_CLAIM_TTL_SECONDS
+  );
+  const queueName =
+    Deno.env.get("IN_HOME_SIMULATION_QUEUE_NAME") ?? DEFAULT_QUEUE_NAME;
+  const batchSize = parsePositiveInt(
+    "IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS",
+    DEFAULT_BATCH_SIZE
+  );
   const workerIdentifier = buildWorkerIdentifier();
 
-  let claim: RoomPrepClaimRow | null;
+  let messages: DequeuedMessage[];
   try {
-    claim = await claimRoomPrepJob(
+    messages = await dequeueRoomPrepMessages(
       supabaseUrl,
       serviceRoleKey,
-      workerIdentifier,
-      claimTtlSeconds
+      queueName,
+      claimTtlSeconds,
+      batchSize
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return failedResponse(message, 502);
+    return failedEnvelope(message, 502);
   }
 
-  if (claim === null) {
+  if (messages.length === 0) {
     return jsonResponse({
       status: "noop",
       function_name: FUNCTION_NAME,
       stage: "stage_1",
-      processed: 0
+      processed: 0,
+      results: []
     });
   }
 
-  try {
-    await processStage1(supabaseUrl, serviceRoleKey, workerIdentifier, claim);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse(
-      {
-        status: "failed",
-        function_name: FUNCTION_NAME,
-        stage: "stage_1",
-        processed: 0,
-        job_id: claim.job_id,
+  const results: Array<{
+    job_id?: string;
+    msg_id?: number;
+    outcome: "completed" | "failed" | "skipped";
+    job_status?: string;
+    error?: string;
+  }> = [];
+
+  for (const msg of messages) {
+    const jobId = msg.message?.job_id;
+    if (!jobId) {
+      // Malformed message: drop it so it does not loop.
+      try {
+        await deleteRoomPrepMessage(
+          supabaseUrl,
+          serviceRoleKey,
+          queueName,
+          msg.msg_id
+        );
+      } catch (_error) { /* fall through */ }
+      results.push({
+        msg_id: msg.msg_id,
+        outcome: "skipped",
+        error: "queue message missing job_id"
+      });
+      continue;
+    }
+
+    let claim: RoomPrepClaimRow | null;
+    try {
+      claim = await claimSpecificRoomPrepJob(
+        supabaseUrl,
+        serviceRoleKey,
+        jobId,
+        workerIdentifier,
+        claimTtlSeconds
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({
+        job_id: jobId,
+        msg_id: msg.msg_id,
+        outcome: "failed",
+        error: message
+      });
+      continue;
+    }
+
+    if (claim === null) {
+      // Job is not in queued state any more (already processing,
+      // succeeded, failed, or expired). Drop the message and move on
+      // per SPEC-0007 worker reload rule.
+      try {
+        await deleteRoomPrepMessage(
+          supabaseUrl,
+          serviceRoleKey,
+          queueName,
+          msg.msg_id
+        );
+      } catch (_error) { /* fall through */ }
+      results.push({
+        job_id: jobId,
+        msg_id: msg.msg_id,
+        outcome: "skipped",
+        error: "job is not in queued state"
+      });
+      continue;
+    }
+
+    try {
+      await processClaimedJob(
+        supabaseUrl,
+        serviceRoleKey,
+        workerIdentifier,
+        claim
+      );
+      try {
+        await deleteRoomPrepMessage(
+          supabaseUrl,
+          serviceRoleKey,
+          queueName,
+          msg.msg_id
+        );
+      } catch (_error) { /* fall through */ }
+      results.push({
+        job_id: jobId,
+        msg_id: msg.msg_id,
+        outcome: "completed",
+        job_status: "awaiting_dimensions"
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Job-level failure was already recorded inside processClaimedJob
+      // when applicable. Delete the message so non-retryable failures do
+      // not loop in the queue.
+      try {
+        await deleteRoomPrepMessage(
+          supabaseUrl,
+          serviceRoleKey,
+          queueName,
+          msg.msg_id
+        );
+      } catch (_error) { /* fall through */ }
+      results.push({
+        job_id: jobId,
+        msg_id: msg.msg_id,
+        outcome: "failed",
         job_status: "failed",
         error: message
-      },
-      502
-    );
+      });
+    }
   }
 
   return jsonResponse({
-    status: "completed",
+    status: aggregateOutcome(results),
     function_name: FUNCTION_NAME,
     stage: "stage_1",
-    processed: 1,
-    job_id: claim.job_id,
-    job_status: "awaiting_dimensions"
+    processed: results.filter((r) => r.outcome === "completed").length,
+    results
   });
 });

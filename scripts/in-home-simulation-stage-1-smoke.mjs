@@ -7,7 +7,12 @@ const FUNCTION_URL =
 const REQUEST_TIMEOUT_MS = Number(
   process.env.IN_HOME_SIMULATION_STAGE_1_TIMEOUT_MS ?? 5000
 );
-const ALLOWED_OUTCOMES = new Set(["noop", "claimed", "completed"]);
+const ALLOWED_OUTCOMES = new Set([
+  "noop",
+  "claimed",
+  "completed",
+  "mixed"
+]);
 
 function skip(message) {
   console.log(`SKIP in-home simulation stage 1 smoke: ${message}`);
