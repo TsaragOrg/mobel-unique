@@ -66,6 +66,17 @@
       "implementationPlans": [],
       "path": "docs/specs/accepted/SPEC-0006-fabric-render-worker.md",
       "areas": ["api", "supabase"]
+    },
+    {
+      "id": "SPEC-0007",
+      "title": "In-Home Simulation Worker",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0004",
+      "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004"],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
+      "areas": ["api", "supabase"]
     }
   ]
 }

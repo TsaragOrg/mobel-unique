@@ -1,7 +1,7 @@
 # SPEC-0007 In-Home Simulation Worker
 
 Spec: SPEC-0007
-Status: draft
+Status: accepted
 Layer: technical
 Parent Spec: SPEC-0004
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004
@@ -44,12 +44,11 @@ wizard.
 
 The existing local Python bench at `mebel/worker_test/` is treated as a
 reference implementation for the in-home simulation behavior. Its behavior can
-be used to seed repository implementation after this spec is accepted and an
-implementation plan exists, but Python is not the production runtime for this
-spec. The production implementation must use Supabase Edge Functions written in
-TypeScript on the Deno runtime, with Supabase Queues as the durable job queue.
-This draft spec does not copy code and does not approve any implementation
-change by itself.
+be used to seed repository implementation once an implementation plan exists,
+but Python is not the production runtime for this spec. The production
+implementation must use Supabase Edge Functions written in TypeScript on the
+Deno runtime, with Supabase Queues as the durable job queue. This spec does not
+copy code and does not approve any implementation change by itself.
 
 ## Goal
 
@@ -934,4 +933,4 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 
 ## Open Questions
 
-- None for this draft.
+- None.
