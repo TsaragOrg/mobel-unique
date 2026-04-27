@@ -1,3 +1,12 @@
+import { decode, Image } from "npm:imagescript@1.2.16";
+
+import {
+  dimensionGuideArrowsForBackWall,
+  isHeicLikeExtension,
+  placeholderBackWallGeometry,
+  type GuideArrow
+} from "./lib/geometry.ts";
+
 type StageOutcome = "noop" | "claimed" | "completed" | "failed";
 
 type WorkerResponse = {
@@ -20,16 +29,22 @@ type RoomPrepClaimRow = {
   claim_expires_at: string;
 };
 
-type GeometryPoint = { x: number; y: number };
-
 const FUNCTION_NAME = "in-home-simulation-worker";
+const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_CLAIM_TTL_SECONDS = 600;
+const ARROW_COLOR = 0xff3b30ff;
+const ARROW_WIDTH_PX = 6;
+const LABEL_BACKING_COLOR = 0x000000c0;
+const LABEL_TEXT_COLOR = 0xffffffff;
+
+const BACK_WALL_LABELS = {
+  wallWidth: "Largeur mur",
+  wallHeight: "Hauteur mur"
+};
 
 function jsonResponse(body: WorkerResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     status
   });
 }
@@ -49,9 +64,7 @@ function failedResponse(error: string, status = 500): Response {
 
 function parseClaimTtlSeconds(): number {
   const raw = Deno.env.get("IN_HOME_SIMULATION_CLAIM_TTL_SECONDS");
-  if (!raw) {
-    return DEFAULT_CLAIM_TTL_SECONDS;
-  }
+  if (!raw) return DEFAULT_CLAIM_TTL_SECONDS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return DEFAULT_CLAIM_TTL_SECONDS;
@@ -62,23 +75,6 @@ function parseClaimTtlSeconds(): number {
 function buildWorkerIdentifier(): string {
   const prefix = Deno.env.get("IN_HOME_SIMULATION_WORKER_ID_PREFIX") ?? "edge";
   return `${prefix}-${crypto.randomUUID()}`;
-}
-
-function placeholderBackWallPoints(
-  width: number,
-  height: number
-): GeometryPoint[] {
-  // Order: bottom-left, bottom-right, top-right, top-left
-  // Insets the four corners by 10 percent of the matching dimension to act
-  // as a deterministic placeholder until real geometry detection lands.
-  const insetX = Math.round(width * 0.1);
-  const insetY = Math.round(height * 0.1);
-  return [
-    { x: insetX, y: height - insetY },
-    { x: width - insetX, y: height - insetY },
-    { x: width - insetX, y: insetY },
-    { x: insetX, y: insetY }
-  ];
 }
 
 async function callRpc<T>(
@@ -98,14 +94,10 @@ async function callRpc<T>(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `${name} rpc failed: HTTP ${response.status} ${text}`
-    );
+    throw new Error(`${name} rpc failed: HTTP ${response.status} ${text}`);
   }
   const text = await response.text();
-  if (!text) {
-    return null as T;
-  }
+  if (!text) return null as T;
   return JSON.parse(text) as T;
 }
 
@@ -124,27 +116,236 @@ async function claimRoomPrepJob(
       claim_ttl_seconds: claimTtlSeconds
     }
   );
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return null;
-  }
+  if (!Array.isArray(rows) || rows.length === 0) return null;
   return rows[0];
 }
 
-async function completeRoomPrepStage(
+async function downloadStorageObject(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  storagePath: string
+): Promise<Uint8Array> {
+  const response = await fetch(
+    `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`,
+    {
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey
+      }
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `storage download failed for ${storagePath}: HTTP ${response.status} ${text}`
+    );
+  }
+  const buffer = await response.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function uploadStorageObject(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  storagePath: string,
+  bytes: Uint8Array,
+  contentType: string
+): Promise<void> {
+  const response = await fetch(
+    `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": contentType,
+        "x-upsert": "true"
+      },
+      body: bytes
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `storage upload failed for ${storagePath}: HTTP ${response.status} ${text}`
+    );
+  }
+}
+
+async function failJobNonRetryable(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
+  errorCode: string,
+  errorMessage: string
+): Promise<void> {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({
+        status: "failed",
+        last_error_code: errorCode,
+        last_error_message: errorMessage,
+        claim_expires_at: null,
+        updated_at: new Date().toISOString()
+      })
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `failed-status update on job ${jobId} did not apply: HTTP ${response.status} ${text}`
+    );
+  }
+}
+
+function drawArrow(image: Image, arrow: GuideArrow): void {
+  const headSize = Math.max(10, Math.round(ARROW_WIDTH_PX * 4));
+  image.drawBox(
+    Math.min(arrow.from.x, arrow.to.x),
+    Math.min(arrow.from.y, arrow.to.y),
+    Math.max(1, Math.abs(arrow.to.x - arrow.from.x) || ARROW_WIDTH_PX),
+    Math.max(1, Math.abs(arrow.to.y - arrow.from.y) || ARROW_WIDTH_PX),
+    ARROW_COLOR
+  );
+  // Render the head as a small square at each endpoint as a deterministic
+  // marker. A polished arrow head will replace this in a follow-up slice.
+  image.drawBox(
+    Math.max(0, arrow.from.x - headSize / 2),
+    Math.max(0, arrow.from.y - headSize / 2),
+    headSize,
+    headSize,
+    ARROW_COLOR
+  );
+  image.drawBox(
+    Math.max(0, arrow.to.x - headSize / 2),
+    Math.max(0, arrow.to.y - headSize / 2),
+    headSize,
+    headSize,
+    ARROW_COLOR
+  );
+}
+
+async function drawLabel(
+  image: Image,
+  arrow: GuideArrow
+): Promise<void> {
+  const midX = Math.round((arrow.from.x + arrow.to.x) / 2);
+  const midY = Math.round((arrow.from.y + arrow.to.y) / 2);
+  let labelImage: Image;
+  try {
+    const fontSize = Math.max(20, Math.round(image.height * 0.025));
+    labelImage = await Image.renderText(
+      await defaultFont(),
+      fontSize,
+      arrow.label,
+      LABEL_TEXT_COLOR
+    );
+  } catch (_error) {
+    return;
+  }
+
+  const padding = 6;
+  const boxWidth = labelImage.width + padding * 2;
+  const boxHeight = labelImage.height + padding * 2;
+  const boxX = Math.max(0, midX - Math.round(boxWidth / 2));
+  const boxY = Math.max(0, midY - Math.round(boxHeight / 2));
+
+  image.drawBox(boxX, boxY, boxWidth, boxHeight, LABEL_BACKING_COLOR);
+  image.composite(labelImage, boxX + padding, boxY + padding);
+}
+
+let cachedFont: Uint8Array | null = null;
+async function defaultFont(): Promise<Uint8Array> {
+  if (cachedFont) return cachedFont;
+  const url =
+    "https://raw.githubusercontent.com/matmen/ImageScript/master/tests/fonts/Roboto-Regular.ttf";
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`could not load default font: HTTP ${response.status}`);
+  }
+  const buffer = await response.arrayBuffer();
+  cachedFont = new Uint8Array(buffer);
+  return cachedFont;
+}
+
+async function processStage1(
   supabaseUrl: string,
   serviceRoleKey: string,
   workerIdentifier: string,
   claim: RoomPrepClaimRow
 ): Promise<void> {
-  // Placeholder Stage 1 implementation. The persisted artifact paths reuse
-  // the customer room original path so downstream code can find a real
-  // object in storage. Real normalization, cleaning, geometry detection,
-  // and overlay rendering replace these placeholders in subsequent
-  // commits without changing this RPC contract.
-  const sourcePath =
-    claim.customer_room_original_path ??
-    `${claim.storage_prefix}/inputs/room.jpg`;
-  const placeholderPoints = placeholderBackWallPoints(1024, 768);
+  if (!claim.customer_room_original_path) {
+    throw new Error(
+      "customer_room_original_path is null on the claimed job; refusing to process"
+    );
+  }
+
+  if (isHeicLikeExtension(claim.customer_room_original_path)) {
+    await failJobNonRetryable(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id,
+      "unsupported_format",
+      "HEIC/HEIF input is not supported yet. Convert the photo to JPEG or PNG and re-enqueue."
+    );
+    throw new Error(
+      "HEIC/HEIF input is not supported yet; job marked as failed"
+    );
+  }
+
+  const sourceBytes = await downloadStorageObject(
+    supabaseUrl,
+    serviceRoleKey,
+    claim.customer_room_original_path
+  );
+
+  let image: Image;
+  try {
+    image = (await decode(sourceBytes)) as Image;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+    await failJobNonRetryable(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id,
+      "decode_failed",
+      `Could not decode the customer room photo: ${message}`
+    );
+    throw new Error(`decode failed: ${message}`);
+  }
+
+  const geometry = placeholderBackWallGeometry(image.width, image.height);
+  const arrows = dimensionGuideArrowsForBackWall(
+    geometry,
+    image.width,
+    image.height,
+    BACK_WALL_LABELS
+  );
+
+  for (const arrow of arrows) {
+    drawArrow(image, arrow);
+  }
+  for (const arrow of arrows) {
+    await drawLabel(image, arrow);
+  }
+
+  const overlayBytes = await image.encode(0);
+  const guidesPath = `${claim.storage_prefix}/room_guides.png`;
+  await uploadStorageObject(
+    supabaseUrl,
+    serviceRoleKey,
+    guidesPath,
+    overlayBytes,
+    "image/png"
+  );
 
   await callRpc<void>(
     supabaseUrl,
@@ -153,12 +354,12 @@ async function completeRoomPrepStage(
     {
       job_id: claim.job_id,
       worker_identifier: workerIdentifier,
-      room_normalized_path: sourcePath,
-      room_compressed_path: sourcePath,
-      room_cleaned_path: sourcePath,
-      dimension_guide_overlay_path: sourcePath,
+      room_normalized_path: claim.customer_room_original_path,
+      room_compressed_path: claim.customer_room_original_path,
+      room_cleaned_path: claim.customer_room_original_path,
+      dimension_guide_overlay_path: guidesPath,
       room_geometry_mode: "back_wall",
-      room_geometry_points: { mode: "back_wall", points: placeholderPoints },
+      room_geometry_points: geometry,
       room_geometry_confidence: null
     }
   );
@@ -211,15 +412,21 @@ Deno.serve(async (request) => {
   }
 
   try {
-    await completeRoomPrepStage(
-      supabaseUrl,
-      serviceRoleKey,
-      workerIdentifier,
-      claim
-    );
+    await processStage1(supabaseUrl, serviceRoleKey, workerIdentifier, claim);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return failedResponse(message, 502);
+    return jsonResponse(
+      {
+        status: "failed",
+        function_name: FUNCTION_NAME,
+        stage: "stage_1",
+        processed: 0,
+        job_id: claim.job_id,
+        job_status: "failed",
+        error: message
+      },
+      502
+    );
   }
 
   return jsonResponse({
