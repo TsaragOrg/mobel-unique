@@ -93,3 +93,49 @@ export function classifyWorkerError(error: unknown): RetryClassification {
 export function isRetryableError(error: unknown): boolean {
   return classifyWorkerError(error).kind === "retryable";
 }
+
+export type StageName = "stage_1" | "stage_2";
+
+export type StageFailureAction =
+  | { kind: "release"; stage: StageName; reason: string }
+  | { kind: "fail"; reason: string };
+
+export type StageFailureContext = {
+  stage: StageName;
+  attemptCount: number;
+  maxAttempts: number;
+};
+
+export function decideStageFailureAction(
+  error: unknown,
+  context: StageFailureContext
+): StageFailureAction {
+  if (context.stage !== "stage_1" && context.stage !== "stage_2") {
+    throw new Error(`unknown stage: ${context.stage}`);
+  }
+  if (
+    !Number.isFinite(context.maxAttempts) ||
+    context.maxAttempts <= 0
+  ) {
+    throw new Error("maxAttempts must be a positive integer");
+  }
+
+  const classification = classifyWorkerError(error);
+
+  if (classification.kind === "non_retryable") {
+    return { kind: "fail", reason: classification.reason };
+  }
+
+  if (context.attemptCount >= context.maxAttempts) {
+    return {
+      kind: "fail",
+      reason: `attempts_exhausted (${classification.reason})`
+    };
+  }
+
+  return {
+    kind: "release",
+    stage: context.stage,
+    reason: classification.reason
+  };
+}

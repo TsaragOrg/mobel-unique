@@ -17,6 +17,7 @@ import {
   selectStage1Providers,
   selectStage2Providers
 } from "./lib/providers.ts";
+import { decideStageFailureAction } from "./lib/retry.ts";
 import { validateBackWallGeometry } from "./lib/sanity.ts";
 
 const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
@@ -998,21 +999,52 @@ Deno.serve(async (request) => {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        try {
-          await deleteRoomPrepMessage(
-            supabaseUrl,
-            serviceRoleKey,
-            queueName,
-            msg.msg_id
-          );
-        } catch (_error) { /* fall through */ }
-        results.push({
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "failed",
-          job_status: "failed",
-          error: message
+        const action = decideStageFailureAction(error, {
+          stage: "stage_2",
+          attemptCount: placementClaim.placement_attempt_count,
+          maxAttempts: placementClaim.max_attempts_per_stage
         });
+
+        if (action.kind === "release") {
+          try {
+            await callRpc<void>(
+              supabaseUrl,
+              serviceRoleKey,
+              "release_in_home_simulation_placement_claim",
+              {
+                job_id: placementClaim.job_id,
+                worker_identifier: workerIdentifier,
+                error_code: "transient",
+                error_message: message
+              }
+            );
+          } catch (_error) { /* fall through */ }
+          // Do not delete the pgmq message; the visibility timeout
+          // makes it visible again so a future invocation can retry.
+          results.push({
+            job_id: jobId,
+            msg_id: msg.msg_id,
+            outcome: "failed",
+            job_status: "placement_queued",
+            error: `retryable (${action.reason}): ${message}`
+          });
+        } else {
+          try {
+            await deleteRoomPrepMessage(
+              supabaseUrl,
+              serviceRoleKey,
+              queueName,
+              msg.msg_id
+            );
+          } catch (_error) { /* fall through */ }
+          results.push({
+            job_id: jobId,
+            msg_id: msg.msg_id,
+            outcome: "failed",
+            job_status: "failed",
+            error: message
+          });
+        }
       }
       continue;
     }
@@ -1081,9 +1113,38 @@ Deno.serve(async (request) => {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // Job-level failure was already recorded inside processClaimedJob
-      // when applicable. Delete the message so non-retryable failures do
-      // not loop in the queue.
+      const action = decideStageFailureAction(error, {
+        stage: "stage_1",
+        attemptCount: claim.room_prep_attempt_count,
+        maxAttempts: claim.max_attempts_per_stage
+      });
+
+      if (action.kind === "release") {
+        try {
+          await callRpc<void>(
+            supabaseUrl,
+            serviceRoleKey,
+            "release_in_home_simulation_room_prep_claim",
+            {
+              job_id: claim.job_id,
+              worker_identifier: workerIdentifier,
+              error_code: "transient",
+              error_message: message
+            }
+          );
+        } catch (_error) { /* fall through */ }
+        // Do not delete the pgmq message; the visibility timeout
+        // makes it visible again so a future invocation can retry.
+        results.push({
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "failed",
+          job_status: "queued",
+          error: `retryable (${action.reason}): ${message}`
+        });
+        continue;
+      }
+
       try {
         await deleteRoomPrepMessage(
           supabaseUrl,
