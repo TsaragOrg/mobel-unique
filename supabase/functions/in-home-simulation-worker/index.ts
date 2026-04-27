@@ -3,7 +3,6 @@ import { decode, Image } from "npm:imagescript@1.2.16";
 import {
   dimensionGuideArrowsForBackWall,
   isHeicLikeExtension,
-  placeholderBackWallGeometry,
   type GuideArrow
 } from "./lib/geometry.ts";
 import {
@@ -13,6 +12,13 @@ import {
   parseMaxEdge,
   shouldCompress
 } from "./lib/normalize.ts";
+import {
+  type GeometryResult,
+  selectStage1Providers
+} from "./lib/providers.ts";
+import { validateBackWallGeometry } from "./lib/sanity.ts";
+
+const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
@@ -369,6 +375,16 @@ async function processClaimedJob(
     );
   }
 
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage1Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+  const maxGeometryAttempts = parsePositiveInt(
+    "IN_HOME_SIMULATION_MAX_GEOMETRY_ATTEMPTS",
+    DEFAULT_MAX_GEOMETRY_ATTEMPTS
+  );
+
   const scratchDir = await createScratchDir(claim.job_id);
   try {
     const sourceBytes = await downloadStorageObject(
@@ -399,6 +415,25 @@ async function processClaimedJob(
     const normalizedBytes = await decoded.encodeJPEG(NORMALIZED_JPEG_QUALITY);
     await Deno.writeFile(`${scratchDir}/room_normalized.jpg`, normalizedBytes);
 
+    // Validation via the configured provider. The mock always passes; a
+    // live provider may reject obviously unusable photos with a readable
+    // failure code.
+    const validationResult = await providers.validation.validateRoom(
+      normalizedBytes
+    );
+    if (!validationResult.ok) {
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "validation_rejected",
+        `Validation provider rejected the room photo: ${validationResult.failureReason}`
+      );
+      throw new Error(
+        `validation rejected: ${validationResult.failureReason}`
+      );
+    }
+
     // Optional compression: shrink the longest edge to the worker max if
     // the source exceeds it, then re-encode as JPEG at a lower quality.
     const maxEdge = parseMaxEdge(
@@ -420,31 +455,95 @@ async function processClaimedJob(
     );
     await Deno.writeFile(`${scratchDir}/room_compressed.jpg`, compressedBytes);
 
-    // Cleaned room placeholder. Real cleaning via the configured image-edit
-    // provider replaces this in a follow-up slice; for now the cleaned
-    // artifact is the compressed image re-encoded as PNG.
-    const cleanedBytes = await compressedImage.encode(0);
+    // Cleaning via the configured provider. The mock returns the input
+    // bytes unchanged. The cleaned artifact is whatever PNG bytes the
+    // cleaning provider produces, decoded so geometry and overlay can
+    // operate on consistent pixel dimensions.
+    const cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
+    let cleanedImage: Image;
+    try {
+      cleanedImage = (await decode(cleanedRawBytes)) as Image;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "cleaning_decode_failed",
+        `Could not decode the cleaned room artifact: ${message}`
+      );
+      throw new Error(`cleaning decode failed: ${message}`);
+    }
+    const cleanedBytes = await cleanedImage.encode(0);
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
-    // Geometry detection placeholder. Real detection via the configured
-    // image model replaces this in a follow-up slice.
-    const geometry = placeholderBackWallGeometry(
-      compressedImage.width,
-      compressedImage.height
-    );
+    // Geometry detection via the configured provider with sanity
+    // validation and a worker-defined attempt limit. Currently only
+    // back_wall mode is enforced by the sanity validator; corner mode
+    // sanity will be wired in once corner detection is implemented.
+    let geometryResult: GeometryResult | null = null;
+    let geometryFailures: string[] = [];
+    for (let attempt = 1; attempt <= maxGeometryAttempts; attempt++) {
+      const candidate = await providers.geometry.detectGeometry(
+        cleanedBytes,
+        cleanedImage.width,
+        cleanedImage.height
+      );
+      if ("failureReason" in candidate) {
+        geometryFailures.push(`attempt ${attempt}: ${candidate.failureReason}`);
+        continue;
+      }
+      if (candidate.mode === "back_wall") {
+        const sanity = validateBackWallGeometry(
+          candidate,
+          cleanedImage.width,
+          cleanedImage.height
+        );
+        if (!sanity.ok) {
+          geometryFailures.push(
+            `attempt ${attempt} sanity: ${sanity.failureReason}`
+          );
+          continue;
+        }
+      }
+      geometryResult = candidate;
+      break;
+    }
+
+    if (!geometryResult || "failureReason" in geometryResult) {
+      const reason = geometryFailures.join("; ") ||
+        ("failureReason" in (geometryResult ?? { failureReason: "unknown" })
+          ? (geometryResult as { failureReason: string }).failureReason
+          : "geometry detection exhausted attempts");
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "geometry_detection_failed",
+        reason
+      );
+      throw new Error(`geometry detection failed: ${reason}`);
+    }
+
+    const geometryForPersist = {
+      mode: geometryResult.mode,
+      points: geometryResult.points
+    };
     const geometryBytes = new TextEncoder().encode(
-      JSON.stringify(geometry, null, 2)
+      JSON.stringify(geometryForPersist, null, 2)
     );
     await Deno.writeFile(`${scratchDir}/room_geometry.json`, geometryBytes);
 
-    // Overlay rendering on the cleaned/compressed image.
-    const overlayImage = compressedImage.clone() as Image;
-    const arrows = dimensionGuideArrowsForBackWall(
-      geometry,
-      overlayImage.width,
-      overlayImage.height,
-      BACK_WALL_LABELS
-    );
+    // Overlay rendering on the cleaned image.
+    const overlayImage = cleanedImage.clone() as Image;
+    const arrows = geometryResult.mode === "back_wall"
+      ? dimensionGuideArrowsForBackWall(
+        { mode: "back_wall", points: geometryResult.points },
+        overlayImage.width,
+        overlayImage.height,
+        BACK_WALL_LABELS
+      )
+      : [];
     for (const arrow of arrows) drawArrow(overlayImage, arrow);
     for (const arrow of arrows) await drawLabel(overlayImage, arrow);
     const overlayBytes = await overlayImage.encode(0);
@@ -495,9 +594,9 @@ async function processClaimedJob(
         room_compressed_path: compressedPath,
         room_cleaned_path: cleanedPath,
         dimension_guide_overlay_path: guidesPath,
-        room_geometry_mode: "back_wall",
-        room_geometry_points: geometry,
-        room_geometry_confidence: null
+        room_geometry_mode: geometryResult.mode,
+        room_geometry_points: geometryForPersist,
+        room_geometry_confidence: geometryResult.confidence ?? null
       }
     );
   } finally {
