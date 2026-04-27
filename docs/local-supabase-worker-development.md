@@ -155,3 +155,61 @@ OPENAI_API_KEY=
 ```
 
 Do not commit provider keys or any other real secrets.
+
+## In-Home Simulation Stage 1 Local Loop
+
+After the local Supabase stack is running, you can drive the in-home
+simulation worker (`SPEC-0007`, `PLAN-0010`) end to end with two CLIs.
+
+Start the Edge Function runtime in one terminal:
+
+```bash
+pnpm supabase:functions:serve
+```
+
+In another terminal, enqueue a Stage 1 job using a JPEG or PNG room photo:
+
+```bash
+pnpm sim:enqueue:stage1 -- --photo /absolute/path/to/your/room.jpg
+```
+
+The CLI uploads the photo to `simulation-private-artifacts`, seeds the
+catalog and simulation-session fixtures it needs, inserts an
+`in_home_simulation_jobs` row in the `queued` state, and sends a
+`local_in_home_simulation_jobs` queue message. It prints the resulting
+`job_id` on success.
+
+Trigger one Stage 1 invocation by calling the Edge Function:
+
+```bash
+curl -X POST $(pnpm -s supabase:status | awk '/API URL/ {print $3}')/functions/v1/in-home-simulation-worker
+```
+
+The response reports `noop`, `claimed`, `completed`, or `failed`. On
+`completed`, the job is now in `awaiting_dimensions` and the worker has
+written `room_guides.png` to
+`simulations/{job_id}/room_guides.png`.
+
+Inspect the job and grab signed URLs to view the artifacts:
+
+```bash
+pnpm sim:status -- <job_id>
+```
+
+The status output includes signed URLs (10 minute TTL) for every
+persisted artifact and any generated outputs.
+
+### Limitations of the current Stage 1 implementation
+
+`PLAN-0010` is in progress. The current Stage 1 implementation:
+
+- accepts only JPEG and PNG inputs. HEIC and HEIF photos must be
+  converted to JPEG before enqueueing.
+- skips real room cleaning and real geometry detection. The dimension
+  guide is rendered on the original photo using a deterministic
+  placeholder back-wall geometry.
+- skips photo normalization beyond what `imagescript` performs during
+  decoding.
+
+These limitations are addressed by subsequent commits inside `PLAN-0010`
+and by `PLAN-0011` and `PLAN-0012`.
