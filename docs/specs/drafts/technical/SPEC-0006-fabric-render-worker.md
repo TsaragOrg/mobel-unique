@@ -150,10 +150,11 @@ Service-role credentials and AI provider keys must remain server-side only.
 4. The worker claims the queued job.
 5. The worker resolves the fabric AI reference sofa image and target sofa image.
 6. The worker runs the fabric transfer generation pipeline.
-7. On success, the worker stores a generated `output.png` artifact and marks the
-   job as `succeeded`.
-8. The generated render remains private until it is part of a public-usable
-   visual matrix on a published sofa.
+7. On success, the worker stores a generated `output.png` artifact as a private
+   generated render candidate and marks the job as `succeeded`.
+8. The generated render candidate remains private until the admin workflow
+   explicitly makes it the public-usable render for the related visual matrix
+   cell and the sofa is published.
 9. On failure, the worker stores a human-readable error message, marks the job
    as `failed` or returns it to `queued` for retry when the error is retryable.
 
@@ -180,13 +181,17 @@ The logical job record must track:
 - source fabric AI reference sofa artifact reference;
 - refinement source render artifact reference when generation mode is `refine`;
 - optional prompt note appended to the fixed base prompt;
-- generated output artifact reference when successful;
+- generated render candidate artifact reference when successful;
 - provider name;
 - provider model;
 - prompt version;
 - status;
 - attempt count;
 - maximum attempts;
+- queued timestamp;
+- claimed by identifier when available;
+- claim expiration timestamp when a worker is processing the job;
+- last attempt started timestamp;
 - last error message;
 - created timestamp;
 - claimed timestamp;
@@ -210,9 +215,13 @@ The `failed` job status is an operational worker status. It records that the
 worker could not complete a generation attempt. It is not a render validation
 state and does not create a persistent render-domain record for a failed output.
 
-### Generated Render Artifact
+### Generated Render Candidate Artifact
 
-A generated render artifact must track:
+A generated render candidate artifact is a private output produced by a
+successful worker job. It is attached to the source sofa, fabric, visual matrix
+column, and job, but it is not public-usable by itself.
+
+A generated render candidate artifact must track:
 
 - storage path or object key;
 - content type;
@@ -224,7 +233,15 @@ A generated render artifact must track:
 - provider name;
 - provider model;
 - prompt version;
+- originating job id;
+- sofa id;
+- fabric id;
+- visual matrix column id;
 - whether the artifact is the current public-usable image for its render cell.
+
+The worker must create only a private generated render candidate. A separate
+admin workflow must decide whether that candidate becomes the current
+public-usable image for the render cell.
 
 The exact render publication model belongs in the render preparation and data
 model specs.
@@ -247,6 +264,25 @@ The API must enforce admin authorization before job creation.
 
 The API must be responsible for validating that a requested job belongs to a
 valid sofa, target fabric, and sofa visual matrix column.
+
+Before creating a job, the API must validate these preconditions:
+
+- the sofa exists;
+- the target fabric exists;
+- the visual matrix column exists;
+- the sofa, target fabric, and visual matrix column form a valid render cell
+  for that sofa;
+- the visual matrix column has a selected target sofa source image artifact;
+- the target fabric has a fabric AI reference sofa image artifact;
+- in `refine` mode, the refinement source render artifact belongs to the same
+  sofa, fabric, and visual matrix column as the requested job;
+- no equivalent active job already exists for the same sofa, fabric, visual
+  matrix column, source input set, provider, model, prompt version, generation
+  mode, and prompt note unless the administrator explicitly requests a new
+  generation.
+
+Image readability and the 2048 px upload limit are upload-time invariants and
+do not need to be repeated as separate job-creation checks in the MVP.
 
 The API must not expose service-role credentials, AI provider keys, or private
 storage write credentials to the browser.
@@ -387,21 +423,25 @@ error.
 
 ### Image Size Limits
 
-The first production worker must accept target sofa input images up to 2048 px
-on the longest edge.
+Fabric render source artifacts must have passed upload-time validation before
+they can be used for a job.
+
+The first production flow accepts target sofa input images up to 2048 px on the
+longest edge.
 
 If the target sofa input image is smaller than or equal to 2048 px on the
 longest edge after EXIF orientation is applied, the worker must keep the target
 sofa input image's original dimensions as the generation dimensions.
 
-If the target sofa input image is larger than 2048 px on the longest edge, the
-job request must be rejected with a readable validation error. The first
-production worker must not downscale oversized target sofa input images as part
-of the generation job.
+If the worker encounters a target sofa input image larger than 2048 px on the
+longest edge, the job must fail as a non-retryable upload-invariant violation
+with a readable error. The first production worker must not downscale oversized
+target sofa input images as part of the generation job.
 
 The fabric AI reference sofa image must also be accepted up to 2048 px on the
-longest edge. If it is larger, the job request must be rejected with a readable
-validation error.
+longest edge. If the worker encounters a larger fabric AI reference sofa image,
+the job must fail as a non-retryable upload-invariant violation with a readable
+error.
 
 ### Output Normalization
 
@@ -426,7 +466,17 @@ The worker may retry transient provider, network, timeout, or rate-limit errors
 until the maximum attempt count is reached.
 
 The worker must not retry errors caused by missing input artifacts, invalid job
-metadata, unsupported image files, or missing required environment variables.
+metadata, unsupported image files, upload-invariant violations such as an
+oversized source artifact, or missing required environment variables.
+
+For each processing attempt, the worker must increment `attempt_count` when it
+successfully claims the job and starts the attempt.
+
+If an error is retryable and attempts remain, the job must return to `queued`
+with the last error message preserved for operational review.
+
+If an error is non-retryable, or if no attempts remain after a retryable error,
+the job must become `failed`.
 
 After the final failed attempt, the job status must become `failed` and the last
 error message must remain available for admin review.
@@ -455,8 +505,33 @@ The system must prevent two workers from processing the same job at the same
 time.
 
 The job claim operation must be atomic. A worker can process a job only after it
-successfully moves the job from `queued` to `processing` or refreshes a claim
-through a defined recovery rule.
+successfully moves the job from `queued` to `processing` or recovers an expired
+claim through the recovery rule below.
+
+When a worker claims a job, the claim operation must:
+
+- move the job from `queued` to `processing`;
+- increment `attempt_count`;
+- set `claimed_at`;
+- set `claimed_by` when a worker identifier is available;
+- set `last_attempt_started_at`;
+- set `claim_expires_at` to the current time plus
+  `FABRIC_RENDER_CLAIM_TTL_SECONDS`.
+
+The default fabric render claim TTL is 5 minutes.
+
+If a job is in `processing` and `claim_expires_at` has passed before the job
+reaches `succeeded`, `failed`, or `canceled`, the recovery process must inspect
+the job before retrying it:
+
+- if attempts remain, the job returns to `queued`;
+- if no attempts remain, the job becomes `failed` and the last error message
+  must identify that the worker claim expired.
+
+If a persistent generated output exists for a job whose status is not
+`succeeded`, the recovery process must not make that output public-usable. The
+MVP recovery rule is conservative: only a job that has been explicitly marked
+`succeeded` can expose its generated render candidate to the admin review flow.
 
 The system should avoid creating duplicate active jobs for the same sofa,
 fabric, visual matrix column, source input set, provider, model, and prompt
@@ -473,8 +548,9 @@ The worker must download or materialize the required input artifacts into its
 scratch folder, run generation, then upload or persist the generated output
 artifact through the approved storage path.
 
-Generated outputs must remain private until the admin workflow makes the related
-render cell public-usable and the sofa is published.
+Generated outputs are private generated render candidates. They must remain
+private until the admin workflow explicitly makes the related render cell
+public-usable and the sofa is published.
 
 ### Observability
 
@@ -506,6 +582,8 @@ The worker environment must include:
 - `FABRIC_RENDER_MAX_ATTEMPTS`: optional override for maximum attempts;
 - `FABRIC_RENDER_MAX_CONCURRENT_JOBS`: optional concurrency limit for one queue
   consumer invocation;
+- `FABRIC_RENDER_CLAIM_TTL_SECONDS`: optional override for the worker claim TTL,
+  defaulting to 300 seconds;
 - `FABRIC_RENDER_TMP_DIR`: optional local temporary directory root, defaulting
   to an Edge Function-compatible temporary directory when needed.
 
@@ -536,6 +614,10 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The first provider is Gemini with model `gemini-3-pro-image-preview`.
 - The required job statuses are defined.
 - Retryable and non-retryable failure categories are defined.
+- Worker processing claims have a default 5-minute TTL and expired claims are
+  retried only while attempts remain.
+- API job-creation preconditions are defined without duplicating upload-time
+  image readability and 2048 px limit checks.
 - The fabric render queue consumer Edge Function uses the maximum execution
   timeout allowed by the active Supabase plan and environment.
 - The first production worker accepts target sofa and fabric AI reference images
@@ -545,8 +627,9 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
   must save successful provider image data without post-processing dimensions by
   cropping, resizing, stretching, padding, or rejecting the image solely because
   of a post-generation dimension check.
-- Generated renders remain private until they become public-usable through the
-  admin workflow and the related sofa publication rules.
+- Generated renders are private generated render candidates until they become
+  public-usable through the admin workflow and the related sofa publication
+  rules.
 - Required worker environment variables are listed.
 - The existing local Python worker is identified as a reference implementation
   only, and Python is not the production runtime for this spec.
