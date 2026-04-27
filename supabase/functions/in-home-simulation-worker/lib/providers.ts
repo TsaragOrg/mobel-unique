@@ -65,10 +65,44 @@ export interface GeometryProvider {
   ): Promise<GeometryResult>;
 }
 
+export type PlacementInputs = {
+  cleanedRoomBytes: Uint8Array;
+  cleanedRoomWidth: number;
+  cleanedRoomHeight: number;
+  preparedSofaBytes: Uint8Array | null;
+  geometry: BackWallGeometry | CornerGeometry;
+  suppliedDimensions: Record<string, number>;
+};
+
+export type PlacementSuccess = {
+  ok: true;
+  pngBytes: Uint8Array;
+  width: number;
+  height: number;
+};
+
+export type PlacementFailure = {
+  ok: false;
+  failureReason: string;
+};
+
+export type PlacementResult = PlacementSuccess | PlacementFailure;
+
+export interface PlacementProvider {
+  readonly name: string;
+  readonly modelId: string;
+  readonly promptVersion: string;
+  placeSofa(inputs: PlacementInputs): Promise<PlacementResult>;
+}
+
 export type Stage1Providers = {
   validation: ValidationProvider;
   cleaning: CleaningProvider;
   geometry: GeometryProvider;
+};
+
+export type Stage2Providers = {
+  placement: PlacementProvider;
 };
 
 export class MockValidationProvider implements ValidationProvider {
@@ -108,6 +142,25 @@ export class MockGeometryProvider implements GeometryProvider {
   }
 }
 
+export class MockPlacementProvider implements PlacementProvider {
+  readonly name = "mock";
+  readonly modelId = "mock-placement-v001";
+  readonly promptVersion = "sofa_placement_v001";
+
+  placeSofa(_inputs: PlacementInputs): Promise<PlacementResult> {
+    // Mock placement does not actually composite the sofa; it returns a
+    // tagged signal so the orchestrator stamps a deterministic
+    // placeholder rectangle onto the cleaned room. Real placement
+    // performs the AI-driven inpainting in a follow-up provider.
+    return Promise.resolve({
+      ok: true,
+      pngBytes: new Uint8Array(),
+      width: 0,
+      height: 0
+    });
+  }
+}
+
 export function isProviderModeMock(value: string | null | undefined): boolean {
   return value === undefined || value === null || value === "" || value === "mock";
 }
@@ -138,6 +191,31 @@ export function selectStage1Providers(
     }
     throw new Error(
       "live providers are not implemented yet for in-home simulation Stage 1"
+    );
+  }
+  throw new Error(
+    `unknown IN_HOME_SIMULATION_PROVIDER_MODE: ${providerMode}`
+  );
+}
+
+export function selectStage2Providers(
+  providerMode: string | null | undefined,
+  envGetter: (name: string) => string | undefined = () => undefined
+): Stage2Providers {
+  if (isProviderModeMock(providerMode)) {
+    return { placement: new MockPlacementProvider() };
+  }
+  if (isProviderModeLive(providerMode)) {
+    if (
+      !envGetter("OPENAI_API_KEY") &&
+      !envGetter("GEMINI_API_KEY")
+    ) {
+      throw new Error(
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY or GEMINI_API_KEY"
+      );
+    }
+    throw new Error(
+      "live providers are not implemented yet for in-home simulation Stage 2"
     );
   }
   throw new Error(

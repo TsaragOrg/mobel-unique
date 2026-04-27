@@ -14,7 +14,8 @@ import {
 } from "./lib/normalize.ts";
 import {
   type GeometryResult,
-  selectStage1Providers
+  selectStage1Providers,
+  selectStage2Providers
 } from "./lib/providers.ts";
 import { validateBackWallGeometry } from "./lib/sanity.ts";
 
@@ -52,7 +53,24 @@ type DequeuedMessage = {
   read_ct: number;
   enqueued_at: string;
   vt: string;
-  message: { job_id?: string; type?: string };
+  message: { job_id?: string; type?: string; generation_index?: number };
+};
+
+type PlacementClaimRow = {
+  job_id: string;
+  storage_prefix: string;
+  room_cleaned_path: string | null;
+  room_geometry_mode: "back_wall" | "corner";
+  room_geometry_points: Record<string, unknown> | null;
+  supplied_dimensions: Record<string, number> | null;
+  prepared_sofa_asset_id: string | null;
+  prepared_sofa_path: string | null;
+  reserved_generation_index: number | null;
+  generated_output_count: number;
+  retention_deadline: string;
+  placement_attempt_count: number;
+  max_attempts_per_stage: number;
+  claim_expires_at: string;
 };
 
 const FUNCTION_NAME = "in-home-simulation-worker";
@@ -172,6 +190,27 @@ async function claimSpecificRoomPrepJob(
     supabaseUrl,
     serviceRoleKey,
     "claim_specific_in_home_simulation_room_prep_job",
+    {
+      job_id: jobId,
+      worker_identifier: workerIdentifier,
+      claim_ttl_seconds: claimTtlSeconds
+    }
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows[0];
+}
+
+async function claimSpecificPlacementJob(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
+  workerIdentifier: string,
+  claimTtlSeconds: number
+): Promise<PlacementClaimRow | null> {
+  const rows = await callRpc<PlacementClaimRow[] | null>(
+    supabaseUrl,
+    serviceRoleKey,
+    "claim_specific_in_home_simulation_placement_job",
     {
       job_id: jobId,
       worker_identifier: workerIdentifier,
@@ -604,6 +643,201 @@ async function processClaimedJob(
   }
 }
 
+const SOFA_PLACEHOLDER_COLOR = 0x8b5a2bff;
+
+function stampSofaRectangle(
+  cleanedImage: Image,
+  geometry: PlacementClaimRow["room_geometry_points"]
+): Image {
+  // Mock placement: stamp a brown rectangle that suggests where the
+  // sofa would sit. Real placement replaces this with provider output.
+  const stamped = cleanedImage.clone() as Image;
+  const sofaWidth = Math.round(cleanedImage.width * 0.5);
+  const sofaHeight = Math.round(cleanedImage.height * 0.18);
+  const sofaX = Math.round((cleanedImage.width - sofaWidth) / 2);
+  const sofaY = Math.round(cleanedImage.height * 0.6);
+  stamped.drawBox(
+    sofaX,
+    sofaY,
+    sofaWidth,
+    sofaHeight,
+    SOFA_PLACEHOLDER_COLOR
+  );
+  // Suppress unused-parameter warnings in Deno; geometry will be used
+  // by real placement implementations to align the sofa with the
+  // detected wall or corner.
+  void geometry;
+  return stamped;
+}
+
+async function processPlacementJob(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: PlacementClaimRow
+): Promise<void> {
+  if (!claim.room_cleaned_path) {
+    throw new Error(
+      `job ${claim.job_id} has no room_cleaned_path; refusing Stage 2`
+    );
+  }
+
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage2Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+
+  const scratchDir = await createScratchDir(claim.job_id);
+  try {
+    const cleanedRawBytes = await downloadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.room_cleaned_path
+    );
+
+    let cleanedImage: Image;
+    try {
+      cleanedImage = (await decode(cleanedRawBytes)) as Image;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await callRpc<string>(
+        supabaseUrl,
+        serviceRoleKey,
+        "record_in_home_simulation_placement_failure",
+        {
+          job_id: claim.job_id,
+          worker_identifier: workerIdentifier,
+          error_code: "cleaned_decode_failed",
+          error_message: `Could not decode the cleaned room artifact: ${message}`
+        }
+      );
+      throw new Error(`cleaned decode failed: ${message}`);
+    }
+
+    let preparedSofaBytes: Uint8Array | null = null;
+    if (claim.prepared_sofa_path) {
+      try {
+        preparedSofaBytes = await downloadStorageObject(
+          supabaseUrl,
+          serviceRoleKey,
+          claim.prepared_sofa_path
+        );
+      } catch (_error) {
+        // The mock placement provider does not require the prepared
+        // sofa bytes; real providers must, and will fail fast at
+        // their own boundary when the asset is missing.
+        preparedSofaBytes = null;
+      }
+    }
+
+    const geometry = (claim.room_geometry_points ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const suppliedDimensions = (claim.supplied_dimensions ?? {}) as Record<
+      string,
+      number
+    >;
+
+    const placementResult = await providers.placement.placeSofa({
+      cleanedRoomBytes: cleanedRawBytes,
+      cleanedRoomWidth: cleanedImage.width,
+      cleanedRoomHeight: cleanedImage.height,
+      preparedSofaBytes,
+      // The provider interface accepts BackWall or Corner geometry; the
+      // mock ignores the contents.
+      geometry: geometry as never,
+      suppliedDimensions
+    });
+
+    if (!placementResult.ok) {
+      await callRpc<string>(
+        supabaseUrl,
+        serviceRoleKey,
+        "record_in_home_simulation_placement_failure",
+        {
+          job_id: claim.job_id,
+          worker_identifier: workerIdentifier,
+          error_code: "placement_failed",
+          error_message: placementResult.failureReason
+        }
+      );
+      throw new Error(`placement failed: ${placementResult.failureReason}`);
+    }
+
+    let outputImage: Image;
+    if (placementResult.pngBytes.length === 0) {
+      outputImage = stampSofaRectangle(cleanedImage, claim.room_geometry_points);
+    } else {
+      try {
+        outputImage = (await decode(placementResult.pngBytes)) as Image;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await callRpc<string>(
+          supabaseUrl,
+          serviceRoleKey,
+          "record_in_home_simulation_placement_failure",
+          {
+            job_id: claim.job_id,
+            worker_identifier: workerIdentifier,
+            error_code: "placement_decode_failed",
+            error_message: `Could not decode the placement output: ${message}`
+          }
+        );
+        throw new Error(`placement decode failed: ${message}`);
+      }
+    }
+
+    if (
+      outputImage.width !== cleanedImage.width ||
+      outputImage.height !== cleanedImage.height
+    ) {
+      outputImage = (outputImage.clone() as Image).resize(
+        cleanedImage.width,
+        cleanedImage.height
+      );
+    }
+
+    const outputBytes = await outputImage.encode(0);
+    await Deno.writeFile(`${scratchDir}/output.png`, outputBytes);
+
+    const generationIndex = claim.reserved_generation_index ??
+      claim.generated_output_count;
+    const outputPath =
+      `${claim.storage_prefix}/outputs/output-${generationIndex}.png`;
+
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      outputPath,
+      outputBytes,
+      "image/png"
+    );
+
+    await callRpc<void>(
+      supabaseUrl,
+      serviceRoleKey,
+      "complete_in_home_simulation_placement_stage",
+      {
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier,
+        generation_index: generationIndex,
+        output_object_path: outputPath,
+        output_content_type: "image/png",
+        output_width_px: outputImage.width,
+        output_height_px: outputImage.height,
+        provider_name: providers.placement.name,
+        provider_model: providers.placement.modelId,
+        prompt_version: providers.placement.promptVersion,
+        prepared_sofa_path: claim.prepared_sofa_path
+      }
+    );
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
+}
+
 function aggregateOutcome(
   results: Array<{ outcome: "completed" | "failed" | "skipped" }>
 ): StageOutcome {
@@ -697,6 +931,89 @@ Deno.serve(async (request) => {
         outcome: "skipped",
         error: "queue message missing job_id"
       });
+      continue;
+    }
+
+    const messageType = msg.message?.type;
+
+    if (messageType === "in_home_simulation_placement") {
+      let placementClaim: PlacementClaimRow | null;
+      try {
+        placementClaim = await claimSpecificPlacementJob(
+          supabaseUrl,
+          serviceRoleKey,
+          jobId,
+          workerIdentifier,
+          claimTtlSeconds
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        results.push({
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "failed",
+          error: message
+        });
+        continue;
+      }
+
+      if (placementClaim === null) {
+        try {
+          await deleteRoomPrepMessage(
+            supabaseUrl,
+            serviceRoleKey,
+            queueName,
+            msg.msg_id
+          );
+        } catch (_error) { /* fall through */ }
+        results.push({
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "skipped",
+          error: "job is not in placement_queued state"
+        });
+        continue;
+      }
+
+      try {
+        await processPlacementJob(
+          supabaseUrl,
+          serviceRoleKey,
+          workerIdentifier,
+          placementClaim
+        );
+        try {
+          await deleteRoomPrepMessage(
+            supabaseUrl,
+            serviceRoleKey,
+            queueName,
+            msg.msg_id
+          );
+        } catch (_error) { /* fall through */ }
+        results.push({
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "completed",
+          job_status: "succeeded"
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        try {
+          await deleteRoomPrepMessage(
+            supabaseUrl,
+            serviceRoleKey,
+            queueName,
+            msg.msg_id
+          );
+        } catch (_error) { /* fall through */ }
+        results.push({
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "failed",
+          job_status: "failed",
+          error: message
+        });
+      }
       continue;
     }
 
