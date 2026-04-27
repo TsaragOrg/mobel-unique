@@ -31,7 +31,7 @@
 | Done | SPEC-0006 | PLAN-0031 | Manual fabric render pump/job tests cover `request_id`, no cron dependency, Realtime observation, expired claims, and resume behavior.     |
 | Done | SPEC-0008 | PLAN-0032 | Local Supabase reset now loads reusable admin catalog fixtures and supports ignored local image manifests.                                 |
 | Done | SPEC-0006 | PLAN-0033 | Fabric render worker tests cover the local Gemini output preservation switch that avoids Supabase CLI Edge CPU cancellation.                |
-| Active | SPEC-0007 | PLAN-0010 | Root smoke commands `test:in-home-simulation:stage-1` and chained `test:workers:local` for the in-home simulation Stage 1 worker. |
+| Active | SPEC-0007 | PLAN-0010 | Root smoke commands `test:in-home-simulation:stage-1`, `test:in-home-simulation:claim`, and chained `test:workers:local` for the in-home simulation Stage 1 worker. |
 
 ## Next
 
