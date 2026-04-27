@@ -6,6 +6,13 @@ import {
   placeholderBackWallGeometry,
   type GuideArrow
 } from "./lib/geometry.ts";
+import {
+  COMPRESSED_JPEG_QUALITY,
+  NORMALIZED_JPEG_QUALITY,
+  computeResizedDimensions,
+  parseMaxEdge,
+  shouldCompress
+} from "./lib/normalize.ts";
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
@@ -319,6 +326,24 @@ async function drawLabel(image: Image, arrow: GuideArrow): Promise<void> {
   image.composite(labelImage, boxX + padding, boxY + padding);
 }
 
+async function createScratchDir(jobId: string): Promise<string> {
+  const root =
+    Deno.env.get("IN_HOME_SIMULATION_TMP_DIR") ??
+    (await Deno.makeTempDir({ prefix: "in-home-simulation-" }));
+  const jobDir = `${root}/${jobId}`;
+  await Deno.mkdir(jobDir, { recursive: true });
+  return jobDir;
+}
+
+async function removeScratchDir(jobDir: string): Promise<void> {
+  try {
+    await Deno.remove(jobDir, { recursive: true });
+  } catch (_error) {
+    // Best-effort cleanup. A leaked scratch folder is recoverable through
+    // the Edge Function host's tmp cleanup and is not a hard error.
+  }
+}
+
 async function processClaimedJob(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -344,64 +369,140 @@ async function processClaimedJob(
     );
   }
 
-  const sourceBytes = await downloadStorageObject(
-    supabaseUrl,
-    serviceRoleKey,
-    claim.customer_room_original_path
-  );
-
-  let image: Image;
+  const scratchDir = await createScratchDir(claim.job_id);
   try {
-    image = (await decode(sourceBytes)) as Image;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await failJobNonRetryable(
+    const sourceBytes = await downloadStorageObject(
       supabaseUrl,
       serviceRoleKey,
-      claim.job_id,
-      "decode_failed",
-      `Could not decode the customer room photo: ${message}`
+      claim.customer_room_original_path
     );
-    throw new Error(`decode failed: ${message}`);
-  }
+    await Deno.writeFile(`${scratchDir}/room_original.bin`, sourceBytes);
 
-  const geometry = placeholderBackWallGeometry(image.width, image.height);
-  const arrows = dimensionGuideArrowsForBackWall(
-    geometry,
-    image.width,
-    image.height,
-    BACK_WALL_LABELS
-  );
-
-  for (const arrow of arrows) drawArrow(image, arrow);
-  for (const arrow of arrows) await drawLabel(image, arrow);
-
-  const overlayBytes = await image.encode(0);
-  const guidesPath = `${claim.storage_prefix}/room_guides.png`;
-  await uploadStorageObject(
-    supabaseUrl,
-    serviceRoleKey,
-    guidesPath,
-    overlayBytes,
-    "image/png"
-  );
-
-  await callRpc<void>(
-    supabaseUrl,
-    serviceRoleKey,
-    "complete_in_home_simulation_room_prep_stage",
-    {
-      job_id: claim.job_id,
-      worker_identifier: workerIdentifier,
-      room_normalized_path: claim.customer_room_original_path,
-      room_compressed_path: claim.customer_room_original_path,
-      room_cleaned_path: claim.customer_room_original_path,
-      dimension_guide_overlay_path: guidesPath,
-      room_geometry_mode: "back_wall",
-      room_geometry_points: geometry,
-      room_geometry_confidence: null
+    let decoded: Image;
+    try {
+      decoded = (await decode(sourceBytes)) as Image;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "decode_failed",
+        `Could not decode the customer room photo: ${message}`
+      );
+      throw new Error(`decode failed: ${message}`);
     }
-  );
+
+    // Normalization: re-encode as JPEG so the persisted artifact has a
+    // consistent format and stripped EXIF metadata. imagescript already
+    // applies EXIF orientation during decode.
+    const normalizedBytes = await decoded.encodeJPEG(NORMALIZED_JPEG_QUALITY);
+    await Deno.writeFile(`${scratchDir}/room_normalized.jpg`, normalizedBytes);
+
+    // Optional compression: shrink the longest edge to the worker max if
+    // the source exceeds it, then re-encode as JPEG at a lower quality.
+    const maxEdge = parseMaxEdge(
+      Deno.env.get("IN_HOME_SIMULATION_MAX_EDGE_PX")
+    );
+    let compressedImage: Image = decoded;
+    if (shouldCompress({ width: decoded.width, height: decoded.height }, maxEdge)) {
+      const target = computeResizedDimensions(
+        { width: decoded.width, height: decoded.height },
+        maxEdge
+      );
+      compressedImage = (decoded.clone() as Image).resize(
+        target.width,
+        target.height
+      );
+    }
+    const compressedBytes = await compressedImage.encodeJPEG(
+      COMPRESSED_JPEG_QUALITY
+    );
+    await Deno.writeFile(`${scratchDir}/room_compressed.jpg`, compressedBytes);
+
+    // Cleaned room placeholder. Real cleaning via the configured image-edit
+    // provider replaces this in a follow-up slice; for now the cleaned
+    // artifact is the compressed image re-encoded as PNG.
+    const cleanedBytes = await compressedImage.encode(0);
+    await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
+
+    // Geometry detection placeholder. Real detection via the configured
+    // image model replaces this in a follow-up slice.
+    const geometry = placeholderBackWallGeometry(
+      compressedImage.width,
+      compressedImage.height
+    );
+    const geometryBytes = new TextEncoder().encode(
+      JSON.stringify(geometry, null, 2)
+    );
+    await Deno.writeFile(`${scratchDir}/room_geometry.json`, geometryBytes);
+
+    // Overlay rendering on the cleaned/compressed image.
+    const overlayImage = compressedImage.clone() as Image;
+    const arrows = dimensionGuideArrowsForBackWall(
+      geometry,
+      overlayImage.width,
+      overlayImage.height,
+      BACK_WALL_LABELS
+    );
+    for (const arrow of arrows) drawArrow(overlayImage, arrow);
+    for (const arrow of arrows) await drawLabel(overlayImage, arrow);
+    const overlayBytes = await overlayImage.encode(0);
+    await Deno.writeFile(`${scratchDir}/room_guides.png`, overlayBytes);
+
+    const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
+    const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
+    const cleanedPath = `${claim.storage_prefix}/room_cleaned.png`;
+    const guidesPath = `${claim.storage_prefix}/room_guides.png`;
+
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      normalizedPath,
+      normalizedBytes,
+      "image/jpeg"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      compressedPath,
+      compressedBytes,
+      "image/jpeg"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      cleanedPath,
+      cleanedBytes,
+      "image/png"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      guidesPath,
+      overlayBytes,
+      "image/png"
+    );
+
+    await callRpc<void>(
+      supabaseUrl,
+      serviceRoleKey,
+      "complete_in_home_simulation_room_prep_stage",
+      {
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier,
+        room_normalized_path: normalizedPath,
+        room_compressed_path: compressedPath,
+        room_cleaned_path: cleanedPath,
+        dimension_guide_overlay_path: guidesPath,
+        room_geometry_mode: "back_wall",
+        room_geometry_points: geometry,
+        room_geometry_confidence: null
+      }
+    );
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
 }
 
 function aggregateOutcome(
