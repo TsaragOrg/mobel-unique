@@ -280,8 +280,8 @@ invocation, but it must respect a configurable concurrency limit based on the
 active Gemini project rate limits and the operational needs of the MVP.
 
 The local Python worker must remain a behavior reference only. The production
-runtime must not depend on Python, Railway, or a long-running external worker
-process for this spec.
+runtime must not depend on Python or a long-running external worker process for
+this spec.
 
 ### Source Selection
 
