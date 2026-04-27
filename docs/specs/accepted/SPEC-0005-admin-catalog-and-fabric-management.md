@@ -760,14 +760,20 @@ The environment and deployment spec must define admin web URLs, API base URLs, a
 - The admin catalog does not manage pricing, stock, cart, checkout, or Shopify API synchronization in the MVP.
 - Database schema, exact API contracts, low-level render storage details, worker jobs, AI provider behavior, and environment variables are deferred to dedicated specs.
 
-## Grey Areas To Resolve Before Acceptance
+## Delegated Details
+
+The following UI pattern details are intentionally delegated to design and
+implementation planning:
 
 - Exact admin UI pattern for manual public catalog ordering.
-- Exact admin UI pattern for fabric ordering and visual matrix column management.
-- Exact admin UI pattern for source photo assignment, manual render uploads, and render generation.
+- Exact admin UI pattern for fabric ordering and visual matrix column
+  management.
+- Exact admin UI pattern for source photo assignment, manual render uploads, and
+  render generation.
 
 ## Open Questions
 
-- None for this draft.
+- None for this spec.
 
-The grey areas above should be resolved while reviewing this spec, unless they are explicitly delegated to the data model, render generation, or implementation planning specs.
+The delegated details above must preserve the domain behavior accepted by this
+spec.

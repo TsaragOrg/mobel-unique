@@ -650,12 +650,15 @@ If a sofa, fabric, or visual position becomes unavailable while the visitor is b
 
 If a visitor opens an unavailable sofa from an old Shopify link, the page must show a clear sofa-unavailable message and offer a path back to the catalog. It must not automatically redirect to a different sofa.
 
-## Grey Areas To Resolve Before Acceptance
+## Delegated Details
 
-The following areas need explicit product decisions before this spec can be accepted:
+The following details are intentionally delegated to follow-up specs, data model
+work, UI design, or implementation planning:
 
-- Exact slug collision behavior before first publication.
-- Exact result-screen implementation inside the in-home simulation flow.
+- Slug collision behavior before first publication is covered by the admin
+  catalog and data model decisions.
+- Exact result-screen implementation belongs to the in-home simulation flow and
+  implementation planning.
 
 ## Data Model
 
