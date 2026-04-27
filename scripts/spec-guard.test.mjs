@@ -88,3 +88,30 @@ L'outil doit permettre aux clients de choisir un tissu.
     );
   });
 });
+
+describe("spec guard accepted spec readiness checks", () => {
+  it("rejects accepted specs with pre-acceptance blocker language", () => {
+    const cwd = writeSpecRepo(`# SPEC-0001 Example Spec
+
+Spec: SPEC-0001
+Status: accepted
+
+## Grey Areas To Resolve Before Acceptance
+
+The following areas need explicit product decisions before this spec can be accepted:
+
+- Exact result-screen implementation.
+`);
+
+    const result = runGuard(cwd);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Specification guard failed");
+    expect(result.stderr).toContain(
+      "docs/specs/accepted/SPEC-0001-example.md:6 is accepted but contains pre-acceptance blocker language",
+    );
+    expect(result.stderr).toContain(
+      "docs/specs/accepted/SPEC-0001-example.md:8 is accepted but contains pre-acceptance blocker language",
+    );
+  });
+});

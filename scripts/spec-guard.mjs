@@ -9,6 +9,12 @@ const MAX_LANGUAGE_ERRORS_PER_FILE = 8;
 const FRENCH_ACCENT_PATTERN = /[àâæçéèêëîïôœùûüÿÀÂÆÇÉÈÊËÎÏÔŒÙÛÜŸ]/;
 const FRENCH_CONTRACTION_PATTERN =
   /\b(?:[cdjlmnqt]|qu)['’][a-zàâæçéèêëîïôœùûüÿ]/i;
+const ACCEPTED_SPEC_PRE_ACCEPTANCE_BLOCKER_PATTERNS = [
+  /\bbefore (?:this )?(?:spec|draft|document) can be accepted\b/i,
+  /\bbefore acceptance\b/i,
+  /\bto resolve before acceptance\b/i,
+  /\bmust be (?:resolved|completed|finished|decided|defined) before (?:this )?(?:spec|draft|document)?\s*(?:can be )?accepted\b/i,
+];
 const FRENCH_MARKER_WORDS = new Set([
   "accueil",
   "achat",
@@ -425,6 +431,28 @@ function validateRoadmaps(knownSpecs) {
   }
 }
 
+function validateAcceptedSpecReadinessLanguage() {
+  const acceptedSpecFiles = listMarkdownFiles("docs/specs/accepted").filter(
+    (path) => !path.endsWith("/README.md"),
+  );
+
+  for (const path of acceptedSpecFiles) {
+    const markdown = readMarkdown(path);
+
+    markdown.split("\n").forEach((line, index) => {
+      if (
+        ACCEPTED_SPEC_PRE_ACCEPTANCE_BLOCKER_PATTERNS.some((pattern) =>
+          pattern.test(line),
+        )
+      ) {
+        errors.push(
+          `${path}:${index + 1} is accepted but contains pre-acceptance blocker language`,
+        );
+      }
+    });
+  }
+}
+
 function validateChangedFiles(paths, knownSpecs) {
   if (paths.length === 0) {
     return;
@@ -497,6 +525,7 @@ function validateChangedFiles(paths, knownSpecs) {
 
 const knownSpecs = validateManifest();
 validateSpecLanguage();
+validateAcceptedSpecReadinessLanguage();
 validatePlans(knownSpecs);
 validateRoadmaps(knownSpecs);
 validateChangedFiles(changedFiles(), knownSpecs);
