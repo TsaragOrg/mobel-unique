@@ -7,8 +7,9 @@
 | Done | SPEC-0001 | PLAN-0001 | Minimal worker foundation and heartbeat configuration. |
 | Done | SPEC-0008 | PLAN-0008 | Local worker environment examples align with local Supabase worker development. |
 | Done | SPEC-0006 | PLAN-0006 | Locally testable fabric render worker foundation with mock output and optional Gemini smoke verification. |
+| Done | SPEC-0006 | PLAN-0010 | Real Gemini fabric render provider path with private input downloads, fixed v007 prompt, and optional manual provider smoke verification. |
 
 ## Next
 
-- Add real Gemini provider behavior, refine mode, and admin/API integration through later plans.
+- Add admin/API job creation, render candidate review, and public publication workflows through later plans.
 - Implement the accepted in-home simulation worker spec after the fabric render foundation proves the worker path.

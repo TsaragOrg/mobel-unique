@@ -60,6 +60,13 @@ try {
 
 const responseText = await response.text();
 
+if (response.status === 204) {
+  skip(
+    "no queued Gemini fabric render job was available. " +
+      "Create one valid local job with private target sofa and fabric reference assets before running this smoke test."
+  );
+}
+
 if (
   isLocalFunctionUrl(FUNCTION_URL) &&
   response.status === 404 &&

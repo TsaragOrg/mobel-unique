@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -72,5 +73,33 @@ describe("fabric render worker Gemini smoke script", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("PASS fabric render Gemini smoke");
     expect(result.stdout).toContain("output.png");
+  });
+
+  it("skips clearly when no Gemini job is queued", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(204);
+      response.end();
+    });
+
+    await new Promise((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    try {
+      const { port } = server.address();
+      const result = await runSmoke({
+        FABRIC_RENDER_ENABLE_GEMINI_SMOKE: "1",
+        FABRIC_RENDER_WORKER_FUNCTION_URL: `http://127.0.0.1:${port}/functions/v1/fabric-render-worker`,
+        GEMINI_API_KEY: "test-key"
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("SKIP fabric render Gemini smoke");
+      expect(result.stdout).toContain("no queued Gemini fabric render job");
+    } finally {
+      await new Promise((resolve) => {
+        server.close(resolve);
+      });
+    }
   });
 });
