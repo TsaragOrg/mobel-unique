@@ -34,21 +34,19 @@ render coverage review, publication readiness checks, and the MVP decision that
 publishing a sofa is the administrator's acceptance of the current visual
 matrix.
 
-The existing local Python worker at `C:\dev\worker` is treated as a reference
-implementation for the first fabric render generation behavior. Its behavior can
-be used to seed repository implementation through a future implementation plan,
-but Python is not the production runtime for this spec. The production
-implementation must use Supabase Edge Functions written in TypeScript on the
-Deno runtime, with Supabase Queues as the durable job queue. This spec does not
-copy code and does not approve any implementation change by itself.
+The production implementation must use Supabase Edge Functions written in
+TypeScript on the Deno runtime, with Supabase Queues as the durable job queue.
+This spec does not copy code and does not approve any implementation change by
+itself.
 
 ## Goal
 
 Define the first fabric render worker contract for generating a sofa render in a
-target fabric.
+target fabric and for refining an existing generated render.
 
 The worker must support an administrator-driven render preparation flow where a
-missing sofa, fabric, and visual matrix column render can be generated from:
+missing sofa, fabric, and visual matrix column render can be generated in
+`initial` mode from:
 
 - one fabric AI reference sofa image for the target fabric;
 - one target sofa image for the sofa visual matrix column;
@@ -58,6 +56,13 @@ missing sofa, fabric, and visual matrix column render can be generated from:
 The output is a generated sofa render that preserves the target sofa photo,
 camera, composition, geometry, and image dimensions while changing only the
 visible upholstery material.
+
+The worker must also support a `refine` mode for follow-up editing of an
+existing render. Refine mode uses only the selected current render output, an
+administrator-provided refine prompt, and a short provider instruction that
+identifies the image as the current output to edit. Refine mode does not use
+the `v007` fabric transfer prompt, the fabric AI reference image, or the target
+sofa image as provider inputs.
 
 ## Scope
 
@@ -72,7 +77,6 @@ This spec includes:
   files;
 - retry, failure, and idempotency expectations;
 - the Supabase Edge Functions and Supabase Queues runtime decision;
-- how the current local Python worker maps to the future repository behavior;
 - the minimum environment variables required by the worker.
 
 The first job type is limited to public sofa render preparation for the admin
@@ -147,14 +151,17 @@ Service-role credentials and AI provider keys must remain server-side only.
 3. The API creates a fabric render job for one sofa, one fabric, and one visual
    matrix column.
 4. The worker claims the queued job.
-5. The worker resolves the fabric AI reference sofa image and target sofa image.
-6. The worker runs the fabric transfer generation pipeline.
-7. On success, the worker stores a generated `output.png` artifact as a private
+5. For `initial` mode, the worker resolves the fabric AI reference sofa image
+   and target sofa image.
+6. For `refine` mode, the worker resolves the selected current output image and
+   the administrator-provided refine prompt.
+7. The worker runs the relevant generation or refinement pipeline.
+8. On success, the worker stores a generated `output.png` artifact as a private
    generated render candidate and marks the job as `succeeded`.
-8. The generated render candidate remains private until the admin workflow
+9. The generated render candidate remains private until the admin workflow
    explicitly makes it the public-usable render for the related visual matrix
    cell and the sofa is published.
-9. On failure, the worker stores a human-readable error message, marks the job
+10. On failure, the worker stores a human-readable error message, marks the job
    as `failed` or returns it to `queued` for retry when the error is retryable.
 
 ## Data Model
@@ -179,7 +186,8 @@ The logical job record must track:
 - source target sofa artifact reference;
 - source fabric AI reference sofa artifact reference;
 - refinement source render artifact reference when generation mode is `refine`;
-- optional prompt note appended to the fixed base prompt;
+- optional prompt note appended to the fixed base prompt for `initial` mode;
+- refine prompt text when generation mode is `refine`;
 - generated render candidate artifact reference when successful;
 - provider name;
 - provider model;
@@ -271,14 +279,21 @@ Before creating a job, the API must validate these preconditions:
 - the visual matrix column exists;
 - the sofa, target fabric, and visual matrix column form a valid render cell
   for that sofa;
-- the visual matrix column has a selected target sofa source image artifact;
-- the target fabric has a fabric AI reference sofa image artifact;
+- in `initial` mode, the visual matrix column has a selected target sofa source
+  image artifact;
+- in `initial` mode, the target fabric has a fabric AI reference sofa image
+  artifact;
+- in `initial` mode, an optional prompt note may be appended to the fixed `v007`
+  prompt;
 - in `refine` mode, the refinement source render artifact belongs to the same
   sofa, fabric, and visual matrix column as the requested job;
+- in `refine` mode, a non-empty refine prompt is required;
+- in `refine` mode, prompt notes are not accepted because the refine prompt is
+  the main edit instruction;
 - no equivalent active job already exists for the same sofa, fabric, visual
   matrix column, source input set, provider, model, prompt version, generation
-  mode, and prompt note unless the administrator explicitly requests a new
-  generation.
+  mode, prompt note, and refine prompt unless the administrator explicitly
+  requests a new generation.
 
 Image readability and the 2048 px upload limit are upload-time invariants and
 do not need to be repeated as separate job-creation checks in the MVP.
@@ -297,9 +312,8 @@ column. The job supports two generation modes:
 
 - `initial`: creates a render from the target sofa image and the fabric AI
   reference sofa image;
-- `refine`: creates a revised render from the same target sofa image, the same
-  fabric AI reference sofa image, and an existing render artifact selected by
-  the administrator for refinement.
+- `refine`: creates a revised render from an existing render artifact selected
+  by the administrator and a non-empty refine prompt.
 
 ### Runtime And Queue
 
@@ -314,9 +328,8 @@ The queue consumer function may process more than one queued message per
 invocation, but it must respect a configurable concurrency limit based on the
 active Gemini project rate limits and the operational needs of the MVP.
 
-The local Python worker must remain a behavior reference only. The production
-runtime must not depend on Python or a long-running external worker process for
-this spec.
+The production runtime must not depend on Python or a long-running external
+worker process for this spec.
 
 ### Source Selection
 
@@ -335,20 +348,31 @@ The target sofa source image is the geometry and composition authority.
 
 The fabric AI reference sofa image is the material authority only.
 
-For a refine job, the refinement source render is an additional input that
-represents the render the administrator wants to improve. It must belong to the
-same sofa, fabric, and visual matrix column as the requested job. The target
-sofa source image remains the geometry and composition authority, and the fabric
-AI reference sofa image remains the material authority.
+For a refine job, the refinement source render is the only image sent to the
+provider. It represents the current output the administrator wants to improve
+in place. It must belong to the same sofa, fabric, and visual matrix column as
+the requested job. The target sofa source image and fabric AI reference image
+remain important job context, but they are not provider image inputs in refine
+mode.
 
 ### Generation Core File Contract
 
-The first generation core must support the following scratch folder contract:
+The first generation core must support the following scratch folder contract for
+`initial` mode:
 
 ```text
 job-folder/
   fabric_ref.jpg
   target_sofa.jpg
+  output.png
+  error.txt
+```
+
+The first generation core must support the following scratch folder contract for
+`refine` mode:
+
+```text
+job-folder/
   refine_source.png
   output.png
   error.txt
@@ -356,10 +380,11 @@ job-folder/
 
 Rules:
 
-- `fabric_ref.jpg` is the materialized fabric AI reference sofa image input;
-- `target_sofa.jpg` is the target sofa image input;
-- `refine_source.png` is required only for `refine` mode and is the existing
-  render artifact selected by the administrator for refinement;
+- `fabric_ref.jpg` is the materialized fabric AI reference sofa image input for
+  `initial` mode;
+- `target_sofa.jpg` is the target sofa image input for `initial` mode;
+- `refine_source.png` is required for `refine` mode and is the existing render
+  artifact selected by the administrator for refinement;
 - `output.png` is the successful generated output;
 - `error.txt` is the human-readable failure artifact;
 - stale `output.png` and `error.txt` must be cleared before a new initial
@@ -367,22 +392,21 @@ Rules:
 - a failed generation or refine attempt must not leave a stale `output.png`;
 - a successful generation must not leave an `error.txt`.
 
-The current local Python worker also supports `.jpeg` input aliases and a
-refine mode. The first TypeScript implementation must include refine mode as a
-required MVP behavior.
+The first TypeScript implementation must include refine mode as a required MVP
+behavior.
 
 ### Prompting
 
-The first prompt version is `v007`.
+The first `initial` mode prompt version is `v007`.
 
 The worker must treat `v007` as a fixed versioned prompt asset. The base system
 prompt is not editable by administrators or operators in the MVP.
 
 An administrator may add optional extra instructions as a prompt note for a
-specific generation request. The prompt note must be appended to the fixed base
-prompt and must not replace, weaken, or override the base prompt.
+specific `initial` generation request. The prompt note must be appended to the
+fixed base prompt and must not replace, weaken, or override the base prompt.
 
-The prompt must instruct the AI provider to:
+The `initial` mode prompt must instruct the AI provider to:
 
 - preserve the target sofa geometry;
 - preserve the target camera view and composition;
@@ -392,9 +416,13 @@ The prompt must instruct the AI provider to:
 - avoid copying physical shape, shadows, folds, buttons, or room context from
   the fabric AI reference sofa image.
 
-For `refine` mode, the prompt must also instruct the AI provider to improve the
-selected refinement source render while preserving the target sofa geometry,
-camera view, composition, dimensions, and target fabric identity.
+For `refine` mode, the worker must not assemble or send the fixed `v007`
+fabric transfer prompt. The administrator-provided refine prompt is the main
+edit instruction. The worker must send a short provider role label or
+equivalent instruction that identifies the image as the current output to edit.
+The implementation may record a refine prompt version or wrapper version for
+traceability, but `v007` must not be treated as the active prompt content for
+refine provider calls.
 
 ### Provider
 
@@ -406,16 +434,24 @@ The first approved model is:
 gemini-3-pro-image-preview
 ```
 
-The worker must send inputs in this order:
+For `initial` mode, the worker must send inputs in this order:
 
 1. fabric AI reference sofa image;
 2. target sofa image;
-3. refinement source render image when generation mode is `refine`;
-4. assembled prompt.
+3. assembled `v007` prompt.
 
 The worker must provide role labels or equivalent provider instructions so the
 provider understands that the first image is the material source and the second
 image is the locked target photo.
+
+For `refine` mode, the worker must send inputs in this order:
+
+1. current output image selected for refinement;
+2. administrator-provided refine prompt text with a short current-output role
+   label or equivalent provider instruction.
+
+Refine mode must not send the fabric AI reference image or target sofa image to
+the provider.
 
 If the provider does not return image data, the job must fail with a readable
 error.
@@ -425,8 +461,8 @@ error.
 Fabric render source artifacts must have passed upload-time validation before
 they can be used for a job.
 
-The first production flow accepts target sofa input images up to 2048 px on the
-longest edge.
+The first production `initial` flow accepts target sofa input images up to 2048
+px on the longest edge.
 
 If the target sofa input image is smaller than or equal to 2048 px on the
 longest edge after EXIF orientation is applied, the worker must keep the target
@@ -438,17 +474,26 @@ with a readable error. The first production worker must not downscale oversized
 target sofa input images as part of the generation job.
 
 The fabric AI reference sofa image must also be accepted up to 2048 px on the
-longest edge. If the worker encounters a larger fabric AI reference sofa image,
-the job must fail as a non-retryable upload-invariant violation with a readable
-error.
+longest edge for `initial` mode. If the worker encounters a larger fabric AI
+reference sofa image, the job must fail as a non-retryable upload-invariant
+violation with a readable error.
+
+For `refine` mode, the refinement source image is the generation dimension
+authority. If the worker encounters an unreadable or unsupported refinement
+source image, the job must fail as a non-retryable input invariant violation
+with a readable error.
 
 ### Output Normalization
 
 The generated output must be saved as `output.png`.
 
-Before calling the provider, the worker must read the exact target sofa input
-dimensions after EXIF orientation is applied and include those dimensions as a
-hard output requirement in the provider request.
+Before calling the provider in `initial` mode, the worker must read the exact
+target sofa input dimensions after EXIF orientation is applied and include those
+dimensions as a hard output requirement in the provider request.
+
+Before calling the provider in `refine` mode, the worker must read the exact
+refinement source image dimensions after EXIF orientation is applied and include
+those dimensions as a hard output requirement in the provider request.
 
 The provider is responsible for generating the image at the requested
 dimensions. When the provider returns image data for a successful request, the
@@ -602,14 +647,21 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The source selection rule distinguishes target sofa authority from fabric
   material authority.
 - The source selection rule uses the target fabric's fabric AI reference sofa
-  image, not the public fabric swatch image.
+  image, not the public fabric swatch image, for `initial` mode.
+- `refine` mode uses the selected current output image and a required refine
+  prompt, without sending `fabric_ref.jpg`, `target_sofa.jpg`, or the fixed
+  `v007` prompt to the provider.
 - The scratch folder contract defines `fabric_ref.jpg`, `target_sofa.jpg`,
-  optional `refine_source.png`, `output.png`, and `error.txt`.
+  `output.png`, and `error.txt` for `initial` mode.
+- The scratch folder contract defines `refine_source.png`, `output.png`, and
+  `error.txt` for `refine` mode.
 - The production runtime is Supabase Edge Functions written in TypeScript on the
   Deno runtime, with Supabase Queues providing durable job queueing.
-- The first prompt version is fixed as `v007`.
+- The first `initial` mode prompt version is fixed as `v007`.
 - The base system prompt is not editable, and admin-supplied prompt notes may
-  only be appended as additional instructions.
+  only be appended as additional instructions for `initial` mode.
+- Admin-supplied refine prompt text is the main edit instruction for `refine`
+  mode and is not treated as an appended prompt note.
 - The first provider is Gemini with model `gemini-3-pro-image-preview`.
 - The required job statuses are defined.
 - Retryable and non-retryable failure categories are defined.
@@ -620,18 +672,19 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The fabric render queue consumer Edge Function uses the maximum execution
   timeout allowed by the active Supabase plan and environment.
 - The first production worker accepts target sofa and fabric AI reference images
-  up to 2048 px on the longest edge and preserves the original target sofa
-  dimensions when they are below that maximum.
-- The worker must request the exact target sofa dimensions from the provider and
-  must save successful provider image data without post-processing dimensions by
-  cropping, resizing, stretching, padding, or rejecting the image solely because
-  of a post-generation dimension check.
+  for `initial` mode up to 2048 px on the longest edge and preserves the
+  original target sofa dimensions when they are below that maximum.
+- The worker must request the exact target sofa dimensions from the provider for
+  `initial` mode and the exact refinement source dimensions from the provider
+  for `refine` mode.
+- The worker must save successful provider image data without post-processing
+  dimensions by cropping, resizing, stretching, padding, or rejecting the image
+  solely because of a post-generation dimension check.
 - Generated renders are private generated render candidates until they become
   public-usable through the admin workflow and the related sofa publication
   rules.
 - Required worker environment variables are listed.
-- The existing local Python worker is identified as a reference implementation
-  only, and Python is not the production runtime for this spec.
+- Python is not the production runtime for this spec.
 - The spec does not define public customer in-home simulation behavior.
 - The spec explicitly defers public customer in-home room simulation worker
   behavior to a separate follow-up spec.

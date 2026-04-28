@@ -868,7 +868,8 @@ Request:
   "visual_matrix_column_id": "column-id",
   "generation_mode": "initial",
   "refinement_source_asset_id": null,
-  "prompt_note": "Optional admin refinement note.",
+  "prompt_note": "Optional initial generation note.",
+  "refine_prompt": null,
   "idempotency_key": "optional-key"
 }
 ```
@@ -876,9 +877,12 @@ Request:
 Rules:
 
 - the API must validate that the sofa, fabric, and visual matrix column form a valid render cell;
-- the visual matrix column must have a current source image usable as the target sofa input;
-- the fabric must have a private AI reference image;
+- initial mode requires the visual matrix column to have a current source image usable as the target sofa input;
+- initial mode requires the fabric to have a private AI reference image;
+- initial mode may accept `prompt_note` and must not accept `refine_prompt`;
 - refine mode requires a refinement source asset for the same sofa, fabric, and visual matrix column;
+- refine mode requires a non-empty `refine_prompt` and must not accept `prompt_note`;
+- refine mode sends only the selected current output image and the refine prompt to the provider, not the fixed `v007` prompt, fabric AI reference image, or target sofa image;
 - no equivalent active job may exist unless the admin explicitly requests a new generation;
 - the API creates the durable `fabric_render_jobs` row and sends the queue message.
 
@@ -1166,6 +1170,8 @@ Implementation plans for this spec must add tests for:
 - admin unpublish/archive removes or deactivates public asset references;
 - admin upload completion rejects invalid image type and oversized render inputs;
 - fabric render job creation rejects invalid sofa, fabric, or visual matrix combinations;
+- fabric render job creation enforces `prompt_note` only for initial mode and
+  `refine_prompt` only for refine mode;
 - fabric render worker success creates private candidates without auto-selecting them as current render;
 - admin candidate selection updates the current render cell only through the admin endpoint;
 - ZIP export can be requested for draft and published sofas;
