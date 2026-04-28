@@ -162,7 +162,7 @@ Service-role credentials and AI provider keys must remain server-side only.
    explicitly makes it the public-usable render for the related visual matrix
    cell and the sofa is published.
 10. On failure, the worker stores a human-readable error message, marks the job
-   as `failed` or returns it to `queued` for retry when the error is retryable.
+    as `failed` or returns it to `queued` for retry when the error is retryable.
 
 ## Data Model
 
@@ -465,8 +465,9 @@ The first production `initial` flow accepts target sofa input images up to 2048
 px on the longest edge.
 
 If the target sofa input image is smaller than or equal to 2048 px on the
-longest edge after EXIF orientation is applied, the worker must keep the target
-sofa input image's original dimensions as the generation dimensions.
+longest edge after EXIF orientation is applied, the worker must use the target
+sofa input image's original dimensions as the final normalized output
+dimensions for `initial` mode.
 
 If the worker encounters a target sofa input image larger than 2048 px on the
 longest edge, the job must fail as a non-retryable upload-invariant violation
@@ -478,29 +479,58 @@ longest edge for `initial` mode. If the worker encounters a larger fabric AI
 reference sofa image, the job must fail as a non-retryable upload-invariant
 violation with a readable error.
 
-For `refine` mode, the refinement source image is the generation dimension
-authority. If the worker encounters an unreadable or unsupported refinement
-source image, the job must fail as a non-retryable input invariant violation
-with a readable error.
+For `refine` mode, the refinement source image is the final normalized output
+dimension authority. If the worker encounters an unreadable or unsupported
+refinement source image, the job must fail as a non-retryable input invariant
+violation with a readable error.
 
 ### Output Normalization
 
 The generated output must be saved as `output.png`.
 
 Before calling the provider in `initial` mode, the worker must read the exact
-target sofa input dimensions after EXIF orientation is applied and include those
-dimensions as a hard output requirement in the provider request.
+target sofa input dimensions after EXIF orientation is applied. The target sofa
+image is the authority for the final normalized output dimensions.
 
 Before calling the provider in `refine` mode, the worker must read the exact
-refinement source image dimensions after EXIF orientation is applied and include
-those dimensions as a hard output requirement in the provider request.
+refinement source image dimensions after EXIF orientation is applied. The
+selected current output image is the authority for the final normalized output
+dimensions.
 
-The provider is responsible for generating the image at the requested
-dimensions. When the provider returns image data for a successful request, the
-worker must save that returned image as `output.png`.
+For the Gemini provider, the worker must calculate the authority image aspect
+ratio and choose the closest aspect ratio supported by the active Gemini image
+model. The worker must send that closest supported aspect ratio in the provider
+request by using `generationConfig.imageConfig.aspectRatio` for REST requests or
+the SDK-equivalent field for SDK requests.
 
-The worker must not crop, resize, stretch, pad, or otherwise visually transform
-the generated image after the provider returns it.
+The worker must not put exact pixel dimension instructions, such as
+`1478x2048`, in the `initial` fabric transfer prompt or the `refine` prompt
+wrapper. Pixel-perfect final dimensions are enforced by output normalization,
+not by prompt text.
+
+After a successful provider response, the worker must normalize the returned
+image to the authority dimensions for the generation mode:
+
+- `initial` output must be normalized to the target sofa dimensions;
+- `refine` output must be normalized to the selected current output image
+  dimensions.
+
+If the provider output already has the exact authority dimensions, the worker
+may keep the image without crop or resize other than format canonicalization.
+
+If the provider output aspect ratio differs from the authority aspect ratio, the
+worker must use a centered crop of the full image canvas. This is a simple
+canvas crop. The worker must not detect the sofa, compute a sofa bounding box,
+segment the foreground, or perform any other smart crop.
+
+After the optional centered crop, the worker must resize the image to the exact
+authority width and height.
+
+The normalized artifact must be saved as `output.png`. Stored output metadata
+must describe the normalized `output.png`, including the final normalized width,
+height, byte size, and content type. The worker may record raw provider output
+dimensions for diagnostics if a later plan adds a place to store them, but raw
+dimensions are not the authoritative generated candidate dimensions.
 
 ### Retries
 
@@ -672,14 +702,21 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The fabric render queue consumer Edge Function uses the maximum execution
   timeout allowed by the active Supabase plan and environment.
 - The first production worker accepts target sofa and fabric AI reference images
-  for `initial` mode up to 2048 px on the longest edge and preserves the
-  original target sofa dimensions when they are below that maximum.
-- The worker must request the exact target sofa dimensions from the provider for
-  `initial` mode and the exact refinement source dimensions from the provider
-  for `refine` mode.
-- The worker must save successful provider image data without post-processing
-  dimensions by cropping, resizing, stretching, padding, or rejecting the image
-  solely because of a post-generation dimension check.
+  for `initial` mode up to 2048 px on the longest edge and uses the original
+  target sofa dimensions as the final normalized output dimensions when they
+  are below that maximum.
+- The worker must calculate the authority image aspect ratio and send the
+  closest Gemini-supported aspect ratio through provider configuration for
+  `initial` and `refine` modes.
+- The worker must not put exact pixel dimension instructions in the `initial`
+  fabric transfer prompt or the `refine` prompt wrapper.
+- The worker must normalize successful provider image data with simple centered
+  crop and resize so `initial` outputs match the target sofa dimensions and
+  `refine` outputs match the selected current output image dimensions.
+- Output normalization must not use smart crop, sofa detection, foreground
+  segmentation, or sofa bounding boxes.
+- Generated output metadata must describe the normalized `output.png`, not the
+  raw provider output dimensions.
 - Generated renders are private generated render candidates until they become
   public-usable through the admin workflow and the related sofa publication
   rules.
