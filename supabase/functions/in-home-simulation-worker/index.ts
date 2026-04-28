@@ -23,6 +23,10 @@ import {
   validateSuppliedBackWallDimensions,
   validateSuppliedCornerDimensions
 } from "./lib/dimensions.ts";
+import {
+  errorArtifactObjectPath,
+  formatErrorArtifactBody
+} from "./lib/error-artifact.ts";
 
 const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
 
@@ -277,13 +281,70 @@ async function uploadStorageObject(
   }
 }
 
+async function persistErrorArtifact(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  storagePrefix: string,
+  jobId: string,
+  stage: string,
+  errorCode: string,
+  errorMessage: string
+): Promise<string | null> {
+  try {
+    const path = errorArtifactObjectPath(storagePrefix);
+    const body = formatErrorArtifactBody({
+      jobId,
+      stage,
+      errorCode,
+      errorMessage
+    });
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      path,
+      new TextEncoder().encode(body),
+      "text/plain; charset=utf-8"
+    );
+    return path;
+  } catch (_error) {
+    // Best-effort persistence: a failed worker_error.txt upload must
+    // not mask the original failure on the job row.
+    return null;
+  }
+}
+
 async function failJobNonRetryable(
   supabaseUrl: string,
   serviceRoleKey: string,
   jobId: string,
   errorCode: string,
-  errorMessage: string
+  errorMessage: string,
+  options: { storagePrefix?: string; stage?: string } = {}
 ): Promise<void> {
+  let workerErrorPath: string | null = null;
+  if (options.storagePrefix) {
+    workerErrorPath = await persistErrorArtifact(
+      supabaseUrl,
+      serviceRoleKey,
+      options.storagePrefix,
+      jobId,
+      options.stage ?? "stage_1",
+      errorCode,
+      errorMessage
+    );
+  }
+
+  const patch: Record<string, unknown> = {
+    status: "failed",
+    last_error_code: errorCode,
+    last_error_message: errorMessage,
+    claim_expires_at: null,
+    updated_at: new Date().toISOString()
+  };
+  if (workerErrorPath) {
+    patch.worker_error_path = workerErrorPath;
+  }
+
   const response = await fetch(
     `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
     {
@@ -294,13 +355,7 @@ async function failJobNonRetryable(
         "apikey": serviceRoleKey,
         "Prefer": "return=minimal"
       },
-      body: JSON.stringify({
-        status: "failed",
-        last_error_code: errorCode,
-        last_error_message: errorMessage,
-        claim_expires_at: null,
-        updated_at: new Date().toISOString()
-      })
+      body: JSON.stringify(patch)
     }
   );
   if (!response.ok) {
@@ -412,7 +467,8 @@ async function processClaimedJob(
       serviceRoleKey,
       claim.job_id,
       "unsupported_format",
-      "HEIC/HEIF input is not supported yet. Convert the photo to JPEG or PNG and re-enqueue."
+      "HEIC/HEIF input is not supported yet. Convert the photo to JPEG or PNG and re-enqueue.",
+      { storagePrefix: claim.storage_prefix, stage: "stage_1" }
     );
     throw new Error(
       "HEIC/HEIF input is not supported yet; job marked as failed"
@@ -448,7 +504,8 @@ async function processClaimedJob(
         serviceRoleKey,
         claim.job_id,
         "decode_failed",
-        `Could not decode the customer room photo: ${message}`
+        `Could not decode the customer room photo: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
       );
       throw new Error(`decode failed: ${message}`);
     }
@@ -471,7 +528,8 @@ async function processClaimedJob(
         serviceRoleKey,
         claim.job_id,
         "validation_rejected",
-        `Validation provider rejected the room photo: ${validationResult.failureReason}`
+        `Validation provider rejected the room photo: ${validationResult.failureReason}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
       );
       throw new Error(
         `validation rejected: ${validationResult.failureReason}`
@@ -514,7 +572,8 @@ async function processClaimedJob(
         serviceRoleKey,
         claim.job_id,
         "cleaning_decode_failed",
-        `Could not decode the cleaned room artifact: ${message}`
+        `Could not decode the cleaned room artifact: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
       );
       throw new Error(`cleaning decode failed: ${message}`);
     }
@@ -564,7 +623,8 @@ async function processClaimedJob(
         serviceRoleKey,
         claim.job_id,
         "geometry_detection_failed",
-        reason
+        reason,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
       );
       throw new Error(`geometry detection failed: ${reason}`);
     }
