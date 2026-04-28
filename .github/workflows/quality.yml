@@ -93,4 +93,4 @@ jobs:
         run: pnpm exec supabase link --project-ref "${SUPABASE_PROJECT_REF}" --password "${SUPABASE_DB_PASSWORD}" --yes
 
       - name: Push Supabase migrations to DEV
-        run: pnpm exec supabase db push --password "${SUPABASE_DB_PASSWORD}" --yes
+        run: pnpm exec supabase db push --password "${SUPABASE_DB_PASSWORD}" --yes --include-all

@@ -14,6 +14,7 @@
 | Done   | SPEC-0011 | PLAN-0011 | Admin auth smoke test added to the root test gate and local smoke tests adjusted to run without opening sandbox-blocked ports. |
 | Done   | SPEC-0006 | PLAN-0010 | Fabric render Gemini provider tests and smoke helpers added to the root test workflow, including Windows-safe `node --import` mock paths. |
 | Done   | SPEC-0001 | PLAN-0014 | Supabase DEV migration deployment runs after the quality gate on push to `dev`. |
+| Done   | SPEC-0001 | PLAN-0015 | Supabase DEV migration deployment applies missing out-of-order migrations with `--include-all` while still excluding seed data. |
 
 ## Next
 
