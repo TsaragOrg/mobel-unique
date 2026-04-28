@@ -25,7 +25,7 @@
     "seed:workers:fabric-render:gemini": "node scripts/seed-fabric-render-gemini-smoke.mjs",
     "branch:create": "node scripts/create-branch.mjs",
     "spec:check": "node scripts/spec-guard.mjs",
-    "test": "vitest run scripts/create-branch.test.mjs scripts/spec-guard.test.mjs scripts/local-worker-smoke.test.mjs scripts/spec-0009-schema-smoke.test.mjs scripts/spec-0011-admin-smoke.test.mjs scripts/fabric-render-worker-smoke.test.mjs scripts/fabric-render-worker-gemini-smoke.test.mjs scripts/fabric-render-worker-migration.test.mjs scripts/fabric-render-worker-function.test.mjs scripts/fabric-render-worker-gemini-provider.test.mjs scripts/fabric-render-worker-storage.test.mjs && pnpm -r test",
+    "test": "vitest run scripts/create-branch.test.mjs scripts/spec-guard.test.mjs scripts/local-worker-smoke.test.mjs scripts/spec-0009-schema-smoke.test.mjs scripts/spec-0011-admin-smoke.test.mjs scripts/fabric-render-worker-smoke.test.mjs scripts/fabric-render-worker-gemini-smoke.test.mjs scripts/fabric-render-worker-migration.test.mjs scripts/fabric-render-worker-function.test.mjs scripts/fabric-render-worker-gemini-provider.test.mjs scripts/fabric-render-worker-storage.test.mjs scripts/supabase-dev-deploy-workflow.test.mjs && pnpm -r test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm spec:check && pnpm typecheck && pnpm test && pnpm build",
