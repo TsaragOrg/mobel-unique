@@ -11,6 +11,7 @@
 | Done   | SPEC-0008 | PLAN-0008 | Local Supabase scripts and worker smoke-test workflow.                      |
 | Done   | SPEC-0009 | PLAN-0009 | Root schema smoke command for validating the Supabase data model locally, including Docker psql fallback. |
 | Done   | SPEC-0006 | PLAN-0006 | Windows-safe spec guard path handling needed for fabric render worker verification. |
+| Done   | SPEC-0011 | PLAN-0011 | Admin auth smoke test added to the root test gate and local smoke tests adjusted to run without opening sandbox-blocked ports. |
 
 ## Next
 
