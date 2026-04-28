@@ -75,18 +75,20 @@ describe("selectStage1Providers", () => {
     expect(providers.validation).toBeInstanceOf(MockValidationProvider);
   });
 
-  it("refuses 'live' mode without a provider key", () => {
+  it("refuses 'live' mode without OPENAI_API_KEY", () => {
     expect(() => selectStage1Providers("live", () => undefined)).toThrow(
-      /OPENAI_API_KEY or GEMINI_API_KEY/
+      /OPENAI_API_KEY/
     );
   });
 
-  it("refuses 'live' mode for now even with a key, until the live adapter lands", () => {
-    expect(() =>
-      selectStage1Providers("live", (name) =>
-        name === "OPENAI_API_KEY" ? "sk-test" : undefined
-      )
-    ).toThrow(/live providers are not implemented yet/);
+  it("returns the hybrid live trio when OPENAI_API_KEY is present", () => {
+    const providers = selectStage1Providers("live", (name) =>
+      name === "OPENAI_API_KEY" ? "sk-test" : undefined
+    );
+    expect(providers.validation.name).toBe("openai");
+    // Cleaning and geometry remain mocked until their live adapters land.
+    expect(providers.cleaning.name).toBe("mock");
+    expect(providers.geometry.name).toBe("mock");
   });
 
   it("refuses unknown modes", () => {

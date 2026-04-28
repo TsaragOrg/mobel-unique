@@ -17,6 +17,7 @@ import {
   type CornerGeometry,
   placeholderBackWallGeometry
 } from "./geometry.ts";
+import { OpenAIValidationProvider } from "./providers/openai-vision.ts";
 
 export type ValidationOk = {
   ok: true;
@@ -181,17 +182,21 @@ export function selectStage1Providers(
     };
   }
   if (isProviderModeLive(providerMode)) {
-    if (
-      !envGetter("OPENAI_API_KEY") &&
-      !envGetter("GEMINI_API_KEY")
-    ) {
+    const openaiKey = envGetter("OPENAI_API_KEY");
+    if (!openaiKey) {
       throw new Error(
-        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY or GEMINI_API_KEY"
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation adapter"
       );
     }
-    throw new Error(
-      "live providers are not implemented yet for in-home simulation Stage 1"
-    );
+    // Live validation through OpenAI vision; cleaning and geometry
+    // remain mocked until their live adapters land. The hybrid lets a
+    // developer test the live validation path against real photos
+    // without burning the cleaning or geometry budgets yet.
+    return {
+      validation: new OpenAIValidationProvider({ apiKey: openaiKey }),
+      cleaning: new MockCleaningProvider(),
+      geometry: new MockGeometryProvider()
+    };
   }
   throw new Error(
     `unknown IN_HOME_SIMULATION_PROVIDER_MODE: ${providerMode}`
