@@ -19,6 +19,10 @@ import {
 } from "./lib/providers.ts";
 import { decideStageFailureAction } from "./lib/retry.ts";
 import { validateBackWallGeometry } from "./lib/sanity.ts";
+import {
+  validateSuppliedBackWallDimensions,
+  validateSuppliedCornerDimensions
+} from "./lib/dimensions.ts";
 
 const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
 
@@ -740,6 +744,26 @@ async function processPlacementJob(
       string,
       number
     >;
+
+    const dimensionsCheck = claim.room_geometry_mode === "back_wall"
+      ? validateSuppliedBackWallDimensions(suppliedDimensions)
+      : validateSuppliedCornerDimensions(suppliedDimensions);
+    if (!dimensionsCheck.ok) {
+      await callRpc<string>(
+        supabaseUrl,
+        serviceRoleKey,
+        "record_in_home_simulation_placement_failure",
+        {
+          job_id: claim.job_id,
+          worker_identifier: workerIdentifier,
+          error_code: "supplied_dimensions_invalid",
+          error_message: dimensionsCheck.failureReason
+        }
+      );
+      throw new Error(
+        `supplied_dimensions_invalid: ${dimensionsCheck.failureReason}`
+      );
+    }
 
     const placementResult = await providers.placement.placeSofa({
       cleanedRoomBytes: cleanedRawBytes,
