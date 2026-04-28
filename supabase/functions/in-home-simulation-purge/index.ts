@@ -3,16 +3,25 @@
 // This Edge Function lists in-home simulation jobs whose
 // `retention_deadline` has passed, deletes every object under each
 // job's storage prefix in `simulation-private-artifacts`, and marks the
-// row as `expired`. The function is idempotent: a missing object
-// counts as already deleted, and a job that is already `expired` is a
-// clean no-op.
+// row as `expired`. It also performs the SPEC-0007 orphan upload
+// cleanup: room upload objects under `simulations/{job_id}/inputs/...`
+// whose owning job does not exist and that are older than the orphan
+// age threshold are deleted.
+//
+// The function is idempotent: missing objects count as already deleted
+// and jobs that are already `expired` are a clean no-op.
 //
 // Trigger via `pnpm sim:purge` locally or via a scheduled cron in
 // production. The visitor-facing API never calls this function.
 
+import {
+  extractJobIdFromUploadPath
+} from "../in-home-simulation-worker/lib/orphan-paths.ts";
+
 const FUNCTION_NAME = "in-home-simulation-purge";
 const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_BATCH_SIZE = 50;
+const DEFAULT_ORPHAN_MIN_AGE_HOURS = 1;
 
 type ExpiredJobRow = {
   job_id: string;
@@ -39,6 +48,7 @@ type PurgeResponse = {
   status: "noop" | "ok" | "partial" | "failed";
   processed: number;
   results: PurgeResult[];
+  orphans_deleted?: number;
   error?: string;
 };
 
@@ -249,18 +259,24 @@ Deno.serve(async (request) => {
     );
   }
 
-  if (jobs.length === 0) {
+  const results: PurgeResult[] = [];
+  for (const job of jobs) {
+    results.push(await purgeJob(supabaseUrl, serviceRoleKey, job));
+  }
+
+  const orphansDeleted = await deleteOrphanUploads(
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  if (jobs.length === 0 && orphansDeleted === 0) {
     return jsonResponse({
       function_name: FUNCTION_NAME,
       status: "noop",
       processed: 0,
-      results: []
+      results: [],
+      orphans_deleted: 0
     });
-  }
-
-  const results: PurgeResult[] = [];
-  for (const job of jobs) {
-    results.push(await purgeJob(supabaseUrl, serviceRoleKey, job));
   }
 
   const allOk = results.every((r) => r.marked_expired && !r.error);
@@ -268,6 +284,180 @@ Deno.serve(async (request) => {
     function_name: FUNCTION_NAME,
     status: allOk ? "ok" : "partial",
     processed: results.filter((r) => r.marked_expired).length,
-    results
+    results,
+    orphans_deleted: orphansDeleted
   });
 });
+
+async function deleteOrphanUploads(
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<number> {
+  const minAgeHours = parsePositiveInt(
+    "IN_HOME_SIMULATION_ORPHAN_MIN_AGE_HOURS",
+    DEFAULT_ORPHAN_MIN_AGE_HOURS
+  );
+  const cutoffMs = Date.now() - minAgeHours * 3600 * 1000;
+
+  let allObjects: Array<{ name: string; lastModifiedMs: number }>;
+  try {
+    const raw = await listAllUploadObjects(supabaseUrl, serviceRoleKey);
+    allObjects = raw;
+  } catch (_error) {
+    return 0;
+  }
+
+  const candidates = allObjects.filter((o) => {
+    if (o.lastModifiedMs > cutoffMs) return false;
+    return extractJobIdFromUploadPath(o.name) !== null;
+  });
+
+  if (candidates.length === 0) return 0;
+
+  const candidateJobIds = Array.from(
+    new Set(
+      candidates
+        .map((o) => extractJobIdFromUploadPath(o.name))
+        .filter((id): id is string => id !== null)
+    )
+  );
+
+  let existingJobIds: Set<string>;
+  try {
+    existingJobIds = await fetchExistingJobIds(
+      supabaseUrl,
+      serviceRoleKey,
+      candidateJobIds
+    );
+  } catch (_error) {
+    return 0;
+  }
+
+  let deleted = 0;
+  for (const obj of candidates) {
+    const jobId = extractJobIdFromUploadPath(obj.name);
+    if (jobId && existingJobIds.has(jobId)) continue;
+    try {
+      const ok = await deleteStorageObject(
+        supabaseUrl,
+        serviceRoleKey,
+        obj.name
+      );
+      if (ok) deleted += 1;
+    } catch (_error) {
+      /* swallow individual delete errors */
+    }
+  }
+  return deleted;
+}
+
+async function listAllUploadObjects(
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<Array<{ name: string; lastModifiedMs: number }>> {
+  const collected: Array<{ name: string; lastModifiedMs: number }> = [];
+  // Walk down by listing simulations/, then for each subdir list its
+  // inputs/ folder. Folder entries appear with id = null in Supabase
+  // storage list responses.
+  const root = await rawList(supabaseUrl, serviceRoleKey, "simulations");
+  for (const entry of root) {
+    if (entry.id !== null && entry.id !== undefined) continue;
+    const jobPrefix = `simulations/${entry.name}`;
+    const inputsList = await rawList(
+      supabaseUrl,
+      serviceRoleKey,
+      `${jobPrefix}/inputs`
+    );
+    for (const obj of inputsList) {
+      if (obj.id === null || obj.id === undefined) continue;
+      const lastModified = obj.updated_at ?? obj.created_at ?? null;
+      const ms = lastModified ? Date.parse(lastModified) : Date.now();
+      collected.push({
+        name: `${jobPrefix}/inputs/${obj.name}`,
+        lastModifiedMs: Number.isFinite(ms) ? ms : Date.now()
+      });
+    }
+  }
+  return collected;
+}
+
+async function rawList(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  prefix: string
+): Promise<
+  Array<{
+    name: string;
+    id: string | null;
+    updated_at?: string;
+    created_at?: string;
+  }>
+> {
+  const collected: Array<{
+    name: string;
+    id: string | null;
+    updated_at?: string;
+    created_at?: string;
+  }> = [];
+  let offset = 0;
+  while (true) {
+    const response = await fetch(
+      `${supabaseUrl}/storage/v1/object/list/${STORAGE_BUCKET}`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+          "apikey": serviceRoleKey
+        },
+        body: JSON.stringify({
+          prefix,
+          limit: 100,
+          offset,
+          sortBy: { column: "name", order: "asc" }
+        })
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`storage list failed: HTTP ${response.status}`);
+    }
+    const rows = (await response.json()) as Array<{
+      name: string;
+      id: string | null;
+      updated_at?: string;
+      created_at?: string;
+    }>;
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    collected.push(...rows);
+    if (rows.length < 100) break;
+    offset += rows.length;
+  }
+  return collected;
+}
+
+async function fetchExistingJobIds(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  candidateJobIds: string[]
+): Promise<Set<string>> {
+  if (candidateJobIds.length === 0) return new Set();
+  const inList = candidateJobIds
+    .map((id) => `"${id}"`)
+    .join(",");
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=in.(${inList})&select=id`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
+        "Accept": "application/json"
+      }
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`job lookup failed: HTTP ${response.status}`);
+  }
+  const rows = (await response.json()) as Array<{ id: string }>;
+  return new Set(rows.map((r) => r.id));
+}
