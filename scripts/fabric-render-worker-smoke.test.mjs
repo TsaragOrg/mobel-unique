@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const scriptPath = fileURLToPath(
@@ -51,7 +51,7 @@ globalThis.fetch = async () => new Response("Function not found", {
 `
   );
 
-  return mockPath;
+  return pathToFileURL(mockPath).href;
 }
 
 describe("fabric render worker smoke script", () => {

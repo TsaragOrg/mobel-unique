@@ -63,7 +63,7 @@
       "layer": "technical",
       "parent": "SPEC-0005",
       "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004", "SPEC-0005"],
-      "implementationPlans": ["PLAN-0006"],
+      "implementationPlans": ["PLAN-0006", "PLAN-0010"],
       "path": "docs/specs/accepted/SPEC-0006-fabric-render-worker.md",
       "areas": ["api", "supabase"]
     },

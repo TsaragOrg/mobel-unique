@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const scriptPath = fileURLToPath(
@@ -112,7 +112,7 @@ globalThis.fetch = async (url, init = {}) => {
 `
   );
 
-  return mockPath;
+  return pathToFileURL(mockPath).href;
 }
 
 describe("SPEC-0011 admin smoke script", () => {
