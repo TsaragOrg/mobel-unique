@@ -201,7 +201,7 @@ function listMarkdownFiles(directory) {
 
   return readdirSync(directory)
     .filter((name) => name.endsWith(".md"))
-    .map((name) => join(directory, name));
+    .map((name) => normalizePath(join(directory, name)));
 }
 
 function listFilesRecursive(directory) {
@@ -214,7 +214,12 @@ function listFilesRecursive(directory) {
       const path = join(directory, entry.name);
       return entry.isDirectory() ? listFilesRecursive(path) : [path];
     })
+    .map(normalizePath)
     .sort();
+}
+
+function normalizePath(path) {
+  return path.replace(/\\/g, "/");
 }
 
 function normalizeLanguageToken(token) {

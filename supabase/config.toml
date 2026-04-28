@@ -386,3 +386,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.worker-smoke]
 enabled = true
 verify_jwt = false
+
+[functions.fabric-render-worker]
+enabled = true
+verify_jwt = false

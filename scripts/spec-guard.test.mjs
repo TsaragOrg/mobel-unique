@@ -115,3 +115,27 @@ The following areas need explicit product decisions before this spec can be acce
     );
   });
 });
+
+describe("spec guard plan checks", () => {
+  it("ignores README files in active and done plan directories", () => {
+    const cwd = writeSpecRepo(`# SPEC-0001 Example Spec
+
+Spec: SPEC-0001
+Status: accepted
+
+## Goal
+
+This spec exists to test plan directory README handling.
+`);
+
+    mkdirSync(join(cwd, "docs/plans/active"), { recursive: true });
+    mkdirSync(join(cwd, "docs/plans/done"), { recursive: true });
+    writeFileSync(join(cwd, "docs/plans/active/README.md"), "# Active Plans\n");
+    writeFileSync(join(cwd, "docs/plans/done/README.md"), "# Done Plans\n");
+
+    const result = runGuard(cwd);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Specification guard passed");
+  });
+});

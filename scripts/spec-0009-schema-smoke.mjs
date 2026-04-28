@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const DEFAULT_LOCAL_DB_URL =
   "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -9,7 +10,12 @@ const DB_URL =
   process.env.SUPABASE_DB_URL ??
   process.env.DATABASE_URL ??
   DEFAULT_LOCAL_DB_URL;
+const EXPLICIT_PSQL_BIN = Boolean(process.env.SPEC_0009_SCHEMA_SMOKE_PSQL);
 const PSQL_BIN = process.env.SPEC_0009_SCHEMA_SMOKE_PSQL ?? "psql";
+const DOCKER_BIN = process.env.SPEC_0009_SCHEMA_SMOKE_DOCKER ?? "docker";
+const DOCKER_DB_URL =
+  process.env.SPEC_0009_SCHEMA_SMOKE_DOCKER_DB_URL ??
+  "postgresql://postgres:postgres@127.0.0.1:5432/postgres";
 const REQUEST_TIMEOUT_MS = Number(
   process.env.SPEC_0009_SCHEMA_SMOKE_TIMEOUT_MS ?? 10000,
 );
@@ -645,61 +651,71 @@ function isConnectionFailure(stderr, error) {
   );
 }
 
-const child = spawn(
-  PSQL_BIN,
-  [DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A", "-c", smokeSql],
-  {
+function isDockerDatabaseUnavailable(stderr, error) {
+  const text = `${stderr}\n${error?.message ?? ""}`.toLowerCase();
+  return (
+    text.includes("no such container") ||
+    text.includes("is not running") ||
+    text.includes("cannot connect to the docker daemon")
+  );
+}
+
+function readSupabaseProjectId() {
+  if (process.env.SPEC_0009_SCHEMA_SMOKE_PROJECT_ID) {
+    return process.env.SPEC_0009_SCHEMA_SMOKE_PROJECT_ID;
+  }
+
+  try {
+    const config = readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
+    return config.match(/^project_id\s*=\s*"([^"]+)"/m)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function psqlArgs(dbUrl) {
+  return [dbUrl, "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A", "-c", smokeSql];
+}
+
+function spawnCommand(bin, args) {
+  const isNodeShim = /\.(cjs|js|mjs)$/i.test(bin);
+  return spawn(isNodeShim ? process.execPath : bin, isNodeShim ? [bin, ...args] : args, {
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
-  },
-);
+  });
+}
 
-let stdout = "";
-let stderr = "";
-let settled = false;
+function createPsqlRun() {
+  return {
+    args: psqlArgs(DB_URL),
+    bin: PSQL_BIN,
+    kind: "psql",
+  };
+}
 
-const timeout = setTimeout(() => {
-  child.kill("SIGTERM");
-  if (isLocalDbUrl(DB_URL)) {
-    skip(
-      `local Supabase database is not reachable at ${DB_URL}. Run \`pnpm supabase:start\`.`,
+function createDockerPsqlRun() {
+  const projectId = readSupabaseProjectId();
+
+  if (!projectId) {
+    fail(
+      `psql executable not found: ${PSQL_BIN}; Supabase project_id not found for Docker fallback`,
     );
   }
-  fail(`database query timed out after ${REQUEST_TIMEOUT_MS}ms`);
-}, REQUEST_TIMEOUT_MS);
 
-child.stdout.on("data", (chunk) => {
-  stdout += chunk;
-});
+  return {
+    args: [
+      "exec",
+      "-i",
+      `supabase_db_${projectId}`,
+      "psql",
+      ...psqlArgs(DOCKER_DB_URL),
+    ],
+    bin: DOCKER_BIN,
+    kind: "docker",
+  };
+}
 
-child.stderr.on("data", (chunk) => {
-  stderr += chunk;
-});
-
-child.on("error", (error) => {
-  clearTimeout(timeout);
-  settled = true;
-  if (error?.code === "ENOENT") {
-    fail(`psql executable not found: ${PSQL_BIN}`);
-  }
-  fail(error instanceof Error ? error.message : String(error));
-});
-
-child.on("close", (status) => {
-  if (settled) {
-    return;
-  }
-  clearTimeout(timeout);
-
-  if (status !== 0) {
-    if (isLocalDbUrl(DB_URL) && isConnectionFailure(stderr)) {
-      skip(
-        `local Supabase database is not reachable at ${DB_URL}. Run \`pnpm supabase:start\`.`,
-      );
-    }
-    fail(stderr.trim() || `psql exited with status ${status}`);
-  }
-
+function handleSuccessfulOutput(stdout) {
   const failures = stdout
     .split("\n")
     .map((line) => line.trim())
@@ -710,4 +726,77 @@ child.on("close", (status) => {
   }
 
   console.log("PASS SPEC-0009 schema smoke");
+}
+
+function runSchemaSmoke(run, options = {}) {
+  const child = spawnCommand(run.bin, run.args);
+  let stdout = "";
+  let stderr = "";
+  let settled = false;
+
+  const timeout = setTimeout(() => {
+    child.kill("SIGTERM");
+    if (isLocalDbUrl(DB_URL)) {
+      skip(
+        `local Supabase database is not reachable at ${DB_URL}. Run \`pnpm supabase:start\`.`,
+      );
+    }
+    fail(`database query timed out after ${REQUEST_TIMEOUT_MS}ms`);
+  }, REQUEST_TIMEOUT_MS);
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  child.on("error", (error) => {
+    clearTimeout(timeout);
+    settled = true;
+
+    if (options.allowDockerFallback && error?.code === "ENOENT" && isLocalDbUrl(DB_URL)) {
+      runSchemaSmoke(createDockerPsqlRun());
+      return;
+    }
+
+    if (run.kind === "docker" && error?.code === "ENOENT") {
+      fail(
+        `psql executable not found: ${PSQL_BIN}; Docker fallback executable not found: ${DOCKER_BIN}`,
+      );
+    }
+
+    if (error?.code === "ENOENT") {
+      fail(`psql executable not found: ${run.bin}`);
+    }
+
+    fail(error instanceof Error ? error.message : String(error));
+  });
+
+  child.on("close", (status) => {
+    if (settled) {
+      return;
+    }
+    clearTimeout(timeout);
+
+    if (status !== 0) {
+      if (
+        isLocalDbUrl(DB_URL) &&
+        (isConnectionFailure(stderr) ||
+          (run.kind === "docker" && isDockerDatabaseUnavailable(stderr)))
+      ) {
+        skip(
+          `local Supabase database is not reachable at ${DB_URL}. Run \`pnpm supabase:start\`.`,
+        );
+      }
+      fail(stderr.trim() || `${run.bin} exited with status ${status}`);
+    }
+
+    handleSuccessfulOutput(stdout);
+  });
+}
+
+runSchemaSmoke(createPsqlRun(), {
+  allowDockerFallback: !EXPLICIT_PSQL_BIN,
 });
