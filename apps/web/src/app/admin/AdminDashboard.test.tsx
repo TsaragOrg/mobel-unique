@@ -2,17 +2,17 @@ import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import AdminDashboard, {
-  type AdminDashboardDependencies
+  type AdminDashboardDependencies,
 } from "./AdminDashboard";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    replace: vi.fn()
-  })
+    replace: vi.fn(),
+  }),
 }));
 
 function createDependencies(
-  overrides: Partial<AdminDashboardDependencies>
+  overrides: Partial<AdminDashboardDependencies>,
 ): AdminDashboardDependencies {
   return {
     clearTrustedDevice: vi.fn(async () => {}),
@@ -22,16 +22,16 @@ function createDependencies(
     signOut: vi.fn(async () => {}),
     verifyAdminSession: vi.fn(async () => ({
       ok: true,
-      status: 200
+      status: 200,
     })),
-    ...overrides
+    ...overrides,
   };
 }
 
 describe("Admin dashboard", () => {
   it("redirects anonymous visitors without rendering protected admin content", async () => {
     const dependencies = createDependencies({
-      getAccessToken: vi.fn(async () => null)
+      getAccessToken: vi.fn(async () => null),
     });
 
     render(<AdminDashboard dependencies={dependencies} />);
@@ -46,14 +46,14 @@ describe("Admin dashboard", () => {
     const dependencies = createDependencies({
       verifyAdminSession: vi.fn(async () => ({
         ok: false,
-        status: 403
-      }))
+        status: 403,
+      })),
     });
 
     render(<AdminDashboard dependencies={dependencies} />);
 
     await screen.findByRole("heading", {
-      name: "Admin access unavailable"
+      name: "Admin access unavailable",
     });
     expect(screen.queryByText("Admin dashboard")).not.toBeInTheDocument();
   });
@@ -64,8 +64,16 @@ describe("Admin dashboard", () => {
     render(<AdminDashboard dependencies={dependencies} />);
 
     await screen.findByRole("heading", {
-      name: "Admin dashboard"
+      name: "Admin dashboard",
     });
     expect(dependencies.verifyAdminSession).toHaveBeenCalledWith("admin-token");
+    expect(screen.getByRole("link", { name: "Sofas" })).toHaveAttribute(
+      "href",
+      "/admin/sofas",
+    );
+    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute(
+      "href",
+      "/admin/tags",
+    );
   });
 });

@@ -1,0 +1,384 @@
+import { type createAdminAuth } from "./admin-auth";
+import {
+  AdminCatalogOperationError,
+  shapeSofaResponse,
+  shapeTagResponse,
+  validateSofaCreatePayload,
+  validateSofaPatchPayload,
+  validateTagMutationPayload,
+  type AdminCatalogOperationErrorData,
+  type AdminCatalogStore,
+} from "./admin-catalog";
+
+export type { AdminCatalogStore } from "./admin-catalog";
+
+type AdminAuth = ReturnType<typeof createAdminAuth>;
+
+interface BaseInput {
+  adminAuth: AdminAuth;
+  authorizationHeader: string | undefined;
+  createStore: () => AdminCatalogStore;
+  trustedDeviceSecret: string | undefined;
+}
+
+type RequestInput = BaseInput & {
+  request: Request;
+};
+
+type SofaInput = BaseInput & {
+  sofaId: string;
+};
+
+type SofaRequestInput = RequestInput & {
+  sofaId: string;
+};
+
+type TagInput = BaseInput & {
+  tagId: string;
+};
+
+type TagRequestInput = RequestInput & {
+  tagId: string;
+};
+
+export async function handleListSofasRequest(input: BaseInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const sofas = await store.listSofas();
+
+    return jsonResponse(
+      {
+        data: {
+          sofas: sofas.map(shapeSofaResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateSofaRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateSofaCreatePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const sofa = await store.createSofa(validation.value);
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(sofa),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleGetSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const sofa = await store.getSofa(input.sofaId);
+
+    if (!sofa) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(sofa),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUpdateSofaRequest(input: SofaRequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateSofaPatchPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const sofa = await store.updateSofa(input.sofaId, validation.value);
+
+    if (!sofa) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(sofa),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleGetSofaPublicationReadinessRequest(
+  input: SofaInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const readiness = await store.getSofaPublicationReadiness(input.sofaId);
+
+    if (!readiness) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          readiness,
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleListTagsRequest(input: BaseInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const tags = await store.listTags();
+
+    return jsonResponse(
+      {
+        data: {
+          tags: tags.map(shapeTagResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateTagRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateTagMutationPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const tag = await store.createTag(validation.value);
+
+    return jsonResponse(
+      {
+        data: {
+          tag: shapeTagResponse(tag),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleUpdateTagRequest(input: TagRequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateTagMutationPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const tag = await store.updateTag(input.tagId, validation.value);
+
+    if (!tag) {
+      return notFoundResponse("TAG_NOT_FOUND", "Tag was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          tag: shapeTagResponse(tag),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleDeleteTagRequest(input: TagInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const error = await store.deleteTag(input.tagId);
+
+    if (error) {
+      return catalogErrorResponse(error);
+    }
+
+    return new Response(null, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      status: 204,
+    });
+  });
+}
+
+async function withAuthorizedStore(
+  input: BaseInput,
+  callback: (store: AdminCatalogStore) => Promise<Response>,
+) {
+  try {
+    const authorization = await input.adminAuth.authorizeRequest({
+      authorizationHeader: input.authorizationHeader,
+      trustedDeviceSecret: input.trustedDeviceSecret,
+    });
+
+    if (!authorization.ok) {
+      return jsonResponse(
+        {
+          error: authorization.error,
+        },
+        authorization.status,
+      );
+    }
+
+    return await callback(input.createStore());
+  } catch (error) {
+    if (error instanceof AdminCatalogOperationError) {
+      return catalogErrorResponse(error);
+    }
+
+    return catalogErrorResponse({
+      code: "CATALOG_UNAVAILABLE",
+      message: "Catalog service is unavailable.",
+      status: 500,
+    });
+  }
+}
+
+async function readJsonObject(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return {
+      error: {
+        code: "UNSUPPORTED_MEDIA_TYPE",
+        details: {},
+        message: "Request body must be JSON.",
+      },
+      ok: false as const,
+      status: 415 as const,
+    };
+  }
+
+  try {
+    const value = await request.json();
+
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return {
+        error: {
+          code: "INVALID_REQUEST",
+          details: {},
+          message: "Request body must be a JSON object.",
+        },
+        ok: false as const,
+        status: 400 as const,
+      };
+    }
+
+    return {
+      ok: true as const,
+      value,
+    };
+  } catch {
+    return {
+      error: {
+        code: "INVALID_JSON",
+        details: {},
+        message: "Request body must be valid JSON.",
+      },
+      ok: false as const,
+      status: 400 as const,
+    };
+  }
+}
+
+function validationResponse(input: {
+  error: {
+    code: string;
+    details?: Record<string, unknown>;
+    message: string;
+  };
+  status: number;
+}) {
+  return jsonResponse(
+    {
+      error: input.error,
+    },
+    input.status,
+  );
+}
+
+function notFoundResponse(code: string, message: string) {
+  return jsonResponse(
+    {
+      error: {
+        code,
+        message,
+      },
+    },
+    404,
+  );
+}
+
+function catalogErrorResponse(error: AdminCatalogOperationErrorData) {
+  return jsonResponse(
+    {
+      error: {
+        code: error.code,
+        details: error.details ?? {},
+        message: error.message,
+      },
+    },
+    error.status,
+  );
+}
+
+function jsonResponse(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json",
+    },
+    status,
+  });
+}

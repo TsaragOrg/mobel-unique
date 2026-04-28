@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
@@ -19,14 +20,14 @@ export interface AdminDashboardDependencies {
 }
 
 export default function AdminDashboard({
-  dependencies
+  dependencies,
 }: {
   dependencies?: AdminDashboardDependencies;
 }) {
   const router = useRouter();
   const defaultDependencies = useMemo(
     () => createDefaultDependencies((path) => router.replace(path)),
-    [router]
+    [router],
   );
   const activeDependencies = dependencies ?? defaultDependencies;
   const [dashboardState, setDashboardState] =
@@ -109,7 +110,10 @@ export default function AdminDashboard({
   if (dashboardState === "forbidden") {
     return (
       <main className="shell admin-shell">
-        <section className="panel admin-panel" aria-labelledby="admin-denied-title">
+        <section
+          className="panel admin-panel"
+          aria-labelledby="admin-denied-title"
+        >
           <p className="eyebrow">Mobel Unique</p>
           <h1 id="admin-denied-title">Admin access unavailable</h1>
           <p>This account is not authorized for the admin area.</p>
@@ -126,7 +130,17 @@ export default function AdminDashboard({
       <section className="panel admin-panel" aria-labelledby="admin-title">
         <p className="eyebrow">Mobel Unique</p>
         <h1 id="admin-title">Admin dashboard</h1>
-        <p>Session verified.</p>
+        <nav className="admin-actions" aria-label="Catalog actions">
+          <Link className="button-link" href="/admin/sofas">
+            Sofas
+          </Link>
+          <Link className="button-link" href="/admin/sofas/new">
+            New sofa
+          </Link>
+          <Link className="button-link" href="/admin/tags">
+            Tags
+          </Link>
+        </nav>
         <button onClick={handleLogout} type="button">
           Sign out
         </button>
@@ -136,12 +150,12 @@ export default function AdminDashboard({
 }
 
 function createDefaultDependencies(
-  redirect: (path: string) => void
+  redirect: (path: string) => void,
 ): AdminDashboardDependencies {
   return {
     async clearTrustedDevice() {
       await fetch("/api/admin/logout", {
-        method: "POST"
+        method: "POST",
       });
     },
     async getAccessToken() {
@@ -169,9 +183,9 @@ function createDefaultDependencies(
       return fetch("/api/admin/session", {
         cache: "no-store",
         headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
-    }
+    },
   };
 }
