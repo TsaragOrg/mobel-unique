@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPublicTagSlug,
+  shapeFabricResponse,
   shapeSofaResponse,
+  validateFabricCreatePayload,
+  validateFabricPatchPayload,
+  validateSofaFabricMutationPayload,
   validateSofaCreatePayload,
   validateSofaPatchPayload,
   validateTagMutationPayload,
+  validateUploadCreatePayload,
 } from "./admin-catalog";
 
 const sofaRecord = {
@@ -37,6 +42,53 @@ const sofaRecord = {
   ],
   updated_at: "2026-04-28T10:05:00.000Z",
   length_cm: 220,
+};
+
+const swatchAsset = {
+  asset_kind: "fabric_swatch_public",
+  bucket_id: "catalog-public-assets",
+  byte_size: 1200,
+  content_type: "image/png",
+  height_px: 256,
+  id: "00000000-0000-4000-8000-000000000901",
+  lifecycle_state: "active",
+  object_path: "fabrics/fabric-id/swatches/swatch.png",
+  provider_key: "must-not-leak",
+  raw_private_path: "catalog-private-assets/private.png",
+  service_role_key: "must-not-leak",
+  visibility: "public",
+  width_px: 256,
+};
+
+const aiReferenceAsset = {
+  asset_kind: "fabric_ai_reference",
+  bucket_id: "catalog-private-assets",
+  byte_size: 2200,
+  content_type: "image/jpeg",
+  height_px: 1200,
+  id: "00000000-0000-4000-8000-000000000902",
+  lifecycle_state: "active",
+  object_path: "fabrics/fabric-id/ai-reference/reference.jpg",
+  provider_key: "must-not-leak",
+  raw_private_path: "catalog-private-assets/reference.jpg",
+  service_role_key: "must-not-leak",
+  visibility: "private",
+  width_px: 1600,
+};
+
+const fabricRecord = {
+  ai_reference_asset: aiReferenceAsset,
+  ai_reference_asset_id: aiReferenceAsset.id,
+  archived_at: null,
+  created_at: "2026-04-28T10:00:00.000Z",
+  id: "00000000-0000-4000-8000-000000000903",
+  internal_name: "Internal fabric",
+  is_premium: true,
+  lifecycle_state: "active",
+  public_name: "Boucle ivoire",
+  swatch_asset: swatchAsset,
+  swatch_asset_id: swatchAsset.id,
+  updated_at: "2026-04-28T10:05:00.000Z",
 };
 
 describe("admin catalog validation", () => {
@@ -133,6 +185,87 @@ describe("admin catalog validation", () => {
     });
     expect(buildPublicTagSlug("%%%")).toBe("tag");
   });
+
+  it("validates fabric create and patch payloads", () => {
+    const createResult = validateFabricCreatePayload({
+      ai_reference_asset_id: aiReferenceAsset.id,
+      internal_name: "  Internal fabric  ",
+      is_premium: true,
+      public_name: "  Boucle ivoire  ",
+      swatch_asset_id: swatchAsset.id,
+    });
+    const patchResult = validateFabricPatchPayload({
+      is_premium: false,
+      public_name: "  Boucle naturel  ",
+    });
+
+    expect(createResult).toEqual({
+      ok: true,
+      value: {
+        ai_reference_asset_id: aiReferenceAsset.id,
+        internal_name: "Internal fabric",
+        is_premium: true,
+        public_name: "Boucle ivoire",
+        swatch_asset_id: swatchAsset.id,
+      },
+    });
+    expect(patchResult).toEqual({
+      ok: true,
+      value: {
+        is_premium: false,
+        public_name: "Boucle naturel",
+      },
+    });
+  });
+
+  it("rejects invalid fabric, upload, and assignment payloads", () => {
+    expect(
+      validateFabricCreatePayload({
+        admin_notes: "private",
+        internal_name: "",
+        price: 100,
+      }),
+    ).toMatchObject({
+      error: {
+        code: "UNSUPPORTED_FIELD",
+        details: {
+          fields: ["admin_notes", "price"],
+        },
+      },
+      ok: false,
+      status: 400,
+    });
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1000,
+        content_type: "application/pdf",
+        purpose: "fabric_swatch",
+      }),
+    ).toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        details: {
+          fields: ["content_type"],
+        },
+      },
+      ok: false,
+      status: 422,
+    });
+    expect(
+      validateSofaFabricMutationPayload({
+        public_order: -1,
+      }),
+    ).toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        details: {
+          fields: ["public_order"],
+        },
+      },
+      ok: false,
+      status: 422,
+    });
+  });
 });
 
 describe("admin catalog response shaping", () => {
@@ -170,5 +303,47 @@ describe("admin catalog response shaping", () => {
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");
     expect(serialized).not.toContain("private_table");
+  });
+
+  it("returns only admin-safe fabric and asset fields", () => {
+    const response = shapeFabricResponse(fabricRecord);
+    const serialized = JSON.stringify(response);
+
+    expect(response).toEqual({
+      ai_reference_asset: {
+        asset_kind: "fabric_ai_reference",
+        byte_size: 2200,
+        content_type: "image/jpeg",
+        height_px: 1200,
+        id: aiReferenceAsset.id,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      ai_reference_asset_id: aiReferenceAsset.id,
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000903",
+      internal_name: "Internal fabric",
+      is_premium: true,
+      lifecycle_state: "active",
+      public_name: "Boucle ivoire",
+      swatch_asset: {
+        asset_kind: "fabric_swatch_public",
+        byte_size: 1200,
+        content_type: "image/png",
+        height_px: 256,
+        id: swatchAsset.id,
+        lifecycle_state: "active",
+        visibility: "public",
+        width_px: 256,
+      },
+      swatch_asset_id: swatchAsset.id,
+      updated_at: "2026-04-28T10:05:00.000Z",
+    });
+    expect(serialized).not.toContain("service_role");
+    expect(serialized).not.toContain("object_path");
+    expect(serialized).not.toContain("catalog-private-assets");
+    expect(serialized).not.toContain("provider_key");
   });
 });

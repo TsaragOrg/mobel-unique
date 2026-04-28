@@ -1,11 +1,19 @@
 import { type createAdminAuth } from "./admin-auth";
 import {
   AdminCatalogOperationError,
+  shapeFabricResponse,
   shapeSofaResponse,
+  shapeSofaFabricResponse,
+  shapeStorageAssetResponse,
   shapeTagResponse,
+  shapeUploadResponse,
+  validateFabricCreatePayload,
+  validateFabricPatchPayload,
+  validateSofaFabricMutationPayload,
   validateSofaCreatePayload,
   validateSofaPatchPayload,
   validateTagMutationPayload,
+  validateUploadCreatePayload,
   type AdminCatalogOperationErrorData,
   type AdminCatalogStore,
 } from "./admin-catalog";
@@ -31,6 +39,28 @@ type SofaInput = BaseInput & {
 
 type SofaRequestInput = RequestInput & {
   sofaId: string;
+};
+
+type FabricInput = BaseInput & {
+  fabricId: string;
+};
+
+type FabricRequestInput = RequestInput & {
+  fabricId: string;
+};
+
+type SofaFabricInput = BaseInput & {
+  fabricId: string;
+  sofaId: string;
+};
+
+type SofaFabricRequestInput = RequestInput & {
+  fabricId: string;
+  sofaId: string;
+};
+
+type UploadInput = BaseInput & {
+  uploadId: string;
 };
 
 type TagInput = BaseInput & {
@@ -156,6 +186,283 @@ export async function handleGetSofaPublicationReadinessRequest(
       },
       200,
     );
+  });
+}
+
+export async function handleCreateUploadRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateUploadCreatePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const upload = await store.createUpload(validation.value);
+
+    return jsonResponse(
+      {
+        data: {
+          upload: shapeUploadResponse(upload),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleCompleteUploadRequest(input: UploadInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.completeUpload(input.uploadId);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          asset: shapeStorageAssetResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleListFabricsRequest(input: BaseInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const fabrics = await store.listFabrics();
+
+    return jsonResponse(
+      {
+        data: {
+          fabrics: fabrics.map(shapeFabricResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateFabricRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateFabricCreatePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const fabric = await store.createFabric(validation.value);
+
+    return jsonResponse(
+      {
+        data: {
+          fabric: shapeFabricResponse(fabric),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleGetFabricRequest(input: FabricInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const fabric = await store.getFabric(input.fabricId);
+
+    if (!fabric) {
+      return notFoundResponse("FABRIC_NOT_FOUND", "Fabric was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          fabric: shapeFabricResponse(fabric),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUpdateFabricRequest(input: FabricRequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateFabricPatchPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const fabric = await store.updateFabric(input.fabricId, validation.value);
+
+    if (!fabric) {
+      return notFoundResponse("FABRIC_NOT_FOUND", "Fabric was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          fabric: shapeFabricResponse(fabric),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleArchiveFabricRequest(input: FabricInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const fabric = await store.archiveFabric(input.fabricId);
+
+    if (!fabric) {
+      return notFoundResponse("FABRIC_NOT_FOUND", "Fabric was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          fabric: shapeFabricResponse(fabric),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleListSofaFabricsRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const sofaFabrics = await store.listSofaFabrics(input.sofaId);
+
+    if (!sofaFabrics) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa_fabrics: sofaFabrics.map(shapeSofaFabricResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleAssignSofaFabricRequest(
+  input: SofaFabricRequestInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateSofaFabricMutationPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.assignSofaFabric(
+      input.sofaId,
+      input.fabricId,
+      validation.value,
+    );
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa_fabric: shapeSofaFabricResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUpdateSofaFabricRequest(
+  input: SofaFabricRequestInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateSofaFabricMutationPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.updateSofaFabric(
+      input.sofaId,
+      input.fabricId,
+      validation.value,
+    );
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa_fabric: shapeSofaFabricResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleRemoveSofaFabricRequest(input: SofaFabricInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const error = await store.removeSofaFabric(input.sofaId, input.fabricId);
+
+    if (error) {
+      return catalogErrorResponse(error);
+    }
+
+    return new Response(null, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      status: 204,
+    });
   });
 }
 
@@ -357,6 +664,18 @@ function notFoundResponse(code: string, message: string) {
       },
     },
     404,
+  );
+}
+
+function isCatalogError(
+  value: unknown,
+): value is AdminCatalogOperationErrorData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "code" in value &&
+    "message" in value &&
+    "status" in value
   );
 }
 

@@ -16,6 +16,7 @@
 | Done   | SPEC-0001 | PLAN-0014 | Supabase DEV migration deployment runs after the quality gate on push to `dev`.                                                           |
 | Done   | SPEC-0001 | PLAN-0015 | Supabase DEV migration deployment applies missing out-of-order migrations with `--include-all` while still excluding seed data.           |
 | Done   | SPEC-0010 | PLAN-0016 | Admin catalog smoke script added for the local draft sofa and tag API flow, with mocked coverage in the root test workflow.               |
+| Done   | SPEC-0013 | PLAN-0018 | Admin fabrics smoke script added for the local upload, fabric, assignment, readiness, and archive flow.                                   |
 
 ## Next
 
