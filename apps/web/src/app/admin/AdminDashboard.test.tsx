@@ -75,5 +75,9 @@ describe("Admin dashboard", () => {
       "href",
       "/admin/tags",
     );
+    expect(screen.getByRole("link", { name: "Fabrics" })).toHaveAttribute(
+      "href",
+      "/admin/fabrics",
+    );
   });
 });

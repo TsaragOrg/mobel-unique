@@ -137,6 +137,9 @@ export default function AdminDashboard({
           <Link className="button-link" href="/admin/sofas/new">
             New sofa
           </Link>
+          <Link className="button-link" href="/admin/fabrics">
+            Fabrics
+          </Link>
           <Link className="button-link" href="/admin/tags">
             Tags
           </Link>

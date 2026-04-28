@@ -71,6 +71,7 @@ dd {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -118,6 +119,7 @@ button:disabled {
 }
 
 .field input,
+.field select,
 .field textarea {
   background: #ffffff;
   border: 1px solid #b9b9b1;
@@ -128,6 +130,7 @@ button:disabled {
 }
 
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   border-color: #171717;
   outline: 2px solid #d7bea4;
@@ -163,6 +166,12 @@ button:disabled {
 
 .admin-section {
   width: 100%;
+}
+
+.admin-subsection {
+  border-top: 1px solid #d6d2c8;
+  margin-top: 24px;
+  padding-top: 24px;
 }
 
 .admin-heading-row {
@@ -232,6 +241,18 @@ button:disabled {
   align-items: center;
   display: flex;
   gap: 8px;
+}
+
+.admin-checkbox-label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.admin-checkbox-label span {
+  color: #313131;
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
 .admin-list {

@@ -40,6 +40,48 @@ export interface AdminCatalogReadiness {
   ready: boolean;
 }
 
+export interface AdminCatalogAsset {
+  asset_kind: string;
+  byte_size: number | null;
+  content_type: string;
+  height_px: number | null;
+  id: string;
+  lifecycle_state: string;
+  visibility: string;
+  width_px: number | null;
+}
+
+export interface AdminCatalogFabric {
+  ai_reference_asset: AdminCatalogAsset | null;
+  ai_reference_asset_id: string;
+  archived_at: string | null;
+  created_at: string;
+  id: string;
+  internal_name: string;
+  is_premium: boolean;
+  lifecycle_state: string;
+  public_name: string;
+  swatch_asset: AdminCatalogAsset | null;
+  swatch_asset_id: string;
+  updated_at: string;
+}
+
+export interface AdminCatalogUpload {
+  expires_at: string;
+  method: "signed_upload";
+  signed_upload_url: string;
+  upload_id: string;
+}
+
+export interface AdminCatalogSofaFabric {
+  assigned_at: string;
+  fabric: AdminCatalogFabric | null;
+  fabric_id: string;
+  public_order: number | null;
+  sofa_id: string;
+  updated_at: string;
+}
+
 export interface SofaMutationInput {
   depth_cm?: number;
   height_cm?: number;
@@ -56,8 +98,46 @@ export interface TagMutationInput {
   public_label: string;
 }
 
+export interface FabricMutationInput {
+  ai_reference_asset_id: string;
+  internal_name: string;
+  is_premium: boolean;
+  public_name: string;
+  swatch_asset_id: string;
+}
+
+export type FabricPatchInput = Partial<FabricMutationInput>;
+
+export interface UploadCreateInput {
+  byte_size: number;
+  content_type: string;
+  purpose: "fabric_swatch" | "fabric_ai_reference";
+}
+
+export interface SofaFabricMutationInput {
+  public_order: number | null;
+}
+
 export interface AdminCatalogPageDependencies {
+  archiveFabric(
+    accessToken: string,
+    fabricId: string,
+  ): Promise<AdminCatalogFabric>;
+  assignSofaFabric(
+    accessToken: string,
+    sofaId: string,
+    fabricId: string,
+    input: SofaFabricMutationInput,
+  ): Promise<AdminCatalogSofaFabric>;
   clearTrustedDevice(): Promise<void>;
+  completeUpload(
+    accessToken: string,
+    uploadId: string,
+  ): Promise<AdminCatalogAsset>;
+  createFabric(
+    accessToken: string,
+    input: FabricMutationInput,
+  ): Promise<AdminCatalogFabric>;
   createSofa(
     accessToken: string,
     input: SofaMutationInput,
@@ -66,29 +146,56 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     input: TagMutationInput,
   ): Promise<AdminCatalogTag>;
+  createUpload(
+    accessToken: string,
+    input: UploadCreateInput,
+  ): Promise<AdminCatalogUpload>;
   deleteTag(accessToken: string, tagId: string): Promise<void>;
   getAccessToken(): Promise<string | null>;
+  getFabric(accessToken: string, fabricId: string): Promise<AdminCatalogFabric>;
   getSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   getSofaReadiness(
     accessToken: string,
     sofaId: string,
   ): Promise<AdminCatalogReadiness>;
+  listFabrics(accessToken: string): Promise<AdminCatalogFabric[]>;
   listSofas(accessToken: string): Promise<AdminCatalogSofa[]>;
+  listSofaFabrics(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogSofaFabric[]>;
   listTags(accessToken: string): Promise<AdminCatalogTag[]>;
   navigate(path: string): void;
   redirect(path: string): void;
   refreshAccessToken(): Promise<string | null>;
+  removeSofaFabric(
+    accessToken: string,
+    sofaId: string,
+    fabricId: string,
+  ): Promise<void>;
   signOut(): Promise<void>;
+  updateFabric(
+    accessToken: string,
+    fabricId: string,
+    input: FabricPatchInput,
+  ): Promise<AdminCatalogFabric>;
   updateSofa(
     accessToken: string,
     sofaId: string,
     input: SofaMutationInput,
   ): Promise<AdminCatalogSofa>;
+  updateSofaFabric(
+    accessToken: string,
+    sofaId: string,
+    fabricId: string,
+    input: SofaFabricMutationInput,
+  ): Promise<AdminCatalogSofaFabric>;
   updateTag(
     accessToken: string,
     tagId: string,
     input: TagMutationInput,
   ): Promise<AdminCatalogTag>;
+  uploadToSignedUrl(upload: AdminCatalogUpload, file: File): Promise<void>;
   verifyAdminSession(accessToken: string): Promise<{
     ok: boolean;
     status: number;
@@ -152,6 +259,63 @@ export function AdminSofaEditPage({
   );
 }
 
+export function AdminFabricsPage({
+  dependencies,
+}: {
+  dependencies?: AdminCatalogPageDependencies;
+}) {
+  return (
+    <ProtectedAdminCatalogPage
+      dependencies={dependencies}
+      render={(accessToken, activeDependencies) => (
+        <FabricListContent
+          accessToken={accessToken}
+          dependencies={activeDependencies}
+        />
+      )}
+    />
+  );
+}
+
+export function AdminFabricCreatePage({
+  dependencies,
+}: {
+  dependencies?: AdminCatalogPageDependencies;
+}) {
+  return (
+    <ProtectedAdminCatalogPage
+      dependencies={dependencies}
+      render={(accessToken, activeDependencies) => (
+        <FabricCreateContent
+          accessToken={accessToken}
+          dependencies={activeDependencies}
+        />
+      )}
+    />
+  );
+}
+
+export function AdminFabricEditPage({
+  dependencies,
+  fabricId,
+}: {
+  dependencies?: AdminCatalogPageDependencies;
+  fabricId: string;
+}) {
+  return (
+    <ProtectedAdminCatalogPage
+      dependencies={dependencies}
+      render={(accessToken, activeDependencies) => (
+        <FabricEditContent
+          accessToken={accessToken}
+          dependencies={activeDependencies}
+          fabricId={fabricId}
+        />
+      )}
+    />
+  );
+}
+
 export function AdminTagsPage({
   dependencies,
 }: {
@@ -175,10 +339,52 @@ export function createDefaultAdminCatalogDependencies(
   redirect: (path: string) => void,
 ): AdminCatalogPageDependencies {
   return {
+    async archiveFabric(accessToken, fabricId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/fabrics/${fabricId}/archive`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.fabric as AdminCatalogFabric;
+    },
+    async assignSofaFabric(accessToken, sofaId, fabricId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/fabrics/${fabricId}`,
+        {
+          body: JSON.stringify(input),
+          method: "PUT",
+        },
+      );
+
+      return data.sofa_fabric as AdminCatalogSofaFabric;
+    },
     async clearTrustedDevice() {
       await fetch("/api/admin/logout", {
         method: "POST",
       });
+    },
+    async completeUpload(accessToken, uploadId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/uploads/${encodeURIComponent(uploadId)}/complete`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.asset as AdminCatalogAsset;
+    },
+    async createFabric(accessToken, input) {
+      const data = await requestAdminJson(accessToken, "/api/admin/fabrics", {
+        body: JSON.stringify(input),
+        method: "POST",
+      });
+
+      return data.fabric as AdminCatalogFabric;
     },
     async createSofa(accessToken, input) {
       const data = await requestAdminJson(accessToken, "/api/admin/sofas", {
@@ -196,6 +402,14 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.tag as AdminCatalogTag;
     },
+    async createUpload(accessToken, input) {
+      const data = await requestAdminJson(accessToken, "/api/admin/uploads", {
+        body: JSON.stringify(input),
+        method: "POST",
+      });
+
+      return data.upload as AdminCatalogUpload;
+    },
     async deleteTag(accessToken, tagId) {
       await requestAdminJson(accessToken, `/api/admin/tags/${tagId}`, {
         method: "DELETE",
@@ -206,6 +420,14 @@ export function createDefaultAdminCatalogDependencies(
       const { data } = await supabase.auth.getSession();
 
       return data.session?.access_token ?? null;
+    },
+    async getFabric(accessToken, fabricId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/fabrics/${fabricId}`,
+      );
+
+      return data.fabric as AdminCatalogFabric;
     },
     async getSofa(accessToken, sofaId) {
       const data = await requestAdminJson(
@@ -228,6 +450,19 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.sofas as AdminCatalogSofa[];
     },
+    async listFabrics(accessToken) {
+      const data = await requestAdminJson(accessToken, "/api/admin/fabrics");
+
+      return data.fabrics as AdminCatalogFabric[];
+    },
+    async listSofaFabrics(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/fabrics`,
+      );
+
+      return data.sofa_fabrics as AdminCatalogSofaFabric[];
+    },
     async listTags(accessToken) {
       const data = await requestAdminJson(accessToken, "/api/admin/tags");
 
@@ -245,9 +480,30 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.session?.access_token ?? null;
     },
+    async removeSofaFabric(accessToken, sofaId, fabricId) {
+      await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/fabrics/${fabricId}`,
+        {
+          method: "DELETE",
+        },
+      );
+    },
     async signOut() {
       const supabase = getBrowserSupabaseClient();
       await supabase.auth.signOut();
+    },
+    async updateFabric(accessToken, fabricId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/fabrics/${fabricId}`,
+        {
+          body: JSON.stringify(input),
+          method: "PATCH",
+        },
+      );
+
+      return data.fabric as AdminCatalogFabric;
     },
     async updateSofa(accessToken, sofaId, input) {
       const data = await requestAdminJson(
@@ -261,6 +517,18 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.sofa as AdminCatalogSofa;
     },
+    async updateSofaFabric(accessToken, sofaId, fabricId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/fabrics/${fabricId}`,
+        {
+          body: JSON.stringify(input),
+          method: "PATCH",
+        },
+      );
+
+      return data.sofa_fabric as AdminCatalogSofaFabric;
+    },
     async updateTag(accessToken, tagId, input) {
       const data = await requestAdminJson(
         accessToken,
@@ -272,6 +540,20 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.tag as AdminCatalogTag;
+    },
+    async uploadToSignedUrl(upload, file) {
+      const body = new FormData();
+      body.append("cacheControl", "3600");
+      body.append("", file);
+
+      const response = await fetch(upload.signed_upload_url, {
+        body,
+        method: "PUT",
+      });
+
+      if (!response.ok) {
+        throw new Error("UPLOAD_FAILED");
+      }
     },
     async verifyAdminSession(accessToken) {
       return fetch("/api/admin/session", {
@@ -489,6 +771,282 @@ function SofaListContent({
   );
 }
 
+function FabricListContent({
+  accessToken,
+  dependencies,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fabrics, setFabrics] = useState<AdminCatalogFabric[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadFabrics() {
+      try {
+        const nextFabrics = await dependencies.listFabrics(accessToken);
+
+        if (isCurrent) {
+          setFabrics(nextFabrics);
+          setErrorMessage(null);
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setErrorMessage(readErrorMessage(error));
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadFabrics();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies]);
+
+  return (
+    <section aria-labelledby="fabrics-title" className="admin-section">
+      <div className="admin-heading-row">
+        <div>
+          <p className="eyebrow">Catalog</p>
+          <h1 id="fabrics-title">Fabrics</h1>
+        </div>
+        <Link className="button-link" href="/admin/fabrics/new">
+          New fabric
+        </Link>
+      </div>
+      {errorMessage ? (
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      {isLoading ? <p role="status">Loading fabrics.</p> : null}
+      {!isLoading && fabrics.length === 0 ? <p>No fabrics.</p> : null}
+      {fabrics.length > 0 ? (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Internal name</th>
+                <th>Public name</th>
+                <th>State</th>
+                <th>Premium</th>
+                <th>Swatch</th>
+                <th>AI reference</th>
+                <th>Updated</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fabrics.map((fabric) => (
+                <tr key={fabric.id}>
+                  <td>{fabric.internal_name}</td>
+                  <td>{fabric.public_name}</td>
+                  <td>{fabric.lifecycle_state}</td>
+                  <td>{fabric.is_premium ? "Premium" : "Standard"}</td>
+                  <td>{fabric.swatch_asset ? "Ready" : "Missing"}</td>
+                  <td>{fabric.ai_reference_asset ? "Ready" : "Missing"}</td>
+                  <td>{formatTimestamp(fabric.updated_at)}</td>
+                  <td>
+                    <Link href={`/admin/fabrics/${fabric.id}`}>Open</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FabricCreateContent({
+  accessToken,
+  dependencies,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const payload = await buildFabricPayload({
+        accessToken,
+        dependencies,
+        form: event.currentTarget,
+        requireFiles: true,
+      });
+      const fabric = await dependencies.createFabric(accessToken, payload);
+      dependencies.navigate(`/admin/fabrics/${fabric.id}`);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="create-fabric-title" className="admin-section">
+      <p className="eyebrow">Catalog</p>
+      <h1 id="create-fabric-title">Create fabric</h1>
+      <FabricForm
+        buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
+        errorMessage={errorMessage}
+        onSubmit={handleSubmit}
+      />
+    </section>
+  );
+}
+
+function FabricEditContent({
+  accessToken,
+  dependencies,
+  fabricId,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  fabricId: string;
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fabric, setFabric] = useState<AdminCatalogFabric | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void dependencies
+      .getFabric(accessToken, fabricId)
+      .then((nextFabric) => {
+        if (isCurrent) {
+          setFabric(nextFabric);
+          setErrorMessage(null);
+        }
+      })
+      .catch((error) => {
+        if (isCurrent) {
+          setErrorMessage(readErrorMessage(error));
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, fabricId]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!fabric) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const payload = await buildFabricPayload({
+        accessToken,
+        dependencies,
+        existingFabric: fabric,
+        form: event.currentTarget,
+        requireFiles: false,
+      });
+      const nextFabric = await dependencies.updateFabric(
+        accessToken,
+        fabricId,
+        payload,
+      );
+      setFabric(nextFabric);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleArchive() {
+    setErrorMessage(null);
+    setIsArchiving(true);
+
+    try {
+      const nextFabric = await dependencies.archiveFabric(
+        accessToken,
+        fabricId,
+      );
+      setFabric(nextFabric);
+      setPendingArchive(false);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsArchiving(false);
+    }
+  }
+
+  if (!fabric && !errorMessage) {
+    return (
+      <section className="admin-section" aria-live="polite">
+        <p role="status">Loading fabric.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-labelledby="edit-fabric-title" className="admin-section">
+      <p className="eyebrow">Catalog</p>
+      <h1 id="edit-fabric-title">{fabric?.internal_name ?? "Fabric"}</h1>
+      {fabric ? (
+        <div className="admin-grid">
+          <FabricForm
+            buttonLabel={isSubmitting ? "Saving" : "Save fabric"}
+            errorMessage={errorMessage}
+            fabric={fabric}
+            onSubmit={handleSubmit}
+          />
+          <aside className="admin-aside" aria-labelledby="fabric-state-title">
+            <h2 id="fabric-state-title">Fabric state</h2>
+            <p>{fabric.lifecycle_state}</p>
+            <p>
+              Swatch: {fabric.swatch_asset ? "Ready" : "Missing"}
+              <br />
+              AI reference: {fabric.ai_reference_asset ? "Ready" : "Missing"}
+            </p>
+            {fabric.lifecycle_state === "active" ? (
+              pendingArchive ? (
+                <button
+                  disabled={isArchiving}
+                  onClick={() => void handleArchive()}
+                  type="button"
+                >
+                  Confirm archive
+                </button>
+              ) : (
+                <button onClick={() => setPendingArchive(true)} type="button">
+                  Archive fabric
+                </button>
+              )
+            ) : null}
+          </aside>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SofaCreateContent({
   accessToken,
   dependencies,
@@ -552,12 +1110,14 @@ function SofaEditContent({
   sofaId: string;
 }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fabrics, setFabrics] = useState<AdminCatalogFabric[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [readiness, setReadiness] = useState<AdminCatalogReadiness | null>(
     null,
   );
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [sofa, setSofa] = useState<AdminCatalogSofa | null>(null);
+  const [sofaFabrics, setSofaFabrics] = useState<AdminCatalogSofaFabric[]>([]);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
   useEffect(() => {
@@ -570,9 +1130,15 @@ function SofaEditContent({
           dependencies.listTags(accessToken),
           dependencies.getSofaReadiness(accessToken, sofaId),
         ]);
+        const [nextFabrics, nextSofaFabrics] = await Promise.all([
+          dependencies.listFabrics(accessToken),
+          dependencies.listSofaFabrics(accessToken, sofaId),
+        ]);
 
         if (isCurrent) {
+          setFabrics(nextFabrics);
           setSofa(nextSofa);
+          setSofaFabrics(nextSofaFabrics);
           setTags(nextTags);
           setReadiness(nextReadiness);
           setSelectedTagIds(nextSofa.tags.map((tag) => tag.id));
@@ -634,15 +1200,26 @@ function SofaEditContent({
       <div className="admin-grid">
         <div>
           {sofa ? (
-            <SofaForm
-              buttonLabel={isSubmitting ? "Saving" : "Save sofa"}
-              errorMessage={errorMessage}
-              onSelectedTagIdsChange={setSelectedTagIds}
-              onSubmit={handleSubmit}
-              selectedTagIds={selectedTagIds}
-              sofa={sofa}
-              tags={tags}
-            />
+            <>
+              <SofaForm
+                buttonLabel={isSubmitting ? "Saving" : "Save sofa"}
+                errorMessage={errorMessage}
+                onSelectedTagIdsChange={setSelectedTagIds}
+                onSubmit={handleSubmit}
+                selectedTagIds={selectedTagIds}
+                sofa={sofa}
+                tags={tags}
+              />
+              <SofaFabricAssignmentSection
+                accessToken={accessToken}
+                dependencies={dependencies}
+                fabrics={fabrics}
+                onReadinessChange={setReadiness}
+                onSofaFabricsChange={setSofaFabrics}
+                sofaFabrics={sofaFabrics}
+                sofaId={sofaId}
+              />
+            </>
           ) : null}
         </div>
         <aside className="admin-aside" aria-labelledby="readiness-title">
@@ -794,6 +1371,226 @@ function TagManagerContent({
   );
 }
 
+function SofaFabricAssignmentSection({
+  accessToken,
+  dependencies,
+  fabrics,
+  onReadinessChange,
+  onSofaFabricsChange,
+  sofaFabrics,
+  sofaId,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  fabrics: AdminCatalogFabric[];
+  onReadinessChange(readiness: AdminCatalogReadiness): void;
+  onSofaFabricsChange(assignments: AdminCatalogSofaFabric[]): void;
+  sofaFabrics: AdminCatalogSofaFabric[];
+  sofaId: string;
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const assignedFabricIds = new Set(
+    sofaFabrics.map((assignment) => assignment.fabric_id),
+  );
+  const assignableFabrics = fabrics.filter(
+    (fabric) =>
+      fabric.lifecycle_state === "active" && !assignedFabricIds.has(fabric.id),
+  );
+
+  async function refreshAssignmentsAndReadiness() {
+    const [nextAssignments, nextReadiness] = await Promise.all([
+      dependencies.listSofaFabrics(accessToken, sofaId),
+      dependencies.getSofaReadiness(accessToken, sofaId),
+    ]);
+    onSofaFabricsChange(nextAssignments);
+    onReadinessChange(nextReadiness);
+  }
+
+  async function handleAssign(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const fabricId = String(formData.get("fabric_id") ?? "");
+    const publicOrderValue = String(formData.get("public_order") ?? "").trim();
+
+    try {
+      await dependencies.assignSofaFabric(accessToken, sofaId, fabricId, {
+        public_order: publicOrderValue ? Number(publicOrderValue) : null,
+      });
+      form.reset();
+      await refreshAssignmentsAndReadiness();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleUpdate(
+    assignment: AdminCatalogSofaFabric,
+    value: string,
+  ) {
+    setErrorMessage(null);
+
+    try {
+      await dependencies.updateSofaFabric(
+        accessToken,
+        sofaId,
+        assignment.fabric_id,
+        {
+          public_order: value.trim() ? Number(value) : null,
+        },
+      );
+      await refreshAssignmentsAndReadiness();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    }
+  }
+
+  async function handleRemove(assignment: AdminCatalogSofaFabric) {
+    setErrorMessage(null);
+
+    try {
+      await dependencies.removeSofaFabric(
+        accessToken,
+        sofaId,
+        assignment.fabric_id,
+      );
+      await refreshAssignmentsAndReadiness();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    }
+  }
+
+  return (
+    <section aria-labelledby="sofa-fabrics-title" className="admin-subsection">
+      <h2 id="sofa-fabrics-title">Fabrics</h2>
+      {errorMessage ? (
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      <form className="admin-inline-form" onSubmit={handleAssign}>
+        <label className="field">
+          <span>Assign fabric</span>
+          <select name="fabric_id" required>
+            <option value="">Select fabric</option>
+            {assignableFabrics.map((fabric) => (
+              <option key={fabric.id} value={fabric.id}>
+                {fabric.internal_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Public order</span>
+          <input min="0" name="public_order" type="number" />
+        </label>
+        <button disabled={isSubmitting} type="submit">
+          Assign fabric
+        </button>
+      </form>
+      {sofaFabrics.length === 0 ? <p>No assigned fabrics.</p> : null}
+      {sofaFabrics.length > 0 ? (
+        <div className="admin-list">
+          {sofaFabrics.map((assignment) => (
+            <div className="admin-list-row" key={assignment.fabric_id}>
+              <span>
+                {assignment.fabric?.internal_name ?? assignment.fabric_id}
+              </span>
+              <label className="field">
+                <span>Public order for {assignment.fabric?.internal_name}</span>
+                <input
+                  aria-label={`Public order for ${assignment.fabric?.internal_name ?? assignment.fabric_id}`}
+                  defaultValue={assignment.public_order ?? ""}
+                  min="0"
+                  onBlur={(event) =>
+                    void handleUpdate(assignment, event.currentTarget.value)
+                  }
+                  type="number"
+                />
+              </label>
+              <button
+                onClick={() => void handleRemove(assignment)}
+                type="button"
+              >
+                Unassign {assignment.fabric?.internal_name ?? "fabric"}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FabricForm({
+  buttonLabel,
+  errorMessage,
+  fabric,
+  onSubmit,
+}: {
+  buttonLabel: string;
+  errorMessage: string | null;
+  fabric?: AdminCatalogFabric;
+  onSubmit(event: FormEvent<HTMLFormElement>): void;
+}) {
+  return (
+    <form className="admin-form admin-form-wide" onSubmit={onSubmit}>
+      {errorMessage ? (
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      <label className="field">
+        <span>Internal fabric name</span>
+        <input
+          defaultValue={fabric?.internal_name ?? ""}
+          name="internal_name"
+          required
+        />
+      </label>
+      <label className="field">
+        <span>Public fabric name</span>
+        <input
+          defaultValue={fabric?.public_name ?? ""}
+          name="public_name"
+          required
+        />
+      </label>
+      <label className="admin-checkbox-label">
+        <input
+          defaultChecked={fabric?.is_premium ?? false}
+          name="is_premium"
+          type="checkbox"
+        />
+        <span>Premium fabric</span>
+      </label>
+      <label className="field">
+        <span>Swatch image</span>
+        <input
+          accept="image/png,image/jpeg,image/webp"
+          name="swatch_file"
+          type="file"
+        />
+      </label>
+      <label className="field">
+        <span>AI reference image</span>
+        <input
+          accept="image/png,image/jpeg,image/webp"
+          name="ai_reference_file"
+          type="file"
+        />
+      </label>
+      <button type="submit">{buttonLabel}</button>
+    </form>
+  );
+}
+
 function SofaForm({
   buttonLabel,
   errorMessage,
@@ -910,9 +1707,106 @@ function AdminNavigation() {
     <nav className="admin-nav" aria-label="Admin">
       <Link href="/admin">Dashboard</Link>
       <Link href="/admin/sofas">Sofas</Link>
+      <Link href="/admin/fabrics">Fabrics</Link>
       <Link href="/admin/tags">Tags</Link>
     </nav>
   );
+}
+
+async function buildFabricPayload({
+  accessToken,
+  dependencies,
+  existingFabric,
+  form,
+  requireFiles,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  existingFabric?: AdminCatalogFabric;
+  form: HTMLFormElement;
+  requireFiles: boolean;
+}): Promise<FabricMutationInput> {
+  const formData = new FormData(form);
+  const internalName = String(formData.get("internal_name") ?? "").trim();
+  const publicName = String(formData.get("public_name") ?? "").trim();
+  const swatchFile = readFileField(form, formData, "swatch_file");
+  const aiReferenceFile = readFileField(form, formData, "ai_reference_file");
+
+  if (requireFiles && (!swatchFile || !aiReferenceFile)) {
+    throw new Error("Fabric images are required.");
+  }
+
+  const [swatchAsset, aiReferenceAsset] = await Promise.all([
+    swatchFile
+      ? uploadFabricAsset({
+          accessToken,
+          dependencies,
+          file: swatchFile,
+          purpose: "fabric_swatch",
+        })
+      : Promise.resolve(existingFabric?.swatch_asset ?? null),
+    aiReferenceFile
+      ? uploadFabricAsset({
+          accessToken,
+          dependencies,
+          file: aiReferenceFile,
+          purpose: "fabric_ai_reference",
+        })
+      : Promise.resolve(existingFabric?.ai_reference_asset ?? null),
+  ]);
+
+  if (!swatchAsset || !aiReferenceAsset) {
+    throw new Error("Fabric images are required.");
+  }
+
+  return {
+    ai_reference_asset_id: aiReferenceAsset.id,
+    internal_name: internalName,
+    is_premium: formData.get("is_premium") === "on",
+    public_name: publicName,
+    swatch_asset_id: swatchAsset.id,
+  };
+}
+
+async function uploadFabricAsset({
+  accessToken,
+  dependencies,
+  file,
+  purpose,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  file: File;
+  purpose: UploadCreateInput["purpose"];
+}) {
+  const upload = await dependencies.createUpload(accessToken, {
+    byte_size: file.size,
+    content_type: file.type,
+    purpose,
+  });
+  await dependencies.uploadToSignedUrl(upload, file);
+
+  return dependencies.completeUpload(accessToken, upload.upload_id);
+}
+
+function readFileField(
+  form: HTMLFormElement,
+  formData: FormData,
+  field: string,
+) {
+  const value = formData.get(field);
+
+  if (!(value instanceof File) || value.size === 0) {
+    const element = form.elements.namedItem(field);
+
+    if (element instanceof HTMLInputElement) {
+      return element.files?.[0] ?? null;
+    }
+
+    return null;
+  }
+
+  return value;
 }
 
 function buildSofaPayload(
