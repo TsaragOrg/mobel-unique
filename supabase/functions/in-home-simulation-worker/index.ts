@@ -27,6 +27,11 @@ import {
   errorArtifactObjectPath,
   formatErrorArtifactBody
 } from "./lib/error-artifact.ts";
+import {
+  buildStageTransitionEvent,
+  buildSubStepEvent,
+  type WorkerJobEventRow
+} from "./lib/events.ts";
 
 const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
 
@@ -310,6 +315,29 @@ async function persistErrorArtifact(
     // Best-effort persistence: a failed worker_error.txt upload must
     // not mask the original failure on the job row.
     return null;
+  }
+}
+
+async function recordWorkerEvent(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  event: WorkerJobEventRow
+): Promise<void> {
+  // Best-effort observability write. A failed event insert must not
+  // mask the real success or failure on the job row.
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/worker_job_events`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify(event)
+    });
+  } catch (_error) {
+    /* swallow */
   }
 }
 
@@ -1067,6 +1095,14 @@ Deno.serve(async (request) => {
           workerIdentifier,
           placementClaim
         );
+        await recordWorkerEvent(supabaseUrl, serviceRoleKey,
+          buildStageTransitionEvent({
+            jobId,
+            fromStatus: "placement_processing",
+            toStatus: "succeeded",
+            message: `worker ${workerIdentifier} completed Stage 2`
+          })
+        );
         try {
           await deleteRoomPrepMessage(
             supabaseUrl,
@@ -1180,6 +1216,14 @@ Deno.serve(async (request) => {
         serviceRoleKey,
         workerIdentifier,
         claim
+      );
+      await recordWorkerEvent(supabaseUrl, serviceRoleKey,
+        buildStageTransitionEvent({
+          jobId,
+          fromStatus: "room_prep_processing",
+          toStatus: "awaiting_dimensions",
+          message: `worker ${workerIdentifier} completed Stage 1`
+        })
       );
       try {
         await deleteRoomPrepMessage(
