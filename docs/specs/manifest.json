@@ -107,6 +107,83 @@
       "implementationPlans": [],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
+    },
+    {
+      "id": "SPEC-0010",
+      "title": "API Contracts And Edge Functions",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0003",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0008",
+        "SPEC-0009"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0010-api-contracts-and-edge-functions.md",
+      "areas": ["web", "api", "supabase", "image-worker", "shared"]
+    },
+    {
+      "id": "SPEC-0011",
+      "title": "Admin Authentication And Authorization",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0010",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0008",
+        "SPEC-0009",
+        "SPEC-0010"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0011-admin-authentication-and-authorization.md",
+      "areas": ["web", "api", "supabase", "workflow"]
+    },
+    {
+      "id": "SPEC-0012",
+      "title": "Public Frontend Experience And Page Flows",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0004",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0012-public-frontend-experience-and-page-flows.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0013",
+      "title": "Admin Frontend Experience And Page Flows",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0005",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0011",
+        "SPEC-0012"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0013-admin-frontend-experience-and-page-flows.md",
+      "areas": ["web", "api", "supabase"]
     }
   ]
 }
