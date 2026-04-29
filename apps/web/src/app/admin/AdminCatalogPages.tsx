@@ -1,11 +1,32 @@
 "use client";
 
+/*
+RU: Этот файл нужен для страниц админского каталога.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото и подготовку картинок.
+RU: Здесь можно менять данные, запускать генерацию и выбирать готовую картинку.
+FR: Ce fichier sert aux pages du catalogue admin.
+FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos et preparation d'images.
+FR: Ici, on peut modifier les donnees, lancer la generation et choisir l'image finale.
+*/
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
+
+// RU: Эти числа задают частоту проверки результата после запуска генерации.
+// FR: Ces nombres reglent la frequence de verification apres le lancement.
+const FABRIC_RENDER_JOB_POLL_INTERVAL_MS = 3000;
+const FABRIC_RENDER_JOB_POLL_ATTEMPTS = 100;
 
 export interface AdminCatalogTag {
   id: string;
@@ -2266,6 +2287,54 @@ function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {
   );
 }
 
+async function pollFabricRenderJobResult({
+  accessToken,
+  dependencies,
+  isActive,
+  jobId,
+  onRefresh,
+}: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  isActive(): boolean;
+  jobId: string;
+  onRefresh(): Promise<void>;
+}) {
+  for (
+    let attempt = 0;
+    attempt < FABRIC_RENDER_JOB_POLL_ATTEMPTS;
+    attempt += 1
+  ) {
+    if (!isActive()) {
+      return null;
+    }
+
+    const job = await dependencies.getFabricRenderJob(accessToken, jobId);
+
+    if (isTerminalFabricRenderJobStatus(job.status)) {
+      if (isActive()) {
+        await onRefresh();
+      }
+
+      return job;
+    }
+
+    await waitForFabricRenderJobPollDelay();
+  }
+
+  return null;
+}
+
+function isTerminalFabricRenderJobStatus(status: string) {
+  return status === "succeeded" || status === "failed" || status === "canceled";
+}
+
+function waitForFabricRenderJobPollDelay() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, FABRIC_RENDER_JOB_POLL_INTERVAL_MS);
+  });
+}
+
 function RenderCoverageSection({
   accessToken,
   coverage,
@@ -2281,6 +2350,8 @@ function RenderCoverageSection({
   sofaFabrics: AdminCatalogSofaFabric[];
   visualMatrixColumns: AdminCatalogVisualMatrixColumn[];
 }) {
+  // RU: Эти значения хранят сообщение, выбранную ячейку и список картинок для проверки.
+  // FR: Ces valeurs gardent le message, la case choisie et la liste d'images a verifier.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [reviewCellId, setReviewCellId] = useState<string | null>(null);
@@ -2288,12 +2359,28 @@ function RenderCoverageSection({
     AdminCatalogRenderCandidate[]
   >([]);
 
+  // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
+  // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
+  const isAliveRef = useRef(true);
+
+  // RU: Этот автоматический блок включает флажок при открытии секции и выключает при уходе.
+  // FR: Ce bloc automatique active le repere a l'ouverture et le desactive au depart.
+  useEffect(() => {
+    isAliveRef.current = true;
+
+    return () => {
+      isAliveRef.current = false;
+    };
+  }, []);
+
+  // RU: Это действие ставит задачу в очередь и потом само проверяет готовность.
+  // FR: Cette action place la tache en file puis verifie seule quand elle est prete.
   async function handleGenerate(cell: AdminCatalogRenderCell) {
     setErrorMessage(null);
     setActiveCellId(cell.id);
 
     try {
-      await dependencies.createFabricRenderJob(accessToken, {
+      const job = await dependencies.createFabricRenderJob(accessToken, {
         fabric_id: cell.fabric_id,
         generation_mode: "initial",
         prompt_note: null,
@@ -2301,6 +2388,29 @@ function RenderCoverageSection({
         visual_matrix_column_id: cell.visual_matrix_column_id,
       });
       await onRefresh();
+      void pollFabricRenderJobResult({
+        accessToken,
+        dependencies,
+        isActive: () => isAliveRef.current,
+        jobId: job.id,
+        onRefresh,
+      })
+        .then((finishedJob) => {
+          if (!isAliveRef.current || !finishedJob) {
+            return;
+          }
+
+          if (finishedJob.status === "failed") {
+            setErrorMessage(
+              finishedJob.last_error_message ?? "FABRIC_RENDER_JOB_FAILED",
+            );
+          }
+        })
+        .catch((error) => {
+          if (isAliveRef.current) {
+            setErrorMessage(readErrorMessage(error));
+          }
+        });
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2308,6 +2418,8 @@ function RenderCoverageSection({
     }
   }
 
+  // RU: Это действие открывает список готовых вариантов для выбранной ячейки.
+  // FR: Cette action ouvre la liste des options pretes pour la case choisie.
   async function handleReviewCandidates(cell: AdminCatalogRenderCell) {
     setErrorMessage(null);
     setActiveCellId(cell.id);
@@ -2326,6 +2438,8 @@ function RenderCoverageSection({
     }
   }
 
+  // RU: Это действие выбирает одну готовую картинку как текущую.
+  // FR: Cette action choisit une image prete comme image actuelle.
   async function handleUseCandidate(candidate: AdminCatalogRenderCandidate) {
     setErrorMessage(null);
     setActiveCellId(candidate.render_cell_id);
@@ -2346,6 +2460,8 @@ function RenderCoverageSection({
         ),
       );
       await onRefresh();
+      setReviewCellId(null);
+      setReviewCandidates([]);
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2353,6 +2469,8 @@ function RenderCoverageSection({
     }
   }
 
+  // RU: Это действие загружает картинку вручную для выбранной ячейки.
+  // FR: Cette action envoie une image manuelle pour la case choisie.
   async function handleManualRenderUpload(
     cell: AdminCatalogRenderCell,
     form: HTMLFormElement,

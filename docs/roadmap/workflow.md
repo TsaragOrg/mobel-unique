@@ -22,6 +22,9 @@
 | Done   | SPEC-0013 | PLAN-0021 | Admin render prep smoke extends through candidate selection and private manual render attachment.                                         |
 | Done   | SPEC-0013 | PLAN-0023 | Admin render prep smoke covers source-photo-complete cells, redundant generation rejection, and alternate fabric queueing.                |
 | Done   | SPEC-0010 | PLAN-0024 | Public catalog smoke script added to the root test workflow with clear local skip behavior.                                               |
+| Done   | SPEC-0006 | PLAN-0025 | Fabric render production cron runner checks cover provider defaults, worker invocation secret wiring, cron SQL, and admin polling.        |
+| Done   | SPEC-0006 | PLAN-0026 | Fabric render ownership checks cover worker-level provider selection and admin API provider isolation.                                    |
+| Done   | SPEC-0001 | PLAN-0027 | Supabase DEV deploy configures worker secrets, deploys the fabric render Edge Function, and upserts cron Vault secrets.                   |
 
 ## Next
 

@@ -5,7 +5,7 @@ const FUNCTION_URL =
   process.env.FABRIC_RENDER_WORKER_FUNCTION_URL ??
   `${SUPABASE_URL}/functions/v1/fabric-render-worker`;
 const REQUEST_TIMEOUT_MS = Number(
-  process.env.FABRIC_RENDER_WORKER_SMOKE_TIMEOUT_MS ?? 5000
+  process.env.FABRIC_RENDER_WORKER_SMOKE_TIMEOUT_MS ?? 5000,
 );
 
 function skip(message) {
@@ -22,23 +22,36 @@ function isLocalFunctionUrl(url) {
   return url.includes("127.0.0.1") || url.includes("localhost");
 }
 
+function buildWorkerHeaders(headers) {
+  const invokeSecret = process.env.FABRIC_RENDER_WORKER_INVOKE_SECRET;
+
+  return {
+    ...headers,
+    ...(invokeSecret
+      ? {
+          "x-fabric-render-worker-secret": invokeSecret,
+        }
+      : {}),
+  };
+}
+
 if (!process.env.GEMINI_API_KEY) {
   skip("GEMINI_API_KEY is not set.");
 }
 
 if (process.env.FABRIC_RENDER_ENABLE_GEMINI_SMOKE !== "1") {
-  skip("Set FABRIC_RENDER_ENABLE_GEMINI_SMOKE=1 to run a real Gemini smoke test.");
+  skip(
+    "Set FABRIC_RENDER_ENABLE_GEMINI_SMOKE=1 to run a real Gemini smoke test.",
+  );
 }
 
 let response;
 
 try {
   response = await fetch(FUNCTION_URL, {
-    headers: {
-      "x-fabric-render-provider": "gemini"
-    },
+    headers: buildWorkerHeaders({}),
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 } catch (error) {
   const code = error?.cause?.code ?? error?.code;
@@ -51,7 +64,7 @@ try {
   ) {
     skip(
       `local Supabase Edge Function is not reachable at ${FUNCTION_URL}. ` +
-        "Run `pnpm supabase:start` and `pnpm supabase:functions:serve`."
+        "Run `pnpm supabase:start` and `pnpm supabase:functions:serve`.",
     );
   }
 
@@ -63,7 +76,7 @@ const responseText = await response.text();
 if (response.status === 204) {
   skip(
     "no queued Gemini fabric render job was available. " +
-      "Create one valid local job with private target sofa and fabric reference assets before running this smoke test."
+      "Create one valid local job with private target sofa and fabric reference assets before running this smoke test.",
   );
 }
 
@@ -74,7 +87,7 @@ if (
 ) {
   skip(
     `local Supabase Edge Function is not served at ${FUNCTION_URL}. ` +
-      "Run `pnpm supabase:start` and `pnpm supabase:functions:serve`."
+      "Run `pnpm supabase:start` and `pnpm supabase:functions:serve`.",
   );
 }
 
@@ -88,7 +101,7 @@ try {
 
 if (!response.ok) {
   fail(
-    `fabric-render-worker function returned HTTP ${response.status}: ${JSON.stringify(body)}`
+    `fabric-render-worker function returned HTTP ${response.status}: ${JSON.stringify(body)}`,
   );
 }
 
@@ -98,9 +111,11 @@ if (
   !body.queue_name ||
   !body.output_path
 ) {
-  fail(`unexpected fabric render Gemini smoke response: ${JSON.stringify(body)}`);
+  fail(
+    `unexpected fabric render Gemini smoke response: ${JSON.stringify(body)}`,
+  );
 }
 
 console.log(
-  `PASS fabric render Gemini smoke: processed job ${body.job_id} from ${body.queue_name} with ${body.output_path}`
+  `PASS fabric render Gemini smoke: processed job ${body.job_id} from ${body.queue_name} with ${body.output_path}`,
 );

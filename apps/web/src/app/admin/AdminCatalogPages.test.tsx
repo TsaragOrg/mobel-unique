@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет страницы админского каталога.
+RU: Во время проверки показаны формы, списки, кнопки загрузки и зона подготовки картинок.
+RU: Проверки помогают убедиться, что админ может запускать генерацию и выбирать готовую картинку.
+FR: Ce fichier verifie les pages du catalogue admin.
+FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi et zone de preparation d'images.
+FR: Les tests aident a verifier que l'admin peut lancer la generation et choisir l'image finale.
+*/
+
 import {
   cleanup,
   fireEvent,
@@ -200,7 +209,7 @@ function createDependencies(
     getFabric: vi.fn(async () => fabric),
     getFabricRenderJob: vi.fn(async () => ({
       attempt_count: 0,
-      completed_at: null,
+      completed_at: "2026-04-28T10:35:00.000Z",
       created_at: "2026-04-28T10:30:00.000Z",
       fabric_id: fabric.id,
       generation_mode: "initial",
@@ -211,8 +220,8 @@ function createDependencies(
       queued_at: "2026-04-28T10:30:00.000Z",
       render_cell_id: "00000000-0000-4000-8000-000000000905",
       sofa_id: "00000000-0000-4000-8000-000000000701",
-      status: "queued",
-      updated_at: "2026-04-28T10:30:00.000Z",
+      status: "succeeded",
+      updated_at: "2026-04-28T10:35:00.000Z",
       visual_matrix_column_id: visualMatrixColumn.id,
     })),
     getRenderCoverage: vi.fn(async () => renderCoverage),
@@ -1011,6 +1020,12 @@ describe("Admin catalog pages", () => {
         },
       );
     });
+    await waitFor(() => {
+      expect(dependencies.getFabricRenderJob).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000906",
+      );
+    });
   });
 
   it("reviews generated candidates and attaches a manual render from coverage", async () => {
@@ -1064,15 +1079,53 @@ describe("Admin catalog pages", () => {
       updated_at: "2026-04-28T10:00:00.000Z",
       visual_matrix_column_id: visualColumn.id,
     };
+    const selectedRenderCell = {
+      ...renderCell,
+      current_private_asset_id: "00000000-0000-4000-8000-000000000907",
+      has_private_render: true,
+      updated_at: "2026-04-28T10:40:00.000Z",
+    };
+    let candidateSelected = false;
     const dependencies = createDependencies({
       getRenderCoverage: vi.fn(async () => ({
-        render_cells: [renderCell],
+        render_cells: [candidateSelected ? selectedRenderCell : renderCell],
         sofa_fabrics: [assignedFabric],
         sofa_id: assignedFabric.sofa_id,
         visual_matrix_columns: [visualColumn],
       })),
       listSofaFabrics: vi.fn(async () => [assignedFabric]),
       listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      useRenderCandidate: vi.fn(async (_accessToken, candidateId) => {
+        candidateSelected = true;
+
+        return {
+          accepted_at: "2026-04-28T10:40:00.000Z",
+          asset: {
+            asset_kind: "fabric_render_candidate",
+            byte_size: 2400,
+            content_type: "image/png",
+            height_px: 1200,
+            id: "00000000-0000-4000-8000-000000000907",
+            lifecycle_state: "active",
+            visibility: "private",
+            width_px: 1600,
+          },
+          asset_id: "00000000-0000-4000-8000-000000000907",
+          created_at: "2026-04-28T10:35:00.000Z",
+          fabric_id: assignedFabric.fabric_id,
+          generation_mode: "initial",
+          id: candidateId,
+          is_current: true,
+          job_id: "00000000-0000-4000-8000-000000000906",
+          preview_url: "https://storage.example/candidate-preview",
+          prompt_version: "v007",
+          provider_model: "mock-fabric-render-v1",
+          provider_name: "mock",
+          render_cell_id: renderCell.id,
+          sofa_id: assignedFabric.sofa_id,
+          visual_matrix_column_id: visualColumn.id,
+        };
+      }),
     });
 
     render(
@@ -1096,6 +1149,12 @@ describe("Admin catalog pages", () => {
         "00000000-0000-4000-8000-000000000908",
       );
     });
+    expect(
+      screen.queryByAltText(
+        "Candidate preview 00000000-0000-4000-8000-000000000908",
+      ),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("Private ready")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Manual render"), {
       target: {

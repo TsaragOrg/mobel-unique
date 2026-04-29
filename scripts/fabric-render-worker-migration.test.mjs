@@ -5,6 +5,10 @@ const migrationPath =
   "supabase/migrations/20260427000300_fabric_render_worker_foundation.sql";
 const geminiProviderMigrationPath =
   "supabase/migrations/20260427000400_fabric_render_gemini_provider.sql";
+const productionCronMigrationPath =
+  "supabase/migrations/20260429000200_fabric_render_worker_cron.sql";
+const providerOwnershipMigrationPath =
+  "supabase/migrations/20260429000300_fabric_render_worker_provider_ownership.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -34,7 +38,7 @@ describe("fabric render worker foundation migration", () => {
 
     expect(sql).toContain("public.fabric_render_worker_resolve_inputs");
     expect(sql).toContain(
-      "drop function if exists public.fabric_render_worker_succeed(uuid, text)"
+      "drop function if exists public.fabric_render_worker_succeed(uuid, text)",
     );
     expect(sql).toContain("output_byte_size");
     expect(sql).toContain("output_width_px");
@@ -43,10 +47,41 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("asset.lifecycle_state <> 'active'");
     expect(sql).toContain("greatest(asset.width_px, asset.height_px) <= 2048");
     expect(sql).toContain(
-      "renders/{sofa_id}/{fabric_id}/{visual_matrix_column_id}/candidates/{job_id}/output.png"
+      "renders/{sofa_id}/{fabric_id}/{visual_matrix_column_id}/candidates/{job_id}/output.png",
     );
     expect(sql).toContain("accepted_at");
     expect(sql).not.toContain("accepted_fabric_render_candidate_id =");
     expect(sql).not.toContain("current_private_asset_id =");
+  });
+
+  it("schedules the production fabric render worker through Supabase Cron", async () => {
+    const sql = await readFile(productionCronMigrationPath, "utf8");
+
+    expect(sql).toContain("create extension if not exists pg_net");
+    expect(sql).toContain("create extension if not exists pg_cron");
+    expect(sql).toContain("cron.schedule");
+    expect(sql).toContain("fabric-render-worker-runner");
+    expect(sql).toContain("net.http_post");
+    expect(sql).toContain("fabric_render_worker_function_url");
+    expect(sql).toContain("fabric_render_worker_invoke_secret");
+    expect(sql).toContain("x-fabric-render-worker-secret");
+    expect(sql).not.toContain("x-fabric-render-provider");
+  });
+
+  it("moves provider and model assignment to the worker claim path", async () => {
+    const sql = await readFile(providerOwnershipMigrationPath, "utf8");
+
+    expect(sql).toContain(
+      "drop function if exists public.fabric_render_worker_claim_next(text, text, integer)",
+    );
+    expect(sql).toContain("claim_provider_name text");
+    expect(sql).toContain("claim_provider_model text");
+    expect(sql).toContain("provider_name = claim_provider_name");
+    expect(sql).toContain("provider_model = claim_provider_model");
+    expect(sql).toContain(
+      "drop index if exists fabric_render_jobs_active_idempotency_idx",
+    );
+    expect(sql).not.toContain("coalesce(provider_name");
+    expect(sql).not.toContain("coalesce(provider_model");
   });
 });

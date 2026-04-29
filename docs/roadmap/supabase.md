@@ -14,8 +14,10 @@
 | Done   | SPEC-0013 | PLAN-0021 | Existing private render cell and asset tables are used for candidate selection and manual render attachment.               |
 | Done   | SPEC-0013 | PLAN-0023 | Existing render cell source-photo fields are used to complete the exact source fabric cell without public asset copies.    |
 | Done   | SPEC-0010 | PLAN-0024 | Public per-sofa tag view added for safe public catalog assembly and tag filtering.                                         |
+| Done   | SPEC-0006 | PLAN-0025 | Supabase Cron invokes the fabric render worker through a Vault-backed secret.                                              |
+| Done   | SPEC-0006 | PLAN-0026 | Fabric render provider and model ownership moved from Vercel admin API to the Supabase worker claim path.                  |
 
 ## Next
 
 - Support admin publication transactions that create public asset copies for non-empty public catalog data.
-- Add production provider hardening, full data model policies, and retention behavior after the provider path.
+- Add full data model policies and retention behavior after the provider path.
