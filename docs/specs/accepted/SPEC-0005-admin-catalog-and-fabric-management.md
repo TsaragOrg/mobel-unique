@@ -465,7 +465,11 @@ Each sofa source photo must be associated with:
 
 The original fabric of a source photo must be one of the fabrics already assigned to that sofa.
 
-If a source photo is valid, it can serve as the canonical public render for its own sofa, visual column, and original fabric combination.
+If a source photo is valid, it can serve as the canonical render for its own sofa, visual column, and original fabric combination.
+
+When a valid source photo is completed and attached, the system must treat the matching sofa, visual column, and original fabric render cell as render-complete from that source photo. The administrator does not need to generate an AI render for the source photo's own original fabric.
+
+AI generation for that visual column is intended for other assigned fabric cells that need material transfer from the current source photo to a different target fabric.
 
 A sofa must not allow multiple original source photos for the same sofa, visual column, and original fabric combination in the MVP.
 
@@ -487,11 +491,13 @@ If the administrator confirms, the system deletes the whole visual matrix column
 
 ## Manual And Generated Renders
 
-Manual public render uploads and AI-generated renders are two ways to complete the same sofa, fabric, and visual column render coverage.
+Source photos, manual public render uploads, and AI-generated renders are three ways to complete the same sofa, fabric, and visual column render coverage.
 
 Administrators must be able to upload a manual public render for one specific sofa, one assigned fabric, and one visual column.
 
-Administrators must be able to generate or regenerate a render for one specific sofa, one assigned fabric, and one visual column.
+Administrators must be able to generate or regenerate a render for one specific sofa, one assigned fabric, and one visual column when that cell is eligible for AI generation.
+
+The source photo's own original fabric cell is not eligible for normal initial AI generation while the source photo is the current render for that cell. Manual upload remains available as an explicit replacement path.
 
 The MVP does not require a separate render validation state.
 
@@ -517,7 +523,9 @@ The coverage view must help administrators understand the sofa's complete public
 - rows are the fabrics assigned to that sofa;
 - each cell represents the public render for one sofa, fabric, and visual column combination.
 
-Each cell should make clear whether it has a public-usable image or still needs a manual upload or generation before publication.
+Each cell should make clear whether it has a public-usable image or still needs a source photo, manual upload, or generation before publication.
+
+If a cell is complete from a source photo, the coverage view should show that state as complete and should not direct the administrator to generate an initial AI render for that same source fabric cell.
 
 A fabric can be public for a sofa only when every visual matrix column has a public-usable image for that fabric.
 
@@ -753,12 +761,14 @@ The environment and deployment spec must define admin web URLs, API base URLs, a
 - Administrators manage visual matrix columns for each sofa.
 - The first visual matrix column is the default public image.
 - Administrators can upload sofa source photos and assign each source photo to one visual matrix column and one original fabric already assigned to the sofa.
+- A valid source photo completes the matching source fabric render cell for its sofa and visual matrix column.
 - The MVP prevents duplicate original source photos for the same sofa, visual matrix column, and original fabric combination.
 - Replacing a source image in one matrix column does not automatically regenerate other fabric cells in that column.
 - Regenerating other fabric cells after a source image replacement requires explicit administrator action per cell.
 - Deleting any image in a visual matrix column requires warning the administrator that the whole column will be deleted for all fabrics.
 - Administrators can upload manual public renders for specific sofa, fabric, and visual matrix column combinations.
-- Administrators can generate or regenerate renders for specific sofa, fabric, and visual matrix column combinations.
+- Administrators can generate or regenerate renders for eligible sofa, fabric, and visual matrix column combinations.
+- Administrators do not need to generate an AI render for a cell already completed by the current source photo for that cell's original fabric.
 - The MVP does not require per-render validation state.
 - Publishing a sofa is the administrator's acceptance that the current visual matrix is customer-ready.
 - If a generated render is not good enough, administrators regenerate the cell or replace it with a manual upload before publishing.

@@ -119,6 +119,10 @@ function createFakeStore(): AdminCatalogStore {
   const renderJobs = new Map<string, Record<string, unknown>>();
   const sofaFabrics = new Map<string, Record<string, unknown>>();
   const sourcePhotos = new Map<string, Record<string, unknown>>();
+  const uploadDescriptors = new Map<
+    string,
+    Parameters<AdminCatalogStore["createUpload"]>[0]
+  >();
   const visualMatrixColumns = new Map<string, Record<string, unknown>>();
   let tagCounter = 0;
   let sofaCounter = 0;
@@ -263,6 +267,7 @@ function createFakeStore(): AdminCatalogStore {
       }
 
       if (uploadId === "sofa-source-photo-upload") {
+        const descriptor = uploadDescriptors.get(uploadId);
         const sourcePhotoAsset = {
           asset_kind: "sofa_source_photo",
           byte_size: 1800,
@@ -273,8 +278,16 @@ function createFakeStore(): AdminCatalogStore {
           visibility: "private",
           width_px: 1600,
         };
-        const [column] = [...visualMatrixColumns.values()];
-        const [assignment] = [...sofaFabrics.values()];
+        const column = descriptor?.visual_matrix_column_id
+          ? visualMatrixColumns.get(
+              descriptor.visual_matrix_column_id as string,
+            )
+          : [...visualMatrixColumns.values()][0];
+        const assignment = descriptor?.original_fabric_id
+          ? sofaFabrics.get(
+              `${descriptor.sofa_id}:${descriptor.original_fabric_id}`,
+            )
+          : [...sofaFabrics.values()][0];
 
         if (column && assignment) {
           sourcePhotoCounter += 1;
@@ -286,7 +299,7 @@ function createFakeStore(): AdminCatalogStore {
               950 + sourcePhotoCounter,
             ).padStart(12, "0")}`,
             original_fabric_id: assignment.fabric_id,
-            sofa_id: column.sofa_id,
+            sofa_id: descriptor?.sofa_id ?? column.sofa_id,
             updated_at: "2026-04-28T10:25:00.000Z",
             visual_matrix_column_id: column.id,
           };
@@ -295,6 +308,30 @@ function createFakeStore(): AdminCatalogStore {
             ...column,
             current_source_photo: sourcePhoto,
             current_source_photo_id: sourcePhoto.id,
+          });
+          const existingCell = [...renderCells.values()].find(
+            (renderCell) =>
+              renderCell.sofa_id === sourcePhoto.sofa_id &&
+              renderCell.fabric_id === sourcePhoto.original_fabric_id &&
+              renderCell.visual_matrix_column_id ===
+                sourcePhoto.visual_matrix_column_id,
+          );
+          const cell =
+            existingCell ??
+            createFakeRenderCell({
+              fabricId: sourcePhoto.original_fabric_id as string,
+              sofaId: sourcePhoto.sofa_id as string,
+              visualMatrixColumnId:
+                sourcePhoto.visual_matrix_column_id as string,
+            });
+
+          renderCells.set(cell.id as string, {
+            ...cell,
+            accepted_fabric_render_candidate_id: null,
+            current_private_asset_id: sourcePhoto.asset_id,
+            source_photo_id: sourcePhoto.id,
+            source_type: "source_photo",
+            updated_at: "2026-04-28T10:25:00.000Z",
           });
         }
 
@@ -373,21 +410,53 @@ function createFakeStore(): AdminCatalogStore {
       return tag;
     },
     async createUpload(input) {
+      const uploadId =
+        input.purpose === "fabric_swatch"
+          ? "fabric-swatch-upload"
+          : input.purpose === "sofa_source_photo"
+            ? "sofa-source-photo-upload"
+            : input.purpose === "manual_render"
+              ? "manual-render-upload"
+              : "fabric-ai-reference-upload";
+      uploadDescriptors.set(uploadId, input);
+
       return {
         expires_at: "2026-04-28T12:00:00.000Z",
         method: "signed_upload",
         signed_upload_url: `https://storage.example/${input.purpose}`,
-        upload_id:
-          input.purpose === "fabric_swatch"
-            ? "fabric-swatch-upload"
-            : input.purpose === "sofa_source_photo"
-              ? "sofa-source-photo-upload"
-              : input.purpose === "manual_render"
-                ? "manual-render-upload"
-                : "fabric-ai-reference-upload",
+        upload_id: uploadId,
       };
     },
     async createFabricRenderJob(input) {
+      const column = visualMatrixColumns.get(input.visual_matrix_column_id);
+      const sourcePhoto =
+        typeof column?.current_source_photo_id === "string"
+          ? sourcePhotos.get(column.current_source_photo_id)
+          : undefined;
+      const sourcePhotoSatisfiedCell = [...renderCells.values()].find(
+        (renderCell) =>
+          sourcePhoto &&
+          renderCell.sofa_id === input.sofa_id &&
+          renderCell.fabric_id === input.fabric_id &&
+          renderCell.visual_matrix_column_id ===
+            input.visual_matrix_column_id &&
+          renderCell.current_private_asset_id === sourcePhoto["asset_id"] &&
+          renderCell.source_photo_id === sourcePhoto["id"] &&
+          renderCell.source_type === "source_photo",
+      );
+
+      if (
+        sourcePhoto?.["original_fabric_id"] === input.fabric_id &&
+        sourcePhotoSatisfiedCell
+      ) {
+        return {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message:
+            "The source photo already satisfies the original fabric render cell.",
+          status: 422,
+        };
+      }
+
       const activeDuplicate = [...renderJobs.values()].find(
         (job) =>
           job.sofa_id === input.sofa_id &&
@@ -604,7 +673,18 @@ function createFakeStore(): AdminCatalogStore {
           const column = visualMatrixColumns.get(
             cell.visual_matrix_column_id as string,
           );
+          const sourcePhoto =
+            typeof column?.current_source_photo_id === "string"
+              ? sourcePhotos.get(column.current_source_photo_id)
+              : undefined;
+          const sourcePhotoSatisfied =
+            sourcePhoto &&
+            sourcePhoto["original_fabric_id"] === cell.fabric_id &&
+            sourcePhoto["asset_id"] === cell.current_private_asset_id &&
+            sourcePhoto["id"] === cell.source_photo_id &&
+            cell.source_type === "source_photo";
           const blockers = [
+            ...(sourcePhotoSatisfied ? ["SOURCE_PHOTO_RENDER_COMPLETE"] : []),
             ...(column?.current_source_photo_id
               ? []
               : ["MISSING_SOURCE_PHOTO"]),
@@ -1335,25 +1415,46 @@ describe("admin catalog route handlers", () => {
       })
     ).json();
     const sofaId = createSofaBody.data.sofa.id as string;
-    const createFabricBody = await (
+    const createSourceFabricBody = await (
       await handleCreateFabricRequest({
         ...input,
         request: jsonRequest({
           ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
-          internal_name: "Render prep fabric",
+          internal_name: "Render prep source fabric",
           is_premium: false,
-          public_name: "Render prep fabric",
+          public_name: "Render prep source fabric",
           swatch_asset_id: "00000000-0000-4000-8000-000000000901",
         }),
       })
     ).json();
-    const fabricId = createFabricBody.data.fabric.id as string;
+    const sourceFabricId = createSourceFabricBody.data.fabric.id as string;
+    const createTargetFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Render prep target fabric",
+          is_premium: false,
+          public_name: "Render prep target fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const targetFabricId = createTargetFabricBody.data.fabric.id as string;
 
     await handleAssignSofaFabricRequest({
       ...input,
-      fabricId,
+      fabricId: sourceFabricId,
       request: jsonRequest({
         public_order: 1,
+      }),
+      sofaId,
+    });
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: targetFabricId,
+      request: jsonRequest({
+        public_order: 2,
       }),
       sofaId,
     });
@@ -1409,12 +1510,51 @@ describe("admin catalog route handlers", () => {
       },
     });
 
+    const initialCoverageResponse = await handleGetRenderCoverageRequest({
+      ...input,
+      sofaId,
+    });
+    expect(initialCoverageResponse.status).toBe(200);
+    const initialCoverageBody = await initialCoverageResponse.json();
+    const initialSourceCell =
+      initialCoverageBody.data.render_coverage.render_cells.find(
+        (cell: Record<string, unknown>) => cell.fabric_id === sourceFabricId,
+      );
+    expect(initialSourceCell).toMatchObject({
+      has_private_render: false,
+      source_type: "ai_generated",
+    });
+
+    await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1900,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: initialSourceCell.id,
+      }),
+    });
+    const manualAssetBody = await (
+      await handleCompleteUploadRequest({
+        ...input,
+        uploadId: "manual-render-upload",
+      })
+    ).json();
+    const manualSourceCellResponse = await handleSetManualRenderRequest({
+      ...input,
+      renderCellId: initialSourceCell.id as string,
+      request: jsonRequest({
+        asset_id: manualAssetBody.data.asset.id,
+      }),
+    });
+    expect(manualSourceCellResponse.status).toBe(200);
+
     const sourceUploadResponse = await handleCreateUploadRequest({
       ...input,
       request: jsonRequest({
         byte_size: 1800,
         content_type: "image/png",
-        original_fabric_id: fabricId,
+        original_fabric_id: sourceFabricId,
         purpose: "sofa_source_photo",
         sofa_id: sofaId,
         visual_matrix_column_id: columnId,
@@ -1449,21 +1589,49 @@ describe("admin catalog route handlers", () => {
     });
     expect(coverageResponse.status).toBe(200);
     const coverageBody = await coverageResponse.json();
-    expect(coverageBody.data.render_coverage).toMatchObject({
-      render_cells: [
-        {
-          can_generate_initial: true,
-          fabric_id: fabricId,
-          visual_matrix_column_id: columnId,
-        },
-      ],
-      sofa_id: sofaId,
+    const sourceCell = coverageBody.data.render_coverage.render_cells.find(
+      (cell: Record<string, unknown>) => cell.fabric_id === sourceFabricId,
+    );
+    const targetCell = coverageBody.data.render_coverage.render_cells.find(
+      (cell: Record<string, unknown>) => cell.fabric_id === targetFabricId,
+    );
+    expect(coverageBody.data.render_coverage.sofa_id).toBe(sofaId);
+    expect(sourceCell).toMatchObject({
+      can_generate_initial: false,
+      fabric_id: sourceFabricId,
+      has_private_render: true,
+      source_type: "source_photo",
+      visual_matrix_column_id: columnId,
+    });
+    expect(targetCell).toMatchObject({
+      can_generate_initial: true,
+      fabric_id: targetFabricId,
+      has_private_render: false,
+      source_type: "ai_generated",
+      visual_matrix_column_id: columnId,
+    });
+
+    const sourceJobResponse = await handleCreateFabricRenderJobRequest({
+      ...input,
+      request: jsonRequest({
+        fabric_id: sourceFabricId,
+        generation_mode: "initial",
+        prompt_note: null,
+        sofa_id: sofaId,
+        visual_matrix_column_id: columnId,
+      }),
+    });
+    expect(sourceJobResponse.status).toBe(422);
+    await expect(sourceJobResponse.json()).resolves.toMatchObject({
+      error: {
+        code: "FABRIC_RENDER_JOB_CONFLICT",
+      },
     });
 
     const jobResponse = await handleCreateFabricRenderJobRequest({
       ...input,
       request: jsonRequest({
-        fabric_id: fabricId,
+        fabric_id: targetFabricId,
         generation_mode: "initial",
         prompt_note: null,
         sofa_id: sofaId,
@@ -1480,7 +1648,7 @@ describe("admin catalog route handlers", () => {
     const duplicateJobResponse = await handleCreateFabricRenderJobRequest({
       ...input,
       request: jsonRequest({
-        fabric_id: fabricId,
+        fabric_id: targetFabricId,
         generation_mode: "initial",
         prompt_note: null,
         sofa_id: sofaId,
@@ -1523,25 +1691,46 @@ describe("admin catalog route handlers", () => {
       })
     ).json();
     const sofaId = createSofaBody.data.sofa.id as string;
-    const createFabricBody = await (
+    const createSourceFabricBody = await (
       await handleCreateFabricRequest({
         ...input,
         request: jsonRequest({
           ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
-          internal_name: "Candidate fabric",
+          internal_name: "Candidate source fabric",
           is_premium: false,
-          public_name: "Candidate fabric",
+          public_name: "Candidate source fabric",
           swatch_asset_id: "00000000-0000-4000-8000-000000000901",
         }),
       })
     ).json();
-    const fabricId = createFabricBody.data.fabric.id as string;
+    const sourceFabricId = createSourceFabricBody.data.fabric.id as string;
+    const createTargetFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Candidate target fabric",
+          is_premium: false,
+          public_name: "Candidate target fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const targetFabricId = createTargetFabricBody.data.fabric.id as string;
 
     await handleAssignSofaFabricRequest({
       ...input,
-      fabricId,
+      fabricId: sourceFabricId,
       request: jsonRequest({
         public_order: 1,
+      }),
+      sofaId,
+    });
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: targetFabricId,
+      request: jsonRequest({
+        public_order: 2,
       }),
       sofaId,
     });
@@ -1563,7 +1752,7 @@ describe("admin catalog route handlers", () => {
       request: jsonRequest({
         byte_size: 1800,
         content_type: "image/png",
-        original_fabric_id: fabricId,
+        original_fabric_id: sourceFabricId,
         purpose: "sofa_source_photo",
         sofa_id: sofaId,
         visual_matrix_column_id: columnId,
@@ -1578,7 +1767,7 @@ describe("admin catalog route handlers", () => {
       await handleCreateFabricRenderJobRequest({
         ...input,
         request: jsonRequest({
-          fabric_id: fabricId,
+          fabric_id: targetFabricId,
           generation_mode: "initial",
           prompt_note: null,
           sofa_id: sofaId,

@@ -824,6 +824,8 @@ Rules:
 - sofa source photos and fabric AI reference images must be rejected if over 2048 px on the longest edge for render generation inputs;
 - unsupported content types must be rejected;
 - incomplete uploads must not become usable assets;
+- completing a `sofa_source_photo` upload must atomically attach the source photo to the visual matrix column and synchronize the matching source fabric render cell as `source_type = 'source_photo'`;
+- source photo completion must not create or refresh public asset copies;
 - public catalog assets are created by publication logic, not by arbitrary browser upload completion.
 
 ## Admin Render Coverage API
@@ -839,11 +841,14 @@ Response data must include:
 - current render cell state for each sofa, fabric, and column combination;
 - source type for current render;
 - whether private render coverage exists;
+- whether a cell is complete from a source photo for the original fabric;
 - whether public asset copy exists for currently published state;
 - relevant pending, processing, failed, and succeeded fabric render jobs;
 - private candidate ids and signed review URLs only for authorized admin review.
 
 The endpoint must not expose private storage paths directly. Admin review URLs for private assets must be short-lived signed URLs.
+
+The endpoint must not advertise initial generation as available for a render cell whose current private render is the matching source photo for that cell's original fabric.
 
 ### `POST /api/admin/render-cells/{render_cell_id}/manual-render`
 
@@ -879,12 +884,15 @@ Rules:
 - the API must validate that the sofa, fabric, and visual matrix column form a valid render cell;
 - initial mode requires the visual matrix column to have a current source image usable as the target sofa input;
 - initial mode requires the fabric to have a private AI reference image;
+- initial mode must reject the source photo's own original fabric cell when that source photo already satisfies the current private render for the cell;
 - initial mode may accept `prompt_note` and must not accept `refine_prompt`;
 - refine mode requires a refinement source asset for the same sofa, fabric, and visual matrix column;
 - refine mode requires a non-empty `refine_prompt` and must not accept `prompt_note`;
 - refine mode sends only the selected current output image and the refine prompt to the provider, not the fixed `v007` prompt, fabric AI reference image, or target sofa image;
 - no equivalent active job may exist unless the admin explicitly requests a new generation;
 - the API creates the durable `fabric_render_jobs` row and sends the queue message.
+
+When rejecting an ineligible source-photo-satisfied cell, the API should use a stable validation error such as `FABRIC_RENDER_JOB_CONFLICT` with a readable message explaining that the source photo already satisfies the original fabric render cell.
 
 Response:
 

@@ -62,7 +62,7 @@ async function readJsonResponse(response, label) {
   }
 }
 
-async function requestJson(url, init, label) {
+async function requestJson(url, init, label, options = {}) {
   let response;
 
   try {
@@ -85,7 +85,7 @@ async function requestJson(url, init, label) {
 
   const body = await readJsonResponse(response, label);
 
-  if (!response.ok) {
+  if (!response.ok && !options.allowError) {
     fail(`${label} returned HTTP ${response.status}: ${JSON.stringify(body)}`);
   }
 
@@ -168,6 +168,35 @@ async function adminJson(accessToken, trustedDeviceCookie, path, init = {}) {
   return body.data ?? {};
 }
 
+async function adminJsonResponse(
+  accessToken,
+  trustedDeviceCookie,
+  path,
+  init = {},
+) {
+  const { body, response } = await requestJson(
+    `${WEB_URL}${path}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Cookie: trustedDeviceCookie,
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+    },
+    path,
+    {
+      allowError: true,
+    },
+  );
+
+  return {
+    body,
+    response,
+  };
+}
+
 async function uploadAdminAsset({
   accessToken,
   trustedDeviceCookie,
@@ -225,31 +254,42 @@ const uniqueSuffix = `${Date.now()}`;
 const accessToken = await fetchSupabaseAuthToken();
 const trustedDeviceCookie = await registerTrustedDevice(accessToken);
 
-const swatchAsset = await uploadAdminAsset({
-  accessToken,
-  purpose: "fabric_swatch",
-  trustedDeviceCookie,
-});
-const aiReferenceAsset = await uploadAdminAsset({
-  accessToken,
-  purpose: "fabric_ai_reference",
-  trustedDeviceCookie,
-});
-const { fabric } = await adminJson(
-  accessToken,
-  trustedDeviceCookie,
-  "/api/admin/fabrics",
-  {
-    body: JSON.stringify({
-      ai_reference_asset_id: aiReferenceAsset.id,
-      internal_name: `Render prep fabric ${uniqueSuffix}`,
-      is_premium: false,
-      public_name: `Render prep fabric ${uniqueSuffix}`,
-      swatch_asset_id: swatchAsset.id,
-    }),
-    method: "POST",
-  },
-);
+async function createSmokeFabric(label) {
+  const swatchAsset = await uploadAdminAsset({
+    accessToken,
+    purpose: "fabric_swatch",
+    trustedDeviceCookie,
+  });
+  const aiReferenceAsset = await uploadAdminAsset({
+    accessToken,
+    purpose: "fabric_ai_reference",
+    trustedDeviceCookie,
+  });
+  const { fabric } = await adminJson(
+    accessToken,
+    trustedDeviceCookie,
+    "/api/admin/fabrics",
+    {
+      body: JSON.stringify({
+        ai_reference_asset_id: aiReferenceAsset.id,
+        internal_name: `Render prep ${label} fabric ${uniqueSuffix}`,
+        is_premium: false,
+        public_name: `Render prep ${label} fabric ${uniqueSuffix}`,
+        swatch_asset_id: swatchAsset.id,
+      }),
+      method: "POST",
+    },
+  );
+
+  if (!fabric?.id) {
+    fail(`fabric creation failed for ${label}: ${JSON.stringify(fabric)}`);
+  }
+
+  return fabric;
+}
+
+const sourceFabric = await createSmokeFabric("source");
+const targetFabric = await createSmokeFabric("target");
 const { sofa } = await adminJson(
   accessToken,
   trustedDeviceCookie,
@@ -266,10 +306,21 @@ const { sofa } = await adminJson(
 await adminJson(
   accessToken,
   trustedDeviceCookie,
-  `/api/admin/sofas/${sofa.id}/fabrics/${fabric.id}`,
+  `/api/admin/sofas/${sofa.id}/fabrics/${sourceFabric.id}`,
   {
     body: JSON.stringify({
       public_order: 1,
+    }),
+    method: "PUT",
+  },
+);
+await adminJson(
+  accessToken,
+  trustedDeviceCookie,
+  `/api/admin/sofas/${sofa.id}/fabrics/${targetFabric.id}`,
+  {
+    body: JSON.stringify({
+      public_order: 2,
     }),
     method: "PUT",
   },
@@ -292,7 +343,7 @@ const { visual_matrix_column: visualMatrixColumn } = await adminJson(
 await uploadAdminAsset({
   accessToken,
   extraPayload: {
-    original_fabric_id: fabric.id,
+    original_fabric_id: sourceFabric.id,
     sofa_id: sofa.id,
     visual_matrix_column_id: visualMatrixColumn.id,
   },
@@ -308,12 +359,52 @@ const { render_coverage: renderCoverage } = await adminJson(
 
 const renderCell = renderCoverage?.render_cells?.find(
   (cell) =>
-    cell.fabric_id === fabric.id &&
+    cell.fabric_id === targetFabric.id &&
+    cell.visual_matrix_column_id === visualMatrixColumn.id,
+);
+const sourceRenderCell = renderCoverage?.render_cells?.find(
+  (cell) =>
+    cell.fabric_id === sourceFabric.id &&
     cell.visual_matrix_column_id === visualMatrixColumn.id,
 );
 
+if (
+  !sourceRenderCell?.has_private_render ||
+  sourceRenderCell.source_type !== "source_photo" ||
+  sourceRenderCell.can_generate_initial
+) {
+  fail(
+    `source fabric cell is not complete from source photo: ${JSON.stringify(sourceRenderCell)}`,
+  );
+}
+
+const sourceJobAttempt = await adminJsonResponse(
+  accessToken,
+  trustedDeviceCookie,
+  "/api/admin/fabric-render-jobs",
+  {
+    body: JSON.stringify({
+      fabric_id: sourceFabric.id,
+      generation_mode: "initial",
+      prompt_note: null,
+      sofa_id: sofa.id,
+      visual_matrix_column_id: visualMatrixColumn.id,
+    }),
+    method: "POST",
+  },
+);
+
+if (
+  sourceJobAttempt.response.status !== 422 ||
+  sourceJobAttempt.body?.error?.code !== "FABRIC_RENDER_JOB_CONFLICT"
+) {
+  fail(
+    `source fabric generation was not rejected: HTTP ${sourceJobAttempt.response.status} ${JSON.stringify(sourceJobAttempt.body)}`,
+  );
+}
+
 if (!renderCell?.can_generate_initial) {
-  fail(`render cell is not eligible: ${JSON.stringify(renderCell)}`);
+  fail(`target render cell is not eligible: ${JSON.stringify(renderCell)}`);
 }
 
 const { fabric_render_job: job } = await adminJson(
@@ -322,7 +413,7 @@ const { fabric_render_job: job } = await adminJson(
   "/api/admin/fabric-render-jobs",
   {
     body: JSON.stringify({
-      fabric_id: fabric.id,
+      fabric_id: targetFabric.id,
       generation_mode: "initial",
       prompt_note: null,
       sofa_id: sofa.id,
@@ -401,5 +492,5 @@ if (
 }
 
 console.log(
-  `PASS SPEC-0010 admin render prep smoke: selected candidate ${candidate.id} and manual render ${manualRenderAsset.id} for sofa ${sofa.id}`,
+  `PASS SPEC-0010 admin render prep smoke: source cell ${sourceRenderCell.id} blocked, selected candidate ${candidate.id}, and manual render ${manualRenderAsset.id} for sofa ${sofa.id}`,
 );

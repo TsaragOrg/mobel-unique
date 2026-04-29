@@ -46,12 +46,16 @@ target fabric and for refining an existing generated render.
 
 The worker must support an administrator-driven render preparation flow where a
 missing sofa, fabric, and visual matrix column render can be generated in
-`initial` mode from:
+`initial` mode for an eligible target fabric from:
 
 - one fabric AI reference sofa image for the target fabric;
 - one target sofa image for the sofa visual matrix column;
 - one fixed prompt version;
 - one configured AI image provider.
+
+The admin API owns eligibility for `initial` mode. It must not queue an initial
+job for the source photo's own original fabric cell while that source photo is
+already the current render for the cell.
 
 The output is a generated sofa render that preserves the target sofa photo,
 camera, composition, geometry, and image dimensions while changing only the
@@ -147,7 +151,8 @@ Service-role credentials and AI provider keys must remain server-side only.
 1. The administrator prepares a sofa, assigns fabrics, and defines the sofa's
    ordered visual matrix columns.
 2. The system identifies a missing visual-column-and-fabric render that can be
-   completed by AI generation.
+   completed by AI generation and is not already satisfied by the current source
+   photo for that cell's original fabric.
 3. The API creates a fabric render job for one sofa, one fabric, and one visual
    matrix column.
 4. The worker claims the queued job.

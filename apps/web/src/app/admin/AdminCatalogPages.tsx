@@ -168,6 +168,14 @@ export interface AdminCatalogRenderCoverage {
   visual_matrix_columns: AdminCatalogVisualMatrixColumn[];
 }
 
+type SofaTestChecklistItem = {
+  completeText: string;
+  id: string;
+  isComplete: boolean;
+  label: string;
+  missingText: string;
+};
+
 export interface SofaMutationInput {
   depth_cm?: number;
   height_cm?: number;
@@ -1381,6 +1389,16 @@ function SofaEditContent({
   const [visualMatrixColumns, setVisualMatrixColumns] = useState<
     AdminCatalogVisualMatrixColumn[]
   >([]);
+  const sofaTestChecklist = useMemo(
+    () =>
+      buildSofaTestChecklist({
+        readiness,
+        renderCoverage,
+        sofaFabrics,
+        visualMatrixColumns,
+      }),
+    [readiness, renderCoverage, sofaFabrics, visualMatrixColumns],
+  );
 
   useEffect(() => {
     let isCurrent = true;
@@ -1474,10 +1492,21 @@ function SofaEditContent({
     <section aria-labelledby="edit-sofa-title" className="admin-section">
       <p className="eyebrow">Catalog</p>
       <h1 id="edit-sofa-title">{sofa?.internal_name ?? "Sofa"}</h1>
-      <div className="admin-grid">
-        <div>
-          {sofa ? (
-            <>
+      {sofa ? (
+        <>
+          <SofaTestNavigation />
+          <SofaTestChecklist items={sofaTestChecklist} />
+          <div className="admin-section-stack admin-test-workflow">
+            <section
+              aria-labelledby="sofa-basics-title"
+              className="admin-subsection"
+              id="sofa-basics"
+            >
+              <SectionStepHeading
+                headingId="sofa-basics-title"
+                number="1"
+                title="Sofa basics"
+              />
               <SofaForm
                 buttonLabel={isSubmitting ? "Saving" : "Save sofa"}
                 errorMessage={errorMessage}
@@ -1487,52 +1516,207 @@ function SofaEditContent({
                 sofa={sofa}
                 tags={tags}
               />
-              <SofaFabricAssignmentSection
-                accessToken={accessToken}
-                dependencies={dependencies}
-                fabrics={fabrics}
-                onReadinessChange={setReadiness}
-                onRenderPreparationRefresh={refreshRenderPreparation}
-                onSofaFabricsChange={setSofaFabrics}
-                sofaFabrics={sofaFabrics}
-                sofaId={sofaId}
-              />
-              <VisualMatrixSection
-                accessToken={accessToken}
-                columns={visualMatrixColumns}
-                dependencies={dependencies}
-                onRefresh={refreshRenderPreparation}
-                sofaFabrics={sofaFabrics}
-                sofaId={sofaId}
-              />
-              <RenderCoverageSection
-                accessToken={accessToken}
-                coverage={renderCoverage}
-                dependencies={dependencies}
-                onRefresh={refreshRenderPreparation}
-                sofaFabrics={sofaFabrics}
-                visualMatrixColumns={visualMatrixColumns}
-              />
-            </>
-          ) : null}
-        </div>
-        <aside className="admin-aside" aria-labelledby="readiness-title">
-          <h2 id="readiness-title">Publication readiness</h2>
-          {readiness?.ready ? <p>Ready</p> : <p>Blocked</p>}
-          {readiness?.errors.length ? (
-            <ul className="admin-list">
-              {readiness.errors.map((error) => (
-                <li key={error.code}>
-                  <strong>{error.code}</strong>
-                  <span>{error.message}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </aside>
-      </div>
+            </section>
+            <SofaFabricAssignmentSection
+              accessToken={accessToken}
+              dependencies={dependencies}
+              fabrics={fabrics}
+              onReadinessChange={setReadiness}
+              onRenderPreparationRefresh={refreshRenderPreparation}
+              onSofaFabricsChange={setSofaFabrics}
+              sofaFabrics={sofaFabrics}
+              sofaId={sofaId}
+            />
+            <VisualMatrixSection
+              accessToken={accessToken}
+              columns={visualMatrixColumns}
+              dependencies={dependencies}
+              onRefresh={refreshRenderPreparation}
+              sofaFabrics={sofaFabrics}
+              sofaId={sofaId}
+            />
+            <RenderCoverageSection
+              accessToken={accessToken}
+              coverage={renderCoverage}
+              dependencies={dependencies}
+              onRefresh={refreshRenderPreparation}
+              sofaFabrics={sofaFabrics}
+              visualMatrixColumns={visualMatrixColumns}
+            />
+            <PublicationReadinessSection readiness={readiness} />
+          </div>
+        </>
+      ) : null}
     </section>
   );
+}
+
+function SofaTestNavigation() {
+  const links = [
+    { href: "#sofa-basics", label: "Sofa basics", number: "1" },
+    { href: "#fabric-assignments", label: "Fabric assignments", number: "2" },
+    { href: "#visual-matrix", label: "Visual matrix", number: "3" },
+    { href: "#render-coverage", label: "Render coverage", number: "4" },
+    {
+      href: "#publication-readiness",
+      label: "Publication readiness",
+      number: "5",
+    },
+  ];
+
+  return (
+    <nav aria-label="Sofa test sections" className="admin-test-nav">
+      {links.map((link) => (
+        <a aria-label={link.label} href={link.href} key={link.href}>
+          <span aria-hidden="true">{link.number}</span>
+          {link.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function SofaTestChecklist({ items }: { items: SofaTestChecklistItem[] }) {
+  return (
+    <section
+      aria-labelledby="sofa-test-checklist-title"
+      className="admin-test-checklist"
+    >
+      <h2 id="sofa-test-checklist-title">Manual test checklist</h2>
+      <ul aria-label="Manual sofa test checklist">
+        {items.map((item) => (
+          <li
+            aria-label={`${item.label}: ${item.isComplete ? "Done" : "Missing"}`}
+            className="admin-checklist-item"
+            key={item.id}
+          >
+            <span className="admin-checklist-label">{item.label}</span>
+            <span
+              className={
+                item.isComplete
+                  ? "admin-checklist-state admin-checklist-state-ready"
+                  : "admin-checklist-state"
+              }
+            >
+              {item.isComplete ? item.completeText : item.missingText}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function PublicationReadinessSection({
+  readiness,
+}: {
+  readiness: AdminCatalogReadiness | null;
+}) {
+  return (
+    <section
+      aria-labelledby="readiness-title"
+      className="admin-subsection"
+      id="publication-readiness"
+    >
+      <SectionStepHeading
+        headingId="readiness-title"
+        number="5"
+        title="Publication readiness"
+      />
+      {readiness?.ready ? <p>Ready</p> : <p>Blocked</p>}
+      {readiness?.errors.length ? (
+        <ul className="admin-list">
+          {readiness.errors.map((error) => (
+            <li key={error.code}>
+              <strong>{error.code}</strong>
+              <span>{error.message}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function SectionStepHeading({
+  headingId,
+  number,
+  title,
+}: {
+  headingId: string;
+  number: string;
+  title: string;
+}) {
+  return (
+    <div className="admin-step-heading">
+      <span aria-hidden="true" className="admin-step-number">
+        {number}
+      </span>
+      <h2 id={headingId}>{title}</h2>
+    </div>
+  );
+}
+
+function buildSofaTestChecklist({
+  readiness,
+  renderCoverage,
+  sofaFabrics,
+  visualMatrixColumns,
+}: {
+  readiness: AdminCatalogReadiness | null;
+  renderCoverage: AdminCatalogRenderCoverage | null;
+  sofaFabrics: AdminCatalogSofaFabric[];
+  visualMatrixColumns: AdminCatalogVisualMatrixColumn[];
+}): SofaTestChecklistItem[] {
+  const renderCells = renderCoverage?.render_cells ?? [];
+  const hasSourcePhoto = visualMatrixColumns.some((column) =>
+    Boolean(column.current_source_photo_id),
+  );
+
+  return [
+    {
+      completeText: `${sofaFabrics.length} assigned`,
+      id: "fabric-assignment",
+      isComplete: sofaFabrics.length > 0,
+      label: "Fabric assigned",
+      missingText: "Missing",
+    },
+    {
+      completeText: `${visualMatrixColumns.length} columns`,
+      id: "visual-matrix-column",
+      isComplete: visualMatrixColumns.length > 0,
+      label: "Visual column",
+      missingText: "Missing",
+    },
+    {
+      completeText: "Ready",
+      id: "source-photo",
+      isComplete: hasSourcePhoto,
+      label: "Source photo",
+      missingText: "Missing",
+    },
+    {
+      completeText: `${renderCells.reduce((total, cell) => total + cell.candidate_count, 0)} candidates`,
+      id: "generated-candidate",
+      isComplete: renderCells.some((cell) => cell.candidate_count > 0),
+      label: "Generated candidate",
+      missingText: "Missing",
+    },
+    {
+      completeText: "Selected",
+      id: "private-render",
+      isComplete: renderCells.some((cell) => cell.has_private_render),
+      label: "Private render",
+      missingText: "Missing",
+    },
+    {
+      completeText: "Ready",
+      id: "publication-readiness",
+      isComplete: Boolean(readiness?.ready),
+      label: "Publication readiness",
+      missingText: "Blocked",
+    },
+  ];
 }
 
 function TagManagerContent({
@@ -1764,14 +1948,25 @@ function SofaFabricAssignmentSection({
   }
 
   return (
-    <section aria-labelledby="sofa-fabrics-title" className="admin-subsection">
-      <h2 id="sofa-fabrics-title">Fabrics</h2>
+    <section
+      aria-labelledby="sofa-fabrics-title"
+      className="admin-subsection"
+      id="fabric-assignments"
+    >
+      <SectionStepHeading
+        headingId="sofa-fabrics-title"
+        number="2"
+        title="Fabric assignments"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      <form className="admin-inline-form" onSubmit={handleAssign}>
+      <form
+        className="admin-inline-form admin-inline-form-wide"
+        onSubmit={handleAssign}
+      >
         <label className="field">
           <span>Assign fabric</span>
           <select name="fabric_id" required>
@@ -1929,14 +2124,25 @@ function VisualMatrixSection({
   }
 
   return (
-    <section aria-labelledby="visual-matrix-title" className="admin-subsection">
-      <h2 id="visual-matrix-title">Visual matrix</h2>
+    <section
+      aria-labelledby="visual-matrix-title"
+      className="admin-subsection"
+      id="visual-matrix"
+    >
+      <SectionStepHeading
+        headingId="visual-matrix-title"
+        number="3"
+        title="Visual matrix"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      <form className="admin-inline-form" onSubmit={handleCreate}>
+      <form
+        className="admin-inline-form admin-inline-form-wide"
+        onSubmit={handleCreate}
+      >
         <label className="field">
           <span>Sequence</span>
           <input min="1" name="sequence" required type="number" />
@@ -1959,7 +2165,7 @@ function VisualMatrixSection({
           {columns.map((column) => (
             <div className="admin-list-row" key={column.id}>
               <form
-                className="admin-inline-form"
+                className="admin-inline-form admin-inline-form-wide"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void handleUpdate(column, event.currentTarget);
@@ -1994,7 +2200,7 @@ function VisualMatrixSection({
                 </button>
               </form>
               <form
-                className="admin-inline-form"
+                className="admin-inline-form admin-inline-form-wide"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void handleSourcePhotoUpload(column, event.currentTarget);
@@ -2033,6 +2239,30 @@ function VisualMatrixSection({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function renderSourceTypeLabel(sourceType: string) {
+  if (sourceType === "source_photo") {
+    return "Source photo";
+  }
+
+  if (sourceType === "manual_upload") {
+    return "Manual upload";
+  }
+
+  if (sourceType === "ai_generated") {
+    return "AI generated";
+  }
+
+  return sourceType || "Unknown";
+}
+
+function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {
+  return (
+    cell.source_type === "source_photo" &&
+    cell.has_private_render &&
+    Boolean(cell.source_photo_id)
   );
 }
 
@@ -2175,8 +2405,13 @@ function RenderCoverageSection({
     <section
       aria-labelledby="render-coverage-title"
       className="admin-subsection"
+      id="render-coverage"
     >
-      <h2 id="render-coverage-title">Render coverage</h2>
+      <SectionStepHeading
+        headingId="render-coverage-title"
+        number="4"
+        title="Render coverage"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
@@ -2211,49 +2446,73 @@ function RenderCoverageSection({
                     const cell = findCell(assignment.fabric_id, column.id);
 
                     return (
-                      <td key={column.id}>
+                      <td className="admin-render-cell" key={column.id}>
                         {cell ? (
                           <div className="admin-cell-stack">
-                            <span>
-                              {cell.has_public_render
-                                ? "Public ready"
-                                : cell.has_private_render
-                                  ? "Private ready"
-                                  : "Incomplete"}
-                            </span>
-                            <span className="admin-muted">
-                              {cell.latest_job?.status ?? cell.source_type}
-                            </span>
-                            {cell.blockers.length > 0 ? (
-                              <span className="admin-muted">
-                                {cell.blockers.join(", ")}
+                            <div className="admin-cell-summary">
+                              <strong>Render status</strong>
+                              <span>
+                                {cell.has_public_render
+                                  ? "Public ready"
+                                  : cell.has_private_render
+                                    ? "Private ready"
+                                    : "Incomplete"}
                               </span>
+                            </div>
+                            <dl className="admin-cell-details">
+                              <div>
+                                <dt>Source</dt>
+                                <dd>
+                                  {renderSourceTypeLabel(cell.source_type)}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Job</dt>
+                                <dd>{cell.latest_job?.status ?? "No job"}</dd>
+                              </div>
+                              <div>
+                                <dt>Candidates</dt>
+                                <dd>{cell.candidate_count}</dd>
+                              </div>
+                            </dl>
+                            {cell.blockers.length > 0 ? (
+                              <div className="admin-cell-blockers">
+                                <strong>Blockers</strong>
+                                <span>{cell.blockers.join(", ")}</span>
+                              </div>
                             ) : null}
-                            <span className="admin-muted">
-                              Candidates: {cell.candidate_count}
-                            </span>
-                            <button
-                              disabled={
-                                !cell.can_generate_initial ||
-                                activeCellId === cell.id
-                              }
-                              onClick={() => void handleGenerate(cell)}
-                              type="button"
-                            >
-                              {activeCellId === cell.id
-                                ? "Queueing"
-                                : "Generate"}
-                            </button>
-                            <button
-                              disabled={
-                                cell.candidate_count === 0 ||
-                                activeCellId === cell.id
-                              }
-                              onClick={() => void handleReviewCandidates(cell)}
-                              type="button"
-                            >
-                              Review candidates
-                            </button>
+                            <div className="admin-cell-actions">
+                              {isSourcePhotoCompleteCell(cell) ? (
+                                <span className="admin-muted">
+                                  Source photo is current
+                                </span>
+                              ) : (
+                                <button
+                                  disabled={
+                                    !cell.can_generate_initial ||
+                                    activeCellId === cell.id
+                                  }
+                                  onClick={() => void handleGenerate(cell)}
+                                  type="button"
+                                >
+                                  {activeCellId === cell.id
+                                    ? "Queueing"
+                                    : "Generate"}
+                                </button>
+                              )}
+                              <button
+                                disabled={
+                                  cell.candidate_count === 0 ||
+                                  activeCellId === cell.id
+                                }
+                                onClick={() =>
+                                  void handleReviewCandidates(cell)
+                                }
+                                type="button"
+                              >
+                                Review candidates
+                              </button>
+                            </div>
                             <form
                               className="admin-cell-form"
                               onSubmit={(event) => {
@@ -2339,7 +2598,6 @@ function RenderCoverageSection({
     </section>
   );
 }
-
 function FabricForm({
   buttonLabel,
   errorMessage,
