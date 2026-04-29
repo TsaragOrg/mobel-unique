@@ -1,8 +1,10 @@
 import { type createAdminAuth } from "./admin-auth";
 import {
   AdminCatalogOperationError,
+  shapeFabricRenderCandidateResponse,
   shapeFabricRenderJobResponse,
   shapeFabricResponse,
+  shapeRenderCellResponse,
   shapeRenderCoverageResponse,
   shapeSofaResponse,
   shapeSofaFabricResponse,
@@ -13,6 +15,7 @@ import {
   validateFabricCreatePayload,
   validateFabricPatchPayload,
   validateFabricRenderJobCreatePayload,
+  validateManualRenderMutationPayload,
   validateSofaFabricMutationPayload,
   validateSofaCreatePayload,
   validateSofaPatchPayload,
@@ -79,6 +82,18 @@ type VisualMatrixColumnRequestInput = RequestInput & {
 
 type FabricRenderJobInput = BaseInput & {
   jobId: string;
+};
+
+type RenderCellInput = BaseInput & {
+  renderCellId: string;
+};
+
+type RenderCellRequestInput = RequestInput & {
+  renderCellId: string;
+};
+
+type RenderCandidateInput = BaseInput & {
+  candidateId: string;
 };
 
 type TagInput = BaseInput & {
@@ -391,6 +406,90 @@ export async function handleGetFabricRenderJobRequest(
       {
         data: {
           fabric_render_job: shapeFabricRenderJobResponse(job),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleListRenderCellCandidatesRequest(
+  input: RenderCellInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const candidates = await store.listRenderCellCandidates(input.renderCellId);
+
+    if (!candidates) {
+      return notFoundResponse(
+        "RENDER_CELL_NOT_FOUND",
+        "Render cell was not found.",
+      );
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_candidates: candidates.map(shapeFabricRenderCandidateResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUseRenderCandidateRequest(
+  input: RenderCandidateInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.useRenderCandidate(input.candidateId);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_candidate: shapeFabricRenderCandidateResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleSetManualRenderRequest(
+  input: RenderCellRequestInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateManualRenderMutationPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.setManualRender(
+      input.renderCellId,
+      validation.value,
+    );
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_cell: shapeRenderCellResponse(result),
         },
         meta: {},
       },

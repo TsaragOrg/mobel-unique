@@ -10,8 +10,9 @@
 | Done   | SPEC-0010 | PLAN-0016 | Authenticated admin catalog API foundation for draft sofas, tags, and publication readiness through the first-party facade. |
 | Done   | SPEC-0013 | PLAN-0018 | Admin fabric upload, fabric CRUD/archive, and sofa fabric assignment endpoints through the first-party facade.              |
 | Done   | SPEC-0013 | PLAN-0019 | Admin visual matrix, source photo upload, render coverage, and initial fabric render job endpoints.                         |
+| Done   | SPEC-0013 | PLAN-0021 | Admin candidate listing, current render selection, and manual render attachment endpoints.                                  |
 
 ## Next
 
-- Add authenticated admin candidate review, publication, and export endpoint implementations behind the established admin boundary.
+- Add authenticated admin publication and export endpoint implementations behind the established admin boundary.
 - Define remaining server-to-server authorization for internal and worker-only APIs.

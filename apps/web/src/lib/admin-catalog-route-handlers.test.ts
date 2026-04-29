@@ -18,6 +18,7 @@ import {
   handleGetSofaPublicationReadinessRequest,
   handleGetSofaRequest,
   handleListFabricsRequest,
+  handleListRenderCellCandidatesRequest,
   handleListSofaFabricsRequest,
   handleListSofasRequest,
   handleListTagsRequest,
@@ -28,6 +29,8 @@ import {
   handleUpdateSofaFabricRequest,
   handleUpdateTagRequest,
   handleUpdateVisualMatrixColumnRequest,
+  handleSetManualRenderRequest,
+  handleUseRenderCandidateRequest,
   type AdminCatalogStore,
 } from "./admin-catalog-route-handlers";
 
@@ -112,6 +115,7 @@ function createFakeStore(): AdminCatalogStore {
   const assets = new Map<string, Record<string, unknown>>();
   const fabrics = new Map<string, Record<string, unknown>>();
   const renderCells = new Map<string, Record<string, unknown>>();
+  const renderCandidates = new Map<string, Record<string, unknown>>();
   const renderJobs = new Map<string, Record<string, unknown>>();
   const sofaFabrics = new Map<string, Record<string, unknown>>();
   const sourcePhotos = new Map<string, Record<string, unknown>>();
@@ -120,6 +124,7 @@ function createFakeStore(): AdminCatalogStore {
   let sofaCounter = 0;
   let fabricCounter = 0;
   let renderCellCounter = 0;
+  let renderCandidateCounter = 0;
   let renderJobCounter = 0;
   let sourcePhotoCounter = 0;
   let visualColumnCounter = 0;
@@ -162,9 +167,10 @@ function createFakeStore(): AdminCatalogStore {
       current_private_asset_id: null,
       current_public_asset_id: null,
       fabric_id: fabricId,
-      id: `00000000-0000-4000-8000-${String(
-        960 + renderCellCounter,
-      ).padStart(12, "0")}`,
+      id: `00000000-0000-4000-8000-${String(960 + renderCellCounter).padStart(
+        12,
+        "0",
+      )}`,
       sofa_id: sofaId,
       source_photo_id: null,
       source_type: "ai_generated",
@@ -297,6 +303,22 @@ function createFakeStore(): AdminCatalogStore {
         return sourcePhotoAsset;
       }
 
+      if (uploadId === "manual-render-upload") {
+        const manualRenderAsset = {
+          asset_kind: "manual_render",
+          byte_size: 1900,
+          content_type: "image/png",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000909",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        };
+        assets.set(manualRenderAsset.id, manualRenderAsset);
+
+        return manualRenderAsset;
+      }
+
       return {
         code: "UPLOAD_NOT_FOUND",
         message: "Upload was not found.",
@@ -360,7 +382,9 @@ function createFakeStore(): AdminCatalogStore {
             ? "fabric-swatch-upload"
             : input.purpose === "sofa_source_photo"
               ? "sofa-source-photo-upload"
-            : "fabric-ai-reference-upload",
+              : input.purpose === "manual_render"
+                ? "manual-render-upload"
+                : "fabric-ai-reference-upload",
       };
     },
     async createFabricRenderJob(input) {
@@ -401,9 +425,10 @@ function createFakeStore(): AdminCatalogStore {
         created_at: "2026-04-28T10:30:00.000Z",
         fabric_id: input.fabric_id,
         generation_mode: input.generation_mode,
-        id: `00000000-0000-4000-8000-${String(
-          970 + renderJobCounter,
-        ).padStart(12, "0")}`,
+        id: `00000000-0000-4000-8000-${String(970 + renderJobCounter).padStart(
+          12,
+          "0",
+        )}`,
         last_error_message: null,
         max_attempts: 3,
         prompt_note: input.prompt_note,
@@ -415,6 +440,43 @@ function createFakeStore(): AdminCatalogStore {
         visual_matrix_column_id: input.visual_matrix_column_id,
       };
       renderJobs.set(job.id, job);
+
+      renderCandidateCounter += 1;
+      const candidateAsset = {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: `00000000-0000-4000-8000-${String(
+          980 + renderCandidateCounter,
+        ).padStart(12, "0")}`,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      };
+      assets.set(candidateAsset.id, candidateAsset);
+      const candidate = {
+        accepted_at: null,
+        asset: candidateAsset,
+        asset_id: candidateAsset.id,
+        created_at: "2026-04-28T10:35:00.000Z",
+        fabric_id: input.fabric_id,
+        generation_mode: input.generation_mode,
+        id: `00000000-0000-4000-8000-${String(
+          990 + renderCandidateCounter,
+        ).padStart(12, "0")}`,
+        is_current: false,
+        job_id: job.id,
+        preview_url:
+          "https://storage.example/signed/private-candidate-preview?token=short",
+        prompt_version: "v007",
+        provider_model: "mock-fabric-render-v1",
+        provider_name: "mock",
+        render_cell_id: cell.id,
+        sofa_id: input.sofa_id,
+        visual_matrix_column_id: input.visual_matrix_column_id,
+      };
+      renderCandidates.set(candidate.id, candidate);
 
       return job;
     },
@@ -437,7 +499,8 @@ function createFakeStore(): AdminCatalogStore {
       if (sequenceConflict) {
         return {
           code: "VISUAL_MATRIX_COLUMN_CONFLICT",
-          message: "Another active visual matrix column already uses this sequence.",
+          message:
+            "Another active visual matrix column already uses this sequence.",
           status: 409,
         };
       }
@@ -554,6 +617,9 @@ function createFakeStore(): AdminCatalogStore {
             ...cell,
             blockers,
             can_generate_initial: blockers.length === 0,
+            candidate_count: [...renderCandidates.values()].filter(
+              (candidate) => candidate.render_cell_id === cell.id,
+            ).length,
             has_private_render: Boolean(cell.current_private_asset_id),
             has_public_render: Boolean(cell.current_public_asset_id),
             latest_job: latestJob,
@@ -596,6 +662,15 @@ function createFakeStore(): AdminCatalogStore {
     async listFabrics() {
       return [...fabrics.values()];
     },
+    async listRenderCellCandidates(renderCellId) {
+      if (!renderCells.has(renderCellId)) {
+        return null;
+      }
+
+      return [...renderCandidates.values()].filter(
+        (candidate) => candidate.render_cell_id === renderCellId,
+      );
+    },
     async listSofas() {
       return [...sofas.values()];
     },
@@ -634,6 +709,39 @@ function createFakeStore(): AdminCatalogStore {
       sofaFabrics.delete(key);
 
       return null;
+    },
+    async setManualRender(renderCellId, input) {
+      const existing = renderCells.get(renderCellId);
+      const asset = assets.get(input.asset_id);
+
+      if (!existing) {
+        return {
+          code: "RENDER_CELL_NOT_FOUND",
+          message: "Render cell was not found.",
+          status: 404,
+        };
+      }
+
+      if (!asset || asset.asset_kind !== "manual_render") {
+        return {
+          code: "MANUAL_RENDER_NOT_FOUND",
+          message: "Manual render asset was not found.",
+          status: 422,
+        };
+      }
+
+      const next = {
+        ...existing,
+        accepted_fabric_render_candidate_id: null,
+        current_private_asset_id: input.asset_id,
+        current_public_asset_id: null,
+        source_photo_id: null,
+        source_type: "manual_upload",
+        updated_at: "2026-04-28T10:40:00.000Z",
+      };
+      renderCells.set(renderCellId, next);
+
+      return next;
     },
     async updateFabric(fabricId, input) {
       const existing = fabrics.get(fabricId);
@@ -746,6 +854,54 @@ function createFakeStore(): AdminCatalogStore {
       visualMatrixColumns.set(columnId, next);
 
       return next;
+    },
+    async useRenderCandidate(candidateId) {
+      const candidate = renderCandidates.get(candidateId);
+
+      if (!candidate) {
+        return {
+          code: "FABRIC_RENDER_CANDIDATE_NOT_FOUND",
+          message: "Fabric render candidate was not found.",
+          status: 404,
+        };
+      }
+
+      const cell = renderCells.get(candidate.render_cell_id as string);
+
+      if (!cell) {
+        return {
+          code: "RENDER_CELL_NOT_FOUND",
+          message: "Render cell was not found.",
+          status: 404,
+        };
+      }
+
+      for (const [id, existingCandidate] of renderCandidates.entries()) {
+        if (existingCandidate.render_cell_id === candidate.render_cell_id) {
+          renderCandidates.set(id, {
+            ...existingCandidate,
+            accepted_at: null,
+            is_current: false,
+          });
+        }
+      }
+
+      const acceptedCandidate = {
+        ...candidate,
+        accepted_at: "2026-04-28T10:40:00.000Z",
+        is_current: true,
+      };
+      renderCandidates.set(candidateId, acceptedCandidate);
+      renderCells.set(candidate.render_cell_id as string, {
+        ...cell,
+        accepted_fabric_render_candidate_id: candidateId,
+        current_private_asset_id: candidate.asset_id,
+        current_public_asset_id: null,
+        source_type: "ai_generated",
+        updated_at: "2026-04-28T10:40:00.000Z",
+      });
+
+      return acceptedCandidate;
     },
   };
 }
@@ -1352,6 +1508,157 @@ describe("admin catalog route handlers", () => {
       columnId,
     });
     expect(deleteColumnResponse.status).toBe(204);
+  });
+
+  it("runs candidate review, current selection, and manual render attachment", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Candidate sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+    const createFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Candidate fabric",
+          is_premium: false,
+          public_name: "Candidate fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const fabricId = createFabricBody.data.fabric.id as string;
+
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId,
+      request: jsonRequest({
+        public_order: 1,
+      }),
+      sofaId,
+    });
+
+    const createColumnBody = await (
+      await handleCreateVisualMatrixColumnRequest({
+        ...input,
+        request: jsonRequest({
+          admin_label: "Front internal",
+          public_label: "Front",
+          sequence: 1,
+        }),
+        sofaId,
+      })
+    ).json();
+    const columnId = createColumnBody.data.visual_matrix_column.id as string;
+    await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1800,
+        content_type: "image/png",
+        original_fabric_id: fabricId,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaId,
+        visual_matrix_column_id: columnId,
+      }),
+    });
+    await handleCompleteUploadRequest({
+      ...input,
+      uploadId: "sofa-source-photo-upload",
+    });
+
+    const jobBody = await (
+      await handleCreateFabricRenderJobRequest({
+        ...input,
+        request: jsonRequest({
+          fabric_id: fabricId,
+          generation_mode: "initial",
+          prompt_note: null,
+          sofa_id: sofaId,
+          visual_matrix_column_id: columnId,
+        }),
+      })
+    ).json();
+    const renderCellId = jobBody.data.fabric_render_job
+      .render_cell_id as string;
+
+    const candidatesResponse = await handleListRenderCellCandidatesRequest({
+      ...input,
+      renderCellId,
+    });
+    expect(candidatesResponse.status).toBe(200);
+    const candidatesBody = await candidatesResponse.json();
+    const candidate = candidatesBody.data.render_candidates[0];
+    expect(candidate).toMatchObject({
+      is_current: false,
+      preview_url:
+        "https://storage.example/signed/private-candidate-preview?token=short",
+      render_cell_id: renderCellId,
+    });
+    expect(JSON.stringify(candidate)).not.toContain("object_path");
+
+    const useCandidateResponse = await handleUseRenderCandidateRequest({
+      ...input,
+      candidateId: candidate.id,
+    });
+    expect(useCandidateResponse.status).toBe(200);
+    await expect(useCandidateResponse.json()).resolves.toMatchObject({
+      data: {
+        render_candidate: {
+          id: candidate.id,
+          is_current: true,
+        },
+      },
+    });
+
+    const manualUploadResponse = await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1900,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: renderCellId,
+      }),
+    });
+    expect(manualUploadResponse.status).toBe(201);
+    await expect(manualUploadResponse.json()).resolves.toMatchObject({
+      data: {
+        upload: {
+          upload_id: "manual-render-upload",
+        },
+      },
+    });
+
+    const manualAssetBody = await (
+      await handleCompleteUploadRequest({
+        ...input,
+        uploadId: "manual-render-upload",
+      })
+    ).json();
+    const manualRenderResponse = await handleSetManualRenderRequest({
+      ...input,
+      renderCellId,
+      request: jsonRequest({
+        asset_id: manualAssetBody.data.asset.id,
+      }),
+    });
+    expect(manualRenderResponse.status).toBe(200);
+    await expect(manualRenderResponse.json()).resolves.toMatchObject({
+      data: {
+        render_cell: {
+          current_private_asset_id: manualAssetBody.data.asset.id,
+          current_public_asset_id: null,
+          source_type: "manual_upload",
+        },
+      },
+    });
   });
 
   it("keeps archived fabrics visible but blocks new sofa assignments", async () => {

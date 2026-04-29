@@ -46,9 +46,11 @@ function createFetchMock() {
     `
 const ids = {
   aiReferenceAsset: "00000000-0000-4000-8000-000000000902",
+  candidate: "00000000-0000-4000-8000-000000000908",
   column: "00000000-0000-4000-8000-000000000904",
   fabric: "00000000-0000-4000-8000-000000000903",
   job: "00000000-0000-4000-8000-000000000906",
+  manualRenderAsset: "00000000-0000-4000-8000-000000000909",
   renderCell: "00000000-0000-4000-8000-000000000905",
   sofa: "00000000-0000-4000-8000-000000000701",
   sourcePhotoAsset: "00000000-0000-4000-8000-000000000907",
@@ -103,14 +105,15 @@ globalThis.fetch = async (url, init = {}) => {
   if (requestUrl.includes("/api/admin/uploads/") && requestUrl.endsWith("/complete")) {
     const isSwatch = requestUrl.includes("fabric_swatch");
     const isSource = requestUrl.includes("sofa_source_photo");
+    const isManualRender = requestUrl.includes("manual_render");
     return json({
       data: {
         asset: {
-          asset_kind: isSwatch ? "fabric_swatch_public" : isSource ? "sofa_source_photo" : "fabric_ai_reference",
+          asset_kind: isSwatch ? "fabric_swatch_public" : isSource ? "sofa_source_photo" : isManualRender ? "manual_render" : "fabric_ai_reference",
           byte_size: 68,
           content_type: "image/png",
           height_px: 1,
-          id: isSwatch ? ids.swatchAsset : isSource ? ids.sourcePhotoAsset : ids.aiReferenceAsset,
+          id: isSwatch ? ids.swatchAsset : isSource ? ids.sourcePhotoAsset : isManualRender ? ids.manualRenderAsset : ids.aiReferenceAsset,
           lifecycle_state: "active",
           visibility: isSwatch ? "public" : "private",
           width_px: 1
@@ -178,6 +181,7 @@ globalThis.fetch = async (url, init = {}) => {
           render_cells: [{
             blockers: [],
             can_generate_initial: true,
+            candidate_count: 1,
             fabric_id: ids.fabric,
             id: ids.renderCell,
             sofa_id: ids.sofa,
@@ -202,6 +206,67 @@ globalThis.fetch = async (url, init = {}) => {
       },
       meta: {}
     }, { status: 201 });
+  }
+
+  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.renderCell + "/candidates")) {
+    return json({
+      data: {
+        render_candidates: [{
+          asset: {
+            asset_kind: "fabric_render_candidate",
+            byte_size: 68,
+            content_type: "image/png",
+            height_px: 1,
+            id: ids.sourcePhotoAsset,
+            lifecycle_state: "active",
+            visibility: "private",
+            width_px: 1
+          },
+          asset_id: ids.sourcePhotoAsset,
+          created_at: "2026-04-28T10:35:00.000Z",
+          fabric_id: ids.fabric,
+          generation_mode: "initial",
+          id: ids.candidate,
+          is_current: false,
+          job_id: ids.job,
+          preview_url: "https://storage.example/private-candidate-preview",
+          prompt_version: "v007",
+          provider_model: "mock-fabric-render-v1",
+          provider_name: "mock",
+          render_cell_id: ids.renderCell,
+          sofa_id: ids.sofa,
+          visual_matrix_column_id: ids.column
+        }]
+      },
+      meta: {}
+    });
+  }
+
+  if (requestUrl.endsWith("/api/admin/render-candidates/" + ids.candidate + "/use-as-current")) {
+    return json({
+      data: {
+        render_candidate: {
+          id: ids.candidate,
+          is_current: true,
+          render_cell_id: ids.renderCell
+        }
+      },
+      meta: {}
+    });
+  }
+
+  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.renderCell + "/manual-render")) {
+    return json({
+      data: {
+        render_cell: {
+          current_private_asset_id: ids.manualRenderAsset,
+          current_public_asset_id: null,
+          id: ids.renderCell,
+          source_type: "manual_upload"
+        }
+      },
+      meta: {}
+    });
   }
 
   return json({ data: {}, meta: {} });
@@ -248,6 +313,7 @@ describe("SPEC-0010 admin render prep smoke script", () => {
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("PASS SPEC-0010 admin render prep smoke");
-    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000906");
+    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000908");
+    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000909");
   });
 });

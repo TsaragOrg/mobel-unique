@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPublicTagSlug,
+  shapeFabricRenderCandidateResponse,
   shapeFabricRenderJobResponse,
   shapeFabricResponse,
   shapeRenderCoverageResponse,
   shapeSofaResponse,
   shapeVisualMatrixColumnResponse,
+  validateManualRenderMutationPayload,
   validateFabricRenderJobCreatePayload,
   validateFabricCreatePayload,
   validateFabricPatchPayload,
@@ -145,6 +147,40 @@ const fabricRenderJobRecord = {
   status: "queued",
   target_sofa_asset_id: "00000000-0000-4000-8000-000000000904",
   updated_at: "2026-04-28T10:30:00.000Z",
+  visual_matrix_column_id: visualMatrixColumnRecord.id,
+};
+
+const fabricRenderCandidateRecord = {
+  asset: {
+    ...aiReferenceAsset,
+    asset_kind: "fabric_render_candidate",
+    byte_size: 2400,
+    content_type: "image/png",
+    height_px: 1200,
+    id: "00000000-0000-4000-8000-000000000909",
+    object_path:
+      "renders/sofa-id/fabric-id/column-id/candidates/job-id/output.png",
+    visibility: "private",
+    width_px: 1600,
+  },
+  accepted_at: null,
+  asset_id: "00000000-0000-4000-8000-000000000909",
+  created_at: "2026-04-28T10:35:00.000Z",
+  fabric_id: fabricRecord.id,
+  generation_mode: "initial",
+  id: "00000000-0000-4000-8000-000000000910",
+  is_current: false,
+  job_id: fabricRenderJobRecord.id,
+  preview_url:
+    "https://storage.example/signed/private-candidate-preview?token=short",
+  prompt_version: "v007",
+  provider_key: "must-not-leak",
+  provider_model: "mock-fabric-render-v1",
+  provider_name: "mock",
+  raw_private_path: "catalog-private-assets/renders/private.png",
+  render_cell_id: fabricRenderJobRecord.render_cell_id,
+  service_role_key: "must-not-leak",
+  sofa_id: sofaRecord.id,
   visual_matrix_column_id: visualMatrixColumnRecord.id,
 };
 
@@ -392,11 +428,7 @@ describe("admin catalog validation", () => {
       error: {
         code: "VALIDATION_FAILED",
         details: {
-          fields: [
-            "sofa_id",
-            "visual_matrix_column_id",
-            "original_fabric_id",
-          ],
+          fields: ["sofa_id", "visual_matrix_column_id", "original_fabric_id"],
         },
       },
       ok: false,
@@ -438,6 +470,51 @@ describe("admin catalog validation", () => {
       },
       ok: false,
       status: 422,
+    });
+  });
+
+  it("validates manual render upload and attachment payloads", () => {
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: fabricRenderJobRecord.render_cell_id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        byte_size: 1200,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: fabricRenderJobRecord.render_cell_id,
+      },
+    });
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/png",
+        purpose: "manual_render",
+      }),
+    ).toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        details: {
+          fields: ["render_cell_id"],
+        },
+      },
+      ok: false,
+      status: 422,
+    });
+    expect(
+      validateManualRenderMutationPayload({
+        asset_id: fabricRenderCandidateRecord.asset_id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        asset_id: fabricRenderCandidateRecord.asset_id,
+      },
     });
   });
 });
@@ -537,6 +614,7 @@ describe("admin catalog response shaping", () => {
           has_private_render: true,
           has_public_render: false,
           id: "00000000-0000-4000-8000-000000000908",
+          candidate_count: 1,
           latest_job: fabricRenderJobRecord,
           object_path: "renders/private.png",
           sofa_id: sofaRecord.id,
@@ -573,9 +651,50 @@ describe("admin catalog response shaping", () => {
     });
     expect(coverageResponse.render_cells[0]).toMatchObject({
       blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+      candidate_count: 1,
       latest_job: {
         id: fabricRenderJobRecord.id,
       },
+    });
+    expect(serialized).not.toContain("service_role");
+    expect(serialized).not.toContain("object_path");
+    expect(serialized).not.toContain("catalog-private-assets");
+    expect(serialized).not.toContain("provider_key");
+  });
+
+  it("returns only admin-safe render candidate fields with a signed preview URL", () => {
+    const response = shapeFabricRenderCandidateResponse(
+      fabricRenderCandidateRecord,
+    );
+    const serialized = JSON.stringify(response);
+
+    expect(response).toEqual({
+      accepted_at: null,
+      asset: {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: fabricRenderCandidateRecord.asset_id,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      asset_id: fabricRenderCandidateRecord.asset_id,
+      created_at: "2026-04-28T10:35:00.000Z",
+      fabric_id: fabricRecord.id,
+      generation_mode: "initial",
+      id: fabricRenderCandidateRecord.id,
+      is_current: false,
+      job_id: fabricRenderJobRecord.id,
+      preview_url:
+        "https://storage.example/signed/private-candidate-preview?token=short",
+      prompt_version: "v007",
+      provider_model: "mock-fabric-render-v1",
+      provider_name: "mock",
+      render_cell_id: fabricRenderJobRecord.render_cell_id,
+      sofa_id: sofaRecord.id,
+      visual_matrix_column_id: visualMatrixColumnRecord.id,
     });
     expect(serialized).not.toContain("service_role");
     expect(serialized).not.toContain("object_path");
