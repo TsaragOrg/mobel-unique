@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPublicTagSlug,
+  shapeFabricRenderJobResponse,
   shapeFabricResponse,
+  shapeRenderCoverageResponse,
   shapeSofaResponse,
+  shapeVisualMatrixColumnResponse,
+  validateFabricRenderJobCreatePayload,
   validateFabricCreatePayload,
   validateFabricPatchPayload,
   validateSofaFabricMutationPayload,
@@ -10,6 +14,8 @@ import {
   validateSofaPatchPayload,
   validateTagMutationPayload,
   validateUploadCreatePayload,
+  validateVisualMatrixColumnCreatePayload,
+  validateVisualMatrixColumnPatchPayload,
 } from "./admin-catalog";
 
 const sofaRecord = {
@@ -89,6 +95,57 @@ const fabricRecord = {
   swatch_asset: swatchAsset,
   swatch_asset_id: swatchAsset.id,
   updated_at: "2026-04-28T10:05:00.000Z",
+};
+
+const visualMatrixColumnRecord = {
+  admin_label: "Front internal",
+  created_at: "2026-04-28T10:00:00.000Z",
+  current_source_photo: {
+    asset: {
+      ...aiReferenceAsset,
+      asset_kind: "sofa_source_photo",
+      id: "00000000-0000-4000-8000-000000000904",
+      object_path: "sofas/private/source.png",
+    },
+    asset_id: "00000000-0000-4000-8000-000000000904",
+    created_at: "2026-04-28T10:05:00.000Z",
+    id: "00000000-0000-4000-8000-000000000905",
+    original_fabric_id: fabricRecord.id,
+    sofa_id: sofaRecord.id,
+    updated_at: "2026-04-28T10:05:00.000Z",
+    visual_matrix_column_id: "00000000-0000-4000-8000-000000000906",
+  },
+  current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+  deleted_at: null,
+  id: "00000000-0000-4000-8000-000000000906",
+  public_label: "Front",
+  raw_private_path: "sofas/private/source.png",
+  sequence: 1,
+  service_role_key: "must-not-leak",
+  sofa_id: sofaRecord.id,
+  updated_at: "2026-04-28T10:05:00.000Z",
+};
+
+const fabricRenderJobRecord = {
+  attempt_count: 0,
+  completed_at: null,
+  created_at: "2026-04-28T10:30:00.000Z",
+  fabric_ai_reference_asset_id: aiReferenceAsset.id,
+  fabric_id: fabricRecord.id,
+  generation_mode: "initial",
+  id: "00000000-0000-4000-8000-000000000907",
+  last_error_message: "Safe provider error",
+  max_attempts: 3,
+  prompt_note: null,
+  provider_key: "must-not-leak",
+  queued_at: "2026-04-28T10:30:00.000Z",
+  render_cell_id: "00000000-0000-4000-8000-000000000908",
+  service_role_key: "must-not-leak",
+  sofa_id: sofaRecord.id,
+  status: "queued",
+  target_sofa_asset_id: "00000000-0000-4000-8000-000000000904",
+  updated_at: "2026-04-28T10:30:00.000Z",
+  visual_matrix_column_id: visualMatrixColumnRecord.id,
 };
 
 describe("admin catalog validation", () => {
@@ -266,6 +323,123 @@ describe("admin catalog validation", () => {
       status: 422,
     });
   });
+
+  it("validates visual matrix, source photo upload, and render job payloads", () => {
+    expect(
+      validateVisualMatrixColumnCreatePayload({
+        admin_label: "  Front internal  ",
+        public_label: null,
+        sequence: 1,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        admin_label: "Front internal",
+        public_label: null,
+        sequence: 1,
+      },
+    });
+    expect(
+      validateVisualMatrixColumnPatchPayload({
+        admin_label: "  Front  ",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        admin_label: "Front",
+      },
+    });
+    expect(
+      validateVisualMatrixColumnCreatePayload({
+        sequence: 0,
+        sql: "select 1",
+      }),
+    ).toMatchObject({
+      error: {
+        code: "UNSUPPORTED_FIELD",
+      },
+      ok: false,
+      status: 400,
+    });
+
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/png",
+        original_fabric_id: fabricRecord.id,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        byte_size: 1200,
+        content_type: "image/png",
+        original_fabric_id: fabricRecord.id,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      },
+    });
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/png",
+        purpose: "sofa_source_photo",
+      }),
+    ).toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        details: {
+          fields: [
+            "sofa_id",
+            "visual_matrix_column_id",
+            "original_fabric_id",
+          ],
+        },
+      },
+      ok: false,
+      status: 422,
+    });
+
+    expect(
+      validateFabricRenderJobCreatePayload({
+        fabric_id: fabricRecord.id,
+        generation_mode: "initial",
+        prompt_note: "  Keep seams visible  ",
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        fabric_id: fabricRecord.id,
+        generation_mode: "initial",
+        prompt_note: "Keep seams visible",
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      },
+    });
+    expect(
+      validateFabricRenderJobCreatePayload({
+        fabric_id: fabricRecord.id,
+        generation_mode: "refine",
+        refine_prompt: "try again",
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      }),
+    ).toMatchObject({
+      error: {
+        code: "VALIDATION_FAILED",
+        details: {
+          fields: ["generation_mode", "refine_prompt"],
+        },
+      },
+      ok: false,
+      status: 422,
+    });
+  });
 });
 
 describe("admin catalog response shaping", () => {
@@ -340,6 +514,68 @@ describe("admin catalog response shaping", () => {
       },
       swatch_asset_id: swatchAsset.id,
       updated_at: "2026-04-28T10:05:00.000Z",
+    });
+    expect(serialized).not.toContain("service_role");
+    expect(serialized).not.toContain("object_path");
+    expect(serialized).not.toContain("catalog-private-assets");
+    expect(serialized).not.toContain("provider_key");
+  });
+
+  it("returns only admin-safe visual matrix, coverage, and job fields", () => {
+    const columnResponse = shapeVisualMatrixColumnResponse(
+      visualMatrixColumnRecord,
+    );
+    const jobResponse = shapeFabricRenderJobResponse(fabricRenderJobRecord);
+    const coverageResponse = shapeRenderCoverageResponse({
+      render_cells: [
+        {
+          blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+          can_generate_initial: false,
+          current_private_asset_id: "00000000-0000-4000-8000-000000000904",
+          current_public_asset_id: null,
+          fabric_id: fabricRecord.id,
+          has_private_render: true,
+          has_public_render: false,
+          id: "00000000-0000-4000-8000-000000000908",
+          latest_job: fabricRenderJobRecord,
+          object_path: "renders/private.png",
+          sofa_id: sofaRecord.id,
+          source_photo_id: "00000000-0000-4000-8000-000000000905",
+          source_type: "source_photo",
+          updated_at: "2026-04-28T10:30:00.000Z",
+          visual_matrix_column_id: visualMatrixColumnRecord.id,
+        },
+      ],
+      sofa_fabrics: [],
+      sofa_id: sofaRecord.id,
+      visual_matrix_columns: [visualMatrixColumnRecord],
+    });
+    const serialized = JSON.stringify({
+      columnResponse,
+      coverageResponse,
+      jobResponse,
+    });
+
+    expect(columnResponse).toMatchObject({
+      current_source_photo: {
+        asset: {
+          asset_kind: "sofa_source_photo",
+          id: "00000000-0000-4000-8000-000000000904",
+          visibility: "private",
+        },
+      },
+      id: visualMatrixColumnRecord.id,
+      sequence: 1,
+    });
+    expect(jobResponse).toMatchObject({
+      id: fabricRenderJobRecord.id,
+      status: "queued",
+    });
+    expect(coverageResponse.render_cells[0]).toMatchObject({
+      blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+      latest_job: {
+        id: fabricRenderJobRecord.id,
+      },
     });
     expect(serialized).not.toContain("service_role");
     expect(serialized).not.toContain("object_path");

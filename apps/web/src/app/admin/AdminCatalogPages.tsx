@@ -82,6 +82,72 @@ export interface AdminCatalogSofaFabric {
   updated_at: string;
 }
 
+export interface AdminCatalogSofaSourcePhoto {
+  asset: AdminCatalogAsset | null;
+  asset_id: string;
+  created_at: string;
+  id: string;
+  original_fabric_id: string;
+  sofa_id: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminCatalogVisualMatrixColumn {
+  admin_label: string | null;
+  created_at: string;
+  current_source_photo: AdminCatalogSofaSourcePhoto | null;
+  current_source_photo_id: string | null;
+  deleted_at: string | null;
+  id: string;
+  public_label: string | null;
+  sequence: number;
+  sofa_id: string;
+  updated_at: string;
+}
+
+export interface AdminCatalogFabricRenderJob {
+  attempt_count: number;
+  completed_at: string | null;
+  created_at: string;
+  fabric_id: string;
+  generation_mode: string;
+  id: string;
+  last_error_message: string | null;
+  max_attempts: number;
+  prompt_note: string | null;
+  queued_at: string | null;
+  render_cell_id: string;
+  sofa_id: string;
+  status: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminCatalogRenderCell {
+  blockers: string[];
+  can_generate_initial: boolean;
+  current_private_asset_id: string | null;
+  current_public_asset_id: string | null;
+  fabric_id: string;
+  has_private_render: boolean;
+  has_public_render: boolean;
+  id: string;
+  latest_job: AdminCatalogFabricRenderJob | null;
+  sofa_id: string;
+  source_photo_id: string | null;
+  source_type: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminCatalogRenderCoverage {
+  render_cells: AdminCatalogRenderCell[];
+  sofa_fabrics: AdminCatalogSofaFabric[];
+  sofa_id: string;
+  visual_matrix_columns: AdminCatalogVisualMatrixColumn[];
+}
+
 export interface SofaMutationInput {
   depth_cm?: number;
   height_cm?: number;
@@ -111,11 +177,32 @@ export type FabricPatchInput = Partial<FabricMutationInput>;
 export interface UploadCreateInput {
   byte_size: number;
   content_type: string;
-  purpose: "fabric_swatch" | "fabric_ai_reference";
+  original_fabric_id?: string;
+  purpose: "fabric_swatch" | "fabric_ai_reference" | "sofa_source_photo";
+  sofa_id?: string;
+  visual_matrix_column_id?: string;
 }
 
 export interface SofaFabricMutationInput {
   public_order: number | null;
+}
+
+export interface VisualMatrixColumnMutationInput {
+  admin_label: string | null;
+  public_label: string | null;
+  sequence: number;
+}
+
+export type VisualMatrixColumnPatchInput =
+  Partial<VisualMatrixColumnMutationInput>;
+
+export interface FabricRenderJobCreateInput {
+  fabric_id: string;
+  generation_mode: "initial";
+  idempotency_key?: string;
+  prompt_note: string | null;
+  sofa_id: string;
+  visual_matrix_column_id: string;
 }
 
 export interface AdminCatalogPageDependencies {
@@ -150,9 +237,30 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     input: UploadCreateInput,
   ): Promise<AdminCatalogUpload>;
+  createFabricRenderJob(
+    accessToken: string,
+    input: FabricRenderJobCreateInput,
+  ): Promise<AdminCatalogFabricRenderJob>;
+  createVisualMatrixColumn(
+    accessToken: string,
+    sofaId: string,
+    input: VisualMatrixColumnMutationInput,
+  ): Promise<AdminCatalogVisualMatrixColumn>;
+  deleteVisualMatrixColumn(
+    accessToken: string,
+    columnId: string,
+  ): Promise<void>;
   deleteTag(accessToken: string, tagId: string): Promise<void>;
   getAccessToken(): Promise<string | null>;
   getFabric(accessToken: string, fabricId: string): Promise<AdminCatalogFabric>;
+  getFabricRenderJob(
+    accessToken: string,
+    jobId: string,
+  ): Promise<AdminCatalogFabricRenderJob>;
+  getRenderCoverage(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogRenderCoverage>;
   getSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   getSofaReadiness(
     accessToken: string,
@@ -165,6 +273,10 @@ export interface AdminCatalogPageDependencies {
     sofaId: string,
   ): Promise<AdminCatalogSofaFabric[]>;
   listTags(accessToken: string): Promise<AdminCatalogTag[]>;
+  listVisualMatrixColumns(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogVisualMatrixColumn[]>;
   navigate(path: string): void;
   redirect(path: string): void;
   refreshAccessToken(): Promise<string | null>;
@@ -195,6 +307,11 @@ export interface AdminCatalogPageDependencies {
     tagId: string,
     input: TagMutationInput,
   ): Promise<AdminCatalogTag>;
+  updateVisualMatrixColumn(
+    accessToken: string,
+    columnId: string,
+    input: VisualMatrixColumnPatchInput,
+  ): Promise<AdminCatalogVisualMatrixColumn>;
   uploadToSignedUrl(upload: AdminCatalogUpload, file: File): Promise<void>;
   verifyAdminSession(accessToken: string): Promise<{
     ok: boolean;
@@ -410,6 +527,39 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.upload as AdminCatalogUpload;
     },
+    async createFabricRenderJob(accessToken, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        "/api/admin/fabric-render-jobs",
+        {
+          body: JSON.stringify(input),
+          method: "POST",
+        },
+      );
+
+      return data.fabric_render_job as AdminCatalogFabricRenderJob;
+    },
+    async createVisualMatrixColumn(accessToken, sofaId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/visual-matrix-columns`,
+        {
+          body: JSON.stringify(input),
+          method: "POST",
+        },
+      );
+
+      return data.visual_matrix_column as AdminCatalogVisualMatrixColumn;
+    },
+    async deleteVisualMatrixColumn(accessToken, columnId) {
+      await requestAdminJson(
+        accessToken,
+        `/api/admin/visual-matrix-columns/${columnId}`,
+        {
+          method: "DELETE",
+        },
+      );
+    },
     async deleteTag(accessToken, tagId) {
       await requestAdminJson(accessToken, `/api/admin/tags/${tagId}`, {
         method: "DELETE",
@@ -428,6 +578,22 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.fabric as AdminCatalogFabric;
+    },
+    async getFabricRenderJob(accessToken, jobId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/fabric-render-jobs/${jobId}`,
+      );
+
+      return data.fabric_render_job as AdminCatalogFabricRenderJob;
+    },
+    async getRenderCoverage(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/render-coverage`,
+      );
+
+      return data.render_coverage as AdminCatalogRenderCoverage;
     },
     async getSofa(accessToken, sofaId) {
       const data = await requestAdminJson(
@@ -467,6 +633,14 @@ export function createDefaultAdminCatalogDependencies(
       const data = await requestAdminJson(accessToken, "/api/admin/tags");
 
       return data.tags as AdminCatalogTag[];
+    },
+    async listVisualMatrixColumns(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/visual-matrix-columns`,
+      );
+
+      return data.visual_matrix_columns as AdminCatalogVisualMatrixColumn[];
     },
     navigate,
     redirect,
@@ -540,6 +714,18 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.tag as AdminCatalogTag;
+    },
+    async updateVisualMatrixColumn(accessToken, columnId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/visual-matrix-columns/${columnId}`,
+        {
+          body: JSON.stringify(input),
+          method: "PATCH",
+        },
+      );
+
+      return data.visual_matrix_column as AdminCatalogVisualMatrixColumn;
     },
     async uploadToSignedUrl(upload, file) {
       const body = new FormData();
@@ -1115,10 +1301,15 @@ function SofaEditContent({
   const [readiness, setReadiness] = useState<AdminCatalogReadiness | null>(
     null,
   );
+  const [renderCoverage, setRenderCoverage] =
+    useState<AdminCatalogRenderCoverage | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [sofa, setSofa] = useState<AdminCatalogSofa | null>(null);
   const [sofaFabrics, setSofaFabrics] = useState<AdminCatalogSofaFabric[]>([]);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
+  const [visualMatrixColumns, setVisualMatrixColumns] = useState<
+    AdminCatalogVisualMatrixColumn[]
+  >([]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -1130,18 +1321,23 @@ function SofaEditContent({
           dependencies.listTags(accessToken),
           dependencies.getSofaReadiness(accessToken, sofaId),
         ]);
-        const [nextFabrics, nextSofaFabrics] = await Promise.all([
+        const [nextFabrics, nextSofaFabrics, nextColumns, nextCoverage] =
+          await Promise.all([
           dependencies.listFabrics(accessToken),
           dependencies.listSofaFabrics(accessToken, sofaId),
+          dependencies.listVisualMatrixColumns(accessToken, sofaId),
+          dependencies.getRenderCoverage(accessToken, sofaId),
         ]);
 
         if (isCurrent) {
           setFabrics(nextFabrics);
+          setRenderCoverage(nextCoverage);
           setSofa(nextSofa);
           setSofaFabrics(nextSofaFabrics);
           setTags(nextTags);
           setReadiness(nextReadiness);
           setSelectedTagIds(nextSofa.tags.map((tag) => tag.id));
+          setVisualMatrixColumns(nextColumns);
           setErrorMessage(null);
         }
       } catch (error) {
@@ -1185,6 +1381,16 @@ function SofaEditContent({
     }
   }
 
+  async function refreshRenderPreparation() {
+    const [nextColumns, nextCoverage] = await Promise.all([
+      dependencies.listVisualMatrixColumns(accessToken, sofaId),
+      dependencies.getRenderCoverage(accessToken, sofaId),
+    ]);
+
+    setVisualMatrixColumns(nextColumns);
+    setRenderCoverage(nextCoverage);
+  }
+
   if (!sofa && !errorMessage) {
     return (
       <section className="admin-section" aria-live="polite">
@@ -1215,9 +1421,26 @@ function SofaEditContent({
                 dependencies={dependencies}
                 fabrics={fabrics}
                 onReadinessChange={setReadiness}
+                onRenderPreparationRefresh={refreshRenderPreparation}
                 onSofaFabricsChange={setSofaFabrics}
                 sofaFabrics={sofaFabrics}
                 sofaId={sofaId}
+              />
+              <VisualMatrixSection
+                accessToken={accessToken}
+                columns={visualMatrixColumns}
+                dependencies={dependencies}
+                onRefresh={refreshRenderPreparation}
+                sofaFabrics={sofaFabrics}
+                sofaId={sofaId}
+              />
+              <RenderCoverageSection
+                accessToken={accessToken}
+                coverage={renderCoverage}
+                dependencies={dependencies}
+                onRefresh={refreshRenderPreparation}
+                sofaFabrics={sofaFabrics}
+                visualMatrixColumns={visualMatrixColumns}
               />
             </>
           ) : null}
@@ -1376,6 +1599,7 @@ function SofaFabricAssignmentSection({
   dependencies,
   fabrics,
   onReadinessChange,
+  onRenderPreparationRefresh,
   onSofaFabricsChange,
   sofaFabrics,
   sofaId,
@@ -1384,6 +1608,7 @@ function SofaFabricAssignmentSection({
   dependencies: AdminCatalogPageDependencies;
   fabrics: AdminCatalogFabric[];
   onReadinessChange(readiness: AdminCatalogReadiness): void;
+  onRenderPreparationRefresh(): Promise<void>;
   onSofaFabricsChange(assignments: AdminCatalogSofaFabric[]): void;
   sofaFabrics: AdminCatalogSofaFabric[];
   sofaId: string;
@@ -1405,6 +1630,7 @@ function SofaFabricAssignmentSection({
     ]);
     onSofaFabricsChange(nextAssignments);
     onReadinessChange(nextReadiness);
+    await onRenderPreparationRefresh();
   }
 
   async function handleAssign(event: FormEvent<HTMLFormElement>) {
@@ -1524,6 +1750,346 @@ function SofaFabricAssignmentSection({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function VisualMatrixSection({
+  accessToken,
+  columns,
+  dependencies,
+  onRefresh,
+  sofaFabrics,
+  sofaId,
+}: {
+  accessToken: string;
+  columns: AdminCatalogVisualMatrixColumn[];
+  dependencies: AdminCatalogPageDependencies;
+  onRefresh(): Promise<void>;
+  sofaFabrics: AdminCatalogSofaFabric[];
+  sofaId: string;
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      await dependencies.createVisualMatrixColumn(accessToken, sofaId, {
+        admin_label: nullableFormString(formData, "admin_label"),
+        public_label: nullableFormString(formData, "public_label"),
+        sequence: Number(formData.get("sequence")),
+      });
+      form.reset();
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleUpdate(
+    column: AdminCatalogVisualMatrixColumn,
+    form: HTMLFormElement,
+  ) {
+    setErrorMessage(null);
+    const formData = new FormData(form);
+
+    try {
+      await dependencies.updateVisualMatrixColumn(accessToken, column.id, {
+        admin_label: nullableFormString(formData, `admin_label_${column.id}`),
+        public_label: nullableFormString(formData, `public_label_${column.id}`),
+        sequence: Number(formData.get(`sequence_${column.id}`)),
+      });
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    }
+  }
+
+  async function handleDelete(column: AdminCatalogVisualMatrixColumn) {
+    setErrorMessage(null);
+
+    try {
+      await dependencies.deleteVisualMatrixColumn(accessToken, column.id);
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    }
+  }
+
+  async function handleSourcePhotoUpload(
+    column: AdminCatalogVisualMatrixColumn,
+    form: HTMLFormElement,
+  ) {
+    setErrorMessage(null);
+    const formData = new FormData(form);
+    const originalFabricId = String(formData.get(`source_fabric_${column.id}`));
+    const file = readFileField(form, formData, `source_photo_${column.id}`);
+
+    if (!file) {
+      setErrorMessage("SOURCE_PHOTO_REQUIRED");
+      return;
+    }
+
+    try {
+      const upload = await dependencies.createUpload(accessToken, {
+        byte_size: file.size,
+        content_type: file.type,
+        original_fabric_id: originalFabricId,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaId,
+        visual_matrix_column_id: column.id,
+      });
+      await dependencies.uploadToSignedUrl(upload, file);
+      await dependencies.completeUpload(accessToken, upload.upload_id);
+      form.reset();
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    }
+  }
+
+  return (
+    <section aria-labelledby="visual-matrix-title" className="admin-subsection">
+      <h2 id="visual-matrix-title">Visual matrix</h2>
+      {errorMessage ? (
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      <form className="admin-inline-form" onSubmit={handleCreate}>
+        <label className="field">
+          <span>Sequence</span>
+          <input min="1" name="sequence" required type="number" />
+        </label>
+        <label className="field">
+          <span>Admin label</span>
+          <input name="admin_label" />
+        </label>
+        <label className="field">
+          <span>Public label</span>
+          <input name="public_label" />
+        </label>
+        <button disabled={isSubmitting} type="submit">
+          Add column
+        </button>
+      </form>
+      {columns.length === 0 ? <p>No visual columns.</p> : null}
+      {columns.length > 0 ? (
+        <div className="admin-list">
+          {columns.map((column) => (
+            <div className="admin-list-row" key={column.id}>
+              <form
+                className="admin-inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleUpdate(column, event.currentTarget);
+                }}
+              >
+                <label className="field">
+                  <span>Sequence {column.sequence}</span>
+                  <input
+                    defaultValue={column.sequence}
+                    min="1"
+                    name={`sequence_${column.id}`}
+                    type="number"
+                  />
+                </label>
+                <label className="field">
+                  <span>Admin label {column.sequence}</span>
+                  <input
+                    defaultValue={column.admin_label ?? ""}
+                    name={`admin_label_${column.id}`}
+                  />
+                </label>
+                <label className="field">
+                  <span>Public label {column.sequence}</span>
+                  <input
+                    defaultValue={column.public_label ?? ""}
+                    name={`public_label_${column.id}`}
+                  />
+                </label>
+                <button type="submit">Save column {column.sequence}</button>
+                <button onClick={() => void handleDelete(column)} type="button">
+                  Delete column {column.sequence}
+                </button>
+              </form>
+              <form
+                className="admin-inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSourcePhotoUpload(column, event.currentTarget);
+                }}
+              >
+                <label className="field">
+                  <span>Original fabric {column.sequence}</span>
+                  <select name={`source_fabric_${column.id}`} required>
+                    <option value="">Select fabric</option>
+                    {sofaFabrics.map((assignment) => (
+                      <option
+                        key={assignment.fabric_id}
+                        value={assignment.fabric_id}
+                      >
+                        {assignment.fabric?.internal_name ??
+                          assignment.fabric_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Source photo {column.sequence}</span>
+                  <input
+                    accept="image/png,image/jpeg,image/webp"
+                    name={`source_photo_${column.id}`}
+                    type="file"
+                  />
+                </label>
+                <span className="admin-muted">
+                  {column.current_source_photo ? "Source ready" : "No source"}
+                </span>
+                <button type="submit">Upload source {column.sequence}</button>
+              </form>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RenderCoverageSection({
+  accessToken,
+  coverage,
+  dependencies,
+  onRefresh,
+  sofaFabrics,
+  visualMatrixColumns,
+}: {
+  accessToken: string;
+  coverage: AdminCatalogRenderCoverage | null;
+  dependencies: AdminCatalogPageDependencies;
+  onRefresh(): Promise<void>;
+  sofaFabrics: AdminCatalogSofaFabric[];
+  visualMatrixColumns: AdminCatalogVisualMatrixColumn[];
+}) {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeCellId, setActiveCellId] = useState<string | null>(null);
+
+  async function handleGenerate(cell: AdminCatalogRenderCell) {
+    setErrorMessage(null);
+    setActiveCellId(cell.id);
+
+    try {
+      await dependencies.createFabricRenderJob(accessToken, {
+        fabric_id: cell.fabric_id,
+        generation_mode: "initial",
+        prompt_note: null,
+        sofa_id: cell.sofa_id,
+        visual_matrix_column_id: cell.visual_matrix_column_id,
+      });
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  function findCell(fabricId: string, columnId: string) {
+    return coverage?.render_cells.find(
+      (cell) =>
+        cell.fabric_id === fabricId && cell.visual_matrix_column_id === columnId,
+    );
+  }
+
+  return (
+    <section aria-labelledby="render-coverage-title" className="admin-subsection">
+      <h2 id="render-coverage-title">Render coverage</h2>
+      {errorMessage ? (
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      {!coverage ||
+      sofaFabrics.length === 0 ||
+      visualMatrixColumns.length === 0 ? (
+        <p>No render coverage.</p>
+      ) : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Fabric</th>
+                {visualMatrixColumns.map((column) => (
+                  <th key={column.id}>
+                    {column.public_label ??
+                      column.admin_label ??
+                      `Column ${column.sequence}`}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sofaFabrics.map((assignment) => (
+                <tr key={assignment.fabric_id}>
+                  <td>
+                    {assignment.fabric?.internal_name ?? assignment.fabric_id}
+                  </td>
+                  {visualMatrixColumns.map((column) => {
+                    const cell = findCell(assignment.fabric_id, column.id);
+
+                    return (
+                      <td key={column.id}>
+                        {cell ? (
+                          <div className="admin-cell-stack">
+                            <span>
+                              {cell.has_public_render
+                                ? "Public ready"
+                                : cell.has_private_render
+                                  ? "Private ready"
+                                  : "Incomplete"}
+                            </span>
+                            <span className="admin-muted">
+                              {cell.latest_job?.status ?? cell.source_type}
+                            </span>
+                            {cell.blockers.length > 0 ? (
+                              <span className="admin-muted">
+                                {cell.blockers.join(", ")}
+                              </span>
+                            ) : null}
+                            <button
+                              disabled={
+                                !cell.can_generate_initial ||
+                                activeCellId === cell.id
+                              }
+                              onClick={() => void handleGenerate(cell)}
+                              type="button"
+                            >
+                              {activeCellId === cell.id
+                                ? "Queueing"
+                                : "Generate"}
+                            </button>
+                          </div>
+                        ) : (
+                          "Missing"
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -1807,6 +2373,12 @@ function readFileField(
   }
 
   return value;
+}
+
+function nullableFormString(formData: FormData, field: string) {
+  const value = String(formData.get(field) ?? "").trim();
+
+  return value || null;
 }
 
 function buildSofaPayload(

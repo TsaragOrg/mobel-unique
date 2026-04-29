@@ -66,6 +66,41 @@ function createDependencies(
     swatch_asset_id: "00000000-0000-4000-8000-000000000901",
     updated_at: "2026-04-28T10:00:00.000Z",
   };
+  const visualMatrixColumn = {
+    admin_label: "Front",
+    created_at: "2026-04-28T10:00:00.000Z",
+    current_source_photo: null,
+    current_source_photo_id: null,
+    deleted_at: null,
+    id: "00000000-0000-4000-8000-000000000904",
+    public_label: "Front",
+    sequence: 1,
+    sofa_id: "00000000-0000-4000-8000-000000000701",
+    updated_at: "2026-04-28T10:00:00.000Z",
+  };
+  const renderCoverage = {
+    render_cells: [
+      {
+        blockers: ["MISSING_SOURCE_PHOTO"],
+        can_generate_initial: false,
+        current_private_asset_id: null,
+        current_public_asset_id: null,
+        fabric_id: fabric.id,
+        has_private_render: false,
+        has_public_render: false,
+        id: "00000000-0000-4000-8000-000000000905",
+        latest_job: null,
+        sofa_id: "00000000-0000-4000-8000-000000000701",
+        source_photo_id: null,
+        source_type: "ai_generated",
+        updated_at: "2026-04-28T10:00:00.000Z",
+        visual_matrix_column_id: visualMatrixColumn.id,
+      },
+    ],
+    sofa_fabrics: [],
+    sofa_id: "00000000-0000-4000-8000-000000000701",
+    visual_matrix_columns: [visualMatrixColumn],
+  };
 
   return {
     archiveFabric: vi.fn(async (_accessToken, fabricId) => ({
@@ -128,11 +163,55 @@ function createDependencies(
       upload_id:
         input.purpose === "fabric_swatch"
           ? "swatch-upload"
+          : input.purpose === "sofa_source_photo"
+            ? "source-photo-upload"
           : "ai-reference-upload",
     })),
+    createFabricRenderJob: vi.fn(async (_accessToken, input) => ({
+      attempt_count: 0,
+      completed_at: null,
+      created_at: "2026-04-28T10:30:00.000Z",
+      fabric_id: input.fabric_id,
+      generation_mode: input.generation_mode,
+      id: "00000000-0000-4000-8000-000000000906",
+      last_error_message: null,
+      max_attempts: 3,
+      prompt_note: input.prompt_note,
+      queued_at: "2026-04-28T10:30:00.000Z",
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: input.sofa_id,
+      status: "queued",
+      updated_at: "2026-04-28T10:30:00.000Z",
+      visual_matrix_column_id: input.visual_matrix_column_id,
+    })),
+    createVisualMatrixColumn: vi.fn(async (_accessToken, sofaId, input) => ({
+      ...visualMatrixColumn,
+      ...input,
+      id: visualMatrixColumn.id,
+      sofa_id: sofaId,
+    })),
     deleteTag: vi.fn(async () => {}),
+    deleteVisualMatrixColumn: vi.fn(async () => {}),
     getAccessToken: vi.fn(async () => "admin-token"),
     getFabric: vi.fn(async () => fabric),
+    getFabricRenderJob: vi.fn(async () => ({
+      attempt_count: 0,
+      completed_at: null,
+      created_at: "2026-04-28T10:30:00.000Z",
+      fabric_id: fabric.id,
+      generation_mode: "initial",
+      id: "00000000-0000-4000-8000-000000000906",
+      last_error_message: null,
+      max_attempts: 3,
+      prompt_note: null,
+      queued_at: "2026-04-28T10:30:00.000Z",
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      status: "queued",
+      updated_at: "2026-04-28T10:30:00.000Z",
+      visual_matrix_column_id: visualMatrixColumn.id,
+    })),
+    getRenderCoverage: vi.fn(async () => renderCoverage),
     getSofa: vi.fn(async () => ({
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
@@ -195,6 +274,7 @@ function createDependencies(
         slug: "convertible",
       },
     ]),
+    listVisualMatrixColumns: vi.fn(async () => [visualMatrixColumn]),
     navigate: vi.fn(),
     redirect: vi.fn(),
     refreshAccessToken: vi.fn(async () => null),
@@ -235,6 +315,11 @@ function createDependencies(
       public_order: input.public_order,
       sofa_id: sofaId,
       updated_at: "2026-04-28T10:20:00.000Z",
+    })),
+    updateVisualMatrixColumn: vi.fn(async (_accessToken, columnId, input) => ({
+      ...visualMatrixColumn,
+      ...input,
+      id: columnId,
     })),
     uploadToSignedUrl: vi.fn(async () => {}),
     verifyAdminSession: vi.fn(async () => ({
@@ -527,6 +612,122 @@ describe("Admin catalog pages", () => {
     expect(screen.queryByText("MISSING_PUBLIC_FABRIC")).not.toBeInTheDocument();
   });
 
+  it("queues render preparation work from the sofa edit page", async () => {
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: {
+          asset_kind: "fabric_ai_reference",
+          byte_size: 2200,
+          content_type: "image/jpeg",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000902",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          {
+            blockers: [],
+            can_generate_initial: true,
+            current_private_asset_id: null,
+            current_public_asset_id: null,
+            fabric_id: assignedFabric.fabric_id,
+            has_private_render: false,
+            has_public_render: false,
+            id: "00000000-0000-4000-8000-000000000906",
+            latest_job: null,
+            sofa_id: assignedFabric.sofa_id,
+            source_photo_id: visualColumn.current_source_photo_id,
+            source_type: "ai_generated",
+            updated_at: "2026-04-28T10:00:00.000Z",
+            visual_matrix_column_id: visualColumn.id,
+          },
+        ],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: assignedFabric.sofa_id,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.change(screen.getByLabelText("Original fabric 1"), {
+      target: { value: assignedFabric.fabric_id },
+    });
+    fireEvent.change(screen.getByLabelText("Source photo 1"), {
+      target: {
+        files: [new File(["source"], "source.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Upload source 1" }));
+
+    await waitFor(() => {
+      expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+        byte_size: 6,
+        content_type: "image/png",
+        original_fabric_id: assignedFabric.fabric_id,
+        purpose: "sofa_source_photo",
+        sofa_id: assignedFabric.sofa_id,
+        visual_matrix_column_id: visualColumn.id,
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(dependencies.createFabricRenderJob).toHaveBeenCalledWith(
+        "admin-token",
+        {
+          fabric_id: assignedFabric.fabric_id,
+          generation_mode: "initial",
+          prompt_note: null,
+          sofa_id: assignedFabric.sofa_id,
+          visual_matrix_column_id: visualColumn.id,
+        },
+      );
+    });
+  });
+
   it("default API dependencies call only first-party admin facade routes", async () => {
     const sofaId = "00000000-0000-4000-8000-000000000701";
     const fabricId = "00000000-0000-4000-8000-000000000903";
@@ -584,6 +785,85 @@ describe("Admin catalog pages", () => {
           return jsonResponse({
             data: {
               sofa_fabrics: [],
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            `/api/admin/sofas/${sofaId}/visual-matrix-columns`,
+          )
+        ) {
+          return jsonResponse({
+            data: {
+              visual_matrix_column: {
+                id: "00000000-0000-4000-8000-000000000904",
+              },
+              visual_matrix_columns: [],
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            "/api/admin/visual-matrix-columns/00000000-0000-4000-8000-000000000904",
+          )
+        ) {
+          if (method === "DELETE") {
+            return new Response(null, {
+              status: 204,
+            });
+          }
+
+          return jsonResponse({
+            data: {
+              visual_matrix_column: {
+                id: "00000000-0000-4000-8000-000000000904",
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (requestUrl.endsWith(`/api/admin/sofas/${sofaId}/render-coverage`)) {
+          return jsonResponse({
+            data: {
+              render_coverage: {
+                render_cells: [],
+                sofa_fabrics: [],
+                sofa_id: sofaId,
+                visual_matrix_columns: [],
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (requestUrl.endsWith("/api/admin/fabric-render-jobs")) {
+          return jsonResponse({
+            data: {
+              fabric_render_job: {
+                id: "00000000-0000-4000-8000-000000000906",
+                status: "queued",
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            "/api/admin/fabric-render-jobs/00000000-0000-4000-8000-000000000906",
+          )
+        ) {
+          return jsonResponse({
+            data: {
+              fabric_render_job: {
+                id: "00000000-0000-4000-8000-000000000906",
+                status: "queued",
+              },
             },
             meta: {},
           });
@@ -770,6 +1050,35 @@ describe("Admin catalog pages", () => {
       public_order: null,
     });
     await dependencies.removeSofaFabric("admin-token", sofaId, fabricId);
+    await dependencies.listVisualMatrixColumns("admin-token", sofaId);
+    await dependencies.createVisualMatrixColumn("admin-token", sofaId, {
+      admin_label: "Front",
+      public_label: "Front",
+      sequence: 1,
+    });
+    await dependencies.updateVisualMatrixColumn(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000904",
+      {
+        public_label: "Front",
+      },
+    );
+    await dependencies.deleteVisualMatrixColumn(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000904",
+    );
+    await dependencies.getRenderCoverage("admin-token", sofaId);
+    await dependencies.createFabricRenderJob("admin-token", {
+      fabric_id: fabricId,
+      generation_mode: "initial",
+      prompt_note: null,
+      sofa_id: sofaId,
+      visual_matrix_column_id: "00000000-0000-4000-8000-000000000904",
+    });
+    await dependencies.getFabricRenderJob(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000906",
+    );
 
     const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
 
@@ -794,6 +1103,13 @@ describe("Admin catalog pages", () => {
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/fabrics/00000000-0000-4000-8000-000000000903",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/fabrics/00000000-0000-4000-8000-000000000903",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/fabrics/00000000-0000-4000-8000-000000000903",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/visual-matrix-columns",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/visual-matrix-columns",
+      "/api/admin/visual-matrix-columns/00000000-0000-4000-8000-000000000904",
+      "/api/admin/visual-matrix-columns/00000000-0000-4000-8000-000000000904",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/render-coverage",
+      "/api/admin/fabric-render-jobs",
+      "/api/admin/fabric-render-jobs/00000000-0000-4000-8000-000000000906",
     ]);
     expect(calledUrls.join("\n")).not.toContain("supabase");
     expect(calledUrls.join("\n")).not.toContain("functions");
