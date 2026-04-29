@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPublicTagSlug,
@@ -185,6 +187,21 @@ const fabricRenderCandidateRecord = {
 };
 
 describe("admin catalog validation", () => {
+  it("keeps fabric render provider ownership out of the admin API", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("FABRIC_RENDER_PROVIDER");
+    expect(source).not.toContain("FABRIC_RENDER_PROVIDER_MODEL");
+    expect(source).not.toContain("resolveFabricRenderProviderConfig");
+    expect(source).not.toContain("provider_model: providerModel");
+    expect(source).not.toContain("provider_name: providerName");
+    expect(source).not.toContain('.eq("provider_name"');
+    expect(source).not.toContain('.eq("provider_model"');
+  });
+
   it("validates a draft sofa create payload", () => {
     const result = validateSofaCreatePayload({
       depth_cm: 95,

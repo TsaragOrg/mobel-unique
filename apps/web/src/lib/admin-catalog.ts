@@ -1456,12 +1456,6 @@ export function createSupabaseAdminCatalogStore(
       }
 
       const promptVersion = env.FABRIC_RENDER_PROMPT_VERSION ?? "v007";
-      const providerName = env.FABRIC_RENDER_PROVIDER ?? "mock";
-      const providerModel =
-        env.FABRIC_RENDER_PROVIDER_MODEL ??
-        (providerName === "gemini"
-          ? "gemini-2.5-flash-image"
-          : "mock-fabric-render-v1");
       const promptNote = input.prompt_note ?? null;
       const duplicate = await findActiveFabricRenderJob(client, {
         fabricAiReferenceAssetId: fabric.ai_reference_asset_id,
@@ -1469,8 +1463,6 @@ export function createSupabaseAdminCatalogStore(
         generationMode: input.generation_mode,
         promptNote,
         promptVersion,
-        providerModel,
-        providerName,
         sofaId: input.sofa_id,
         targetSofaAssetId: sourcePhoto.asset_id,
         visualMatrixColumnId: input.visual_matrix_column_id,
@@ -1493,8 +1485,6 @@ export function createSupabaseAdminCatalogStore(
           max_attempts: Number(env.FABRIC_RENDER_MAX_ATTEMPTS ?? 3),
           prompt_note: promptNote,
           prompt_version: promptVersion,
-          provider_model: providerModel,
-          provider_name: providerName,
           queued_at: new Date().toISOString(),
           render_cell_id: renderCell.id,
           sofa_id: input.sofa_id,
@@ -4392,8 +4382,6 @@ async function findActiveFabricRenderJob(
     generationMode: string;
     promptNote: string | null;
     promptVersion: string;
-    providerModel: string;
-    providerName: string;
     sofaId: string;
     targetSofaAssetId: string;
     visualMatrixColumnId: string;
@@ -4407,8 +4395,6 @@ async function findActiveFabricRenderJob(
     .eq("visual_matrix_column_id", input.visualMatrixColumnId)
     .eq("target_sofa_asset_id", input.targetSofaAssetId)
     .eq("fabric_ai_reference_asset_id", input.fabricAiReferenceAssetId)
-    .eq("provider_name", input.providerName)
-    .eq("provider_model", input.providerModel)
     .eq("prompt_version", input.promptVersion)
     .eq("generation_mode", input.generationMode)
     .in("status", ["queued", "processing"]);

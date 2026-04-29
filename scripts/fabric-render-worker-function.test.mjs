@@ -50,6 +50,53 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("retryable: false");
   });
 
+  it("requires a worker invocation secret for non-local requests", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("validateWorkerInvocation");
+    expect(source).toContain("FABRIC_RENDER_WORKER_INVOKE_SECRET");
+    expect(source).toContain("x-fabric-render-worker-secret");
+    expect(source).toContain("Fabric render worker invocation is unauthorized");
+    expect(source).toContain(
+      "Missing required environment variable: FABRIC_RENDER_WORKER_INVOKE_SECRET",
+    );
+  });
+
+  it("owns provider and model selection inside the worker", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("resolveWorkerProviderConfig");
+    expect(source).toContain("FABRIC_RENDER_PROVIDER");
+    expect(source).toContain("FABRIC_RENDER_PROVIDER_MODEL");
+    expect(source).toContain(
+      "claim_provider_name: providerConfig.providerName",
+    );
+    expect(source).toContain(
+      "claim_provider_model: providerConfig.providerModel",
+    );
+    expect(source).toContain(
+      "providerModel: input.providerConfig.providerModel",
+    );
+    expect(source).not.toContain(
+      'request.headers.get("x-fabric-render-provider")',
+    );
+  });
+
+  it("defaults worker provider to Gemini outside local environments", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain(
+      "const isLocalEnvironment = isLocalWorkerEnvironment();",
+    );
+    expect(source).toContain(
+      'const defaultProviderName = isLocalEnvironment ? "mock" : "gemini";',
+    );
+    expect(source).toContain(
+      'Deno.env.get("FABRIC_RENDER_PROVIDER") ?? defaultProviderName',
+    );
+    expect(source).toContain('provider === "mock" && !isLocalEnvironment');
+  });
+
   it("normalizes Gemini output before scratch, upload, and succeed metadata", async () => {
     const source = await readFile(functionPath, "utf8");
     const generatedImageIndex = source.indexOf("const generatedImage");

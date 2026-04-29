@@ -15,6 +15,8 @@
 | Done   | SPEC-0013 | PLAN-0022 | Temporary sofa edit page cleanup for manual testing clarity before final admin design work.                          |
 | Done   | SPEC-0013 | PLAN-0023 | Sofa edit render coverage shows source-photo-complete cells and avoids redundant initial generation actions.         |
 | Done   | SPEC-0010 | PLAN-0024 | First-party public catalog and sofa detail API routes are available for the public storefront flow.                  |
+| Done   | SPEC-0006 | PLAN-0025 | Sofa edit render coverage polls generated job status after Generate so cron-driven worker output appears in admin.   |
+| Done   | SPEC-0006 | PLAN-0026 | Admin render job creation no longer owns provider or model selection.                                                |
 
 ## Next
 

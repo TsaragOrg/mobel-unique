@@ -65,6 +65,9 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_ID }}
+      GEMINI_API_KEY: ${{ secrets.SUPABASE_DEV_GEMINI_API_KEY }}
+      FABRIC_RENDER_WORKER_INVOKE_SECRET: ${{ secrets.SUPABASE_DEV_FABRIC_RENDER_WORKER_INVOKE_SECRET }}
+      FABRIC_RENDER_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/fabric-render-worker
 
     steps:
       - name: Checkout
@@ -88,9 +91,103 @@ jobs:
           test -n "${SUPABASE_ACCESS_TOKEN}"
           test -n "${SUPABASE_DB_PASSWORD}"
           test -n "${SUPABASE_PROJECT_REF}"
+          test -n "${GEMINI_API_KEY}"
+          test -n "${FABRIC_RENDER_WORKER_INVOKE_SECRET}"
+          test -n "${FABRIC_RENDER_WORKER_FUNCTION_URL}"
 
       - name: Link Supabase DEV project
         run: pnpm exec supabase link --project-ref "${SUPABASE_PROJECT_REF}" --password "${SUPABASE_DB_PASSWORD}" --yes
 
       - name: Push Supabase migrations to DEV
         run: pnpm exec supabase db push --password "${SUPABASE_DB_PASSWORD}" --yes --include-all
+
+      - name: Set Supabase DEV fabric render worker secrets
+        run: |
+          pnpm exec supabase secrets set \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            APP_ENV=dev \
+            FABRIC_RENDER_PROVIDER=gemini \
+            FABRIC_RENDER_PROVIDER_MODEL=gemini-3-pro-image-preview \
+            FABRIC_RENDER_WORKER_INVOKE_SECRET="${FABRIC_RENDER_WORKER_INVOKE_SECRET}" \
+            GEMINI_API_KEY="${GEMINI_API_KEY}"
+
+      - name: Deploy Supabase DEV fabric render worker
+        run: pnpm exec supabase functions deploy fabric-render-worker --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt
+
+      - name: Set Supabase DEV fabric render cron Vault secrets
+        run: |
+          mkdir -p supabase/.temp
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          function sqlString(name, value) {
+            if (!value) {
+              throw new Error(`${name} is required`);
+            }
+
+            return `'${value.replaceAll("'", "''")}'`;
+          }
+
+          const functionUrl = sqlString(
+            "FABRIC_RENDER_WORKER_FUNCTION_URL",
+            process.env.FABRIC_RENDER_WORKER_FUNCTION_URL,
+          );
+          const invokeSecret = sqlString(
+            "FABRIC_RENDER_WORKER_INVOKE_SECRET",
+            process.env.FABRIC_RENDER_WORKER_INVOKE_SECRET,
+          );
+
+          fs.writeFileSync(
+            "supabase/.temp/fabric-render-dev-vault-secrets.sql",
+            `
+          do $$
+          declare
+            function_url_secret_id uuid;
+            invoke_secret_id uuid;
+          begin
+            select id into function_url_secret_id
+            from vault.secrets
+            where name = 'fabric_render_worker_function_url'
+            limit 1;
+
+            if function_url_secret_id is null then
+              perform vault.create_secret(
+                ${functionUrl},
+                'fabric_render_worker_function_url',
+                'Fabric render worker Edge Function URL'
+              );
+            else
+              perform vault.update_secret(
+                function_url_secret_id,
+                ${functionUrl},
+                'fabric_render_worker_function_url',
+                'Fabric render worker Edge Function URL'
+              );
+            end if;
+
+            select id into invoke_secret_id
+            from vault.secrets
+            where name = 'fabric_render_worker_invoke_secret'
+            limit 1;
+
+            if invoke_secret_id is null then
+              perform vault.create_secret(
+                ${invokeSecret},
+                'fabric_render_worker_invoke_secret',
+                'Fabric render worker cron invocation secret'
+              );
+            else
+              perform vault.update_secret(
+                invoke_secret_id,
+                ${invokeSecret},
+                'fabric_render_worker_invoke_secret',
+                'Fabric render worker cron invocation secret'
+              );
+            end if;
+          end;
+          $$;
+          `,
+          );
+          NODE
+          pnpm exec supabase db query --linked --file supabase/.temp/fabric-render-dev-vault-secrets.sql
+          rm -f supabase/.temp/fabric-render-dev-vault-secrets.sql

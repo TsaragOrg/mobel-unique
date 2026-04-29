@@ -71,6 +71,11 @@ type ResolvedJob = {
 
 type ProviderName = "mock" | "gemini";
 
+type WorkerProviderConfig = {
+  providerModel: string;
+  providerName: ProviderName;
+};
+
 const GENERATED_BUCKET = "catalog-private-assets";
 const MOCK_INPUT_IMAGE_BASE64 =
   "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9U6KKKAP/2Q==";
@@ -142,8 +147,13 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  const requestedProvider = readRequestedProvider(request);
-  if (!requestedProvider) {
+  const invocationError = validateWorkerInvocation(request);
+  if (invocationError) {
+    return invocationError;
+  }
+
+  const providerConfig = resolveWorkerProviderConfig();
+  if (!providerConfig) {
     return jsonResponse({ error: "Unsupported fabric render provider" }, 501);
   }
 
@@ -154,7 +164,7 @@ Deno.serve(async (request) => {
   try {
     supabaseUrl = requiredEnv("SUPABASE_URL");
     serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-    if (requestedProvider === "gemini") {
+    if (providerConfig.providerName === "gemini") {
       geminiApiKey = requiredEnv("GEMINI_API_KEY");
     }
   } catch (error) {
@@ -193,6 +203,8 @@ Deno.serve(async (request) => {
       "fabric_render_worker_claim_next",
       {
         claim_ttl_seconds: claimTtlSeconds,
+        claim_provider_model: providerConfig.providerModel,
+        claim_provider_name: providerConfig.providerName,
         queue_name: queueName,
         worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
       },
@@ -216,7 +228,7 @@ Deno.serve(async (request) => {
     return await processClaimedJob({
       geminiApiKey,
       jobId: claimedJob.job_id,
-      provider: requestedProvider,
+      providerConfig,
       queueName,
       serviceRoleKey,
       supabaseUrl,
@@ -229,13 +241,66 @@ Deno.serve(async (request) => {
   }
 });
 
-function readRequestedProvider(request: Request): ProviderName | null {
-  const provider =
-    request.headers.get("x-fabric-render-provider") ??
-    Deno.env.get("FABRIC_RENDER_PROVIDER") ??
-    "mock";
+function validateWorkerInvocation(request: Request): Response | null {
+  const expectedSecret = Deno.env.get("FABRIC_RENDER_WORKER_INVOKE_SECRET");
 
-  return provider === "mock" || provider === "gemini" ? provider : null;
+  if (!expectedSecret) {
+    if (isLocalWorkerEnvironment()) {
+      return null;
+    }
+
+    return jsonResponse(
+      {
+        error:
+          "Missing required environment variable: FABRIC_RENDER_WORKER_INVOKE_SECRET",
+      },
+      500,
+    );
+  }
+
+  if (request.headers.get("x-fabric-render-worker-secret") !== expectedSecret) {
+    return jsonResponse(
+      { error: "Fabric render worker invocation is unauthorized" },
+      401,
+    );
+  }
+
+  return null;
+}
+
+function isLocalWorkerEnvironment(): boolean {
+  const appEnv = Deno.env.get("APP_ENV");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+
+  return (
+    appEnv === "local" ||
+    supabaseUrl.includes("127.0.0.1") ||
+    supabaseUrl.includes("localhost")
+  );
+}
+
+function resolveWorkerProviderConfig(): WorkerProviderConfig | null {
+  const isLocalEnvironment = isLocalWorkerEnvironment();
+  const defaultProviderName = isLocalEnvironment ? "mock" : "gemini";
+  const provider =
+    Deno.env.get("FABRIC_RENDER_PROVIDER") ?? defaultProviderName;
+
+  if (provider !== "mock" && provider !== "gemini") {
+    return null;
+  }
+
+  if (provider === "mock" && !isLocalEnvironment) {
+    return null;
+  }
+
+  return {
+    providerModel:
+      Deno.env.get("FABRIC_RENDER_PROVIDER_MODEL") ??
+      (provider === "gemini"
+        ? "gemini-3-pro-image-preview"
+        : "mock-fabric-render-v1"),
+    providerName: provider,
+  };
 }
 
 async function processClaimedJob(input: {
@@ -243,7 +308,7 @@ async function processClaimedJob(input: {
   serviceRoleKey: string;
   queueName: string;
   jobId: string;
-  provider: ProviderName;
+  providerConfig: WorkerProviderConfig;
   geminiApiKey?: string;
 }): Promise<Response> {
   const resolvedJob = await callRpc<ResolvedJob>(
@@ -276,7 +341,7 @@ async function processClaimedJob(input: {
     });
 
     const providerInputBytes = await materializeProviderInputBytes({
-      provider: input.provider,
+      provider: input.providerConfig.providerName,
       resolvedJob,
       serviceRoleKey: input.serviceRoleKey,
       supabaseUrl: input.supabaseUrl,
@@ -298,7 +363,7 @@ async function processClaimedJob(input: {
       visualMatrixColumnId: resolvedJob.visual_matrix_column_id,
     });
     const generatedImage =
-      input.provider === "mock"
+      input.providerConfig.providerName === "mock"
         ? {
             contentType: "image/png",
             outputBytes: base64ToUint8Array(MOCK_OUTPUT_PNG_BASE64),
@@ -308,6 +373,7 @@ async function processClaimedJob(input: {
             fabricReferenceBytes: providerInputBytes.fabricReferenceBytes,
             geminiApiKey: input.geminiApiKey,
             generationMode: resolvedJob.generation_mode,
+            providerModel: input.providerConfig.providerModel,
             promptNote: resolvedJob.prompt_note,
             refinePrompt: resolvedJob.refine_prompt,
             refineSource: resolvedJob.refinement_source,
@@ -317,7 +383,7 @@ async function processClaimedJob(input: {
           });
     const normalizationTarget = selectNormalizationTarget(resolvedJob);
     const normalizedImage =
-      input.provider === "gemini"
+      input.providerConfig.providerName === "gemini"
         ? await normalizeGeneratedOutput({
             outputBytes: generatedImage.outputBytes,
             outputContentType: generatedImage.contentType,
@@ -375,7 +441,9 @@ async function processClaimedJob(input: {
     });
   } catch (error) {
     const providerFailure =
-      input.provider === "gemini" ? classifyGeminiProviderError(error) : null;
+      input.providerConfig.providerName === "gemini"
+        ? classifyGeminiProviderError(error)
+        : null;
     const message =
       providerFailure?.message ??
       (error instanceof Error ? error.message : String(error));
@@ -482,6 +550,7 @@ async function materializeProviderInputBytes(input: {
 async function runGeminiProvider(input: {
   geminiApiKey?: string;
   generationMode: "initial" | "refine";
+  providerModel: string;
   promptNote?: string | null;
   refinePrompt?: string | null;
   fabricReference: ResolvedAsset;
@@ -503,6 +572,7 @@ async function runGeminiProvider(input: {
             mimeType: input.fabricReference.content_type,
           },
           generationMode: "initial",
+          model: input.providerModel,
           prompt: buildFabricRenderPrompt({
             generationMode: "initial",
             promptNote: input.promptNote,
@@ -516,6 +586,7 @@ async function runGeminiProvider(input: {
         })
       : buildGeminiGenerateContentRequest({
           generationMode: "refine",
+          model: input.providerModel,
           prompt: buildFabricRenderRefinePrompt({
             refinePrompt: input.refinePrompt ?? input.promptNote ?? "",
           }),
