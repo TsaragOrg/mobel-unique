@@ -287,6 +287,26 @@ button:disabled {
   gap: 6px;
 }
 
+.admin-cell-form,
+.admin-candidate-list,
+.admin-candidate-row {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-candidate-row {
+  border-top: 1px solid #d6d2c8;
+  padding-top: 8px;
+}
+
+.admin-preview-image {
+  aspect-ratio: 4 / 3;
+  border: 1px solid #d6d2c8;
+  height: auto;
+  object-fit: cover;
+  width: min(180px, 100%);
+}
+
 .admin-table-wrap {
   overflow-x: auto;
 }

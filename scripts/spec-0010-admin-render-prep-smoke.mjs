@@ -336,6 +336,70 @@ if (!job?.id || job.status !== "queued") {
   fail(`fabric render job was not queued: ${JSON.stringify(job)}`);
 }
 
+const { render_candidates: candidates } = await adminJson(
+  accessToken,
+  trustedDeviceCookie,
+  `/api/admin/render-cells/${renderCell.id}/candidates`,
+);
+
+if (!Array.isArray(candidates) || candidates.length === 0) {
+  fail(
+    `render cell ${renderCell.id} has no generated candidates. Run the fabric render worker before this smoke.`,
+  );
+}
+
+const candidate = candidates[0];
+
+if (!candidate?.id || !candidate.preview_url) {
+  fail(`render candidate is incomplete: ${JSON.stringify(candidate)}`);
+}
+
+const { render_candidate: selectedCandidate } = await adminJson(
+  accessToken,
+  trustedDeviceCookie,
+  `/api/admin/render-candidates/${candidate.id}/use-as-current`,
+  {
+    method: "POST",
+  },
+);
+
+if (!selectedCandidate?.is_current) {
+  fail(
+    `render candidate was not selected: ${JSON.stringify(selectedCandidate)}`,
+  );
+}
+
+const manualRenderAsset = await uploadAdminAsset({
+  accessToken,
+  extraPayload: {
+    render_cell_id: renderCell.id,
+  },
+  purpose: "manual_render",
+  trustedDeviceCookie,
+});
+
+const { render_cell: manualRenderCell } = await adminJson(
+  accessToken,
+  trustedDeviceCookie,
+  `/api/admin/render-cells/${renderCell.id}/manual-render`,
+  {
+    body: JSON.stringify({
+      asset_id: manualRenderAsset.id,
+    }),
+    method: "POST",
+  },
+);
+
+if (
+  manualRenderCell?.current_private_asset_id !== manualRenderAsset.id ||
+  manualRenderCell.current_public_asset_id !== null ||
+  manualRenderCell.source_type !== "manual_upload"
+) {
+  fail(
+    `manual render was not attached privately: ${JSON.stringify(manualRenderCell)}`,
+  );
+}
+
 console.log(
-  `PASS SPEC-0010 admin render prep smoke: queued render job ${job.id} for sofa ${sofa.id}`,
+  `PASS SPEC-0010 admin render prep smoke: selected candidate ${candidate.id} and manual render ${manualRenderAsset.id} for sofa ${sofa.id}`,
 );

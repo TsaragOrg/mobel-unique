@@ -83,6 +83,7 @@ function createDependencies(
       {
         blockers: ["MISSING_SOURCE_PHOTO"],
         can_generate_initial: false,
+        candidate_count: 0,
         current_private_asset_id: null,
         current_public_asset_id: null,
         fabric_id: fabric.id,
@@ -165,7 +166,9 @@ function createDependencies(
           ? "swatch-upload"
           : input.purpose === "sofa_source_photo"
             ? "source-photo-upload"
-          : "ai-reference-upload",
+            : input.purpose === "manual_render"
+              ? "manual-render-upload"
+              : "ai-reference-upload",
     })),
     createFabricRenderJob: vi.fn(async (_accessToken, input) => ({
       attempt_count: 0,
@@ -212,6 +215,35 @@ function createDependencies(
       visual_matrix_column_id: visualMatrixColumn.id,
     })),
     getRenderCoverage: vi.fn(async () => renderCoverage),
+    listRenderCellCandidates: vi.fn(async () => [
+      {
+        accepted_at: null,
+        asset: {
+          asset_kind: "fabric_render_candidate",
+          byte_size: 2400,
+          content_type: "image/png",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000907",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        asset_id: "00000000-0000-4000-8000-000000000907",
+        created_at: "2026-04-28T10:35:00.000Z",
+        fabric_id: fabric.id,
+        generation_mode: "initial",
+        id: "00000000-0000-4000-8000-000000000908",
+        is_current: false,
+        job_id: "00000000-0000-4000-8000-000000000906",
+        preview_url: "https://storage.example/candidate-preview",
+        prompt_version: "v007",
+        provider_model: "mock-fabric-render-v1",
+        provider_name: "mock",
+        render_cell_id: "00000000-0000-4000-8000-000000000905",
+        sofa_id: "00000000-0000-4000-8000-000000000701",
+        visual_matrix_column_id: visualMatrixColumn.id,
+      },
+    ]),
     getSofa: vi.fn(async () => ({
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
@@ -279,6 +311,23 @@ function createDependencies(
     redirect: vi.fn(),
     refreshAccessToken: vi.fn(async () => null),
     removeSofaFabric: vi.fn(async () => {}),
+    setManualRender: vi.fn(async (_accessToken, renderCellId, input) => ({
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 0,
+      current_private_asset_id: input.asset_id,
+      current_public_asset_id: null,
+      fabric_id: fabric.id,
+      has_private_render: true,
+      has_public_render: false,
+      id: renderCellId,
+      latest_job: null,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      source_photo_id: null,
+      source_type: "manual_upload",
+      updated_at: "2026-04-28T10:40:00.000Z",
+      visual_matrix_column_id: visualMatrixColumn.id,
+    })),
     signOut: vi.fn(async () => {}),
     updateFabric: vi.fn(async (_accessToken, fabricId, input) => ({
       ...fabric,
@@ -320,6 +369,33 @@ function createDependencies(
       ...visualMatrixColumn,
       ...input,
       id: columnId,
+    })),
+    useRenderCandidate: vi.fn(async (_accessToken, candidateId) => ({
+      accepted_at: "2026-04-28T10:40:00.000Z",
+      asset: {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: "00000000-0000-4000-8000-000000000907",
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      asset_id: "00000000-0000-4000-8000-000000000907",
+      created_at: "2026-04-28T10:35:00.000Z",
+      fabric_id: fabric.id,
+      generation_mode: "initial",
+      id: candidateId,
+      is_current: true,
+      job_id: "00000000-0000-4000-8000-000000000906",
+      preview_url: "https://storage.example/candidate-preview",
+      prompt_version: "v007",
+      provider_model: "mock-fabric-render-v1",
+      provider_name: "mock",
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      visual_matrix_column_id: visualMatrixColumn.id,
     })),
     uploadToSignedUrl: vi.fn(async () => {}),
     verifyAdminSession: vi.fn(async () => ({
@@ -661,6 +737,7 @@ describe("Admin catalog pages", () => {
           {
             blockers: [],
             can_generate_initial: true,
+            candidate_count: 0,
             current_private_asset_id: null,
             current_public_asset_id: null,
             fabric_id: assignedFabric.fabric_id,
@@ -728,10 +805,122 @@ describe("Admin catalog pages", () => {
     });
   });
 
+  it("reviews generated candidates and attaches a manual render from coverage", async () => {
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const renderCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 1,
+      current_private_asset_id: null,
+      current_public_asset_id: null,
+      fabric_id: assignedFabric.fabric_id,
+      has_private_render: false,
+      has_public_render: false,
+      id: "00000000-0000-4000-8000-000000000906",
+      latest_job: null,
+      sofa_id: assignedFabric.sofa_id,
+      source_photo_id: visualColumn.current_source_photo_id,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [renderCell],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: assignedFabric.sofa_id,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }));
+
+    await screen.findByAltText(
+      "Candidate preview 00000000-0000-4000-8000-000000000908",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Use candidate" }));
+
+    await waitFor(() => {
+      expect(dependencies.useRenderCandidate).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000908",
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Manual render"), {
+      target: {
+        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Upload manual render" }),
+    );
+
+    await waitFor(() => {
+      expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+        byte_size: 6,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: renderCell.id,
+      });
+    });
+    expect(dependencies.setManualRender).toHaveBeenCalledWith(
+      "admin-token",
+      renderCell.id,
+      {
+        asset_id: "00000000-0000-4000-8000-000000000902",
+      },
+    );
+  });
+
   it("default API dependencies call only first-party admin facade routes", async () => {
     const sofaId = "00000000-0000-4000-8000-000000000701";
     const fabricId = "00000000-0000-4000-8000-000000000903";
     const tagId = "00000000-0000-4000-8000-000000000801";
+    const renderCellId = "00000000-0000-4000-8000-000000000905";
+    const candidateId = "00000000-0000-4000-8000-000000000908";
     const fetchMock = vi.fn(
       async (url: string | URL | Request, init?: RequestInit) => {
         const requestUrl = String(url);
@@ -835,6 +1024,61 @@ describe("Admin catalog pages", () => {
                 sofa_fabrics: [],
                 sofa_id: sofaId,
                 visual_matrix_columns: [],
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            `/api/admin/render-cells/${renderCellId}/candidates`,
+          )
+        ) {
+          return jsonResponse({
+            data: {
+              render_candidates: [
+                {
+                  id: candidateId,
+                  is_current: false,
+                  preview_url: "https://storage.example/candidate-preview",
+                  render_cell_id: renderCellId,
+                },
+              ],
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            `/api/admin/render-cells/${renderCellId}/manual-render`,
+          )
+        ) {
+          return jsonResponse({
+            data: {
+              render_cell: {
+                current_private_asset_id:
+                  "00000000-0000-4000-8000-000000000909",
+                id: renderCellId,
+                source_type: "manual_upload",
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(
+            `/api/admin/render-candidates/${candidateId}/use-as-current`,
+          )
+        ) {
+          return jsonResponse({
+            data: {
+              render_candidate: {
+                id: candidateId,
+                is_current: true,
+                render_cell_id: renderCellId,
               },
             },
             meta: {},
@@ -1079,6 +1323,11 @@ describe("Admin catalog pages", () => {
       "admin-token",
       "00000000-0000-4000-8000-000000000906",
     );
+    await dependencies.listRenderCellCandidates("admin-token", renderCellId);
+    await dependencies.useRenderCandidate("admin-token", candidateId);
+    await dependencies.setManualRender("admin-token", renderCellId, {
+      asset_id: "00000000-0000-4000-8000-000000000909",
+    });
 
     const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
 
@@ -1110,6 +1359,9 @@ describe("Admin catalog pages", () => {
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/render-coverage",
       "/api/admin/fabric-render-jobs",
       "/api/admin/fabric-render-jobs/00000000-0000-4000-8000-000000000906",
+      "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/candidates",
+      "/api/admin/render-candidates/00000000-0000-4000-8000-000000000908/use-as-current",
+      "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/manual-render",
     ]);
     expect(calledUrls.join("\n")).not.toContain("supabase");
     expect(calledUrls.join("\n")).not.toContain("functions");

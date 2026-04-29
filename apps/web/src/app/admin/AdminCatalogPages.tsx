@@ -124,9 +124,29 @@ export interface AdminCatalogFabricRenderJob {
   visual_matrix_column_id: string;
 }
 
+export interface AdminCatalogRenderCandidate {
+  accepted_at: string | null;
+  asset: AdminCatalogAsset | null;
+  asset_id: string;
+  created_at: string;
+  fabric_id: string;
+  generation_mode: string;
+  id: string;
+  is_current: boolean;
+  job_id: string;
+  preview_url: string | null;
+  prompt_version: string;
+  provider_model: string;
+  provider_name: string;
+  render_cell_id: string;
+  sofa_id: string;
+  visual_matrix_column_id: string;
+}
+
 export interface AdminCatalogRenderCell {
   blockers: string[];
   can_generate_initial: boolean;
+  candidate_count: number;
   current_private_asset_id: string | null;
   current_public_asset_id: string | null;
   fabric_id: string;
@@ -178,7 +198,12 @@ export interface UploadCreateInput {
   byte_size: number;
   content_type: string;
   original_fabric_id?: string;
-  purpose: "fabric_swatch" | "fabric_ai_reference" | "sofa_source_photo";
+  purpose:
+    | "fabric_swatch"
+    | "fabric_ai_reference"
+    | "sofa_source_photo"
+    | "manual_render";
+  render_cell_id?: string;
   sofa_id?: string;
   visual_matrix_column_id?: string;
 }
@@ -261,6 +286,10 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     sofaId: string,
   ): Promise<AdminCatalogRenderCoverage>;
+  listRenderCellCandidates(
+    accessToken: string,
+    renderCellId: string,
+  ): Promise<AdminCatalogRenderCandidate[]>;
   getSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   getSofaReadiness(
     accessToken: string,
@@ -285,6 +314,13 @@ export interface AdminCatalogPageDependencies {
     sofaId: string,
     fabricId: string,
   ): Promise<void>;
+  setManualRender(
+    accessToken: string,
+    renderCellId: string,
+    input: {
+      asset_id: string;
+    },
+  ): Promise<AdminCatalogRenderCell>;
   signOut(): Promise<void>;
   updateFabric(
     accessToken: string,
@@ -312,6 +348,10 @@ export interface AdminCatalogPageDependencies {
     columnId: string,
     input: VisualMatrixColumnPatchInput,
   ): Promise<AdminCatalogVisualMatrixColumn>;
+  useRenderCandidate(
+    accessToken: string,
+    candidateId: string,
+  ): Promise<AdminCatalogRenderCandidate>;
   uploadToSignedUrl(upload: AdminCatalogUpload, file: File): Promise<void>;
   verifyAdminSession(accessToken: string): Promise<{
     ok: boolean;
@@ -595,6 +635,14 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.render_coverage as AdminCatalogRenderCoverage;
     },
+    async listRenderCellCandidates(accessToken, renderCellId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/render-cells/${renderCellId}/candidates`,
+      );
+
+      return data.render_candidates as AdminCatalogRenderCandidate[];
+    },
     async getSofa(accessToken, sofaId) {
       const data = await requestAdminJson(
         accessToken,
@@ -663,6 +711,18 @@ export function createDefaultAdminCatalogDependencies(
         },
       );
     },
+    async setManualRender(accessToken, renderCellId, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/render-cells/${renderCellId}/manual-render`,
+        {
+          body: JSON.stringify(input),
+          method: "POST",
+        },
+      );
+
+      return data.render_cell as AdminCatalogRenderCell;
+    },
     async signOut() {
       const supabase = getBrowserSupabaseClient();
       await supabase.auth.signOut();
@@ -726,6 +786,17 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.visual_matrix_column as AdminCatalogVisualMatrixColumn;
+    },
+    async useRenderCandidate(accessToken, candidateId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/render-candidates/${candidateId}/use-as-current`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.render_candidate as AdminCatalogRenderCandidate;
     },
     async uploadToSignedUrl(upload, file) {
       const body = new FormData();
@@ -1323,11 +1394,11 @@ function SofaEditContent({
         ]);
         const [nextFabrics, nextSofaFabrics, nextColumns, nextCoverage] =
           await Promise.all([
-          dependencies.listFabrics(accessToken),
-          dependencies.listSofaFabrics(accessToken, sofaId),
-          dependencies.listVisualMatrixColumns(accessToken, sofaId),
-          dependencies.getRenderCoverage(accessToken, sofaId),
-        ]);
+            dependencies.listFabrics(accessToken),
+            dependencies.listSofaFabrics(accessToken, sofaId),
+            dependencies.listVisualMatrixColumns(accessToken, sofaId),
+            dependencies.getRenderCoverage(accessToken, sofaId),
+          ]);
 
         if (isCurrent) {
           setFabrics(nextFabrics);
@@ -1982,6 +2053,10 @@ function RenderCoverageSection({
 }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
+  const [reviewCellId, setReviewCellId] = useState<string | null>(null);
+  const [reviewCandidates, setReviewCandidates] = useState<
+    AdminCatalogRenderCandidate[]
+  >([]);
 
   async function handleGenerate(cell: AdminCatalogRenderCell) {
     setErrorMessage(null);
@@ -2003,15 +2078,104 @@ function RenderCoverageSection({
     }
   }
 
+  async function handleReviewCandidates(cell: AdminCatalogRenderCell) {
+    setErrorMessage(null);
+    setActiveCellId(cell.id);
+
+    try {
+      const candidates = await dependencies.listRenderCellCandidates(
+        accessToken,
+        cell.id,
+      );
+      setReviewCandidates(candidates);
+      setReviewCellId(cell.id);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  async function handleUseCandidate(candidate: AdminCatalogRenderCandidate) {
+    setErrorMessage(null);
+    setActiveCellId(candidate.render_cell_id);
+
+    try {
+      const nextCandidate = await dependencies.useRenderCandidate(
+        accessToken,
+        candidate.id,
+      );
+      setReviewCandidates((current) =>
+        current.map((entry) =>
+          entry.id === nextCandidate.id
+            ? nextCandidate
+            : {
+                ...entry,
+                is_current: false,
+              },
+        ),
+      );
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  async function handleManualRenderUpload(
+    cell: AdminCatalogRenderCell,
+    form: HTMLFormElement,
+  ) {
+    setErrorMessage(null);
+    setActiveCellId(cell.id);
+
+    const formData = new FormData(form);
+    const file = readFileField(form, formData, `manual_render_${cell.id}`);
+
+    if (!file) {
+      setErrorMessage("MANUAL_RENDER_REQUIRED");
+      setActiveCellId(null);
+      return;
+    }
+
+    try {
+      const upload = await dependencies.createUpload(accessToken, {
+        byte_size: file.size,
+        content_type: file.type,
+        purpose: "manual_render",
+        render_cell_id: cell.id,
+      });
+      await dependencies.uploadToSignedUrl(upload, file);
+      const asset = await dependencies.completeUpload(
+        accessToken,
+        upload.upload_id,
+      );
+      await dependencies.setManualRender(accessToken, cell.id, {
+        asset_id: asset.id,
+      });
+      form.reset();
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
   function findCell(fabricId: string, columnId: string) {
     return coverage?.render_cells.find(
       (cell) =>
-        cell.fabric_id === fabricId && cell.visual_matrix_column_id === columnId,
+        cell.fabric_id === fabricId &&
+        cell.visual_matrix_column_id === columnId,
     );
   }
 
   return (
-    <section aria-labelledby="render-coverage-title" className="admin-subsection">
+    <section
+      aria-labelledby="render-coverage-title"
+      className="admin-subsection"
+    >
       <h2 id="render-coverage-title">Render coverage</h2>
       {errorMessage ? (
         <p className="form-error" role="alert">
@@ -2065,6 +2229,9 @@ function RenderCoverageSection({
                                 {cell.blockers.join(", ")}
                               </span>
                             ) : null}
+                            <span className="admin-muted">
+                              Candidates: {cell.candidate_count}
+                            </span>
                             <button
                               disabled={
                                 !cell.can_generate_initial ||
@@ -2077,6 +2244,85 @@ function RenderCoverageSection({
                                 ? "Queueing"
                                 : "Generate"}
                             </button>
+                            <button
+                              disabled={
+                                cell.candidate_count === 0 ||
+                                activeCellId === cell.id
+                              }
+                              onClick={() => void handleReviewCandidates(cell)}
+                              type="button"
+                            >
+                              Review candidates
+                            </button>
+                            <form
+                              className="admin-cell-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void handleManualRenderUpload(
+                                  cell,
+                                  event.currentTarget,
+                                );
+                              }}
+                            >
+                              <label className="field">
+                                <span>Manual render</span>
+                                <input
+                                  accept="image/png,image/jpeg,image/webp"
+                                  name={`manual_render_${cell.id}`}
+                                  type="file"
+                                />
+                              </label>
+                              <button
+                                disabled={activeCellId === cell.id}
+                                type="submit"
+                              >
+                                Upload manual render
+                              </button>
+                            </form>
+                            {reviewCellId === cell.id ? (
+                              <div className="admin-candidate-list">
+                                {reviewCandidates.length === 0 ? (
+                                  <span className="admin-muted">
+                                    No candidates
+                                  </span>
+                                ) : null}
+                                {reviewCandidates.map((candidate) => (
+                                  <div
+                                    className="admin-candidate-row"
+                                    key={candidate.id}
+                                  >
+                                    {candidate.preview_url ? (
+                                      <img
+                                        alt={`Candidate preview ${candidate.id}`}
+                                        className="admin-preview-image"
+                                        src={candidate.preview_url}
+                                      />
+                                    ) : null}
+                                    <span>
+                                      {candidate.generation_mode} -{" "}
+                                      {candidate.prompt_version}
+                                    </span>
+                                    <span className="admin-muted">
+                                      {candidate.is_current
+                                        ? "Current"
+                                        : "Candidate"}
+                                    </span>
+                                    <button
+                                      disabled={
+                                        candidate.is_current ||
+                                        activeCellId === cell.id
+                                      }
+                                      onClick={() =>
+                                        void handleUseCandidate(candidate)
+                                      }
+                                      type="button"
+                                    >
+                                      Use candidate
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         ) : (
                           "Missing"
