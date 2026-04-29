@@ -11,6 +11,7 @@
 | Done   | SPEC-0013 | PLAN-0018 | Admin fabric upload, fabric CRUD/archive, and sofa fabric assignment endpoints through the first-party facade.              |
 | Done   | SPEC-0013 | PLAN-0019 | Admin visual matrix, source photo upload, render coverage, and initial fabric render job endpoints.                         |
 | Done   | SPEC-0013 | PLAN-0021 | Admin candidate listing, current render selection, and manual render attachment endpoints.                                  |
+| Done   | SPEC-0013 | PLAN-0023 | Source photo upload completion synchronizes the matching render cell and blocks redundant initial generation.               |
 
 ## Next
 

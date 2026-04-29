@@ -20,6 +20,7 @@
 | Done   | SPEC-0013 | PLAN-0019 | Admin render preparation smoke script added for the visual matrix, source photo, coverage, and queued render job handoff flow.            |
 | Done   | SPEC-0006 | PLAN-0020 | Fabric render tests cover Gemini aspect-ratio config, separated refine requests, and centered crop/resize output normalization.           |
 | Done   | SPEC-0013 | PLAN-0021 | Admin render prep smoke extends through candidate selection and private manual render attachment.                                         |
+| Done   | SPEC-0013 | PLAN-0023 | Admin render prep smoke covers source-photo-complete cells, redundant generation rejection, and alternate fabric queueing.                |
 
 ## Next
 

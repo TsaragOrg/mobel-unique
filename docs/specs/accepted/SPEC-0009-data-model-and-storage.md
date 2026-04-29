@@ -348,8 +348,11 @@ Required constraints and indexes:
 Rules:
 
 - a source photo can serve as the canonical render for its own sofa, visual column, and original fabric combination;
+- completing a source photo upload must create or update the matching `sofa_render_cells` row for the same sofa, visual matrix column, and original fabric;
+- the matching render cell must set `current_private_asset_id` to the source photo asset, `source_photo_id` to the source photo row, `source_type` to `source_photo`, and `accepted_fabric_render_candidate_id` to null;
+- source photo completion must not update `current_public_asset_id`; publication logic owns public asset copy creation and refresh;
 - a visual matrix column has one current source image for generation purposes through `visual_matrix_columns.current_source_photo_id`;
-- replacing the current source image does not automatically regenerate existing render cells.
+- replacing the current source image does not automatically regenerate existing AI-derived render cells for other fabrics.
 
 ## Storage Asset Tables
 
@@ -419,6 +422,8 @@ Rules:
 - a cell is render-complete when `current_private_asset_id` is present and the referenced asset is active;
 - a cell is public-readable only when the sofa is published, the fabric is active and public-ordered for the sofa, the column is active, and `current_public_asset_id` points to an active public asset;
 - manual uploads, source photos, and accepted AI generated candidates can all satisfy render coverage;
+- a `source_photo` render cell is valid only for the source photo's original fabric, sofa, and visual matrix column;
+- if a source photo is completed after its render cell already exists, the existing cell must be synchronized to the source photo state instead of leaving stale `ai_generated` or manual state for that exact source fabric cell;
 - public publication must create or refresh public asset copies for every public-readable render cell;
 - unpublish or archive must remove, purge, or otherwise deactivate public asset copies so direct public bucket URLs for unavailable sofa renders do not remain intentionally served by the application.
 

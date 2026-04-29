@@ -3557,6 +3557,11 @@ async function attachSourcePhotoToColumn(
   if (columnError) {
     throw mapSupabaseError(columnError);
   }
+
+  await syncSourcePhotoRenderCell(
+    client,
+    sourcePhoto as AdminSofaSourcePhotoRecord,
+  );
 }
 
 async function fetchSofaLifecycle(
@@ -3785,26 +3790,40 @@ async function ensureRenderCellsForCoverage(
   }
 
   const existingCells = await fetchRenderCellsForSofa(client, input.sofaId);
+  const existingCellByKey = new Map(
+    existingCells.map((cell) => [
+      renderCellKey(cell.fabric_id, cell.visual_matrix_column_id),
+      cell,
+    ]),
+  );
   const existingKeys = new Set(
     existingCells.map((cell) =>
       renderCellKey(cell.fabric_id, cell.visual_matrix_column_id),
     ),
   );
   const missingCells: JsonObject[] = [];
+  const sourcePhotoCellsToSync: AdminSofaSourcePhotoRecord[] = [];
 
   for (const sofaFabric of input.sofaFabrics) {
     for (const column of input.columns) {
       const key = renderCellKey(sofaFabric.fabric_id, column.id);
-
-      if (existingKeys.has(key)) {
-        continue;
-      }
-
-      const sourcePhoto = isRecord(column.current_source_photo)
-        ? (column.current_source_photo as unknown as AdminSofaSourcePhotoRecord)
-        : null;
+      const sourcePhoto = sourcePhotoForColumn(column);
       const sourcePhotoMatchesFabric =
         sourcePhoto?.original_fabric_id === sofaFabric.fabric_id;
+
+      if (existingKeys.has(key)) {
+        const existingCell = existingCellByKey.get(key);
+
+        if (
+          sourcePhotoMatchesFabric &&
+          existingCell &&
+          !isSourcePhotoSatisfiedRenderCell(existingCell, column)
+        ) {
+          sourcePhotoCellsToSync.push(sourcePhoto);
+        }
+
+        continue;
+      }
 
       missingCells.push({
         current_private_asset_id: sourcePhotoMatchesFabric
@@ -3827,6 +3846,10 @@ async function ensureRenderCellsForCoverage(
     if (error && error.code !== "23505") {
       throw mapSupabaseError(error);
     }
+  }
+
+  for (const sourcePhoto of sourcePhotoCellsToSync) {
+    await syncSourcePhotoRenderCell(client, sourcePhoto);
   }
 
   return fetchRenderCellsForSofa(client, input.sofaId);
@@ -4104,6 +4127,52 @@ function renderCellKey(fabricId: string, visualMatrixColumnId: string) {
   return `${fabricId}:${visualMatrixColumnId}`;
 }
 
+function sourcePhotoForColumn(column?: AdminVisualMatrixColumnRecord | null) {
+  return isRecord(column?.current_source_photo)
+    ? (column?.current_source_photo as unknown as AdminSofaSourcePhotoRecord)
+    : null;
+}
+
+function isSourcePhotoSatisfiedRenderCell(
+  cell: AdminRenderCellRecord,
+  column?: AdminVisualMatrixColumnRecord | null,
+) {
+  const sourcePhoto = sourcePhotoForColumn(column);
+
+  return Boolean(
+    sourcePhoto &&
+    sourcePhoto.original_fabric_id === cell.fabric_id &&
+    cell.current_private_asset_id === sourcePhoto.asset_id &&
+    cell.source_photo_id === sourcePhoto.id &&
+    cell.source_type === "source_photo",
+  );
+}
+
+async function syncSourcePhotoRenderCell(
+  client: SupabaseCatalogClient,
+  sourcePhoto: AdminSofaSourcePhotoRecord,
+) {
+  const { error } = await client.from("sofa_render_cells").upsert(
+    {
+      accepted_fabric_render_candidate_id: null,
+      current_private_asset_id: sourcePhoto.asset_id,
+      fabric_id: sourcePhoto.original_fabric_id,
+      sofa_id: sourcePhoto.sofa_id,
+      source_photo_id: sourcePhoto.id,
+      source_type: "source_photo",
+      updated_at: new Date().toISOString(),
+      visual_matrix_column_id: sourcePhoto.visual_matrix_column_id,
+    },
+    {
+      onConflict: "sofa_id,fabric_id,visual_matrix_column_id",
+    },
+  );
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+}
+
 function decorateRenderCells(input: {
   candidateCountsByCellId: Map<string, number>;
   cells: AdminRenderCellRecord[];
@@ -4149,6 +4218,12 @@ function renderCellBlockers(input: {
   latestJob: AdminFabricRenderJobRecord | null;
 }) {
   const blockers: string[] = [];
+
+  if (isSourcePhotoSatisfiedRenderCell(input.cell, input.column)) {
+    blockers.push("SOURCE_PHOTO_RENDER_COMPLETE");
+
+    return blockers;
+  }
 
   if (!input.column?.current_source_photo_id) {
     blockers.push("MISSING_SOURCE_PHOTO");
@@ -4231,6 +4306,28 @@ async function validateInitialRenderJobInput(
     };
   }
 
+  const sourcePhoto = sourcePhotoForColumn(column);
+  const renderCell = await fetchRenderCellForPair(client, {
+    fabricId: input.fabric_id,
+    sofaId: input.sofa_id,
+    visualMatrixColumnId: input.visual_matrix_column_id,
+  });
+
+  if (
+    sourcePhoto?.original_fabric_id === input.fabric_id &&
+    (!renderCell || isSourcePhotoSatisfiedRenderCell(renderCell, column))
+  ) {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      details: {
+        fields: ["fabric_id", "visual_matrix_column_id"],
+      },
+      message:
+        "The source photo already satisfies the original fabric render cell.",
+      status: 422,
+    };
+  }
+
   const aiReferenceAsset = isRecord(fabric.ai_reference_asset)
     ? (fabric.ai_reference_asset as unknown as AdminStorageAssetRecord)
     : null;
@@ -4262,10 +4359,7 @@ async function createRenderCellForJob(
     sofaId: string;
   },
 ) {
-  const sourcePhoto = isRecord(input.column.current_source_photo)
-    ? (input.column
-        .current_source_photo as unknown as AdminSofaSourcePhotoRecord)
-    : null;
+  const sourcePhoto = sourcePhotoForColumn(input.column);
   const sourcePhotoMatchesFabric =
     sourcePhoto?.original_fabric_id === input.fabricId;
   const { data, error } = await client

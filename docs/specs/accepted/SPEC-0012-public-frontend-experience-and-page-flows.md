@@ -113,13 +113,13 @@ The frontend may use English-only internal route names, component names, and ana
 
 The MVP public frontend must expose these routes:
 
-| Route | Route Type | Indexing | Purpose |
-| --- | --- | --- | --- |
-| `/` | Public marketing page | Indexable | Explain the AI visualization offer and direct visitors to the catalog. |
-| `/catalog` | Public catalog page | Indexable | Let visitors browse and filter published sofas. |
-| `/sofas/[slug]` | Public sofa detail page | Indexable only when published | Let visitors choose fabric and visual position, inspect public description, dimensions, tags, start simulation, or return to Shopify. |
-| `/sofas/[slug]/simulate` | Private simulation wizard page | Noindex | Guide email verification, room photo upload, room preparation, dimensions, final placement, result, and regeneration for one selected sofa context. |
-| `/simulations/[simulation_job_id]` | Private simulation continuation page | Noindex | Resume polling, dimension entry, processing, result, regeneration, expired, and failure states for an existing job when the browser still has valid access state. |
+| Route                              | Route Type                           | Indexing                      | Purpose                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                | Public marketing page                | Indexable                     | Explain the AI visualization offer and direct visitors to the catalog.                                                                                            |
+| `/catalog`                         | Public catalog page                  | Indexable                     | Let visitors browse and filter published sofas.                                                                                                                   |
+| `/sofas/[slug]`                    | Public sofa detail page              | Indexable only when published | Let visitors choose fabric and visual position, inspect public description, dimensions, tags, start simulation, or return to Shopify.                             |
+| `/sofas/[slug]/simulate`           | Private simulation wizard page       | Noindex                       | Guide email verification, room photo upload, room preparation, dimensions, final placement, result, and regeneration for one selected sofa context.               |
+| `/simulations/[simulation_job_id]` | Private simulation continuation page | Noindex                       | Resume polling, dimension entry, processing, result, regeneration, expired, and failure states for an existing job when the browser still has valid access state. |
 
 Rules:
 
@@ -325,6 +325,7 @@ The detail page must not show:
 - customer account requirement;
 - admin-only fields;
 - internal render or storage information.
+- whether a published render originated from a source photo, manual upload, or AI-generated candidate.
 
 ### Default Selection
 
@@ -343,6 +344,7 @@ When the visitor changes fabric:
 
 - the selected visual position stays selected;
 - the displayed render changes to the matching fabric and visual position render;
+- the displayed render must come from published public assets regardless of the private render source type used by the admin workflow;
 - the simulation CTA uses the current selected sofa, fabric, and visual position.
 
 When the visitor changes visual position:
@@ -644,17 +646,17 @@ The page must not:
 
 The frontend must map API status values as follows:
 
-| API Status | Frontend State |
-| --- | --- |
-| `queued` | Room preparation waiting state. |
-| `room_prep_processing` | Room preparation processing state. |
-| `awaiting_dimensions` | Dimension guide and input state. |
-| `placement_queued` | Final placement waiting state. |
-| `placement_processing` | Final placement processing state. |
-| `succeeded` | Result state. |
-| `failed` | Safe failure state with retry guidance only when allowed by current state. |
-| `canceled` | Safe canceled state with catalog return. |
-| `expired` | Expired state with catalog return and no restart action in the MVP. |
+| API Status             | Frontend State                                                             |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `queued`               | Room preparation waiting state.                                            |
+| `room_prep_processing` | Room preparation processing state.                                         |
+| `awaiting_dimensions`  | Dimension guide and input state.                                           |
+| `placement_queued`     | Final placement waiting state.                                             |
+| `placement_processing` | Final placement processing state.                                          |
+| `succeeded`            | Result state.                                                              |
+| `failed`               | Safe failure state with retry guidance only when allowed by current state. |
+| `canceled`             | Safe canceled state with catalog return.                                   |
+| `expired`              | Expired state with catalog return and no restart action in the MVP.        |
 
 Polling rules:
 

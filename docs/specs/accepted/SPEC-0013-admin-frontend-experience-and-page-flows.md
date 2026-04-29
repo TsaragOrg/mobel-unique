@@ -118,18 +118,18 @@ Administrator-entered public labels, such as public sofa names, public descripti
 
 The MVP admin frontend must expose these protected routes:
 
-| Route | Purpose |
-| --- | --- |
-| `/admin/login` | Admin sign-in, session recovery, and auth error handling. |
-| `/admin` | Admin dashboard with catalog readiness and operational entry points. |
-| `/admin/sofas` | Sofa list, lifecycle status, readiness summary, create entry point. |
-| `/admin/sofas/new` | Create a sofa draft. |
-| `/admin/sofas/[sofa_id]` | Edit one sofa and manage its preparation workflow. |
-| `/admin/fabrics` | Fabric list, lifecycle status, create entry point. |
-| `/admin/fabrics/new` | Create a fabric. |
-| `/admin/fabrics/[fabric_id]` | Edit or archive one fabric. |
-| `/admin/tags` | Manage reusable public tags. |
-| `/admin/operations` | Lightweight operational overview placeholder and future simulation metadata surface. |
+| Route                        | Purpose                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `/admin/login`               | Admin sign-in, session recovery, and auth error handling.                            |
+| `/admin`                     | Admin dashboard with catalog readiness and operational entry points.                 |
+| `/admin/sofas`               | Sofa list, lifecycle status, readiness summary, create entry point.                  |
+| `/admin/sofas/new`           | Create a sofa draft.                                                                 |
+| `/admin/sofas/[sofa_id]`     | Edit one sofa and manage its preparation workflow.                                   |
+| `/admin/fabrics`             | Fabric list, lifecycle status, create entry point.                                   |
+| `/admin/fabrics/new`         | Create a fabric.                                                                     |
+| `/admin/fabrics/[fabric_id]` | Edit or archive one fabric.                                                          |
+| `/admin/tags`                | Manage reusable public tags.                                                         |
+| `/admin/operations`          | Lightweight operational overview placeholder and future simulation metadata surface. |
 
 The sofa edit route owns the main per-sofa workflow and must expose sections for:
 
@@ -563,7 +563,8 @@ The section must show:
 - deleting a column is a soft delete through the API and requires explicit confirmation;
 - confirmation must warn that deleting a column affects all fabrics for that sofa;
 - replacing a source image does not automatically regenerate other fabric cells in that column;
-- the UI must require explicit regeneration per affected cell when the admin wants alignment with a replacement source image.
+- replacing a source image must refresh render coverage so the source photo's own original fabric cell is shown as complete from `source_photo`;
+- the UI must require explicit regeneration per affected non-source fabric cell when the admin wants alignment with a replacement source image.
 
 ## Render Coverage Section
 
@@ -598,6 +599,7 @@ Each cell must show:
 
 - whether it is complete for publication;
 - current source type when available;
+- source-photo completion when the cell represents the source photo's original fabric;
 - manual render availability;
 - active or recent fabric render job state;
 - private candidate availability;
@@ -608,7 +610,7 @@ Each cell must show:
 A cell may expose:
 
 - upload manual render;
-- generate initial render;
+- generate initial render when the API reports that the cell is eligible;
 - regenerate render;
 - refine from selected candidate when supported by API;
 - open private candidate review;
@@ -619,6 +621,8 @@ A cell may expose:
 Rules:
 
 - manual upload sets a private render as current for the cell but does not publish it;
+- a cell completed by the current source photo for its original fabric must be shown as complete and must not present initial generation as the normal next action;
+- manual upload for a source-photo-complete cell may remain available as an explicit replacement action;
 - generated candidates remain private until the admin explicitly selects one as current and publication creates public copies;
 - worker success must never automatically select a candidate as current;
 - job failures are operational and must not become public render states;

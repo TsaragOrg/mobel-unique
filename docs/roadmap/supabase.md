@@ -12,6 +12,7 @@
 | Done   | SPEC-0006 | PLAN-0010 | Gemini provider path for fabric render jobs using private storage inputs and generated candidate output metadata.          |
 | Done   | SPEC-0013 | PLAN-0019 | Service-role admin queue handoff helper for durable fabric render jobs created by the first-party admin facade.            |
 | Done   | SPEC-0013 | PLAN-0021 | Existing private render cell and asset tables are used for candidate selection and manual render attachment.               |
+| Done   | SPEC-0013 | PLAN-0023 | Existing render cell source-photo fields are used to complete the exact source fabric cell without public asset copies.    |
 
 ## Next
 

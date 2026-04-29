@@ -48,14 +48,18 @@ const ids = {
   aiReferenceAsset: "00000000-0000-4000-8000-000000000902",
   candidate: "00000000-0000-4000-8000-000000000908",
   column: "00000000-0000-4000-8000-000000000904",
-  fabric: "00000000-0000-4000-8000-000000000903",
   job: "00000000-0000-4000-8000-000000000906",
   manualRenderAsset: "00000000-0000-4000-8000-000000000909",
-  renderCell: "00000000-0000-4000-8000-000000000905",
+  sourceFabric: "00000000-0000-4000-8000-000000000903",
+  sourceRenderCell: "00000000-0000-4000-8000-000000000905",
   sofa: "00000000-0000-4000-8000-000000000701",
   sourcePhotoAsset: "00000000-0000-4000-8000-000000000907",
-  swatchAsset: "00000000-0000-4000-8000-000000000901"
+  swatchAsset: "00000000-0000-4000-8000-000000000901",
+  targetFabric: "00000000-0000-4000-8000-000000000910",
+  targetRenderCell: "00000000-0000-4000-8000-000000000911"
 };
+
+let fabricCreateCount = 0;
 
 globalThis.fetch = async (url, init = {}) => {
   const requestUrl = String(url);
@@ -124,10 +128,11 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (requestUrl.endsWith("/api/admin/fabrics") && method === "POST") {
+    fabricCreateCount += 1;
     return json({
       data: {
         fabric: {
-          id: ids.fabric,
+          id: fabricCreateCount === 1 ? ids.sourceFabric : ids.targetFabric,
           ai_reference_asset_id: ids.aiReferenceAsset,
           lifecycle_state: "active"
         }
@@ -148,11 +153,12 @@ globalThis.fetch = async (url, init = {}) => {
     }, { status: 201 });
   }
 
-  if (requestUrl.endsWith("/fabrics/" + ids.fabric) && method === "PUT") {
+  if ((requestUrl.endsWith("/fabrics/" + ids.sourceFabric) || requestUrl.endsWith("/fabrics/" + ids.targetFabric)) && method === "PUT") {
+    const fabricId = requestUrl.endsWith("/fabrics/" + ids.sourceFabric) ? ids.sourceFabric : ids.targetFabric;
     return json({
       data: {
         sofa_fabric: {
-          fabric_id: ids.fabric,
+          fabric_id: fabricId,
           public_order: 1,
           sofa_id: ids.sofa
         }
@@ -178,15 +184,32 @@ globalThis.fetch = async (url, init = {}) => {
     return json({
       data: {
         render_coverage: {
-          render_cells: [{
-            blockers: [],
-            can_generate_initial: true,
-            candidate_count: 1,
-            fabric_id: ids.fabric,
-            id: ids.renderCell,
-            sofa_id: ids.sofa,
-            visual_matrix_column_id: ids.column
-          }],
+          render_cells: [
+            {
+              blockers: ["SOURCE_PHOTO_RENDER_COMPLETE"],
+              can_generate_initial: false,
+              candidate_count: 0,
+              current_private_asset_id: ids.sourcePhotoAsset,
+              fabric_id: ids.sourceFabric,
+              has_private_render: true,
+              id: ids.sourceRenderCell,
+              sofa_id: ids.sofa,
+              source_photo_id: "00000000-0000-4000-8000-000000000912",
+              source_type: "source_photo",
+              visual_matrix_column_id: ids.column
+            },
+            {
+              blockers: [],
+              can_generate_initial: true,
+              candidate_count: 1,
+              fabric_id: ids.targetFabric,
+              has_private_render: false,
+              id: ids.targetRenderCell,
+              sofa_id: ids.sofa,
+              source_type: "ai_generated",
+              visual_matrix_column_id: ids.column
+            }
+          ],
           sofa_fabrics: [],
           sofa_id: ids.sofa,
           visual_matrix_columns: []
@@ -197,10 +220,23 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (requestUrl.endsWith("/api/admin/fabric-render-jobs") && method === "POST") {
+    const payload = JSON.parse(init.body);
+
+    if (payload.fabric_id === ids.sourceFabric) {
+      return json({
+        error: {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message: "The source photo already satisfies the original fabric render cell."
+        },
+        meta: {}
+      }, { status: 422 });
+    }
+
     return json({
       data: {
         fabric_render_job: {
           id: ids.job,
+          render_cell_id: ids.targetRenderCell,
           status: "queued"
         }
       },
@@ -208,7 +244,7 @@ globalThis.fetch = async (url, init = {}) => {
     }, { status: 201 });
   }
 
-  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.renderCell + "/candidates")) {
+  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.targetRenderCell + "/candidates")) {
     return json({
       data: {
         render_candidates: [{
@@ -224,7 +260,7 @@ globalThis.fetch = async (url, init = {}) => {
           },
           asset_id: ids.sourcePhotoAsset,
           created_at: "2026-04-28T10:35:00.000Z",
-          fabric_id: ids.fabric,
+          fabric_id: ids.targetFabric,
           generation_mode: "initial",
           id: ids.candidate,
           is_current: false,
@@ -233,7 +269,7 @@ globalThis.fetch = async (url, init = {}) => {
           prompt_version: "v007",
           provider_model: "mock-fabric-render-v1",
           provider_name: "mock",
-          render_cell_id: ids.renderCell,
+          render_cell_id: ids.targetRenderCell,
           sofa_id: ids.sofa,
           visual_matrix_column_id: ids.column
         }]
@@ -248,20 +284,20 @@ globalThis.fetch = async (url, init = {}) => {
         render_candidate: {
           id: ids.candidate,
           is_current: true,
-          render_cell_id: ids.renderCell
+          render_cell_id: ids.targetRenderCell
         }
       },
       meta: {}
     });
   }
 
-  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.renderCell + "/manual-render")) {
+  if (requestUrl.endsWith("/api/admin/render-cells/" + ids.targetRenderCell + "/manual-render")) {
     return json({
       data: {
         render_cell: {
           current_private_asset_id: ids.manualRenderAsset,
           current_public_asset_id: null,
-          id: ids.renderCell,
+          id: ids.targetRenderCell,
           source_type: "manual_upload"
         }
       },
