@@ -13,8 +13,9 @@
 | Done   | SPEC-0013 | PLAN-0019 | Service-role admin queue handoff helper for durable fabric render jobs created by the first-party admin facade.            |
 | Done   | SPEC-0013 | PLAN-0021 | Existing private render cell and asset tables are used for candidate selection and manual render attachment.               |
 | Done   | SPEC-0013 | PLAN-0023 | Existing render cell source-photo fields are used to complete the exact source fabric cell without public asset copies.    |
+| Done   | SPEC-0010 | PLAN-0024 | Public per-sofa tag view added for safe public catalog assembly and tag filtering.                                         |
 
 ## Next
 
-- Use the admin auth foundation from Edge Functions and admin/public API contracts.
+- Support admin publication transactions that create public asset copies for non-empty public catalog data.
 - Add production provider hardening, full data model policies, and retention behavior after the provider path.

@@ -14,9 +14,10 @@
 | Done   | SPEC-0013 | PLAN-0021 | Sofa edit render coverage UI for private candidate review, current render selection, and manual render upload.       |
 | Done   | SPEC-0013 | PLAN-0022 | Temporary sofa edit page cleanup for manual testing clarity before final admin design work.                          |
 | Done   | SPEC-0013 | PLAN-0023 | Sofa edit render coverage shows source-photo-complete cells and avoids redundant initial generation actions.         |
+| Done   | SPEC-0010 | PLAN-0024 | First-party public catalog and sofa detail API routes are available for the public storefront flow.                  |
 
 ## Next
 
-- Define public storefront flow.
+- Build public storefront pages on top of the public catalog read API.
 - Build admin publication and export workflows on top of the authenticated admin boundary.
-- Implement accepted public product specs after their execution plans are created.
+- Build the public simulation wizard after the storefront read path.

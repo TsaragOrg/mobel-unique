@@ -76,6 +76,7 @@ const REQUIRED_INDEXES = [
 const REQUIRED_VIEWS = [
   "public_catalog_sofas",
   "public_catalog_tags",
+  "public_sofa_tags",
   "public_sofa_fabrics",
   "public_sofa_visual_positions",
   "public_sofa_render_cells",
