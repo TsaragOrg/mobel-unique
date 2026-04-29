@@ -281,6 +281,12 @@ button:disabled {
   color: #6b6b65;
 }
 
+.admin-cell-stack {
+  align-items: flex-start;
+  display: grid;
+  gap: 6px;
+}
+
 .admin-table-wrap {
   overflow-x: auto;
 }

@@ -1,19 +1,25 @@
 import { type createAdminAuth } from "./admin-auth";
 import {
   AdminCatalogOperationError,
+  shapeFabricRenderJobResponse,
   shapeFabricResponse,
+  shapeRenderCoverageResponse,
   shapeSofaResponse,
   shapeSofaFabricResponse,
   shapeStorageAssetResponse,
   shapeTagResponse,
   shapeUploadResponse,
+  shapeVisualMatrixColumnResponse,
   validateFabricCreatePayload,
   validateFabricPatchPayload,
+  validateFabricRenderJobCreatePayload,
   validateSofaFabricMutationPayload,
   validateSofaCreatePayload,
   validateSofaPatchPayload,
   validateTagMutationPayload,
   validateUploadCreatePayload,
+  validateVisualMatrixColumnCreatePayload,
+  validateVisualMatrixColumnPatchPayload,
   type AdminCatalogOperationErrorData,
   type AdminCatalogStore,
 } from "./admin-catalog";
@@ -61,6 +67,18 @@ type SofaFabricRequestInput = RequestInput & {
 
 type UploadInput = BaseInput & {
   uploadId: string;
+};
+
+type VisualMatrixColumnInput = BaseInput & {
+  columnId: string;
+};
+
+type VisualMatrixColumnRequestInput = RequestInput & {
+  columnId: string;
+};
+
+type FabricRenderJobInput = BaseInput & {
+  jobId: string;
 };
 
 type TagInput = BaseInput & {
@@ -181,6 +199,198 @@ export async function handleGetSofaPublicationReadinessRequest(
       {
         data: {
           readiness,
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleListVisualMatrixColumnsRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const columns = await store.listVisualMatrixColumns(input.sofaId);
+
+    if (!columns) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          visual_matrix_columns: columns.map(shapeVisualMatrixColumnResponse),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateVisualMatrixColumnRequest(
+  input: SofaRequestInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateVisualMatrixColumnCreatePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.createVisualMatrixColumn(
+      input.sofaId,
+      validation.value,
+    );
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          visual_matrix_column: shapeVisualMatrixColumnResponse(result),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleUpdateVisualMatrixColumnRequest(
+  input: VisualMatrixColumnRequestInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateVisualMatrixColumnPatchPayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.updateVisualMatrixColumn(
+      input.columnId,
+      validation.value,
+    );
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          visual_matrix_column: shapeVisualMatrixColumnResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleDeleteVisualMatrixColumnRequest(
+  input: VisualMatrixColumnInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const error = await store.deleteVisualMatrixColumn(input.columnId);
+
+    if (error) {
+      return catalogErrorResponse(error);
+    }
+
+    return new Response(null, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      status: 204,
+    });
+  });
+}
+
+export async function handleGetRenderCoverageRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const coverage = await store.getRenderCoverage(input.sofaId);
+
+    if (!coverage) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_coverage: shapeRenderCoverageResponse(coverage),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateFabricRenderJobRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateFabricRenderJobCreatePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.createFabricRenderJob(validation.value);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          fabric_render_job: shapeFabricRenderJobResponse(result),
+          job_id: shapeFabricRenderJobResponse(result)?.id,
+          status: shapeFabricRenderJobResponse(result)?.status,
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleGetFabricRenderJobRequest(
+  input: FabricRenderJobInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const job = await store.getFabricRenderJob(input.jobId);
+
+    if (!job) {
+      return notFoundResponse(
+        "FABRIC_RENDER_JOB_NOT_FOUND",
+        "Fabric render job was not found.",
+      );
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          fabric_render_job: shapeFabricRenderJobResponse(job),
         },
         meta: {},
       },

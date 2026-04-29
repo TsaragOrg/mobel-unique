@@ -11,6 +11,8 @@ export type AdminCatalogErrorCode =
   | "FABRIC_ARCHIVED"
   | "FABRIC_CONFLICT"
   | "FABRIC_NOT_FOUND"
+  | "FABRIC_RENDER_JOB_CONFLICT"
+  | "FABRIC_RENDER_JOB_NOT_FOUND"
   | "SOFA_FABRIC_NOT_FOUND"
   | "SOFA_FABRIC_ORDER_CONFLICT"
   | "SOFA_CONFLICT"
@@ -18,6 +20,8 @@ export type AdminCatalogErrorCode =
   | "TAG_CONFLICT"
   | "TAG_IN_USE"
   | "TAG_NOT_FOUND"
+  | "VISUAL_MATRIX_COLUMN_CONFLICT"
+  | "VISUAL_MATRIX_COLUMN_NOT_FOUND"
   | "UPLOAD_NOT_FOUND";
 
 export interface AdminCatalogOperationErrorData {
@@ -109,6 +113,72 @@ export interface AdminSofaFabricRecord {
   updated_at: string;
 }
 
+export interface AdminSofaSourcePhotoRecord {
+  asset?: AdminStorageAssetRecord | JsonObject | null;
+  asset_id: string;
+  created_at: string;
+  id: string;
+  original_fabric_id: string;
+  sofa_id: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminVisualMatrixColumnRecord {
+  admin_label: string | null;
+  created_at: string;
+  current_source_photo?: AdminSofaSourcePhotoRecord | JsonObject | null;
+  current_source_photo_id: string | null;
+  deleted_at: string | null;
+  id: string;
+  public_label: string | null;
+  sequence: number;
+  sofa_id: string;
+  updated_at: string;
+}
+
+export interface AdminFabricRenderJobRecord {
+  attempt_count: number;
+  completed_at: string | null;
+  created_at: string;
+  fabric_id: string;
+  generation_mode: string;
+  id: string;
+  last_error_message: string | null;
+  max_attempts: number;
+  prompt_note: string | null;
+  queued_at: string | null;
+  render_cell_id: string;
+  sofa_id: string;
+  status: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminRenderCellRecord {
+  blockers?: string[];
+  can_generate_initial?: boolean;
+  current_private_asset_id: string | null;
+  current_public_asset_id: string | null;
+  fabric_id: string;
+  has_private_render?: boolean;
+  has_public_render?: boolean;
+  id: string;
+  latest_job?: AdminFabricRenderJobRecord | JsonObject | null;
+  sofa_id: string;
+  source_photo_id: string | null;
+  source_type: string;
+  updated_at: string;
+  visual_matrix_column_id: string;
+}
+
+export interface AdminRenderCoverageRecord {
+  render_cells: Array<AdminRenderCellRecord | JsonObject>;
+  sofa_fabrics: Array<AdminSofaFabricRecord | JsonObject>;
+  sofa_id: string;
+  visual_matrix_columns: Array<AdminVisualMatrixColumnRecord | JsonObject>;
+}
+
 export interface AdminCatalogStore {
   archiveFabric(
     fabricId: string,
@@ -133,8 +203,28 @@ export interface AdminCatalogStore {
   createUpload(
     input: UploadCreateInput,
   ): Promise<AdminUploadRecord | JsonObject>;
+  createFabricRenderJob(
+    input: FabricRenderJobCreateInput,
+  ): Promise<
+    AdminFabricRenderJobRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
+  createVisualMatrixColumn(
+    sofaId: string,
+    input: VisualMatrixColumnMutationInput,
+  ): Promise<
+    AdminVisualMatrixColumnRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
+  deleteVisualMatrixColumn(
+    columnId: string,
+  ): Promise<AdminCatalogOperationErrorData | null>;
   deleteTag(tagId: string): Promise<AdminCatalogOperationErrorData | null>;
   getFabric(fabricId: string): Promise<AdminFabricRecord | JsonObject | null>;
+  getFabricRenderJob(
+    jobId: string,
+  ): Promise<AdminFabricRenderJobRecord | JsonObject | null>;
+  getRenderCoverage(
+    sofaId: string,
+  ): Promise<AdminRenderCoverageRecord | JsonObject | null>;
   getSofa(sofaId: string): Promise<AdminSofaRecord | JsonObject | null>;
   getSofaPublicationReadiness(
     sofaId: string,
@@ -145,6 +235,9 @@ export interface AdminCatalogStore {
     sofaId: string,
   ): Promise<Array<AdminSofaFabricRecord | JsonObject> | null>;
   listTags(): Promise<Array<AdminTagRecord | JsonObject>>;
+  listVisualMatrixColumns(
+    sofaId: string,
+  ): Promise<Array<AdminVisualMatrixColumnRecord | JsonObject> | null>;
   removeSofaFabric(
     sofaId: string,
     fabricId: string,
@@ -168,6 +261,12 @@ export interface AdminCatalogStore {
     tagId: string,
     input: TagMutationInput,
   ): Promise<AdminTagRecord | JsonObject | null>;
+  updateVisualMatrixColumn(
+    columnId: string,
+    input: VisualMatrixColumnPatchInput,
+  ): Promise<
+    AdminVisualMatrixColumnRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
 }
 
 export interface PublicationReadiness {
@@ -228,13 +327,37 @@ export type FabricPatchInput = Partial<FabricMutationInput>;
 export interface UploadCreateInput {
   byte_size: number;
   content_type: string;
+  original_fabric_id?: string;
   purpose: UploadPurpose;
+  sofa_id?: string;
+  visual_matrix_column_id?: string;
 }
 
-export type UploadPurpose = "fabric_swatch" | "fabric_ai_reference";
+export type UploadPurpose =
+  | "fabric_swatch"
+  | "fabric_ai_reference"
+  | "sofa_source_photo";
 
 export interface SofaFabricMutationInput {
   public_order: number | null;
+}
+
+export interface VisualMatrixColumnMutationInput {
+  admin_label: string | null;
+  public_label: string | null;
+  sequence: number;
+}
+
+export type VisualMatrixColumnPatchInput =
+  Partial<VisualMatrixColumnMutationInput>;
+
+export interface FabricRenderJobCreateInput {
+  fabric_id: string;
+  generation_mode: "initial";
+  idempotency_key?: string;
+  prompt_note: string | null;
+  sofa_id: string;
+  visual_matrix_column_id: string;
 }
 
 const SOFA_FIELDS = [
@@ -261,11 +384,39 @@ const FABRIC_FIELDS = [
   "is_premium",
 ] as const;
 
-const UPLOAD_FIELDS = ["purpose", "content_type", "byte_size"] as const;
+const UPLOAD_FIELDS = [
+  "purpose",
+  "content_type",
+  "byte_size",
+  "sofa_id",
+  "visual_matrix_column_id",
+  "original_fabric_id",
+] as const;
 
 const SOFA_FABRIC_FIELDS = ["public_order"] as const;
 
-const UPLOAD_PURPOSES = ["fabric_swatch", "fabric_ai_reference"] as const;
+const VISUAL_MATRIX_COLUMN_FIELDS = [
+  "sequence",
+  "admin_label",
+  "public_label",
+] as const;
+
+const FABRIC_RENDER_JOB_FIELDS = [
+  "sofa_id",
+  "fabric_id",
+  "visual_matrix_column_id",
+  "generation_mode",
+  "prompt_note",
+  "idempotency_key",
+  "refinement_source_asset_id",
+  "refine_prompt",
+] as const;
+
+const UPLOAD_PURPOSES = [
+  "fabric_swatch",
+  "fabric_ai_reference",
+  "sofa_source_photo",
+] as const;
 
 const IMAGE_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
@@ -422,17 +573,67 @@ export function validateUploadCreatePayload(
     fields.push("byte_size");
   }
 
+  const sofaId = readUuidField(payload, "sofa_id", {
+    required: purpose === "sofa_source_photo",
+  });
+  const visualMatrixColumnId = readUuidField(
+    payload,
+    "visual_matrix_column_id",
+    {
+      required: purpose === "sofa_source_photo",
+    },
+  );
+  const originalFabricId = readUuidField(payload, "original_fabric_id", {
+    required: purpose === "sofa_source_photo",
+  });
+
+  for (const [field, result] of [
+    ["sofa_id", sofaId],
+    ["visual_matrix_column_id", visualMatrixColumnId],
+    ["original_fabric_id", originalFabricId],
+  ] as const) {
+    if (!result.ok) {
+      fields.push(field);
+    }
+  }
+
+  if (purpose && purpose !== "sofa_source_photo") {
+    for (const field of [
+      "sofa_id",
+      "visual_matrix_column_id",
+      "original_fabric_id",
+    ] as const) {
+      if (Object.prototype.hasOwnProperty.call(payload, field)) {
+        fields.push(field);
+      }
+    }
+  }
+
   if (fields.length > 0) {
     return validationFailed([...new Set(fields)]);
   }
 
+  const value: UploadCreateInput = {
+    byte_size: byteSize as number,
+    content_type: contentType as string,
+    purpose: purpose as UploadPurpose,
+  };
+
+  if (purpose === "sofa_source_photo") {
+    value.sofa_id = sofaId.ok && sofaId.present ? sofaId.value : undefined;
+    value.visual_matrix_column_id =
+      visualMatrixColumnId.ok && visualMatrixColumnId.present
+        ? visualMatrixColumnId.value
+        : undefined;
+    value.original_fabric_id =
+      originalFabricId.ok && originalFabricId.present
+        ? originalFabricId.value
+        : undefined;
+  }
+
   return {
     ok: true,
-    value: {
-      byte_size: byteSize as number,
-      content_type: contentType as string,
-      purpose: purpose as UploadPurpose,
-    },
+    value,
   };
 }
 
@@ -463,6 +664,124 @@ export function validateSofaFabricMutationPayload(
     value: {
       public_order: publicOrder.present ? publicOrder.value : null,
     },
+  };
+}
+
+export function validateVisualMatrixColumnCreatePayload(
+  payload: unknown,
+): ValidationResult<VisualMatrixColumnMutationInput> {
+  const result = validateVisualMatrixColumnPayload(payload, {
+    requireSequence: true,
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    value: {
+      admin_label: result.value.admin_label ?? null,
+      public_label: result.value.public_label ?? null,
+      sequence: result.value.sequence ?? 0,
+    },
+  };
+}
+
+export function validateVisualMatrixColumnPatchPayload(
+  payload: unknown,
+): ValidationResult<VisualMatrixColumnPatchInput> {
+  return validateVisualMatrixColumnPayload(payload, {
+    requireSequence: false,
+  });
+}
+
+export function validateFabricRenderJobCreatePayload(
+  payload: unknown,
+): ValidationResult<FabricRenderJobCreateInput> {
+  if (!isRecord(payload)) {
+    return invalidRequest("Request body must be a JSON object.");
+  }
+
+  const unsupportedFields = findUnsupportedFields(
+    payload,
+    FABRIC_RENDER_JOB_FIELDS,
+  );
+
+  if (unsupportedFields.length > 0) {
+    return unsupportedField(unsupportedFields);
+  }
+
+  const fields: string[] = [];
+  const value: Partial<FabricRenderJobCreateInput> = {};
+
+  for (const field of [
+    "sofa_id",
+    "fabric_id",
+    "visual_matrix_column_id",
+  ] as const) {
+    const result = readUuidField(payload, field, {
+      required: true,
+    });
+
+    if (!result.ok) {
+      fields.push(field);
+    } else {
+      value[field] = result.value;
+    }
+  }
+
+  if (payload.generation_mode !== "initial") {
+    fields.push("generation_mode");
+  } else {
+    value.generation_mode = "initial";
+  }
+
+  const promptNote = readStringField(payload, "prompt_note", {
+    allowNull: true,
+    required: false,
+  });
+
+  if (!promptNote.ok) {
+    fields.push(...promptNote.fields);
+  } else if (promptNote.present) {
+    value.prompt_note = promptNote.value;
+  } else {
+    value.prompt_note = null;
+  }
+
+  const idempotencyKey = readStringField(payload, "idempotency_key", {
+    allowNull: false,
+    required: false,
+  });
+
+  if (!idempotencyKey.ok) {
+    fields.push(...idempotencyKey.fields);
+  } else if (idempotencyKey.present) {
+    value.idempotency_key = idempotencyKey.value ?? undefined;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "refinement_source_asset_id") &&
+    payload.refinement_source_asset_id !== null
+  ) {
+    fields.push("refinement_source_asset_id");
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "refine_prompt") &&
+    payload.refine_prompt !== null
+  ) {
+    fields.push("refine_prompt");
+  }
+
+  if (fields.length > 0) {
+    return validationFailed([...new Set(fields)]);
+  }
+
+  return {
+    ok: true,
+    value: value as FabricRenderJobCreateInput,
   };
 }
 
@@ -571,6 +890,122 @@ export function shapeSofaFabricResponse(
     public_order: numberOrNull(record.public_order),
     sofa_id: stringOrNull(record.sofa_id),
     updated_at: stringOrNull(record.updated_at),
+  };
+}
+
+export function shapeSofaSourcePhotoResponse(
+  record: AdminSofaSourcePhotoRecord | JsonObject | null | undefined,
+) {
+  if (!record || !isRecord(record)) {
+    return null;
+  }
+
+  return {
+    asset: shapeStorageAssetResponse(isRecord(record.asset) ? record.asset : null),
+    asset_id: stringOrNull(record.asset_id),
+    created_at: stringOrNull(record.created_at),
+    id: stringOrNull(record.id),
+    original_fabric_id: stringOrNull(record.original_fabric_id),
+    sofa_id: stringOrNull(record.sofa_id),
+    updated_at: stringOrNull(record.updated_at),
+    visual_matrix_column_id: stringOrNull(record.visual_matrix_column_id),
+  };
+}
+
+export function shapeVisualMatrixColumnResponse(
+  record: AdminVisualMatrixColumnRecord | JsonObject,
+) {
+  return {
+    admin_label: stringOrNull(record.admin_label),
+    created_at: stringOrNull(record.created_at),
+    current_source_photo: shapeSofaSourcePhotoResponse(
+      isRecord(record.current_source_photo) ? record.current_source_photo : null,
+    ),
+    current_source_photo_id: stringOrNull(record.current_source_photo_id),
+    deleted_at: stringOrNull(record.deleted_at),
+    id: stringOrNull(record.id),
+    public_label: stringOrNull(record.public_label),
+    sequence: numberOrNull(record.sequence),
+    sofa_id: stringOrNull(record.sofa_id),
+    updated_at: stringOrNull(record.updated_at),
+  };
+}
+
+export function shapeFabricRenderJobResponse(
+  record: AdminFabricRenderJobRecord | JsonObject | null | undefined,
+) {
+  if (!record || !isRecord(record)) {
+    return null;
+  }
+
+  return {
+    attempt_count: numberOrNull(record.attempt_count),
+    completed_at: stringOrNull(record.completed_at),
+    created_at: stringOrNull(record.created_at),
+    fabric_id: stringOrNull(record.fabric_id),
+    generation_mode: stringOrNull(record.generation_mode),
+    id: stringOrNull(record.id),
+    last_error_message: stringOrNull(record.last_error_message),
+    max_attempts: numberOrNull(record.max_attempts),
+    prompt_note: stringOrNull(record.prompt_note),
+    queued_at: stringOrNull(record.queued_at),
+    render_cell_id: stringOrNull(record.render_cell_id),
+    sofa_id: stringOrNull(record.sofa_id),
+    status: stringOrNull(record.status),
+    updated_at: stringOrNull(record.updated_at),
+    visual_matrix_column_id: stringOrNull(record.visual_matrix_column_id),
+  };
+}
+
+export function shapeRenderCellResponse(
+  record: AdminRenderCellRecord | JsonObject,
+) {
+  return {
+    blockers: readStringList(record.blockers),
+    can_generate_initial: Boolean(record.can_generate_initial),
+    current_private_asset_id: stringOrNull(record.current_private_asset_id),
+    current_public_asset_id: stringOrNull(record.current_public_asset_id),
+    fabric_id: stringOrNull(record.fabric_id),
+    has_private_render:
+      typeof record.has_private_render === "boolean"
+        ? record.has_private_render
+        : Boolean(record.current_private_asset_id),
+    has_public_render:
+      typeof record.has_public_render === "boolean"
+        ? record.has_public_render
+        : Boolean(record.current_public_asset_id),
+    id: stringOrNull(record.id),
+    latest_job: shapeFabricRenderJobResponse(
+      isRecord(record.latest_job) ? record.latest_job : null,
+    ),
+    sofa_id: stringOrNull(record.sofa_id),
+    source_photo_id: stringOrNull(record.source_photo_id),
+    source_type: stringOrNull(record.source_type),
+    updated_at: stringOrNull(record.updated_at),
+    visual_matrix_column_id: stringOrNull(record.visual_matrix_column_id),
+  };
+}
+
+export function shapeRenderCoverageResponse(
+  record: AdminRenderCoverageRecord | JsonObject,
+) {
+  const visualMatrixColumns = Array.isArray(record.visual_matrix_columns)
+    ? record.visual_matrix_columns.filter(isRecord)
+    : [];
+  const sofaFabrics = Array.isArray(record.sofa_fabrics)
+    ? record.sofa_fabrics.filter(isRecord)
+    : [];
+  const renderCells = Array.isArray(record.render_cells)
+    ? record.render_cells.filter(isRecord)
+    : [];
+
+  return {
+    render_cells: renderCells.map(shapeRenderCellResponse),
+    sofa_fabrics: sofaFabrics.map(shapeSofaFabricResponse),
+    sofa_id: stringOrNull(record.sofa_id),
+    visual_matrix_columns: visualMatrixColumns.map(
+      shapeVisualMatrixColumnResponse,
+    ),
   };
 }
 
@@ -702,7 +1137,8 @@ export function createSupabaseAdminCatalogStore(
       }
 
       if (
-        descriptor.purpose === "fabric_ai_reference" &&
+        (descriptor.purpose === "fabric_ai_reference" ||
+          descriptor.purpose === "sofa_source_photo") &&
         Math.max(imageMetadata.width_px, imageMetadata.height_px) >
           MAX_RENDER_INPUT_EDGE_PX
       ) {
@@ -711,6 +1147,17 @@ export function createSupabaseAdminCatalogStore(
           message: "Upload was not found.",
           status: 404,
         };
+      }
+
+      if (descriptor.purpose === "sofa_source_photo") {
+        const relationError = await validateSourcePhotoUploadContext(
+          client,
+          descriptor,
+        );
+
+        if (relationError) {
+          return relationError;
+        }
       }
 
       const { data, error } = await client
@@ -731,6 +1178,10 @@ export function createSupabaseAdminCatalogStore(
 
       if (error) {
         throw mapSupabaseError(error);
+      }
+
+      if (descriptor.purpose === "sofa_source_photo") {
+        await attachSourcePhotoToColumn(client, descriptor, data.id as string);
       }
 
       return data as AdminStorageAssetRecord;
@@ -830,6 +1281,178 @@ export function createSupabaseAdminCatalogStore(
         upload_id: signUploadDescriptor(descriptor, env),
       };
     },
+    async createFabricRenderJob(input) {
+      const relationError = await validateInitialRenderJobInput(client, input);
+
+      if (relationError) {
+        return relationError;
+      }
+
+      const [fabric, column] = await Promise.all([
+        fetchFabricWithAssets(client, input.fabric_id),
+        fetchVisualMatrixColumn(client, input.visual_matrix_column_id),
+      ]);
+      const sourcePhoto = isRecord(column?.current_source_photo)
+        ? (column?.current_source_photo as unknown as AdminSofaSourcePhotoRecord)
+        : null;
+      const renderCell =
+        (await fetchRenderCellForPair(client, {
+          fabricId: input.fabric_id,
+          sofaId: input.sofa_id,
+          visualMatrixColumnId: input.visual_matrix_column_id,
+        })) ??
+        (await createRenderCellForJob(client, {
+          column: column as AdminVisualMatrixColumnRecord,
+          fabricId: input.fabric_id,
+          sofaId: input.sofa_id,
+        }));
+
+      if (!fabric || !column || !sourcePhoto || !renderCell) {
+        return {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message: "Fabric render job inputs are incomplete.",
+          status: 422,
+        };
+      }
+
+      const promptVersion = env.FABRIC_RENDER_PROMPT_VERSION ?? "v007";
+      const providerName = env.FABRIC_RENDER_PROVIDER ?? "mock";
+      const providerModel =
+        env.FABRIC_RENDER_PROVIDER_MODEL ??
+        (providerName === "gemini"
+          ? "gemini-2.5-flash-image"
+          : "mock-fabric-render-v1");
+      const promptNote = input.prompt_note ?? null;
+      const duplicate = await findActiveFabricRenderJob(client, {
+        fabricAiReferenceAssetId: fabric.ai_reference_asset_id,
+        fabricId: input.fabric_id,
+        generationMode: input.generation_mode,
+        promptNote,
+        promptVersion,
+        providerModel,
+        providerName,
+        sofaId: input.sofa_id,
+        targetSofaAssetId: sourcePhoto.asset_id,
+        visualMatrixColumnId: input.visual_matrix_column_id,
+      });
+
+      if (duplicate) {
+        return {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message: "An equivalent active fabric render job already exists.",
+          status: 409,
+        };
+      }
+
+      const { data, error } = await client
+        .from("fabric_render_jobs")
+        .insert({
+          fabric_ai_reference_asset_id: fabric.ai_reference_asset_id,
+          fabric_id: input.fabric_id,
+          generation_mode: input.generation_mode,
+          max_attempts: Number(env.FABRIC_RENDER_MAX_ATTEMPTS ?? 3),
+          prompt_note: promptNote,
+          prompt_version: promptVersion,
+          provider_model: providerModel,
+          provider_name: providerName,
+          queued_at: new Date().toISOString(),
+          render_cell_id: renderCell.id,
+          sofa_id: input.sofa_id,
+          status: "queued",
+          target_sofa_asset_id: sourcePhoto.asset_id,
+          visual_matrix_column_id: input.visual_matrix_column_id,
+        })
+        .select(FABRIC_RENDER_JOB_SELECT)
+        .single();
+
+      if (error) {
+        return mapFabricRenderJobMutationError(error);
+      }
+
+      const { error: enqueueError } = await client.rpc(
+        "fabric_render_admin_enqueue_job",
+        {
+          queue_name: env.FABRIC_RENDER_QUEUE_NAME ?? "local_fabric_render_jobs",
+          render_job_id: data.id,
+        },
+      );
+
+      if (enqueueError) {
+        throw mapSupabaseError(enqueueError);
+      }
+
+      return data as AdminFabricRenderJobRecord;
+    },
+    async createVisualMatrixColumn(sofaId, input) {
+      const sofa = await fetchSofaLifecycle(client, sofaId);
+
+      if (!sofa) {
+        return {
+          code: "SOFA_NOT_FOUND",
+          message: "Sofa was not found.",
+          status: 404,
+        };
+      }
+
+      if (sofa.lifecycle_state !== "draft") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Only draft sofa visual matrix columns can be edited.",
+          status: 409,
+        };
+      }
+
+      const { data, error } = await client
+        .from("visual_matrix_columns")
+        .insert({
+          ...input,
+          sofa_id: sofaId,
+        })
+        .select(VISUAL_MATRIX_COLUMN_SELECT)
+        .single();
+
+      if (error) {
+        return mapVisualMatrixColumnMutationError(error);
+      }
+
+      const [column] = await attachSourcePhotosToColumns(client, [data]);
+
+      return column;
+    },
+    async deleteVisualMatrixColumn(columnId) {
+      const existing = await fetchVisualMatrixColumn(client, columnId);
+
+      if (!existing || existing.deleted_at) {
+        return {
+          code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+          message: "Visual matrix column was not found.",
+          status: 404,
+        };
+      }
+
+      const sofa = await fetchSofaLifecycle(client, existing.sofa_id);
+
+      if (sofa?.lifecycle_state !== "draft") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Only draft sofa visual matrix columns can be edited.",
+          status: 409,
+        };
+      }
+
+      const { error } = await client
+        .from("visual_matrix_columns")
+        .update({
+          deleted_at: new Date().toISOString(),
+        })
+        .eq("id", columnId);
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+
+      return null;
+    },
     async deleteTag(tagId) {
       const { data: existing, error: existingError } = await client
         .from("public_tags")
@@ -885,6 +1508,42 @@ export function createSupabaseAdminCatalogStore(
     },
     async getFabric(fabricId) {
       return fetchFabricWithAssets(client, fabricId);
+    },
+    async getFabricRenderJob(jobId) {
+      return fetchFabricRenderJob(client, jobId);
+    },
+    async getRenderCoverage(sofaId) {
+      const sofa = await fetchSofaLifecycle(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const [columns, sofaFabrics] = await Promise.all([
+        fetchVisualMatrixColumns(client, sofaId),
+        fetchSofaFabricAssignments(client, sofaId),
+      ]);
+      const renderCells = await ensureRenderCellsForCoverage(client, {
+        columns,
+        sofaFabrics,
+        sofaId,
+      });
+      const jobsByCellId = await fetchLatestJobsByRenderCellIds(
+        client,
+        renderCells.map((cell) => cell.id),
+      );
+
+      return {
+        render_cells: decorateRenderCells({
+          cells: renderCells,
+          columns,
+          jobsByCellId,
+          sofaFabrics,
+        }),
+        sofa_fabrics: sofaFabrics,
+        sofa_id: sofaId,
+        visual_matrix_columns: columns,
+      };
     },
     async getSofa(sofaId) {
       return fetchSofaWithTags(client, sofaId);
@@ -962,6 +1621,15 @@ export function createSupabaseAdminCatalogStore(
       }
 
       return fetchSofaFabricAssignments(client, sofaId);
+    },
+    async listVisualMatrixColumns(sofaId) {
+      const sofa = await fetchSofaLifecycle(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      return fetchVisualMatrixColumns(client, sofaId);
     },
     async removeSofaFabric(sofaId, fabricId) {
       const existing = await fetchSofaFabricAssignment(
@@ -1155,6 +1823,52 @@ export function createSupabaseAdminCatalogStore(
 
       return data as AdminTagRecord | null;
     },
+    async updateVisualMatrixColumn(columnId, input) {
+      const existing = await fetchVisualMatrixColumn(client, columnId);
+
+      if (!existing || existing.deleted_at) {
+        return {
+          code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+          message: "Visual matrix column was not found.",
+          status: 404,
+        };
+      }
+
+      const sofa = await fetchSofaLifecycle(client, existing.sofa_id);
+
+      if (sofa?.lifecycle_state !== "draft") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Only draft sofa visual matrix columns can be edited.",
+          status: 409,
+        };
+      }
+
+      const updatePayload = removeUndefinedValues(input);
+
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await client
+          .from("visual_matrix_columns")
+          .update(updatePayload)
+          .eq("id", columnId);
+
+        if (error) {
+          return mapVisualMatrixColumnMutationError(error);
+        }
+      }
+
+      const column = await fetchVisualMatrixColumn(client, columnId);
+
+      if (!column || column.deleted_at) {
+        return {
+          code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+          message: "Visual matrix column was not found.",
+          status: 404,
+        };
+      }
+
+      return column;
+    },
   };
 }
 
@@ -1208,6 +1922,58 @@ const SOFA_FABRIC_SELECT = [
   "fabric_id",
   "public_order",
   "assigned_at",
+  "updated_at",
+].join(",");
+
+const VISUAL_MATRIX_COLUMN_SELECT = [
+  "id",
+  "sofa_id",
+  "sequence",
+  "admin_label",
+  "public_label",
+  "current_source_photo_id",
+  "deleted_at",
+  "created_at",
+  "updated_at",
+].join(",");
+
+const SOFA_SOURCE_PHOTO_SELECT = [
+  "id",
+  "sofa_id",
+  "visual_matrix_column_id",
+  "original_fabric_id",
+  "asset_id",
+  "created_at",
+  "updated_at",
+].join(",");
+
+const RENDER_CELL_SELECT = [
+  "id",
+  "sofa_id",
+  "fabric_id",
+  "visual_matrix_column_id",
+  "current_private_asset_id",
+  "current_public_asset_id",
+  "source_type",
+  "source_photo_id",
+  "updated_at",
+].join(",");
+
+const FABRIC_RENDER_JOB_SELECT = [
+  "id",
+  "sofa_id",
+  "fabric_id",
+  "visual_matrix_column_id",
+  "render_cell_id",
+  "generation_mode",
+  "prompt_note",
+  "status",
+  "attempt_count",
+  "max_attempts",
+  "queued_at",
+  "last_error_message",
+  "completed_at",
+  "created_at",
   "updated_at",
 ].join(",");
 
@@ -1365,6 +2131,64 @@ function validateFabricPayload(
     fields.push("is_premium");
   } else if (premiumResult.present) {
     value.is_premium = premiumResult.value;
+  }
+
+  if (fields.length > 0) {
+    return validationFailed([...new Set(fields)]);
+  }
+
+  return {
+    ok: true,
+    value,
+  };
+}
+
+function validateVisualMatrixColumnPayload(
+  payload: unknown,
+  options: {
+    requireSequence: boolean;
+  },
+): ValidationResult<VisualMatrixColumnPatchInput> {
+  if (!isRecord(payload)) {
+    return invalidRequest("Request body must be a JSON object.");
+  }
+
+  const unsupportedFields = findUnsupportedFields(
+    payload,
+    VISUAL_MATRIX_COLUMN_FIELDS,
+  );
+
+  if (unsupportedFields.length > 0) {
+    return unsupportedField(unsupportedFields);
+  }
+
+  const fields: string[] = [];
+  const value: VisualMatrixColumnPatchInput = {};
+  const sequence = readPositiveNumberField(payload, "sequence", {
+    integer: true,
+  });
+
+  if (
+    !sequence.ok ||
+    (options.requireSequence && !sequence.present) ||
+    (sequence.present && sequence.value === null)
+  ) {
+    fields.push("sequence");
+  } else if (sequence.present && sequence.value !== null) {
+    value.sequence = sequence.value;
+  }
+
+  for (const field of ["admin_label", "public_label"] as const) {
+    const result = readStringField(payload, field, {
+      allowNull: true,
+      required: false,
+    });
+
+    if (!result.ok) {
+      fields.push(...result.fields);
+    } else if (result.present) {
+      value[field] = result.value;
+    }
   }
 
   if (fields.length > 0) {
@@ -1725,6 +2549,14 @@ function readTags(value: unknown) {
     .filter((tag) => tag.id && tag.public_label && tag.slug);
 }
 
+function readStringList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
 interface UploadDescriptor extends UploadCreateInput {
   bucket_id: string;
   expires_at: string;
@@ -1741,10 +2573,7 @@ function createUploadDescriptor(
     input.purpose === "fabric_swatch"
       ? "catalog-public-assets"
       : "catalog-private-assets";
-  const prefix =
-    input.purpose === "fabric_swatch"
-      ? `fabrics/pending/swatches/${assetId}`
-      : `fabrics/pending/ai-references/${assetId}`;
+  const prefix = uploadObjectPrefix(input, assetId);
 
   return {
     ...input,
@@ -1752,6 +2581,18 @@ function createUploadDescriptor(
     expires_at: new Date(Date.now() + uploadTtlMs(env)).toISOString(),
     object_path: `${prefix}.${extension}`,
   };
+}
+
+function uploadObjectPrefix(input: UploadCreateInput, assetId: string) {
+  if (input.purpose === "fabric_swatch") {
+    return `fabrics/pending/swatches/${assetId}`;
+  }
+
+  if (input.purpose === "fabric_ai_reference") {
+    return `fabrics/pending/ai-references/${assetId}`;
+  }
+
+  return `sofas/${input.sofa_id}/source-photos/${input.visual_matrix_column_id}/${assetId}`;
 }
 
 function extensionForContentType(contentType: string) {
@@ -1813,7 +2654,8 @@ function readUploadDescriptor(
 
     if (
       parsed.purpose !== "fabric_swatch" &&
-      parsed.purpose !== "fabric_ai_reference"
+      parsed.purpose !== "fabric_ai_reference" &&
+      parsed.purpose !== "sofa_source_photo"
     ) {
       return null;
     }
@@ -1824,6 +2666,15 @@ function readUploadDescriptor(
       typeof parsed.content_type !== "string" ||
       typeof parsed.byte_size !== "number" ||
       typeof parsed.expires_at !== "string"
+    ) {
+      return null;
+    }
+
+    if (
+      parsed.purpose === "sofa_source_photo" &&
+      (typeof parsed.sofa_id !== "string" ||
+        typeof parsed.visual_matrix_column_id !== "string" ||
+        typeof parsed.original_fabric_id !== "string")
     ) {
       return null;
     }
@@ -1854,9 +2705,15 @@ function uploadTokenSecret(env: NodeJS.ProcessEnv) {
 }
 
 function assetKindForUploadPurpose(purpose: UploadPurpose) {
-  return purpose === "fabric_swatch"
-    ? "fabric_swatch_public"
-    : "fabric_ai_reference";
+  if (purpose === "fabric_swatch") {
+    return "fabric_swatch_public";
+  }
+
+  if (purpose === "fabric_ai_reference") {
+    return "fabric_ai_reference";
+  }
+
+  return "sofa_source_photo";
 }
 
 function readImageMetadata(bytes: Uint8Array, contentType: string) {
@@ -2085,6 +2942,109 @@ async function fetchAssetsByIds(
   return assetMap;
 }
 
+async function fetchVisualMatrixColumns(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const { data, error } = await client
+    .from("visual_matrix_columns")
+    .select(VISUAL_MATRIX_COLUMN_SELECT)
+    .eq("sofa_id", sofaId)
+    .is("deleted_at", null)
+    .order("sequence", {
+      ascending: true,
+    });
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return attachSourcePhotosToColumns(client, data ?? []);
+}
+
+async function fetchVisualMatrixColumn(
+  client: SupabaseCatalogClient,
+  columnId: string,
+) {
+  const { data, error } = await client
+    .from("visual_matrix_columns")
+    .select(VISUAL_MATRIX_COLUMN_SELECT)
+    .eq("id", columnId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const [column] = await attachSourcePhotosToColumns(client, [data]);
+
+  return column ?? null;
+}
+
+async function attachSourcePhotosToColumns(
+  client: SupabaseCatalogClient,
+  columns: JsonObject[],
+) {
+  const sourcePhotoIds = columns
+    .map((column) => column.current_source_photo_id)
+    .filter((id: unknown): id is string => typeof id === "string");
+  const sourcePhotoMap = await fetchSourcePhotosByIds(client, sourcePhotoIds);
+
+  return columns.map(
+    (column) =>
+      ({
+        ...column,
+        current_source_photo:
+          typeof column.current_source_photo_id === "string"
+            ? (sourcePhotoMap.get(column.current_source_photo_id) ?? null)
+            : null,
+      }) as AdminVisualMatrixColumnRecord,
+  );
+}
+
+async function fetchSourcePhotosByIds(
+  client: SupabaseCatalogClient,
+  sourcePhotoIds: string[],
+) {
+  const sourcePhotoMap = new Map<string, AdminSofaSourcePhotoRecord>();
+
+  if (sourcePhotoIds.length === 0) {
+    return sourcePhotoMap;
+  }
+
+  const { data, error } = await client
+    .from("sofa_source_photos")
+    .select(SOFA_SOURCE_PHOTO_SELECT)
+    .in("id", [...new Set(sourcePhotoIds)]);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  const assetIds = (data ?? [])
+    .map((sourcePhoto: JsonObject) => sourcePhoto.asset_id)
+    .filter((id: unknown): id is string => typeof id === "string");
+  const assetMap = await fetchAssetsByIds(client, assetIds);
+
+  for (const sourcePhoto of data ?? []) {
+    if (typeof sourcePhoto.id === "string") {
+      sourcePhotoMap.set(sourcePhoto.id, {
+        ...sourcePhoto,
+        asset:
+          typeof sourcePhoto.asset_id === "string"
+            ? (assetMap.get(sourcePhoto.asset_id) ?? null)
+            : null,
+      } as AdminSofaSourcePhotoRecord);
+    }
+  }
+
+  return sourcePhotoMap;
+}
+
 async function verifyFabricAssets(
   client: SupabaseCatalogClient,
   input: FabricMutationInput,
@@ -2126,6 +3086,108 @@ async function verifyFabricAssets(
       message: "One or more fabric assets were not found.",
       status: 422,
     });
+  }
+}
+
+async function validateSourcePhotoUploadContext(
+  client: SupabaseCatalogClient,
+  descriptor: UploadDescriptor,
+): Promise<AdminCatalogOperationErrorData | null> {
+  if (
+    !descriptor.sofa_id ||
+    !descriptor.visual_matrix_column_id ||
+    !descriptor.original_fabric_id
+  ) {
+    return {
+      code: "UPLOAD_NOT_FOUND",
+      message: "Upload was not found.",
+      status: 404,
+    };
+  }
+
+  const [sofa, column, assignment] = await Promise.all([
+    fetchSofaLifecycle(client, descriptor.sofa_id),
+    fetchVisualMatrixColumn(client, descriptor.visual_matrix_column_id),
+    fetchSofaFabricAssignment(
+      client,
+      descriptor.sofa_id,
+      descriptor.original_fabric_id,
+    ),
+  ]);
+
+  if (!sofa) {
+    return {
+      code: "SOFA_NOT_FOUND",
+      message: "Sofa was not found.",
+      status: 404,
+    };
+  }
+
+  if (sofa.lifecycle_state !== "draft") {
+    return {
+      code: "SOFA_CONFLICT",
+      message: "Only draft sofas can accept source photos in this API slice.",
+      status: 409,
+    };
+  }
+
+  if (
+    !column ||
+    column.deleted_at ||
+    column.sofa_id !== descriptor.sofa_id
+  ) {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+      message: "Visual matrix column was not found.",
+      status: 404,
+    };
+  }
+
+  if (!assignment) {
+    return {
+      code: "SOFA_FABRIC_NOT_FOUND",
+      message: "Sofa fabric assignment was not found.",
+      status: 404,
+    };
+  }
+
+  return null;
+}
+
+async function attachSourcePhotoToColumn(
+  client: SupabaseCatalogClient,
+  descriptor: UploadDescriptor,
+  assetId: string,
+) {
+  const { data: sourcePhoto, error: sourcePhotoError } = await client
+    .from("sofa_source_photos")
+    .upsert(
+      {
+        asset_id: assetId,
+        original_fabric_id: descriptor.original_fabric_id,
+        sofa_id: descriptor.sofa_id,
+        visual_matrix_column_id: descriptor.visual_matrix_column_id,
+      },
+      {
+        onConflict: "sofa_id,visual_matrix_column_id,original_fabric_id",
+      },
+    )
+    .select(SOFA_SOURCE_PHOTO_SELECT)
+    .single();
+
+  if (sourcePhotoError) {
+    throw mapSupabaseError(sourcePhotoError);
+  }
+
+  const { error: columnError } = await client
+    .from("visual_matrix_columns")
+    .update({
+      current_source_photo_id: sourcePhoto.id,
+    })
+    .eq("id", descriptor.visual_matrix_column_id);
+
+  if (columnError) {
+    throw mapSupabaseError(columnError);
   }
 }
 
@@ -2342,6 +3404,384 @@ async function fetchFabricsByIds(
   return fabricMap;
 }
 
+async function ensureRenderCellsForCoverage(
+  client: SupabaseCatalogClient,
+  input: {
+    columns: AdminVisualMatrixColumnRecord[];
+    sofaFabrics: AdminSofaFabricRecord[];
+    sofaId: string;
+  },
+) {
+  if (input.columns.length === 0 || input.sofaFabrics.length === 0) {
+    return [];
+  }
+
+  const existingCells = await fetchRenderCellsForSofa(client, input.sofaId);
+  const existingKeys = new Set(
+    existingCells.map((cell) =>
+      renderCellKey(cell.fabric_id, cell.visual_matrix_column_id),
+    ),
+  );
+  const missingCells: JsonObject[] = [];
+
+  for (const sofaFabric of input.sofaFabrics) {
+    for (const column of input.columns) {
+      const key = renderCellKey(sofaFabric.fabric_id, column.id);
+
+      if (existingKeys.has(key)) {
+        continue;
+      }
+
+      const sourcePhoto = isRecord(column.current_source_photo)
+        ? (column.current_source_photo as unknown as AdminSofaSourcePhotoRecord)
+        : null;
+      const sourcePhotoMatchesFabric =
+        sourcePhoto?.original_fabric_id === sofaFabric.fabric_id;
+
+      missingCells.push({
+        current_private_asset_id: sourcePhotoMatchesFabric
+          ? sourcePhoto.asset_id
+          : null,
+        fabric_id: sofaFabric.fabric_id,
+        sofa_id: input.sofaId,
+        source_photo_id: sourcePhotoMatchesFabric ? sourcePhoto.id : null,
+        source_type: sourcePhotoMatchesFabric ? "source_photo" : "ai_generated",
+        visual_matrix_column_id: column.id,
+      });
+    }
+  }
+
+  if (missingCells.length > 0) {
+    const { error } = await client.from("sofa_render_cells").insert(missingCells);
+
+    if (error && error.code !== "23505") {
+      throw mapSupabaseError(error);
+    }
+  }
+
+  return fetchRenderCellsForSofa(client, input.sofaId);
+}
+
+async function fetchRenderCellsForSofa(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const { data, error } = await client
+    .from("sofa_render_cells")
+    .select(RENDER_CELL_SELECT)
+    .eq("sofa_id", sofaId);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return (data ?? []) as AdminRenderCellRecord[];
+}
+
+async function fetchRenderCellForPair(
+  client: SupabaseCatalogClient,
+  input: {
+    fabricId: string;
+    sofaId: string;
+    visualMatrixColumnId: string;
+  },
+) {
+  const { data, error } = await client
+    .from("sofa_render_cells")
+    .select(RENDER_CELL_SELECT)
+    .eq("sofa_id", input.sofaId)
+    .eq("fabric_id", input.fabricId)
+    .eq("visual_matrix_column_id", input.visualMatrixColumnId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminRenderCellRecord | null;
+}
+
+async function fetchLatestJobsByRenderCellIds(
+  client: SupabaseCatalogClient,
+  renderCellIds: string[],
+) {
+  const jobMap = new Map<string, AdminFabricRenderJobRecord>();
+
+  if (renderCellIds.length === 0) {
+    return jobMap;
+  }
+
+  const { data, error } = await client
+    .from("fabric_render_jobs")
+    .select(FABRIC_RENDER_JOB_SELECT)
+    .in("render_cell_id", [...new Set(renderCellIds)])
+    .order("created_at", {
+      ascending: false,
+    });
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  for (const job of data ?? []) {
+    if (
+      typeof job.render_cell_id === "string" &&
+      !jobMap.has(job.render_cell_id)
+    ) {
+      jobMap.set(job.render_cell_id, job as AdminFabricRenderJobRecord);
+    }
+  }
+
+  return jobMap;
+}
+
+async function fetchFabricRenderJob(
+  client: SupabaseCatalogClient,
+  jobId: string,
+) {
+  const { data, error } = await client
+    .from("fabric_render_jobs")
+    .select(FABRIC_RENDER_JOB_SELECT)
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminFabricRenderJobRecord | null;
+}
+
+function renderCellKey(fabricId: string, visualMatrixColumnId: string) {
+  return `${fabricId}:${visualMatrixColumnId}`;
+}
+
+function decorateRenderCells(input: {
+  cells: AdminRenderCellRecord[];
+  columns: AdminVisualMatrixColumnRecord[];
+  jobsByCellId: Map<string, AdminFabricRenderJobRecord>;
+  sofaFabrics: AdminSofaFabricRecord[];
+}) {
+  const columnMap = new Map(input.columns.map((column) => [column.id, column]));
+  const sofaFabricMap = new Map(
+    input.sofaFabrics.map((sofaFabric) => [sofaFabric.fabric_id, sofaFabric]),
+  );
+
+  return input.cells.map((cell) => {
+    const column = columnMap.get(cell.visual_matrix_column_id);
+    const sofaFabric = sofaFabricMap.get(cell.fabric_id);
+    const fabric = isRecord(sofaFabric?.fabric)
+      ? (sofaFabric?.fabric as unknown as AdminFabricRecord)
+      : null;
+    const latestJob = input.jobsByCellId.get(cell.id) ?? null;
+    const blockers = renderCellBlockers({
+      cell,
+      column,
+      fabric,
+      latestJob,
+    });
+
+    return {
+      ...cell,
+      blockers,
+      can_generate_initial: blockers.length === 0,
+      has_private_render: Boolean(cell.current_private_asset_id),
+      has_public_render: Boolean(cell.current_public_asset_id),
+      latest_job: latestJob,
+    };
+  });
+}
+
+function renderCellBlockers(input: {
+  cell: AdminRenderCellRecord;
+  column?: AdminVisualMatrixColumnRecord;
+  fabric: AdminFabricRecord | null;
+  latestJob: AdminFabricRenderJobRecord | null;
+}) {
+  const blockers: string[] = [];
+
+  if (!input.column?.current_source_photo_id) {
+    blockers.push("MISSING_SOURCE_PHOTO");
+  }
+
+  if (!input.fabric?.ai_reference_asset_id) {
+    blockers.push("MISSING_FABRIC_AI_REFERENCE");
+  }
+
+  if (
+    input.latestJob &&
+    (input.latestJob.status === "queued" ||
+      input.latestJob.status === "processing")
+  ) {
+    blockers.push("ACTIVE_RENDER_JOB_EXISTS");
+  }
+
+  return blockers;
+}
+
+async function validateInitialRenderJobInput(
+  client: SupabaseCatalogClient,
+  input: FabricRenderJobCreateInput,
+): Promise<AdminCatalogOperationErrorData | null> {
+  const [sofa, fabric, column, assignment] = await Promise.all([
+    fetchSofaLifecycle(client, input.sofa_id),
+    fetchFabricWithAssets(client, input.fabric_id),
+    fetchVisualMatrixColumn(client, input.visual_matrix_column_id),
+    fetchSofaFabricAssignment(client, input.sofa_id, input.fabric_id),
+  ]);
+
+  if (!sofa) {
+    return {
+      code: "SOFA_NOT_FOUND",
+      message: "Sofa was not found.",
+      status: 404,
+    };
+  }
+
+  if (sofa.lifecycle_state !== "draft") {
+    return {
+      code: "SOFA_CONFLICT",
+      message: "Only draft sofas can queue fabric render jobs.",
+      status: 409,
+    };
+  }
+
+  if (!fabric || fabric.lifecycle_state !== "active") {
+    return {
+      code: "FABRIC_NOT_FOUND",
+      message: "Fabric was not found.",
+      status: 404,
+    };
+  }
+
+  if (!assignment) {
+    return {
+      code: "SOFA_FABRIC_NOT_FOUND",
+      message: "Sofa fabric assignment was not found.",
+      status: 404,
+    };
+  }
+
+  if (!column || column.deleted_at || column.sofa_id !== input.sofa_id) {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+      message: "Visual matrix column was not found.",
+      status: 404,
+    };
+  }
+
+  if (!column.current_source_photo_id) {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      details: {
+        fields: ["visual_matrix_column_id"],
+      },
+      message: "A current source photo is required before generation.",
+      status: 422,
+    };
+  }
+
+  const aiReferenceAsset = isRecord(fabric.ai_reference_asset)
+    ? (fabric.ai_reference_asset as unknown as AdminStorageAssetRecord)
+    : null;
+
+  if (
+    !aiReferenceAsset ||
+    aiReferenceAsset.lifecycle_state !== "active" ||
+    aiReferenceAsset.visibility !== "private" ||
+    aiReferenceAsset.asset_kind !== "fabric_ai_reference"
+  ) {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      details: {
+        fields: ["fabric_id"],
+      },
+      message: "A private fabric AI reference is required before generation.",
+      status: 422,
+    };
+  }
+
+  return null;
+}
+
+async function createRenderCellForJob(
+  client: SupabaseCatalogClient,
+  input: {
+    column: AdminVisualMatrixColumnRecord;
+    fabricId: string;
+    sofaId: string;
+  },
+) {
+  const sourcePhoto = isRecord(input.column.current_source_photo)
+    ? (input.column.current_source_photo as unknown as AdminSofaSourcePhotoRecord)
+    : null;
+  const sourcePhotoMatchesFabric =
+    sourcePhoto?.original_fabric_id === input.fabricId;
+  const { data, error } = await client
+    .from("sofa_render_cells")
+    .insert({
+      current_private_asset_id: sourcePhotoMatchesFabric
+        ? sourcePhoto.asset_id
+        : null,
+      fabric_id: input.fabricId,
+      sofa_id: input.sofaId,
+      source_photo_id: sourcePhotoMatchesFabric ? sourcePhoto.id : null,
+      source_type: sourcePhotoMatchesFabric ? "source_photo" : "ai_generated",
+      visual_matrix_column_id: input.column.id,
+    })
+    .select(RENDER_CELL_SELECT)
+    .single();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminRenderCellRecord;
+}
+
+async function findActiveFabricRenderJob(
+  client: SupabaseCatalogClient,
+  input: {
+    fabricAiReferenceAssetId: string;
+    fabricId: string;
+    generationMode: string;
+    promptNote: string | null;
+    promptVersion: string;
+    providerModel: string;
+    providerName: string;
+    sofaId: string;
+    targetSofaAssetId: string;
+    visualMatrixColumnId: string;
+  },
+) {
+  let query = client
+    .from("fabric_render_jobs")
+    .select(FABRIC_RENDER_JOB_SELECT)
+    .eq("sofa_id", input.sofaId)
+    .eq("fabric_id", input.fabricId)
+    .eq("visual_matrix_column_id", input.visualMatrixColumnId)
+    .eq("target_sofa_asset_id", input.targetSofaAssetId)
+    .eq("fabric_ai_reference_asset_id", input.fabricAiReferenceAssetId)
+    .eq("provider_name", input.providerName)
+    .eq("provider_model", input.providerModel)
+    .eq("prompt_version", input.promptVersion)
+    .eq("generation_mode", input.generationMode)
+    .in("status", ["queued", "processing"]);
+
+  query =
+    input.promptNote === null
+      ? query.is("prompt_note", null)
+      : query.eq("prompt_note", input.promptNote);
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminFabricRenderJobRecord | null;
+}
+
 async function attachTagsToSofas(
   client: SupabaseCatalogClient,
   sofas: JsonObject[],
@@ -2525,6 +3965,76 @@ function mapSofaFabricMutationError(error: {
       code: "FABRIC_NOT_FOUND",
       message: "Referenced sofa or fabric was not found.",
       status: 404,
+    };
+  }
+
+  return {
+    code: "CATALOG_UNAVAILABLE",
+    message: "Catalog service is unavailable.",
+    status: 500,
+  };
+}
+
+function mapVisualMatrixColumnMutationError(error: {
+  code?: string;
+  message?: string;
+}): AdminCatalogOperationErrorData {
+  if (error.code === "23505") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message: "Another active visual matrix column already uses this sequence.",
+      status: 409,
+    };
+  }
+
+  if (error.code === "23503") {
+    return {
+      code: "SOFA_NOT_FOUND",
+      message: "Referenced sofa was not found.",
+      status: 404,
+    };
+  }
+
+  if (error.code === "23514") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message: "Visual matrix column is invalid.",
+      status: 422,
+    };
+  }
+
+  return {
+    code: "CATALOG_UNAVAILABLE",
+    message: "Catalog service is unavailable.",
+    status: 500,
+  };
+}
+
+function mapFabricRenderJobMutationError(error: {
+  code?: string;
+  message?: string;
+}): AdminCatalogOperationErrorData {
+  if (error.code === "23505") {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      message: "An equivalent active fabric render job already exists.",
+      status: 409,
+    };
+  }
+
+  if (error.code === "23503") {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      message: "One or more fabric render job references were not found.",
+      status: 422,
+    };
+  }
+
+  if (error.code === "23514") {
+    return {
+      code: "FABRIC_RENDER_JOB_CONFLICT",
+      message: "Fabric render job is invalid.",
+      status: 422,
     };
   }
 

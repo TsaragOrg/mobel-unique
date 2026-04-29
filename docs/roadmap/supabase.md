@@ -10,6 +10,7 @@
 | Done   | SPEC-0006 | PLAN-0006 | Fabric render job queue, claim flow, private generated output, mock smoke test, and optional Gemini smoke test.            |
 | Done   | SPEC-0011 | PLAN-0011 | Trusted admin device table, service-role-only RLS policy, and local seeded admin Auth user for smoke testing.              |
 | Done   | SPEC-0006 | PLAN-0010 | Gemini provider path for fabric render jobs using private storage inputs and generated candidate output metadata.          |
+| Done   | SPEC-0013 | PLAN-0019 | Service-role admin queue handoff helper for durable fabric render jobs created by the first-party admin facade.            |
 
 ## Next
 
