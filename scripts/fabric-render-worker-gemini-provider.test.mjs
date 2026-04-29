@@ -2,29 +2,32 @@ import { describe, expect, it } from "vitest";
 
 import {
   FABRIC_RENDER_PROMPT_VERSION,
-  buildFabricRenderPrompt
+  buildFabricRenderPrompt,
+  buildFabricRenderRefinePrompt,
 } from "../supabase/functions/fabric-render-worker/prompt.ts";
 import {
   buildGeminiGenerateContentRequest,
   buildGeminiRestRequestBody,
   classifyGeminiProviderError,
-  extractGeminiImage
+  extractGeminiImage,
 } from "../supabase/functions/fabric-render-worker/gemini.ts";
 
 describe("fabric render Gemini provider helpers", () => {
-  it("keeps the SPEC-0006 prompt version and initial preservation rules fixed", () => {
+  it("keeps the SPEC-0006 prompt version and initial preservation rules fixed without exact pixel text", () => {
     const prompt = buildFabricRenderPrompt({
       generationMode: "initial",
       targetHeightPx: 768,
-      targetWidthPx: 1024
+      targetWidthPx: 1024,
     });
 
     expect(FABRIC_RENDER_PROMPT_VERSION).toBe("v007");
-    expect(prompt).toContain("1024x768");
-    expect(prompt).toContain("first image only as the fabric material reference");
-    expect(prompt).toContain("second image as the locked target sofa photo");
-    expect(prompt).toContain("Preserve the target sofa geometry");
-    expect(prompt).toContain("Do not copy the fabric reference sofa shape");
+    expect(prompt).not.toContain("1024x768");
+    expect(prompt).not.toContain("dimensions exactly");
+    expect(prompt).toContain("INPUT IMAGE 1 = FABRIC SOURCE ONLY.");
+    expect(prompt).toContain("INPUT IMAGE 2 = LOCKED TARGET PHOTO.");
+    expect(prompt).toContain("Preserve the target sofa exactly");
+    expect(prompt).toContain("Do not copy the sofa shape");
+    expect(prompt).toContain("Return one generated image only.");
   });
 
   it("appends administrator prompt notes without replacing the fixed base prompt", () => {
@@ -32,123 +35,162 @@ describe("fabric render Gemini provider helpers", () => {
       generationMode: "initial",
       promptNote: "Make the weave a little more visible.",
       targetHeightPx: 768,
-      targetWidthPx: 1024
+      targetWidthPx: 1024,
     });
 
-    expect(prompt).toContain("Preserve the target sofa geometry");
-    expect(prompt).toContain(
-      "Additional administrator instruction appended to the fixed prompt:"
-    );
+    expect(prompt).toContain("Preserve the target sofa exactly");
+    expect(prompt).toContain("ADDITIONAL IMPORTANT NOTE FROM THIS RUN:");
     expect(prompt).toContain("Make the weave a little more visible.");
-    expect(prompt.indexOf("Preserve the target sofa geometry")).toBeLessThan(
-      prompt.indexOf("Additional administrator instruction")
+    expect(prompt.indexOf("Preserve the target sofa exactly")).toBeLessThan(
+      prompt.indexOf("ADDITIONAL IMPORTANT NOTE"),
     );
   });
 
-  it("adds refinement instructions only for refine mode", () => {
-    const initialPrompt = buildFabricRenderPrompt({
-      generationMode: "initial",
-      targetHeightPx: 768,
-      targetWidthPx: 1024
-    });
-    const refinePrompt = buildFabricRenderPrompt({
-      generationMode: "refine",
-      targetHeightPx: 768,
-      targetWidthPx: 1024
+  it("builds a refine prompt wrapper without the fixed fabric transfer prompt", () => {
+    const refinePrompt = buildFabricRenderRefinePrompt({
+      refinePrompt: "Make the stripes thinner and closer together.",
     });
 
-    expect(initialPrompt).not.toContain("third image");
-    expect(refinePrompt).toContain("third image");
-    expect(refinePrompt).toContain("render selected for refinement");
+    expect(refinePrompt).not.toContain("1024x768");
+    expect(refinePrompt).not.toContain("dimensions exactly");
+    expect(refinePrompt).not.toContain("fabric material reference");
+    expect(refinePrompt).not.toContain("locked target sofa photo");
+    expect(refinePrompt).not.toContain("v007");
+    expect(refinePrompt).toContain("Administrator refine instruction:");
+    expect(refinePrompt).toContain(
+      "Make the stripes thinner and closer together.",
+    );
   });
 
-  it("builds the Gemini image request with SPEC-0006 model, input order, labels, and image output", () => {
+  it("builds initial Gemini requests with two image inputs and closest supported aspect ratio config", () => {
     const request = buildGeminiGenerateContentRequest({
       fabricReference: {
         dataBase64: "fabric-image",
-        mimeType: "image/jpeg"
+        mimeType: "image/jpeg",
       },
+      generationMode: "initial",
       prompt: "Preserve the target sofa geometry.",
-      refineSource: {
-        dataBase64: "refine-image",
-        mimeType: "image/png"
-      },
+      targetHeightPx: 2048,
       targetSofa: {
         dataBase64: "target-image",
-        mimeType: "image/jpeg"
-      }
+        mimeType: "image/jpeg",
+      },
+      targetWidthPx: 1478,
     });
 
     const parts = request.contents[0].parts;
 
     expect(request.model).toBe("gemini-3-pro-image-preview");
-    expect(parts[0].inlineData).toEqual({
-      data: "fabric-image",
-      mimeType: "image/jpeg"
-    });
+    expect(parts).toHaveLength(5);
+    expect(parts[0].text).toBe(
+      "INPUT IMAGE 1: FABRIC SOURCE. Use only the upholstery material from this image.",
+    );
     expect(parts[1].inlineData).toEqual({
+      data: "fabric-image",
+      mimeType: "image/jpeg",
+    });
+    expect(parts[2].text).toBe(
+      "INPUT IMAGE 2: TARGET SOFA. Preserve this sofa and scene exactly.",
+    );
+    expect(parts[3].inlineData).toEqual({
       data: "target-image",
-      mimeType: "image/jpeg"
+      mimeType: "image/jpeg",
     });
-    expect(parts[2].inlineData).toEqual({
-      data: "refine-image",
-      mimeType: "image/png"
-    });
-    expect(parts[3].text).toContain("Image 1 is the fabric material source");
-    expect(parts[3].text).toContain("Image 2 is the locked target sofa photo");
-    expect(parts[3].text).toContain("Image 3 is the refinement source render");
-    expect(parts[3].text).toContain("Preserve the target sofa geometry.");
+    expect(parts[4].text).not.toContain("Image 3");
+    expect(parts[4].text).toContain("Preserve the target sofa geometry.");
     expect(request.config.responseModalities).toContain("IMAGE");
+    expect(request.config.imageConfig?.aspectRatio).toBe("3:4");
   });
 
-  it("omits the refinement image from initial Gemini requests", () => {
+  it("builds refine Gemini requests with one image input, refine prompt, and closest supported aspect ratio config", () => {
     const request = buildGeminiGenerateContentRequest({
-      fabricReference: {
-        dataBase64: "fabric-image",
-        mimeType: "image/jpeg"
+      generationMode: "refine",
+      prompt: buildFabricRenderRefinePrompt({
+        refinePrompt: "Make the stripes thinner and closer together.",
+      }),
+      refineSource: {
+        dataBase64: "current-output-image",
+        mimeType: "image/png",
       },
-      prompt: "Preserve the target sofa geometry.",
-      targetSofa: {
-        dataBase64: "target-image",
-        mimeType: "image/jpeg"
-      }
+      targetHeightPx: 768,
+      targetWidthPx: 1024,
     });
 
     const parts = request.contents[0].parts;
 
     expect(parts).toHaveLength(3);
-    expect(parts[0].inlineData.data).toBe("fabric-image");
-    expect(parts[1].inlineData.data).toBe("target-image");
-    expect(parts[2].text).not.toContain("Image 3");
+    expect(parts[0].text).toBe(
+      "INPUT IMAGE 1: CURRENT OUTPUT. Refine this existing output image in place.",
+    );
+    expect(parts[1].inlineData).toEqual({
+      data: "current-output-image",
+      mimeType: "image/png",
+    });
+    expect(parts[2].text).toContain(
+      "Make the stripes thinner and closer together.",
+    );
+    expect(parts[2].text).not.toContain("fabric material source");
+    expect(parts[2].text).not.toContain("locked target sofa photo");
+    expect(parts[2].text).not.toContain("v007");
+    expect(request.config.imageConfig?.aspectRatio).toBe("4:3");
   });
 
-  it("converts the internal Gemini request to REST inline_data shape", () => {
+  it("converts the internal Gemini request to REST inline_data and imageConfig shape", () => {
     const request = buildGeminiGenerateContentRequest({
       fabricReference: {
         dataBase64: "fabric-image",
-        mimeType: "image/jpeg"
+        mimeType: "image/jpeg",
       },
+      generationMode: "initial",
       prompt: "Preserve the target sofa geometry.",
+      targetHeightPx: 2048,
       targetSofa: {
         dataBase64: "target-image",
-        mimeType: "image/jpeg"
-      }
+        mimeType: "image/jpeg",
+      },
+      targetWidthPx: 1478,
     });
 
     const body = buildGeminiRestRequestBody(request);
 
-    expect(body.contents[0].parts[0].inline_data).toEqual({
-      data: "fabric-image",
-      mime_type: "image/jpeg"
-    });
+    expect(body.contents[0].parts[0].text).toBe(
+      "INPUT IMAGE 1: FABRIC SOURCE. Use only the upholstery material from this image.",
+    );
     expect(body.contents[0].parts[1].inline_data).toEqual({
-      data: "target-image",
-      mime_type: "image/jpeg"
+      data: "fabric-image",
+      mime_type: "image/jpeg",
     });
-    expect(body.contents[0].parts[2].text).toContain(
-      "Preserve the target sofa geometry."
+    expect(body.contents[0].parts[2].text).toBe(
+      "INPUT IMAGE 2: TARGET SOFA. Preserve this sofa and scene exactly.",
+    );
+    expect(body.contents[0].parts[3].inline_data).toEqual({
+      data: "target-image",
+      mime_type: "image/jpeg",
+    });
+    expect(body.contents[0].parts[4].text).toContain(
+      "Preserve the target sofa geometry.",
     );
     expect(body.generationConfig.responseModalities).toContain("IMAGE");
+    expect(body.generationConfig.imageConfig?.aspectRatio).toBe("3:4");
+  });
+
+  it("rejects non-positive authority dimensions before building Gemini image config", () => {
+    expect(() =>
+      buildGeminiGenerateContentRequest({
+        fabricReference: {
+          dataBase64: "fabric-image",
+          mimeType: "image/jpeg",
+        },
+        generationMode: "initial",
+        prompt: "Preserve the target sofa geometry.",
+        targetHeightPx: 768,
+        targetSofa: {
+          dataBase64: "target-image",
+          mimeType: "image/jpeg",
+        },
+        targetWidthPx: 0,
+      }),
+    ).toThrow("positive");
   });
 
   it("extracts generated image data from Gemini response parts", () => {
@@ -161,18 +203,18 @@ describe("fabric render Gemini provider helpers", () => {
               {
                 inlineData: {
                   data: "generated-image",
-                  mimeType: "image/png"
-                }
-              }
-            ]
-          }
-        }
-      ]
+                  mimeType: "image/png",
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
 
     expect(image).toEqual({
       dataBase64: "generated-image",
-      mimeType: "image/png"
+      mimeType: "image/png",
     });
   });
 
@@ -182,11 +224,11 @@ describe("fabric render Gemini provider helpers", () => {
         candidates: [
           {
             content: {
-              parts: [{ text: "I cannot generate that image." }]
-            }
-          }
-        ]
-      })
+              parts: [{ text: "I cannot generate that image." }],
+            },
+          },
+        ],
+      }),
     ).toThrow("Gemini did not return image data");
   });
 
@@ -194,14 +236,16 @@ describe("fabric render Gemini provider helpers", () => {
     expect(classifyGeminiProviderError({ status: 429 }).retryable).toBe(true);
     expect(classifyGeminiProviderError({ status: 500 }).retryable).toBe(true);
     expect(
-      classifyGeminiProviderError({ name: "TimeoutError", message: "timed out" })
-        .retryable
+      classifyGeminiProviderError({
+        name: "TimeoutError",
+        message: "timed out",
+      }).retryable,
     ).toBe(true);
     expect(
       classifyGeminiProviderError({
         cause: { code: "ECONNRESET" },
-        message: "fetch failed"
-      }).retryable
+        message: "fetch failed",
+      }).retryable,
     ).toBe(true);
   });
 

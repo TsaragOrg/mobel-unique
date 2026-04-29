@@ -2,25 +2,29 @@ import {
   buildGeminiGenerateContentRequest,
   buildGeminiRestRequestBody,
   classifyGeminiProviderError,
-  extractGeminiImage
+  extractGeminiImage,
 } from "./gemini.ts";
 import { readImageDimensions } from "./image-metadata.ts";
+import { normalizeGeneratedOutput } from "./image-normalization.ts";
 import {
   buildFabricRenderCandidateOutputPath,
-  validateFabricRenderJobInputs
+  validateFabricRenderJobInputs,
 } from "./job.ts";
-import { buildFabricRenderPrompt } from "./prompt.ts";
+import {
+  buildFabricRenderPrompt,
+  buildFabricRenderRefinePrompt,
+} from "./prompt.ts";
 import {
   base64ToUint8Array,
   downloadStorageObject,
   uint8ArrayToBase64,
-  uploadStorageObject
+  uploadStorageObject,
 } from "./storage.ts";
 import {
   prepareFabricRenderScratch,
   recordFabricRenderScratchFailure,
   recordFabricRenderScratchSuccess,
-  type ScratchFileSystem
+  type ScratchFileSystem,
 } from "./scratch.ts";
 
 type WorkerResponse = {
@@ -56,6 +60,7 @@ type ResolvedJob = {
   render_cell_id: string;
   generation_mode: "initial" | "refine";
   prompt_note?: string | null;
+  refine_prompt?: string | null;
   provider_name?: string | null;
   provider_model?: string | null;
   prompt_version?: string | null;
@@ -77,15 +82,15 @@ const denoScratchFs: ScratchFileSystem = {
   mkdir: (path, options) => Deno.mkdir(path, options),
   remove: (path) => Deno.remove(path),
   writeFile: (path, data) => Deno.writeFile(path, data),
-  writeTextFile: (path, text) => Deno.writeTextFile(path, text)
+  writeTextFile: (path, text) => Deno.writeTextFile(path, text),
 };
 
 function jsonResponse(body: WorkerResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    status
+    status,
   });
 }
 
@@ -97,7 +102,10 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function parsePositiveInteger(value: string | undefined, fallback: number): number {
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = Number(value ?? fallback);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
@@ -106,23 +114,23 @@ async function callRpc<T>(
   supabaseUrl: string,
   serviceRoleKey: string,
   functionName: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<T> {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
     body: JSON.stringify(body),
     headers: {
-      "Authorization": `Bearer ${serviceRoleKey}`,
+      Authorization: `Bearer ${serviceRoleKey}`,
       "Content-Type": "application/json",
-      "apikey": serviceRoleKey
+      apikey: serviceRoleKey,
     },
-    method: "POST"
+    method: "POST",
   });
 
   const responseText = await response.text();
 
   if (!response.ok) {
     throw new Error(
-      `${functionName} returned HTTP ${response.status}: ${responseText}`
+      `${functionName} returned HTTP ${response.status}: ${responseText}`,
     );
   }
 
@@ -152,14 +160,15 @@ Deno.serve(async (request) => {
   } catch (error) {
     return jsonResponse(
       { error: error instanceof Error ? error.message : String(error) },
-      500
+      500,
     );
   }
 
-  const queueName = Deno.env.get("FABRIC_RENDER_QUEUE_NAME") ?? "local_fabric_render_jobs";
+  const queueName =
+    Deno.env.get("FABRIC_RENDER_QUEUE_NAME") ?? "local_fabric_render_jobs";
   const claimTtlSeconds = parsePositiveInteger(
     Deno.env.get("FABRIC_RENDER_CLAIM_TTL_SECONDS"),
-    300
+    300,
   );
   const appEnv = Deno.env.get("APP_ENV") ?? "local";
 
@@ -168,9 +177,14 @@ Deno.serve(async (request) => {
       appEnv === "local" &&
       request.headers.get("x-fabric-render-seed-mock-job") === "1"
     ) {
-      await callRpc(supabaseUrl, serviceRoleKey, "fabric_render_worker_seed_mock_job", {
-        queue_name: queueName
-      });
+      await callRpc(
+        supabaseUrl,
+        serviceRoleKey,
+        "fabric_render_worker_seed_mock_job",
+        {
+          queue_name: queueName,
+        },
+      );
     }
 
     const claimedJob = await callRpc<ClaimedJob>(
@@ -180,8 +194,8 @@ Deno.serve(async (request) => {
       {
         claim_ttl_seconds: claimTtlSeconds,
         queue_name: queueName,
-        worker_id: `fabric-render-worker-${crypto.randomUUID()}`
-      }
+        worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
+      },
     );
 
     if (claimedJob.status === "empty") {
@@ -193,9 +207,9 @@ Deno.serve(async (request) => {
         {
           error: claimedJob.error ?? "No claimable fabric render job",
           queue_name: queueName,
-          status: claimedJob.status ?? "skipped"
+          status: claimedJob.status ?? "skipped",
         },
-        409
+        409,
       );
     }
 
@@ -205,12 +219,12 @@ Deno.serve(async (request) => {
       provider: requestedProvider,
       queueName,
       serviceRoleKey,
-      supabaseUrl
+      supabaseUrl,
     });
   } catch (error) {
     return jsonResponse(
       { error: error instanceof Error ? error.message : String(error) },
-      500
+      500,
     );
   }
 });
@@ -237,8 +251,8 @@ async function processClaimedJob(input: {
     input.serviceRoleKey,
     "fabric_render_worker_resolve_inputs",
     {
-      job_id: input.jobId
-    }
+      job_id: input.jobId,
+    },
   );
   const scratchDir = buildScratchDir(input.jobId);
 
@@ -246,26 +260,26 @@ async function processClaimedJob(input: {
     validateFabricRenderJobInputs({
       fabricReference: {
         heightPx: resolvedJob.fabric_reference.height_px,
-        widthPx: resolvedJob.fabric_reference.width_px
+        widthPx: resolvedJob.fabric_reference.width_px,
       },
       generationMode: resolvedJob.generation_mode,
       refinementSource: resolvedJob.refinement_source
         ? {
             heightPx: resolvedJob.refinement_source.height_px,
-            widthPx: resolvedJob.refinement_source.width_px
+            widthPx: resolvedJob.refinement_source.width_px,
           }
         : null,
       targetSofa: {
         heightPx: resolvedJob.target_sofa.height_px,
-        widthPx: resolvedJob.target_sofa.width_px
-      }
+        widthPx: resolvedJob.target_sofa.width_px,
+      },
     });
 
     const providerInputBytes = await materializeProviderInputBytes({
       provider: input.provider,
       resolvedJob,
       serviceRoleKey: input.serviceRoleKey,
-      supabaseUrl: input.supabaseUrl
+      supabaseUrl: input.supabaseUrl,
     });
 
     await prepareFabricRenderScratch({
@@ -274,20 +288,20 @@ async function processClaimedJob(input: {
       generationMode: resolvedJob.generation_mode,
       refineSourceBytes: providerInputBytes.refineSourceBytes,
       scratchDir,
-      targetSofaBytes: providerInputBytes.targetSofaBytes
+      targetSofaBytes: providerInputBytes.targetSofaBytes,
     });
 
     const outputPath = buildFabricRenderCandidateOutputPath({
       fabricId: resolvedJob.fabric_id,
       jobId: input.jobId,
       sofaId: resolvedJob.sofa_id,
-      visualMatrixColumnId: resolvedJob.visual_matrix_column_id
+      visualMatrixColumnId: resolvedJob.visual_matrix_column_id,
     });
     const generatedImage =
       input.provider === "mock"
         ? {
             contentType: "image/png",
-            outputBytes: base64ToUint8Array(MOCK_OUTPUT_PNG_BASE64)
+            outputBytes: base64ToUint8Array(MOCK_OUTPUT_PNG_BASE64),
           }
         : await runGeminiProvider({
             fabricReference: resolvedJob.fabric_reference,
@@ -295,47 +309,69 @@ async function processClaimedJob(input: {
             geminiApiKey: input.geminiApiKey,
             generationMode: resolvedJob.generation_mode,
             promptNote: resolvedJob.prompt_note,
+            refinePrompt: resolvedJob.refine_prompt,
             refineSource: resolvedJob.refinement_source,
             refineSourceBytes: providerInputBytes.refineSourceBytes,
             targetSofa: resolvedJob.target_sofa,
-            targetSofaBytes: providerInputBytes.targetSofaBytes
+            targetSofaBytes: providerInputBytes.targetSofaBytes,
           });
+    const normalizationTarget = selectNormalizationTarget(resolvedJob);
+    const normalizedImage =
+      input.provider === "gemini"
+        ? await normalizeGeneratedOutput({
+            outputBytes: generatedImage.outputBytes,
+            outputContentType: generatedImage.contentType,
+            targetHeightPx: normalizationTarget.height_px,
+            targetWidthPx: normalizationTarget.width_px,
+          })
+        : preserveGeneratedImage(generatedImage);
 
     await recordFabricRenderScratchSuccess({
       fs: denoScratchFs,
-      outputBytes: generatedImage.outputBytes,
-      scratchDir
+      outputBytes: normalizedImage.outputBytes,
+      scratchDir,
     });
 
     const outputDimensions = readImageDimensions(
-      generatedImage.outputBytes,
-      generatedImage.contentType
+      normalizedImage.outputBytes,
+      normalizedImage.contentType,
     );
+    if (
+      outputDimensions.widthPx !== normalizedImage.normalizedWidthPx ||
+      outputDimensions.heightPx !== normalizedImage.normalizedHeightPx
+    ) {
+      throw new Error("normalized output metadata did not match image bytes");
+    }
 
     await uploadStorageObject({
-      body: generatedImage.outputBytes,
+      body: normalizedImage.outputBytes,
       bucketId: GENERATED_BUCKET,
-      contentType: generatedImage.contentType,
+      contentType: normalizedImage.contentType,
       fetchImpl: (url, init) => fetch(url, init),
       objectPath: outputPath,
       serviceRoleKey: input.serviceRoleKey,
-      supabaseUrl: input.supabaseUrl
+      supabaseUrl: input.supabaseUrl,
     });
 
-    await callRpc(input.supabaseUrl, input.serviceRoleKey, "fabric_render_worker_succeed", {
-      job_id: input.jobId,
-      output_byte_size: generatedImage.outputBytes.byteLength,
-      output_content_type: generatedImage.contentType,
-      output_height_px: outputDimensions.heightPx,
-      output_path: outputPath,
-      output_width_px: outputDimensions.widthPx
-    });
+    await callRpc(
+      input.supabaseUrl,
+      input.serviceRoleKey,
+      "fabric_render_worker_succeed",
+      {
+        job_id: input.jobId,
+        output_byte_size: normalizedImage.outputBytes.byteLength,
+        output_content_type: normalizedImage.contentType,
+        output_height_px: normalizedImage.normalizedHeightPx,
+        output_path: outputPath,
+        output_width_px: normalizedImage.normalizedWidthPx,
+      },
+    );
 
     return jsonResponse({
       job_id: input.jobId,
       output_path: outputPath,
       queue_name: input.queueName,
-      status: "succeeded"
+      status: "succeeded",
     });
   } catch (error) {
     const providerFailure =
@@ -347,21 +383,31 @@ async function processClaimedJob(input: {
     await recordFabricRenderScratchFailure({
       errorMessage: message,
       fs: denoScratchFs,
-      scratchDir
+      scratchDir,
     });
 
     if (providerFailure) {
-      await callRpc(input.supabaseUrl, input.serviceRoleKey, "fabric_render_worker_fail", {
-        error_message: message,
-        job_id: input.jobId,
-        retryable: providerFailure.retryable
-      });
+      await callRpc(
+        input.supabaseUrl,
+        input.serviceRoleKey,
+        "fabric_render_worker_fail",
+        {
+          error_message: message,
+          job_id: input.jobId,
+          retryable: providerFailure.retryable,
+        },
+      );
     } else {
-      await callRpc(input.supabaseUrl, input.serviceRoleKey, "fabric_render_worker_fail", {
-        error_message: message,
-        job_id: input.jobId,
-        retryable: false
-      });
+      await callRpc(
+        input.supabaseUrl,
+        input.serviceRoleKey,
+        "fabric_render_worker_fail",
+        {
+          error_message: message,
+          job_id: input.jobId,
+          retryable: false,
+        },
+      );
     }
 
     return jsonResponse(
@@ -369,9 +415,9 @@ async function processClaimedJob(input: {
         error: message,
         job_id: input.jobId,
         queue_name: input.queueName,
-        status: "failed"
+        status: "failed",
       },
-      500
+      500,
     );
   }
 }
@@ -379,14 +425,14 @@ async function processClaimedJob(input: {
 async function downloadResolvedAsset(
   supabaseUrl: string,
   serviceRoleKey: string,
-  asset: ResolvedAsset
+  asset: ResolvedAsset,
 ): Promise<Uint8Array> {
   return await downloadStorageObject({
     bucketId: asset.bucket_id,
     fetchImpl: (url, init) => fetch(url, init),
     objectPath: asset.object_path,
     serviceRoleKey,
-    supabaseUrl
+    supabaseUrl,
   });
 }
 
@@ -405,8 +451,10 @@ async function materializeProviderInputBytes(input: {
 
     return {
       fabricReferenceBytes: mockInputBytes,
-      refineSourceBytes: input.resolvedJob.refinement_source ? mockInputBytes : null,
-      targetSofaBytes: mockInputBytes
+      refineSourceBytes: input.resolvedJob.refinement_source
+        ? mockInputBytes
+        : null,
+      targetSofaBytes: mockInputBytes,
     };
   }
 
@@ -414,20 +462,20 @@ async function materializeProviderInputBytes(input: {
     fabricReferenceBytes: await downloadResolvedAsset(
       input.supabaseUrl,
       input.serviceRoleKey,
-      input.resolvedJob.fabric_reference
+      input.resolvedJob.fabric_reference,
     ),
     refineSourceBytes: input.resolvedJob.refinement_source
       ? await downloadResolvedAsset(
           input.supabaseUrl,
           input.serviceRoleKey,
-          input.resolvedJob.refinement_source
+          input.resolvedJob.refinement_source,
         )
       : null,
     targetSofaBytes: await downloadResolvedAsset(
       input.supabaseUrl,
       input.serviceRoleKey,
-      input.resolvedJob.target_sofa
-    )
+      input.resolvedJob.target_sofa,
+    ),
   };
 }
 
@@ -435,6 +483,7 @@ async function runGeminiProvider(input: {
   geminiApiKey?: string;
   generationMode: "initial" | "refine";
   promptNote?: string | null;
+  refinePrompt?: string | null;
   fabricReference: ResolvedAsset;
   fabricReferenceBytes: Uint8Array;
   targetSofa: ResolvedAsset;
@@ -446,59 +495,119 @@ async function runGeminiProvider(input: {
     throw new Error("Missing required environment variable: GEMINI_API_KEY");
   }
 
-  const prompt = buildFabricRenderPrompt({
-    generationMode: input.generationMode,
-    promptNote: input.promptNote,
-    targetHeightPx: input.targetSofa.height_px,
-    targetWidthPx: input.targetSofa.width_px
-  });
-  const geminiRequest = buildGeminiGenerateContentRequest({
-    fabricReference: {
-      dataBase64: uint8ArrayToBase64(input.fabricReferenceBytes),
-      mimeType: input.fabricReference.content_type
-    },
-    prompt,
-    refineSource:
-      input.generationMode === "refine" && input.refineSource && input.refineSourceBytes
-        ? {
-            dataBase64: uint8ArrayToBase64(input.refineSourceBytes),
-            mimeType: input.refineSource.content_type
-          }
-        : null,
-    targetSofa: {
-      dataBase64: uint8ArrayToBase64(input.targetSofaBytes),
-      mimeType: input.targetSofa.content_type
-    }
-  });
+  const geminiRequest =
+    input.generationMode === "initial"
+      ? buildGeminiGenerateContentRequest({
+          fabricReference: {
+            dataBase64: uint8ArrayToBase64(input.fabricReferenceBytes),
+            mimeType: input.fabricReference.content_type,
+          },
+          generationMode: "initial",
+          prompt: buildFabricRenderPrompt({
+            generationMode: "initial",
+            promptNote: input.promptNote,
+          }),
+          targetHeightPx: input.targetSofa.height_px,
+          targetSofa: {
+            dataBase64: uint8ArrayToBase64(input.targetSofaBytes),
+            mimeType: input.targetSofa.content_type,
+          },
+          targetWidthPx: input.targetSofa.width_px,
+        })
+      : buildGeminiGenerateContentRequest({
+          generationMode: "refine",
+          prompt: buildFabricRenderRefinePrompt({
+            refinePrompt: input.refinePrompt ?? input.promptNote ?? "",
+          }),
+          refineSource: {
+            dataBase64: uint8ArrayToBase64(requireRefineSourceBytes(input)),
+            mimeType: requireRefineSource(input).content_type,
+          },
+          targetHeightPx: requireRefineSource(input).height_px,
+          targetWidthPx: requireRefineSource(input).width_px,
+        });
   const response = await fetch(
     `${GEMINI_API_BASE_URL}/v1beta/models/${encodeURIComponent(geminiRequest.model)}:generateContent`,
     {
       body: JSON.stringify(buildGeminiRestRequestBody(geminiRequest)),
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": input.geminiApiKey
+        "x-goog-api-key": input.geminiApiKey,
       },
-      method: "POST"
-    }
+      method: "POST",
+    },
   );
   const responseText = await response.text();
 
   if (!response.ok) {
     throw {
       message: `Gemini returned HTTP ${response.status}: ${responseText}`,
-      status: response.status
+      status: response.status,
     };
   }
 
-  const generated = extractGeminiImage(responseText ? JSON.parse(responseText) : {});
+  const generated = extractGeminiImage(
+    responseText ? JSON.parse(responseText) : {},
+  );
 
   return {
     contentType: generated.mimeType,
-    outputBytes: base64ToUint8Array(generated.dataBase64)
+    outputBytes: base64ToUint8Array(generated.dataBase64),
   };
 }
 
 function buildScratchDir(jobId: string): string {
   const root = Deno.env.get("FABRIC_RENDER_TMP_DIR") ?? "/tmp";
   return `${root.replace(/\/+$/, "")}/fabric-render/${jobId}`;
+}
+
+function selectNormalizationTarget(resolvedJob: ResolvedJob): ResolvedAsset {
+  if (resolvedJob.generation_mode === "refine") {
+    if (!resolvedJob.refinement_source) {
+      throw new Error("refinement source is required for refine mode");
+    }
+
+    return resolvedJob.refinement_source;
+  }
+
+  return resolvedJob.target_sofa;
+}
+
+function preserveGeneratedImage(input: {
+  contentType: string;
+  outputBytes: Uint8Array;
+}) {
+  const dimensions = readImageDimensions(input.outputBytes, input.contentType);
+
+  return {
+    contentType: "image/png" as const,
+    crop: null,
+    cropApplied: false,
+    normalizedHeightPx: dimensions.heightPx,
+    normalizedWidthPx: dimensions.widthPx,
+    outputBytes: input.outputBytes,
+    resizeApplied: false,
+    sourceHeightPx: dimensions.heightPx,
+    sourceWidthPx: dimensions.widthPx,
+  };
+}
+
+function requireRefineSource(input: {
+  refineSource?: ResolvedAsset | null;
+}): ResolvedAsset {
+  if (!input.refineSource) {
+    throw new Error("refinement source is required for refine mode");
+  }
+
+  return input.refineSource;
+}
+
+function requireRefineSourceBytes(input: {
+  refineSourceBytes?: Uint8Array | null;
+}): Uint8Array {
+  if (!input.refineSourceBytes) {
+    throw new Error("refine source bytes are required for refine mode");
+  }
+
+  return input.refineSourceBytes;
 }

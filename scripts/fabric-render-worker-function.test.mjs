@@ -34,6 +34,7 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("./storage.ts");
     expect(source).toContain("./scratch.ts");
     expect(source).toContain("./image-metadata.ts");
+    expect(source).toContain("./image-normalization.ts");
     expect(source).toContain("./job.ts");
     expect(source).toContain('requiredEnv("GEMINI_API_KEY")');
     expect(source).toContain("buildFabricRenderPrompt");
@@ -47,6 +48,41 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("readImageDimensions");
     expect(source).toContain("retryable: providerFailure.retryable");
     expect(source).toContain("retryable: false");
+  });
+
+  it("normalizes Gemini output before scratch, upload, and succeed metadata", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const generatedImageIndex = source.indexOf("const generatedImage");
+    const normalizationIndex = source.indexOf("normalizeGeneratedOutput({");
+    const scratchSuccessIndex = source.indexOf(
+      "recordFabricRenderScratchSuccess({",
+    );
+    const dimensionReadIndex = source.indexOf("readImageDimensions(");
+    const uploadIndex = source.indexOf("uploadStorageObject({");
+    const succeedIndex = source.indexOf("fabric_render_worker_succeed");
+
+    expect(normalizationIndex).toBeGreaterThan(generatedImageIndex);
+    expect(normalizationIndex).toBeLessThan(scratchSuccessIndex);
+    expect(normalizationIndex).toBeLessThan(dimensionReadIndex);
+    expect(normalizationIndex).toBeLessThan(uploadIndex);
+    expect(normalizationIndex).toBeLessThan(succeedIndex);
+    expect(source).toContain("selectNormalizationTarget");
+    expect(source).toContain("resolvedJob.target_sofa");
+    expect(source).toContain("resolvedJob.refinement_source");
+    expect(source).toContain("outputBytes: normalizedImage.outputBytes");
+    expect(source).toContain("body: normalizedImage.outputBytes");
+    expect(source).toContain(
+      "output_byte_size: normalizedImage.outputBytes.byteLength",
+    );
+    expect(source).toContain(
+      "output_content_type: normalizedImage.contentType",
+    );
+    expect(source).toContain(
+      "output_height_px: normalizedImage.normalizedHeightPx",
+    );
+    expect(source).toContain(
+      "output_width_px: normalizedImage.normalizedWidthPx",
+    );
   });
 
   it("does not accept generated candidates or publish public assets from the worker", async () => {

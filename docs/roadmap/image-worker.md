@@ -2,12 +2,13 @@
 
 ## Current
 
-| Status | Spec | Plan | Work |
-| --- | --- | --- | --- |
-| Done | SPEC-0001 | PLAN-0001 | Minimal worker foundation and heartbeat configuration. |
-| Done | SPEC-0008 | PLAN-0008 | Local worker environment examples align with local Supabase worker development. |
-| Done | SPEC-0006 | PLAN-0006 | Locally testable fabric render worker foundation with mock output and optional Gemini smoke verification. |
-| Done | SPEC-0006 | PLAN-0010 | Real Gemini fabric render provider path with private input downloads, fixed v007 prompt, and optional manual provider smoke verification. |
+| Status | Spec      | Plan      | Work                                                                                                                                                            |
+| ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Done   | SPEC-0001 | PLAN-0001 | Minimal worker foundation and heartbeat configuration.                                                                                                          |
+| Done   | SPEC-0008 | PLAN-0008 | Local worker environment examples align with local Supabase worker development.                                                                                 |
+| Done   | SPEC-0006 | PLAN-0006 | Locally testable fabric render worker foundation with mock output and optional Gemini smoke verification.                                                       |
+| Done   | SPEC-0006 | PLAN-0010 | Real Gemini fabric render provider path with private input downloads, fixed v007 prompt, and optional manual provider smoke verification.                       |
+| Done   | SPEC-0006 | PLAN-0020 | Existing fabric render worker matches Python-worker output sizing with Gemini aspect-ratio config and centered crop/resize normalization before private upload. |
 
 ## Next
 
