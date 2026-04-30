@@ -23,7 +23,6 @@ const SUPPORTED_IMAGE_CONTENT_TYPES = new Set([
   "image/webp",
 ]);
 
-const CANVAS_FALLBACK_OUTPUT_CONTENT_TYPE = "image/jpeg";
 const CANVAS_OUTPUT_QUALITY = 0.9;
 
 interface LoadedImage {
@@ -48,39 +47,25 @@ export async function prepareAdminImageUploadFile(input: {
 
   try {
     const longestEdge = Math.max(image.width, image.height);
-    const shouldResize = longestEdge > ADMIN_RENDER_INPUT_MAX_EDGE_PX;
-    const outputType = getCanvasOutputContentType(input.file.type);
-    const shouldConvertContentType = input.file.type !== outputType;
 
-    if (!shouldResize && !shouldConvertContentType) {
+    if (longestEdge <= ADMIN_RENDER_INPUT_MAX_EDGE_PX) {
       return unchanged(input.file);
     }
 
-    const scale = shouldResize
-      ? ADMIN_RENDER_INPUT_MAX_EDGE_PX / longestEdge
-      : 1;
+    const scale = ADMIN_RENDER_INPUT_MAX_EDGE_PX / longestEdge;
     const targetWidth = Math.max(1, Math.round(image.width * scale));
     const targetHeight = Math.max(1, Math.round(image.height * scale));
     const preparedFile = await resizeImageFile({
       file: input.file,
       image,
-      outputType,
       targetHeight,
       targetWidth,
     });
 
     return {
       file: preparedFile,
-      message: getPreparationMessage({
-        outputType,
-        resized: shouldResize,
-        sourceHeight: image.height,
-        sourceType: input.file.type,
-        sourceWidth: image.width,
-        targetHeight,
-        targetWidth,
-      }),
-      resized: shouldResize,
+      message: `Image resized from ${image.width}x${image.height} to ${targetWidth}x${targetHeight} before upload.`,
+      resized: true,
     };
   } finally {
     image.close();
@@ -143,7 +128,6 @@ async function loadHtmlImage(file: File): Promise<LoadedImage> {
 async function resizeImageFile(input: {
   file: File;
   image: LoadedImage;
-  outputType: string;
   targetHeight: number;
   targetWidth: number;
 }) {
@@ -165,40 +149,15 @@ async function resizeImageFile(input: {
     input.targetHeight,
   );
 
-  const blob = await createCanvasBlob(canvas, input.outputType);
+  const outputType = SUPPORTED_IMAGE_CONTENT_TYPES.has(input.file.type)
+    ? input.file.type
+    : "image/jpeg";
+  const blob = await createCanvasBlob(canvas, outputType);
 
   return new File([blob], input.file.name, {
     lastModified: input.file.lastModified,
-    type: input.outputType,
+    type: outputType,
   });
-}
-
-function getCanvasOutputContentType(sourceType: string) {
-  if (sourceType === "image/png") {
-    return "image/png";
-  }
-
-  return CANVAS_FALLBACK_OUTPUT_CONTENT_TYPE;
-}
-
-function getPreparationMessage(input: {
-  outputType: string;
-  resized: boolean;
-  sourceHeight: number;
-  sourceType: string;
-  sourceWidth: number;
-  targetHeight: number;
-  targetWidth: number;
-}) {
-  if (input.resized && input.sourceType !== input.outputType) {
-    return `Image resized from ${input.sourceWidth}x${input.sourceHeight} to ${input.targetWidth}x${input.targetHeight} and converted to ${input.outputType} before upload.`;
-  }
-
-  if (input.resized) {
-    return `Image resized from ${input.sourceWidth}x${input.sourceHeight} to ${input.targetWidth}x${input.targetHeight} before upload.`;
-  }
-
-  return `Image converted from ${input.sourceType} to ${input.outputType} before upload.`;
 }
 
 async function createCanvasBlob(canvas: HTMLCanvasElement, outputType: string) {

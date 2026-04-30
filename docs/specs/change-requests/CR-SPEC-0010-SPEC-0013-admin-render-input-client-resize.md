@@ -32,13 +32,10 @@ before signed upload:
 - resizing must not crop, pad, stretch, rotate, or visually reframe the image;
 - the frontend must upload only the prepared file, not the original oversized
   file;
-- if a selected render input file is WebP, the browser must convert the
-  prepared upload to JPEG because the worker input path accepts JPEG and PNG
-  references;
 - the upload `byte_size` and `content_type` sent to `POST /api/admin/uploads`
   must describe the prepared file;
 - the admin UI should show a short informational message when a selected file
-  was resized or converted before upload;
+  was resized before upload;
 - unsupported image types must still fail before becoming usable assets.
 
 ### API Upload Contract
@@ -75,8 +72,7 @@ a later accepted change request defines separate normalization rules for them.
 - API facade: upload creation and completion stay structurally the same, but
   tests should prove that prepared file metadata is what the browser sends.
 - Storage: no original oversized admin render input files are stored.
-- Worker: no behavior change; existing 2048 px and content-type input guards
-  remain valid.
+- Worker: no behavior change; existing 2048 px input guards remain valid.
 - Tests: add client-side helper and admin UI tests for resized and unchanged
   upload paths, and keep server-side oversized rejection tests or coverage.
 - Roadmap: update the web roadmap after implementation.

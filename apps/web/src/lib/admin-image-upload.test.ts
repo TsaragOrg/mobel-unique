@@ -55,38 +55,16 @@ describe("admin image upload preparation", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("converts webp render input uploads to jpeg before signed upload creation", async () => {
+  it("returns webp render input uploads unchanged when the longest edge is within 2048 px", async () => {
     const close = vi.fn();
-    const bitmap = {
+    const createImageBitmapMock = vi.fn(async () => ({
       close,
       height: 1200,
       width: 1600,
-    };
-    const createImageBitmapMock = vi.fn(async () => bitmap);
-    const drawImage = vi.fn();
-    const toBlob = vi.fn(
-      (
-        callback: BlobCallback,
-        type?: string,
-        quality?: number,
-      ) => {
-        expect(type).toBe("image/jpeg");
-        expect(quality).toBe(0.9);
-        callback(new Blob(["converted"], { type }));
-      },
-    );
-    const canvas = {
-      getContext: vi.fn(() => ({
-        drawImage,
-      })),
-      height: 0,
-      toBlob,
-      width: 0,
-    } as unknown as HTMLCanvasElement;
+    }));
+    const createElementSpy = vi.spyOn(document, "createElement");
     vi.stubGlobal("createImageBitmap", createImageBitmapMock);
-    vi.spyOn(document, "createElement").mockReturnValue(canvas);
     const file = new File(["webp-reference"], "reference.webp", {
-      lastModified: 42,
       type: "image/webp",
     });
 
@@ -95,17 +73,13 @@ describe("admin image upload preparation", () => {
       purpose: "fabric_ai_reference",
     });
 
-    expect(result.file).not.toBe(file);
-    expect(result.file.name).toBe("reference.webp");
-    expect(result.file.type).toBe("image/jpeg");
-    expect(result.file.size).toBe(9);
-    expect(result.resized).toBe(false);
-    expect(result.message).toBe(
-      "Image converted from image/webp to image/jpeg before upload.",
-    );
-    expect(canvas.width).toBe(1600);
-    expect(canvas.height).toBe(1200);
-    expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 1600, 1200);
+    expect(result).toEqual({
+      file,
+      message: null,
+      resized: false,
+    });
+    expect(createImageBitmapMock).toHaveBeenCalledWith(file);
+    expect(createElementSpy).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
   });
 

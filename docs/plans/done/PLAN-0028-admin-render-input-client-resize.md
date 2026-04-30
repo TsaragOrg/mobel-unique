@@ -16,9 +16,7 @@ Affected packages:
 
 Resize oversized admin render input photos in the browser before signed upload
 so large originals are not stored and `fabric_ai_reference` and
-`sofa_source_photo` assets stay within the 2048 px render input limit. WebP
-render input photos are converted to JPEG before upload because the worker
-currently accepts JPEG and PNG input references.
+`sofa_source_photo` assets stay within the 2048 px render input limit.
 
 ## Architecture
 
@@ -40,8 +38,6 @@ reject invalid or oversized render inputs.
   greater than 2048 px.
 - Resize `sofa_source_photo` files before upload when the longest edge is
   greater than 2048 px.
-- Convert WebP `fabric_ai_reference` and `sofa_source_photo` files to JPEG
-  before upload.
 - Preserve aspect ratio and avoid crop, padding, stretching, or reframing.
 - Send prepared file `byte_size` and `content_type` to `POST /api/admin/uploads`.
 - Upload only the prepared file to the signed URL.
@@ -88,20 +84,18 @@ export async function prepareAdminImageUploadFile(input: {
 Rules:
 
 - return the original file for `fabric_swatch` and `manual_render`;
-- return the original file for JPEG or PNG render input images already at or
-  below 2048 px;
+- return the original file for render input images already at or below 2048 px;
 - resize only `fabric_ai_reference` and `sofa_source_photo` files over 2048 px;
-- prefer the original type when it is `image/jpeg` or `image/png`;
-- convert `image/webp` render input images to `image/jpeg`;
+- prefer the original type when it is `image/jpeg`, `image/png`, or
+  `image/webp`;
 - use quality `0.9` for lossy canvas output when supported;
-- include source and output dimensions or conversion details in the
-  informational message.
+- include source and output dimensions in the informational message.
 
 ## Tasks
 
 - [x] Add helper tests in `apps/web/src/lib/admin-image-upload.test.ts`.
-      Cover unchanged non-render purposes, unchanged small render inputs,
-      WebP conversion, and resized oversized render inputs.
+      Cover unchanged non-render purposes, unchanged small render inputs, and
+      resized oversized render inputs.
 - [x] Implement `apps/web/src/lib/admin-image-upload.ts`.
       Use browser image decoding and canvas output, with test seams for image
       dimensions and canvas blob creation.

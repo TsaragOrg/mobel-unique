@@ -1169,8 +1169,8 @@ function FabricCreateContent({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // RU: Это действие сохраняет новую ткань и может подготовить фото перед отправкой.
-  // FR: Cette action enregistre un tissu et peut preparer une image avant l'envoi.
+  // RU: Это действие сохраняет новую ткань и может уменьшить большое фото перед отправкой.
+  // FR: Cette action enregistre un tissu et peut reduire une grande image avant l'envoi.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
@@ -1252,8 +1252,8 @@ function FabricEditContent({
     };
   }, [accessToken, dependencies, fabricId]);
 
-  // RU: Это действие сохраняет ткань и может подготовить новое фото перед отправкой.
-  // FR: Cette action enregistre le tissu et peut preparer une nouvelle image avant l'envoi.
+  // RU: Это действие сохраняет ткань и может уменьшить новое большое фото перед отправкой.
+  // FR: Cette action enregistre le tissu et peut reduire une nouvelle grande image avant l'envoi.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -2144,8 +2144,8 @@ function VisualMatrixSection({
     }
   }
 
-  // RU: Это действие отправляет исходное фото и может подготовить его перед отправкой.
-  // FR: Cette action envoie la photo source et peut la preparer avant l'envoi.
+  // RU: Это действие отправляет исходное фото и может уменьшить большое фото перед отправкой.
+  // FR: Cette action envoie la photo source et peut reduire une grande image avant l'envoi.
   async function handleSourcePhotoUpload(
     column: AdminCatalogVisualMatrixColumn,
     form: HTMLFormElement,

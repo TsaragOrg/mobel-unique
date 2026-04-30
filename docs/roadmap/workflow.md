@@ -25,6 +25,7 @@
 | Done   | SPEC-0006 | PLAN-0025 | Fabric render production cron runner checks cover provider defaults, worker invocation secret wiring, cron SQL, and admin polling.        |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render ownership checks cover worker-level provider selection and admin API provider isolation.                                    |
 | Done   | SPEC-0001 | PLAN-0027 | Supabase DEV deploy configures worker secrets, deploys the fabric render Edge Function, and upserts cron Vault secrets.                   |
+| Done   | SPEC-0013 | PLAN-0028 | Admin render input test coverage includes worker scratch failure recording for early local worker errors.                                 |
 
 ## Next
 
