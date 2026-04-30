@@ -27,3 +27,6 @@ yarn-error.log*
 
 # Local manual test assets
 test-assets/
+
+# Raw public video sources
+apps/web/public/*.mov
