@@ -588,7 +588,7 @@ async function runGeminiProvider(input: {
           generationMode: "refine",
           model: input.providerModel,
           prompt: buildFabricRenderRefinePrompt({
-            refinePrompt: input.refinePrompt ?? input.promptNote ?? "",
+            refinePrompt: input.refinePrompt ?? "",
           }),
           refineSource: {
             dataBase64: uint8ArrayToBase64(requireRefineSourceBytes(input)),

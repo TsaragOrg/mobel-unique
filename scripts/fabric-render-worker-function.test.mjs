@@ -82,6 +82,14 @@ describe("fabric render worker Edge Function", () => {
     );
   });
 
+  it("uses refine_prompt for refine jobs without falling back to prompt_note", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("refinePrompt: resolvedJob.refine_prompt");
+    expect(source).not.toContain("input.refinePrompt ?? input.promptNote");
+    expect(source).toContain("buildFabricRenderRefinePrompt");
+  });
+
   it("defaults worker provider to Gemini outside local environments", async () => {
     const source = await readFile(functionPath, "utf8");
 

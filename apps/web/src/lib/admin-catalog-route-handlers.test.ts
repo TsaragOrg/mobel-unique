@@ -459,11 +459,23 @@ function createFakeStore(): AdminCatalogStore {
         };
       }
 
+      const inputPromptNote =
+        input.generation_mode === "initial" ? input.prompt_note : null;
+      const inputRefinementSourceAssetId =
+        input.generation_mode === "refine"
+          ? input.refinement_source_asset_id
+          : null;
+      const inputRefinePrompt =
+        input.generation_mode === "refine" ? input.refine_prompt : null;
       const activeDuplicate = [...renderJobs.values()].find(
         (job) =>
           job.sofa_id === input.sofa_id &&
           job.fabric_id === input.fabric_id &&
           job.visual_matrix_column_id === input.visual_matrix_column_id &&
+          job.generation_mode === input.generation_mode &&
+          job.prompt_note === inputPromptNote &&
+          job.refinement_source_asset_id === inputRefinementSourceAssetId &&
+          job.refine_prompt === inputRefinePrompt &&
           (job.status === "queued" || job.status === "processing"),
       );
 
@@ -502,8 +514,10 @@ function createFakeStore(): AdminCatalogStore {
         )}`,
         last_error_message: null,
         max_attempts: 3,
-        prompt_note: input.prompt_note,
+        prompt_note: inputPromptNote,
         queued_at: "2026-04-28T10:30:00.000Z",
+        refinement_source_asset_id: inputRefinementSourceAssetId,
+        refine_prompt: inputRefinePrompt,
         render_cell_id: cell.id,
         sofa_id: input.sofa_id,
         status: "queued",
@@ -1891,6 +1905,30 @@ describe("admin catalog route handlers", () => {
       render_cell_id: renderCellId,
     });
     expect(JSON.stringify(candidate)).not.toContain("object_path");
+
+    const refineJobResponse = await handleCreateFabricRenderJobRequest({
+      ...input,
+      request: jsonRequest({
+        fabric_id: targetFabricId,
+        generation_mode: "refine",
+        prompt_note: null,
+        refine_prompt: "reduce wrinkles on the left arm",
+        refinement_source_asset_id: candidate.asset_id,
+        sofa_id: sofaId,
+        visual_matrix_column_id: columnId,
+      }),
+    });
+    expect(refineJobResponse.status).toBe(201);
+    await expect(refineJobResponse.json()).resolves.toMatchObject({
+      data: {
+        fabric_render_job: {
+          generation_mode: "refine",
+          refine_prompt: "reduce wrinkles on the left arm",
+          refinement_source_asset_id: candidate.asset_id,
+          status: "queued",
+        },
+      },
+    });
 
     const useCandidateResponse = await handleUseRenderCandidateRequest({
       ...input,

@@ -11,6 +11,8 @@ const providerOwnershipMigrationPath =
   "supabase/migrations/20260429000300_fabric_render_worker_provider_ownership.sql";
 const adminPublicationMigrationPath =
   "supabase/migrations/20260430000100_admin_sofa_publication.sql";
+const adminRenderPromptRefineMigrationPath =
+  "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -106,5 +108,22 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("update public.sofas");
     expect(sql).toContain("lifecycle_state = 'published'");
     expect(sql).toContain("lifecycle_state = 'draft'");
+  });
+
+  it("adds admin prompt notes and refine prompts to render job persistence", async () => {
+    const sql = await readFile(adminRenderPromptRefineMigrationPath, "utf8");
+
+    expect(sql).toContain("add column if not exists refine_prompt text");
+    expect(sql).toContain(
+      "constraint fabric_render_jobs_refine_prompt_mode_check",
+    );
+    expect(sql).toContain(
+      "drop index if exists fabric_render_jobs_active_idempotency_idx",
+    );
+    expect(sql).toContain("coalesce(refine_prompt, '')");
+    expect(sql).toContain("public.fabric_render_worker_resolve_inputs");
+    expect(sql).toContain("'refine_prompt', target_job.refine_prompt");
+    expect(sql).not.toContain("coalesce(provider_name");
+    expect(sql).not.toContain("coalesce(provider_model");
   });
 });
