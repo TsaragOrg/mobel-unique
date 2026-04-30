@@ -32,21 +32,46 @@ function parseArgs(argv) {
     wallHeight: null,
     leftWallWidth: null,
     rightWallWidth: null,
-    roomHeight: null
+    roomHeight: null,
+    roomDepth: null,
+    sofaWidth: null,
+    sofaHeight: null,
+    sofaLeft: null,
+    sofaRight: null,
+    position: null
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i];
-    if (value === "--wall-width") args.wallWidth = Number.parseFloat(argv[++i]);
+    if (value === "--") continue;
+    else if (value === "--wall-width") args.wallWidth = Number.parseFloat(argv[++i]);
     else if (value === "--wall-height") args.wallHeight = Number.parseFloat(argv[++i]);
     else if (value === "--left-wall") args.leftWallWidth = Number.parseFloat(argv[++i]);
     else if (value === "--right-wall") args.rightWallWidth = Number.parseFloat(argv[++i]);
     else if (value === "--room-height") args.roomHeight = Number.parseFloat(argv[++i]);
+    else if (value === "--room-depth") args.roomDepth = Number.parseFloat(argv[++i]);
+    else if (value === "--sofa-width") args.sofaWidth = Number.parseFloat(argv[++i]);
+    else if (value === "--sofa-height") args.sofaHeight = Number.parseFloat(argv[++i]);
+    else if (value === "--sofa-left") args.sofaLeft = Number.parseFloat(argv[++i]);
+    else if (value === "--sofa-right") args.sofaRight = Number.parseFloat(argv[++i]);
+    else if (value === "--position") args.position = String(argv[++i]).toLowerCase();
     else if (value.startsWith("--")) fail(`unknown flag: ${value}`, 2);
     else positional.push(value);
   }
   if (positional[0]) args.jobId = positional[0];
   return args;
+}
+
+function pickOptionalNumber(name, value, target) {
+  if (value !== null && Number.isFinite(value)) {
+    target[name] = value;
+  }
+}
+
+function pickPosition(value, target) {
+  if (value === "left" || value === "center" || value === "right") {
+    target.position = value;
+  }
 }
 
 async function callRpc({ supabaseUrl, serviceRoleKey, name, body }) {
@@ -89,6 +114,10 @@ async function main() {
       wall_width: args.wallWidth,
       wall_height: args.wallHeight
     };
+    pickOptionalNumber("room_depth", args.roomDepth, suppliedDimensions);
+    pickOptionalNumber("sofa_width", args.sofaWidth, suppliedDimensions);
+    pickOptionalNumber("sofa_height", args.sofaHeight, suppliedDimensions);
+    pickPosition(args.position, suppliedDimensions);
   } else if (
     args.leftWallWidth !== null &&
     args.rightWallWidth !== null &&
@@ -99,6 +128,10 @@ async function main() {
       right_wall_width: args.rightWallWidth,
       room_height: args.roomHeight
     };
+    pickOptionalNumber("room_depth", args.roomDepth, suppliedDimensions);
+    pickOptionalNumber("sofa_left", args.sofaLeft, suppliedDimensions);
+    pickOptionalNumber("sofa_right", args.sofaRight, suppliedDimensions);
+    pickOptionalNumber("sofa_height", args.sofaHeight, suppliedDimensions);
   } else {
     fail(
       "supply either --wall-width and --wall-height (back_wall) or --left-wall, --right-wall, and --room-height (corner)",

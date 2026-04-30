@@ -6,7 +6,8 @@ Layer: technical
 Parent Spec: SPEC-0004
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004
 Areas: api, supabase
-Implementation Plans: none yet
+Implementation Plans: PLAN-0010 (room preparation), PLAN-0011 (sofa placement), PLAN-0012 (resilience and purge)
+Last Reviewed: 2026-04-30
 
 ## Traceability
 
@@ -204,21 +205,36 @@ The logical job record must track:
 - compressed room asset reference;
 - cleaned room asset reference;
 - room geometry mode, either `back_wall` or `corner`;
-- room geometry confidence score when returned by the configured model;
+- room geometry confidence score returned by the scene classifier;
 - room geometry failure reason when the room is not exploitable;
-- room geometry point coordinates in the cleaned room pixel space;
+- room geometry point coordinates in the cleaned room pixel space, derived
+  by detecting the yellow architectural-corner dots placed by the corners
+  step on the cleaned room photo;
 - back-wall anchor coordinates when mode is `back_wall`, as the four
-  architectural corners of the main wall ordered bottom-left, bottom-right,
-  top-right, top-left;
-- corner anchor coordinates when mode is `corner`, as the six required
-  architectural points named `corner_floor`, `corner_ceiling`,
-  `left_wall_floor_outer`, `left_wall_ceiling_outer`,
-  `right_wall_floor_outer`, and `right_wall_ceiling_outer`;
-- prepared dimension-guide overlay asset reference exposed to the visitor
-  between stages;
-- supplied wall dimensions in metres, with `wall_width` and `wall_height` for
-  `back_wall` mode, or `left_wall_width`, `right_wall_width`, and
-  `room_height` for `corner` mode;
+  architectural corners of the main wall named `topLeft`, `topRight`,
+  `bottomLeft`, and `bottomRight`;
+- corner anchor coordinates when mode is `corner`, as the six points named
+  `topLeft`, `topCenter`, `topRight`, `bottomLeft`, `bottomCenter`, and
+  `bottomRight`. `topCenter` and `bottomCenter` mark the inner architectural
+  corner where the two walls meet (ceiling and floor anchors of the inner
+  vertical edge); the four outer points are the far ends of the two visible
+  walls along ceiling and floor;
+- the corners-annotated PNG (cleaned room with yellow dots) and the
+  dimension-guide overlay PNG (cleaned room with width/height/depth lines
+  and language-tagged labels) exposed to the visitor between stages;
+- supplied dimensions in metres, with the following keys depending on mode:
+  - `back_wall` mode requires `wall_width` and `wall_height`. Optional but
+    recommended for placement quality: `room_depth` (camera-to-back-wall
+    distance), `sofa_width`, `sofa_height`, and `position` (one of `left`,
+    `center`, or `right`; defaults to `center`).
+  - `corner` mode requires `left_wall_width`, `right_wall_width`, and
+    `room_height`. Optional but recommended: `room_depth`, `sofa_left`,
+    `sofa_right`, and `sofa_height`. Corner mode does not take a position
+    keyword; the corner sofa is always anchored at the inner architectural
+    corner.
+  - Sofa dimensions are not strictly required for stage 2 to run, but the
+    self-correcting placement loop only activates when full target ratios
+    can be computed (see Stage 2);
 - generated output asset references for each generated result, ordered by
   regeneration index;
 - latest generated output index when at least one result exists;
@@ -244,9 +260,12 @@ visitor must not upload a sofa photo. The prepared sofa asset must be the
 public-usable render that already exists for the selected visual matrix cell
 at job creation time.
 
-The MVP does not request room depth or camera-position distance for either
-geometry mode. Scale estimation must use only the dimensions represented by the
-dimension-guide overlay.
+The dimension-guide overlay drawn at the end of stage 1 includes a depth
+line ("Глубина") in addition to the wall and height lines. `room_depth`
+is therefore presented to the visitor as an optional input that improves
+the placement model's perspective scaling. It is not a hard requirement:
+when omitted, the placement prompt receives "unspecified" for room depth
+and the MVP still produces a usable result.
 
 ### Job Status
 
@@ -461,86 +480,177 @@ this spec.
 
 ### Stage 1: Room Preparation
 
+Stage 1 is a deterministic multi-step pipeline. Earlier drafts of this
+spec assumed a single image-model call would return mode + points as JSON;
+that approach was rejected during implementation because gpt-image-2 is
+unreliable at producing structured numeric coordinates. The current
+pipeline splits the work into a vision-only mode classifier, an
+image-edit dot-placement step, and pure pixel-detection code.
+
 The worker must, in this logical order, idempotently:
 
-1. Materialize the customer room photo into the scratch folder.
-2. Normalize the photo inside the worker, not at the API edge. Normalization
-   must convert unsupported-but-accepted input formats such as HEIC or HEIF to
-   the worker processing format and may compress images that exceed the
-   worker-defined maximum edge. Normalization must apply EXIF orientation so
-   the stored processing image has unambiguous pixel orientation, must not reject
-   the image based on a minimum short edge, and must not reject the image based
-   on brightness.
-3. Validate that the photo is a usable interior of a residential room with
-   either a visible main wall or a visible room corner and adequate lighting.
-   Validation must rely on a vision model and produce a readable failure code
-   when it fails.
-4. Persist the normalized and, when applicable, compressed room artifact for the
-   remaining room preparation steps.
-5. Generate a cleaned-room artifact in which the room's existing furniture
-   has been removed while the room geometry, openings, fixtures, and
-   lighting remain visually identical.
-6. Determine the room geometry mode automatically as either `back_wall` or
-   `corner`. The visitor must not choose the mode in the MVP.
-7. Run a single room-geometry detection call against the cleaned room artifact.
-   The configured image model must return structured geometry output with:
-   - `mode`, either `back_wall` or `corner`;
-   - `points`, containing four ordered main-wall points for `back_wall` mode or
-     six named room-corner points for `corner` mode;
-   - `confidence`, when the model can provide it;
-   - `failure_reason`, when the room is not exploitable.
-8. For `back_wall` mode, the four points must be the architectural corners of
-   the main wall in the cleaned room image, ordered bottom-left, bottom-right,
-   top-right, top-left.
-9. For `corner` mode, the six points must be `corner_floor`, `corner_ceiling`,
-   `left_wall_floor_outer`, `left_wall_ceiling_outer`,
-   `right_wall_floor_outer`, and `right_wall_ceiling_outer`.
-10. Validate the returned mode and points against geometric sanity rules and
-   may retry room-geometry detection up to a worker-defined attempt limit
-   before failing. The room geometry points are worker-determined only in the
-   MVP and are not admin-overridable.
-11. Render the dimension-guide overlay deterministically on the cleaned room
-   artifact. The overlay must use the detected geometry points and draw
-   labelled arrows for the exact dimensions the visitor must provide:
-   - `back_wall`: wall width and wall height;
-   - `corner`: left wall width, right wall width, and room height.
-   The overlay labels must be language-tagged words rather than numeric
-   measurements at this stage. The overlay must use deterministic pixel
-   rendering rather than image generation. The worker must preserve both the
-   clean room artifact without arrows and the separate guide artifact with
-   arrows. The MVP does not require a worker watermark on the
-   dimension-guide overlay.
+1. **Materialize** the customer room photo into the scratch folder.
+2. **Normalize** the photo inside the worker, not at the API edge.
+   Normalization must convert unsupported-but-accepted input formats such
+   as HEIC or HEIF to the worker processing format and may compress images
+   that exceed the worker-defined maximum edge (default longest edge 720
+   px, see `IN_HOME_SIMULATION_MAX_EDGE_PX`). Normalization must apply
+   EXIF orientation so the stored processing image has unambiguous pixel
+   orientation, must not reject the image based on a minimum short edge,
+   and must not reject the image based on brightness.
+3. **Validate** that the photo is a usable interior of a residential room
+   with either a visible main wall or a visible room corner and adequate
+   lighting. Validation must rely on a vision model (GPT-5 vision in the
+   live configuration) and produce a readable failure code when it fails.
+4. Persist the normalized and, when applicable, compressed room artifact
+   for the remaining room preparation steps.
+5. **Clean** the room: generate an artifact in which the room's existing
+   furniture has been removed while the room geometry, openings, fixtures,
+   and lighting remain visually identical (gpt-image-2 image-edit in the
+   live configuration).
+6. **Classify the scene mode** with a dedicated vision-JSON call (GPT-5
+   vision). The classifier returns `{mode, confidence, reason}` where
+   `mode` is one of `back_wall`, `corner`, or `reshoot`. A `reshoot`
+   verdict fails the job with a non-retryable readable error so the
+   visitor knows to upload a different photo. The visitor never chooses
+   the mode.
+7. **Place corner dots** with an image-edit call against the cleaned room
+   (gpt-image-2 in the live configuration). The image model must paint
+   small bright yellow dots at the architectural corners of the room:
+   exactly four dots for `back_wall` mode (top-left / top-right /
+   bottom-left / bottom-right of the back wall), or exactly six dots for
+   `corner` mode (top-left / top-center / top-right at the ceiling, then
+   bottom-left / bottom-center / bottom-right at the floor; the *center*
+   pair anchors the inner vertical seam of the room corner).
+8. **Detect dots** in pure local code on the corners-annotated PNG: a
+   pixel-color filter for the yellow ink range followed by a flood-fill
+   that yields one cluster per dot. Clusters must be sorted by size and
+   the largest expected count (4 or 6 depending on mode) retained.
+9. **Classify dots** into named architectural corners by sorting clusters
+   by Y to split top vs. bottom, then by X to label left/(center)/right.
+10. **Validate placement geometry** with deterministic rules before
+    accepting the result:
+    - `back_wall`: top and bottom dots on each side must share the same
+      X within ~6% of image width; no dot may sit within ~3% of the
+      photo edge; left dots must be left of right dots; tops must sit
+      above bottoms.
+    - `corner`: `topCenter` and `bottomCenter` must share the same X
+      within ~6% of image width; `bottomCenter` must sit in the lower
+      half of the image (floor anchor) and `topCenter` in the upper
+      half (ceiling anchor); the four outer dots must sit within ~15%
+      of the matching photo edge.
+    If validation fails, the worker re-runs the corners image-edit step
+    up to `MAX_CORNER_PLACEMENT_ATTEMPTS` (default 3) with the same
+    cleaned room input. After the final failed attempt the stage fails
+    with a `corners_failed` reason. The geometric validator is pure code
+    and is therefore directly unit-testable.
+11. **Render the dimension-guide overlay** deterministically on the
+    corners-annotated PNG. The overlay draws three or four labelled
+    lines depending on mode and uses Russian language-tagged words
+    rather than numeric measurements at this stage:
+    - `back_wall`: red "Ширина" along the back-wall floor edge,
+      blue "Высота" up the left back-wall seam, and green "Глубина"
+      from the camera anchor to the back-wall midpoint;
+    - `corner`: red "Лев. стена" and "Прав. стена" along the two floor
+      edges, blue "Высота" up the inner vertical seam, and green
+      "Глубина" from the camera anchor to the inner-corner floor point.
+    The overlay must use deterministic pixel rendering rather than image
+    generation. The worker must preserve `room_cleaned.png` (no marks),
+    `room_corners.png` (yellow dots only), and `room_dimensions.png`
+    (lines + labels). The MVP does not require a worker watermark on
+    the dimension-guide overlay.
 
-The stage 1 success outputs are the cleaned room artifact, the room geometry
-mode and points, and the dimension-guide overlay artifact. After stage 1
-succeeds, the job becomes `awaiting_dimensions` and the API may expose the
-overlay artifact to the visitor.
+The stage 1 success outputs are the cleaned room artifact, the
+corners-annotated artifact, the dimension-guide overlay artifact, the
+detected geometry mode, the classified corner coordinates in cleaned-room
+pixel space, and the scene-classifier confidence. After stage 1 succeeds,
+the job becomes `awaiting_dimensions` and the API may expose the overlay
+artifact to the visitor.
 
 ### Stage 2: Sofa Placement
 
 The worker must, in this logical order, idempotently:
 
-1. Validate the supplied wall dimensions for the job's room geometry mode
-   against the worker accept range and reject obviously inconsistent values,
-   such as a sofa wider than the supplied wall width for `back_wall` mode, a
-   corner sofa wider than the supplied left or right wall width for `corner`
-   mode, or a sofa taller than the supplied wall or room height.
-2. Materialize the prepared sofa asset that was resolved from the selected
-   sofa, fabric, and visual matrix column.
-3. Compose the cleaned room, the room geometry mode and points, the supplied
-   wall dimensions, and the prepared sofa into a final visualization that
-   places the sofa against the main wall or room corner at a size that matches
-   the supplied dimensions.
+1. **Validate the supplied dimensions** for the job's room geometry mode
+   against the worker accept range and reject obviously inconsistent
+   values, such as a sofa wider than the supplied wall width for
+   `back_wall` mode, a corner sofa wider than either the supplied left or
+   right wall width for `corner` mode, or a sofa taller than the
+   supplied wall or room height.
+2. **Materialize the prepared sofa asset** that was resolved from the
+   selected sofa, fabric, and visual matrix column at job creation.
+3. **Build the placement prompt** from the cleaned-room context, the
+   supplied dimensions, the geometry mode, and the position keyword
+   (back_wall mode only: `left`, `center`, or `right`; defaults to
+   `center`). The prompt is generated by the pure helper
+   `buildPlacementPrompt` and must include:
+   - calibrated corner positions in metres (e.g. "the sofa BOTTOM-LEFT
+     corner sits 0.45 m to the right of the LEFT back-wall seam");
+   - explicit "EXACTLY {width} m × {height} m" wording rather than
+     approximate language;
+   - an ANTI-REGRESSION block instructing the model not to shrink the
+     sofa toward a generic stock-sofa shape;
+   - a DOORS-DO-NOT-BLOCK block instructing the model to render the sofa
+     in front of any architectural feature (door, window, AC, socket,
+     vent, etc.) at full requested size, never shrinking or shifting
+     the sofa to avoid them;
+   - an optional `{{FEEDBACK_BLOCK}}` placeholder used by the
+     self-correcting loop on retry attempts.
+4. **Compose** the cleaned room, the room geometry, the supplied
+   dimensions, and the prepared sofa into a final visualization
+   (gpt-image-2 image-edit in the live configuration). The composition
+   call is wrapped in the self-correcting loop described below for
+   `back_wall` mode and is a single-shot call for `corner` mode.
+
+#### Self-Correcting Placement Loop (back_wall mode)
+
+When the supplied dimensions allow computing target ratios
+(`sofa_width / wall_width` and `sofa_height / wall_height`), the worker
+runs up to `MAX_PLACEMENT_ATTEMPTS` (default 3) generate-and-measure
+attempts:
+
+1. **Generate** a candidate output via gpt-image-2 with the placement
+   prompt and the cleaned room + prepared sofa multi-image inputs.
+2. **Measure** the candidate output via a dedicated GPT-5 vision JSON
+   call. The measurement provider returns `{sofa_width_pct,
+   sofa_height_pct, position}` describing how much of the back wall the
+   rendered sofa occupies and which third of the wall its center sits in.
+3. **Compare** measured vs. target. If the absolute width and height
+   deltas are both within `PLACEMENT_TOLERANCE_PCT` (default 5
+   percentage points) and the position matches, accept the attempt.
+4. **Otherwise**, build a corrective `FEEDBACK_BLOCK` describing the
+   measured numbers, the target numbers, and per-dimension fix
+   instructions ("ENLARGE the sofa width by N percentage points",
+   "INCREASE the sofa height", "Move the sofa to center"), inject it
+   into the next prompt, and retry.
+5. After all attempts, return the **closest** candidate by total absolute
+   delta. The loop never returns the worst attempt.
+
+If the measurement provider itself fails on a candidate (vision call
+errors out, returns malformed JSON, etc.), the worker accepts that
+candidate as-is rather than burning a retry on a measurement-only
+problem.
+
+#### Corner mode
+
+Corner-mode placement is single-shot in the current MVP. The placement
+prompt still receives the strengthened DOORS / EXACTLY / ANTI-REGRESSION
+language, but the measurement and feedback loop are not used. This is a
+deliberate scope decision: the vision-based measurement contract is
+defined for back-wall geometry only, and L-shape silhouettes (chaise
+extensions, ottomans) inflate the measured width relative to the
+along-wall length, so the loop would oscillate without an L-shape-aware
+measurement contract. Corner-mode quality therefore relies entirely on
+the strengthened prompt.
 
 The stage 2 success output is the final generated visualization. The
-worker must save the scratch result as `output.png`, persist it under the
-regeneration-indexed output path for the current attempt, and mark the job
-`succeeded`.
+worker must save the scratch result as `output.png`, persist it under
+the regeneration-indexed output path for the current attempt, and mark
+the job `succeeded`.
 
 ### Generation Core File Contract
 
-The first generation core must support the following scratch folder
-contract:
+The current generation core uses the following scratch folder contract:
 
 ```text
 job-folder/
@@ -548,62 +658,89 @@ job-folder/
   room_normalized.jpg
   room_compressed.jpg
   room_cleaned.png
-  room_geometry.json
-  room_guides.png
+  room_corners.png
+  room_dimensions.png
   sofa_prepared.png
   output.png
-  error.txt
+  worker_error.txt
 ```
 
 Rules:
 
 - `room_original.*` is the visitor's uploaded room photo;
 - `room_normalized.jpg` is the EXIF-corrected and HEIC-converted room photo;
-- `room_compressed.jpg` is the room photo at worker-defined room maximum
-  edge;
-- `room_cleaned.png` is the room with existing furniture removed;
-- `room_geometry.json` records the detected geometry mode, points, confidence
-  when available, and failure reason when applicable. In
-  `back_wall` mode it records the four ordered main-wall corner coordinates.
-  In `corner` mode it records the six named room-corner coordinates;
-- `room_guides.png` is the dimension-guide image drawn on top of
-  `room_cleaned.png` and exposed to the visitor between stages;
+- `room_compressed.jpg` is the room photo at the worker-defined room
+  maximum edge (default 720 px);
+- `room_cleaned.png` is the room with existing furniture removed by the
+  cleaning step;
+- `room_corners.png` is the cleaned room with yellow architectural-corner
+  dots painted by the corners image-edit step. The detected dot
+  coordinates and classification are persisted to the job row; this scene
+  has no separate `room_geometry.json` artifact in the current design.
+  The annotated PNG is the source of truth for the corner positions
+  because the lines step re-detects the dots from it;
+- `room_dimensions.png` is the deterministic dimension-guide overlay
+  drawn on top of the corners-annotated room (lines + Russian labels)
+  and is the artifact exposed to the visitor between stages;
 - `sofa_prepared.png` is the materialized prepared sofa asset for the
   selected sofa, fabric, and visual matrix column;
-- `output.png` is the successful generated visualization in the scratch folder;
-- `error.txt` is the human-readable failure artifact;
+- `output.png` is the successful generated visualization in the scratch
+  folder;
+- `worker_error.txt` is the human-readable failure artifact persisted to
+  the job's storage prefix on a non-retryable failure for operational
+  review (the artifact path is also recorded on the job row);
 - stale stage-2 artifacts must be cleared before a new placement attempt;
 - a failed placement must not leave a stale `output.png`;
-- a successful placement must not leave an `error.txt`.
+- a successful placement must not leave a `worker_error.txt`.
 
-Persistent storage uses the regeneration-indexed output paths defined in the
-Regeneration section. The scratch `output.png` file must not be used as the
-persistent object path.
+Persistent storage uses the regeneration-indexed output paths defined in
+the Regeneration section. The scratch `output.png` file must not be used
+as the persistent object path.
 
-A regeneration may reuse `room_cleaned.png`, `room_geometry.json`,
-`room_guides.png`, and `sofa_prepared.png` from the prior attempt. Stage 2 must
-use `room_cleaned.png`, not `room_guides.png`, as the room image input. It must
-clear `output.png` and `error.txt` before the new placement attempt.
+A regeneration may reuse `room_cleaned.png`, `room_corners.png`,
+`room_dimensions.png`, the persisted geometry classification on the job
+row, and `sofa_prepared.png` from the prior attempt. Stage 2 must use
+`room_cleaned.png`, not `room_corners.png` or `room_dimensions.png`, as
+the room image input to the placement model. It must clear `output.png`
+and any pending `worker_error.txt` before the new placement attempt.
 
 ### Prompting
 
-The first in-home simulation pipeline uses two distinct prompt families:
+The in-home simulation pipeline uses two distinct prompt families:
 
-- a room preparation prompt family covering the validation, cleaning, and
-  room-geometry point detection prompts;
-- a sofa placement prompt family covering the final placement prompt.
+- a **room preparation** prompt family covering the validation, cleaning,
+  scene-classification, and corner-dot-placement prompts;
+- a **sofa placement** prompt family covering the placement prompt and
+  the placement-measurement prompt that powers the self-correcting loop.
 
-Both families must be treated as fixed versioned prompt assets. Optional
-extra instructions may be appended as a prompt note, but they must not
-replace a base prompt.
+Both families are versioned. The current pinned versions are:
 
-The first pinned prompt versions are:
+- `room_prep_v003` for the corners step. Earlier sub-steps (validation,
+  cleaning, scene classifier) carry their original v001/v002 strings on
+  their providers; v003 is the version of the corners prompt where the
+  FRAME-EDGE WARNING and SELF-CHECK blocks were added on 2026-04-30.
+- `sofa_placement_v003` for the placement prompt. v003 is the version
+  where the DOORS-DO-NOT-BLOCK block, EXACTLY language, ANTI-REGRESSION
+  block, calibrated corner-position metres, and the `{{FEEDBACK_BLOCK}}`
+  placeholder were added on 2026-04-30. The OpenAI placement provider,
+  the Gemini fallback placement provider, and the mock placement
+  provider must all carry the same `sofa_placement_v003` string when
+  the OpenAI placement template is bumped.
 
-- `room_prep_v001` for the room preparation prompt family;
-- `sofa_placement_v001` for the sofa placement prompt family.
+Optional extra instructions may be appended as a prompt note, but they
+must not replace a base prompt. Markdown copies of the live prompt
+strings under `prompts/sofa_placement_v00x/` are documentation-only; the
+TypeScript constants in the worker code are the source of truth.
 
-The implementation plan may define the exact prompt asset file paths and must
-record the rationale for any later prompt version bump.
+The corners prompt must instruct the AI provider to:
+
+- place exactly 4 yellow dots on the architectural corners of the back
+  wall (back_wall mode) or exactly 6 yellow dots covering the inner
+  vertical seam plus the four outer wall ends (corner mode);
+- treat the photo edge as not the seam — never push back-wall dots all
+  the way to X≈0 or X≈image-width;
+- self-check vertical alignment of paired dots before returning;
+- not draw any lines, text, or numbers; only the yellow dots.
 
 The placement prompt must instruct the AI provider to:
 
@@ -613,32 +750,65 @@ The placement prompt must instruct the AI provider to:
 - not introduce furniture or decoration that is not in the cleaned room;
 - preserve the prepared sofa identity, including silhouette, cushion
   arrangement, armrest profile, base style, and fabric appearance;
-- place the sofa against the detected main wall or room corner at a size that
-  matches the supplied wall dimensions;
-- not reproduce any reference scale guides, numeric labels, or annotation
-  marks in the final output.
+- place the sofa against the detected main wall or room corner at the
+  EXACT supplied real-world dimensions, never regressing to a generic
+  stock-sofa shape;
+- render the sofa IN FRONT of any door, window, AC unit, socket, or
+  other architectural feature when the chosen size and position would
+  visually overlap them (the sofa occludes the feature; never shrink
+  or shift to avoid it);
+- not reproduce any reference scale guides, numeric labels, or
+  annotation marks in the final output.
 
 ### Providers
 
-The MVP uses one configured primary provider per stage. The exact primary model
-names must be pinned in the implementation plan after provider validation. The
-choice may differ between stages; for example, an OpenAI image model may run
-room-geometry point detection while an image-edit model runs cleaning and
-placement.
+The pipeline uses six logical provider roles, each pinned to a primary
+model and selected at runtime by `IN_HOME_SIMULATION_PROVIDER_MODE`
+(`mock` for local smoke testing or `live` for real provider calls):
 
-The room-geometry point detection step must request structured point
-coordinates from the configured image model in one call. The model must return
-`mode`, `points`, `confidence` when available, and `failure_reason` when the
-room is not exploitable. Deterministic application code must draw the dimension
-arrows from those points. The image model must not be responsible for rendering
-the final guide overlay.
+- **Validation provider**: GPT-5 vision (Chat Completions, JSON object
+  response format). Returns `{ok, confidence, failure_reason}` on the
+  normalized photo. Mock returns ok=true.
+- **Cleaning provider**: gpt-image-2 image-edit. Removes existing
+  furniture from the compressed room photo while keeping geometry,
+  openings, fixtures, and lighting identical. Mock is the identity
+  transform.
+- **Scene classifier provider**: GPT-5 vision (Chat Completions, JSON
+  object response format). Returns `{mode, confidence, reason}` where
+  `mode` is `back_wall`, `corner`, or `reshoot`. Mock returns a
+  configurable mode (default `back_wall`) per
+  `IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE`.
+- **Corners provider**: gpt-image-2 image-edit, wrapped in a 3-attempt
+  retry loop with the geometric validator. Paints 4 or 6 yellow dots on
+  the cleaned room. Mock paints deterministic placeholder dots.
+- **Placement provider**: gpt-image-2 image-edit. The OpenAI primary is
+  wrapped in the self-correcting feedback loop for back_wall mode. Mock
+  returns empty bytes; the orchestrator stamps a placeholder rectangle.
+- **Placement measurement provider**: GPT-5 vision (Chat Completions,
+  JSON object response format). Returns `{sofa_width_pct,
+  sofa_height_pct, position}` for back_wall mode placement outputs.
+  Mock is not currently provided; tests inject a fake provider directly.
 
-The MVP does not require a secondary provider fallback. If the configured
-primary provider for a stage is unavailable, the attempt must fail or retry
-according to the retry rules.
+The room-geometry detection process is deliberately split into the scene
+classifier (mode only, JSON), the corners image-edit step (dots painted
+on the photo), and the local lines code (pixel detection + classification
++ overlay rendering). The image model is never asked to return numeric
+point coordinates as JSON; that approach was tried and rejected because
+gpt-image-2 is unreliable at structured numeric output. The image model
+is also never responsible for rendering the final guide overlay.
 
-If a provider does not return image data when image data is required, the
-attempt must fail with a readable error.
+#### Optional Gemini fallback for placement
+
+When `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini` is set in the worker
+environment, the placement provider is wrapped in a
+`FallbackPlacementProvider` that tries the OpenAI primary first and only
+calls Gemini if the primary returns a failure result. Gemini reuses the
+same `buildPlacementPrompt` output, so prompt-version bumps automatically
+apply to both. By default the fallback is disabled and the worker runs
+OpenAI-only.
+
+If a provider does not return image data when image data is required,
+the attempt must fail with a readable error.
 
 ### Output Normalization
 
@@ -650,10 +820,31 @@ normalize the output by resizing it to the cleaned room dimensions.
 
 ### Retries
 
-The default maximum attempts per stage is three.
+There are three distinct retry layers in the worker, each with its own
+budget:
 
-The worker may retry transient provider, network, timeout, or rate-limit
-errors until the per-stage maximum is reached.
+- **Stage-level retries** (`room_prep_attempt_count` and
+  `placement_attempt_count`): a stage that fails with a transient error
+  may be re-queued by the resilience flow and re-claimed by a worker.
+  Default maximum per stage is three. These counters live on the job
+  row and survive worker restarts.
+- **Corners-step retry** (inside Stage 1, `MAX_CORNER_PLACEMENT_ATTEMPTS`,
+  default 3): when the corners image-edit step returns dots that fail
+  the geometric validator, the worker re-runs the same image-edit call
+  inside the same stage attempt. This budget does not bump the stage
+  attempt counter. After exhaustion the stage fails with a
+  `corners_failed` reason.
+- **Placement feedback retry** (inside Stage 2 back_wall mode,
+  `MAX_PLACEMENT_ATTEMPTS`, default 3, tolerance
+  `PLACEMENT_TOLERANCE_PCT`, default 5): when the placement output
+  measures off-target, the worker re-runs the placement image-edit call
+  with a corrective `FEEDBACK_BLOCK` injected into the prompt. This
+  budget does not bump the placement attempt counter. After exhaustion
+  the worker returns the closest-to-target candidate.
+
+The worker may retry transient provider, network, timeout, or
+rate-limit errors at any of the three layers until the relevant budget
+is reached.
 
 The worker must not retry errors caused by:
 
@@ -821,24 +1012,48 @@ The worker environment must include:
 - `APP_ENV`: `dev`, `prod`, or `local`;
 - `SUPABASE_URL`: Supabase project URL for the matching environment;
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase service credential;
-- provider API keys required by the primary providers selected in the
-  implementation plan, such as `GEMINI_API_KEY` or `OPENAI_API_KEY`;
-- `IN_HOME_SIMULATION_QUEUE_NAME`: Supabase Queue name for in-home simulation
-  work messages;
-- `IN_HOME_SIMULATION_MAX_ATTEMPTS`: optional override for maximum attempts per
-  stage;
-- `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`: optional concurrency limit for one
-  queue consumer invocation;
-- `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`: optional override for the worker claim
-  TTL per stage, defaulting to 600 seconds;
-- `IN_HOME_SIMULATION_TMP_DIR`: optional local temporary directory root,
-  defaulting to an Edge Function-compatible temporary directory when needed;
+- `OPENAI_API_KEY`: required when `IN_HOME_SIMULATION_PROVIDER_MODE=live`;
+  used by validation, cleaning, scene classifier, corners, placement,
+  and placement-measurement providers;
+- `GEMINI_API_KEY`: required when the optional Gemini placement
+  fallback is enabled (see `IN_HOME_SIMULATION_FALLBACK_PROVIDER`).
+
+Worker-specific configuration:
+
+- `IN_HOME_SIMULATION_PROVIDER_MODE`: `mock` (local smoke testing) or
+  `live` (real AI providers). Required to be `live` in any real
+  deployment. Mock mode wires the deterministic stubs documented in
+  Providers and lets the local smoke gate run without provider keys per
+  SPEC-0008.
+- `IN_HOME_SIMULATION_FALLBACK_PROVIDER`: optional. Setting it to
+  `gemini` activates the `FallbackPlacementProvider` wrapper around the
+  OpenAI placement primary. Disabled when unset.
+- `IN_HOME_SIMULATION_QUEUE_NAME`: Supabase Queue name for in-home
+  simulation work messages;
+- `IN_HOME_SIMULATION_MAX_ATTEMPTS`: optional override for the
+  per-stage attempt budget;
+- `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`: optional concurrency limit
+  for one queue consumer invocation;
+- `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`: optional override for the
+  worker claim TTL per stage, defaulting to 600 seconds;
+- `IN_HOME_SIMULATION_MAX_EDGE_PX`: optional override for the maximum
+  longest-edge size used during the compression sub-step of stage 1.
+  Default 720. Lowering this reduces input-token cost at gpt-image-2.
+- `IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE`: optional, only relevant when
+  `IN_HOME_SIMULATION_PROVIDER_MODE=mock`. Forces the mock scene
+  classifier to return `back_wall` (default) or `corner`.
+- `IN_HOME_SIMULATION_WORKER_ID_PREFIX`: optional prefix for the
+  generated worker identifier; defaults to `edge`.
+- `IN_HOME_SIMULATION_TMP_DIR`: optional local temporary directory
+  root, defaulting to an Edge Function-compatible temporary directory
+  when needed;
 - `SIMULATION_RETENTION_HOURS`: optional override for the retention
   window, capped at the SPEC-0003 maximum of 24.
 
 DEV and PROD values must remain isolated.
 
-No service-role credential or AI provider key may be exposed to `apps/web`.
+No service-role credential or AI provider key may be exposed to
+`apps/web`.
 
 ## Acceptance Criteria
 
@@ -865,11 +1080,25 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - Worker room photo normalization applies EXIF orientation before downstream
   processing.
 - Stage 1 logical sub-steps cover worker-side normalization, optional
-  compression, validation, cleaning, a single image-model room-geometry call
-  returning mode, points, confidence, and failure reason when applicable, and
-  deterministic dimension-guide rendering on the cleaned room photo.
-- Stage 2 logical sub-steps cover dimension validation, prepared sofa
-  materialization, and composition.
+  compression, validation (vision JSON), cleaning (image-edit), scene
+  classification (vision JSON returning mode + confidence + reshoot),
+  corner-dot placement (image-edit), pixel-based dot detection,
+  classification, geometric validation with retry, and deterministic
+  dimension-guide rendering on the corners-annotated room photo.
+- The room-geometry detection process is split into mode classification
+  (vision JSON), dot placement (image-edit), and pure-code detection;
+  the image model is never asked to return numeric point coordinates as
+  JSON.
+- Stage 2 logical sub-steps cover supplied-dimensions validation,
+  prepared sofa materialization, prompt construction with calibrated
+  corner positions in metres, and composition. For `back_wall` mode
+  with full sofa dimensions supplied, the composition runs inside a
+  vision-measured self-correcting loop with a default 3-attempt budget
+  and a default ±5 percentage-point tolerance; the closest candidate
+  is returned when the loop is exhausted.
+- For `corner` mode the placement prompt carries the same DOORS / EXACTLY
+  / ANTI-REGRESSION reinforcement as `back_wall`, but the measurement
+  loop is intentionally not active in the current MVP.
 - The scratch folder contract names the artifacts each stage may produce.
 - Job statuses include the wait state required by SPEC-0004 between
   dimension collection and placement.
@@ -899,15 +1128,27 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
   wall height.
 - `corner` mode requires three visitor-supplied measurements: left wall width,
   right wall width, and room height.
-- The MVP does not request room depth or camera-position distance for either
-  geometry mode.
-- The dimension-guide overlay does not require a worker watermark in the MVP.
-- The worker preserves both `room_cleaned.png` without arrows and
-  `room_guides.png` with arrows; stage 2 uses `room_cleaned.png` as its room
-  input.
-- The first prompt versions are `room_prep_v001` and `sofa_placement_v001`.
-- The MVP uses one configured primary provider per stage, with exact model names
-  pinned in the implementation plan and no required secondary provider fallback.
+- `room_depth` is an optional `supplied_dimensions` key collected through
+  the green "Глубина" line in the dimension-guide overlay; it improves
+  the placement model's perspective scaling when provided. When omitted,
+  the placement prompt receives "unspecified".
+- The dimension-guide overlay does not require a worker watermark in
+  the MVP.
+- The worker preserves three artifacts at end of stage 1:
+  `room_cleaned.png` (no marks), `room_corners.png` (yellow dots only),
+  and `room_dimensions.png` (lines + Russian labels). Stage 2 uses
+  `room_cleaned.png` as its room image input.
+- The current pinned prompt versions are `room_prep_v003` for the
+  corners step and `sofa_placement_v003` for the placement step. v003
+  introduced FRAME-EDGE WARNING and SELF-CHECK in the corners prompt,
+  and DOORS-DO-NOT-BLOCK / EXACTLY / ANTI-REGRESSION / calibrated
+  corner-position metres / `{{FEEDBACK_BLOCK}}` in the placement prompt.
+- The MVP uses six configured providers (validation, cleaning, scene
+  classifier, corners, placement, placement-measurement) selected by
+  `IN_HOME_SIMULATION_PROVIDER_MODE`. Gemini is available as an
+  optional placement-only fallback through
+  `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini` and is disabled by
+  default.
 - The 24-hour retention rule from SPEC-0003 is enforced by purging private
   image artifacts and transitioning the simulation job to `expired`.
 - A visitor-abandoned job in `awaiting_dimensions` remains available until its
@@ -930,6 +1171,35 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
 - The spec explicitly defers final Supabase table names, relationships, storage
   bucket names, storage paths, and database constraints to a dedicated Supabase
   data model and storage specification.
+
+## Known Limitations And Future Work
+
+These items are intentionally out of scope for the current MVP and
+represent followup work, not bugs:
+
+- **Visitor UI** for collecting wall + sofa dimensions and the
+  left/center/right position keyword does not exist yet. Today the
+  dimensions arrive on the job through `submit_in_home_simulation_dimensions`
+  RPC; a real consumer of that RPC from the public flow is a future
+  task.
+- **Corner-mode placement measurement loop** is not implemented. The
+  measurement provider is contracted around back-wall geometry and
+  L-shape silhouettes (chaise extensions, ottomans) inflate the
+  measured width relative to the actual along-wall length. Adding a
+  corner-aware measurement contract would let the loop run for corner
+  mode too.
+- **L-shape sofas in `back_wall` mode** are a known measurement edge
+  case: the vision measurement reads the full silhouette including the
+  extension, which can report inflated width percentages even when the
+  visual placement is correct. The worker still returns the closest
+  attempt and the visual quality is acceptable; addressing this
+  requires either a shape-aware measurement or accepting the
+  measurement noise.
+- **Markdown copies** of `sofa_placement_v003` and `room_prep_v003`
+  prompts under `prompts/<version>/` are documentation-only. The
+  TypeScript constants in the worker code are the source of truth for
+  the prompt strings actually sent to the provider; do not assume the
+  markdown copies are kept in sync without explicit verification.
 
 ## Open Questions
 

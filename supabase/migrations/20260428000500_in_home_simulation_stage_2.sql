@@ -188,7 +188,7 @@ end;
 $$;
 
 create or replace function public.claim_specific_in_home_simulation_placement_job(
-  job_id uuid,
+  target_job_id uuid,
   worker_identifier text,
   claim_ttl_seconds integer default 600
 )
@@ -218,7 +218,7 @@ declare
   new_claim_expires_at timestamptz;
   claimed public.in_home_simulation_jobs;
 begin
-  if job_id is null then
+  if target_job_id is null then
     raise exception 'job_id is required';
   end if;
 
@@ -235,7 +235,7 @@ begin
   select id
   into candidate_id
   from public.in_home_simulation_jobs
-  where id = claim_specific_in_home_simulation_placement_job.job_id
+  where id = target_job_id
     and status = 'placement_queued'
     and retention_deadline > now()
     and placement_attempt_count < max_attempts_per_stage

@@ -15,7 +15,7 @@ import type {
   ValidationResult
 } from "../providers.ts";
 
-export const OPENAI_VISION_DEFAULT_MODEL = "gpt-4o";
+export const OPENAI_VISION_DEFAULT_MODEL = "gpt-5";
 
 const SYSTEM_PROMPT =
   "You are validating a customer-uploaded room photograph for an indoor furniture visualization service. Reply with strict JSON of shape {\"ok\": boolean, \"confidence\": number, \"failure_reason\": string}.";
@@ -39,7 +39,6 @@ type ChatMessage = {
 export type ChatCompletionsRequest = {
   model: string;
   messages: ChatMessage[];
-  temperature: number;
   response_format: { type: "json_object" };
 };
 
@@ -75,7 +74,6 @@ export function buildVisionValidationRequest(
         ]
       }
     ],
-    temperature: 0,
     response_format: { type: "json_object" }
   };
 }

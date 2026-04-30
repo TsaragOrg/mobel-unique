@@ -83,7 +83,7 @@ end;
 $$;
 
 create or replace function public.claim_specific_in_home_simulation_room_prep_job(
-  job_id uuid,
+  target_job_id uuid,
   worker_identifier text,
   claim_ttl_seconds integer default 600
 )
@@ -110,7 +110,7 @@ declare
   claimed_room_prep_attempt_count integer;
   claimed_max_attempts_per_stage integer;
 begin
-  if job_id is null then
+  if target_job_id is null then
     raise exception 'job_id is required';
   end if;
 
@@ -127,7 +127,7 @@ begin
   select id
   into candidate_id
   from public.in_home_simulation_jobs
-  where id = claim_specific_in_home_simulation_room_prep_job.job_id
+  where id = target_job_id
     and status = 'queued'
     and retention_deadline > now()
     and room_prep_attempt_count < max_attempts_per_stage

@@ -38,7 +38,9 @@ async function callRpc({ supabaseUrl, serviceRoleKey, name, body }) {
 async function main() {
   let batchSize = 100;
   for (let i = 2; i < process.argv.length; i++) {
-    if (process.argv[i] === "--batch-size") {
+    if (process.argv[i] === "--") {
+      continue;
+    } else if (process.argv[i] === "--batch-size") {
       batchSize = Number.parseInt(process.argv[++i], 10);
       if (!Number.isFinite(batchSize) || batchSize <= 0) {
         fail("--batch-size must be a positive integer", 2);

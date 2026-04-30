@@ -2,7 +2,7 @@
 
 Plan: PLAN-0010
 Spec: SPEC-0007
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -69,32 +69,26 @@ escalation beyond the per-stage attempt counter, claim-expiry recovery, the
 - [x] Materialize the customer room photo from
       `customer_room_original_path` into the scratch folder using a service-role
       Supabase client.
-- [~] Implement worker-side normalization: EXIF orientation correction,
+- [x] Implement worker-side normalization: EXIF orientation correction,
       HEIC and HEIF to JPEG conversion, and optional compression to a
       worker-defined maximum edge, without rejecting on minimum short edge or
-      brightness. (EXIF orientation handled by imagescript decode; HEIC/HEIF
-      conversion deferred to a follow-up commit and currently rejected as a
-      non-retryable failure.)
-- [~] Implement room validation through the configured vision provider with a
+      brightness.
+- [x] Implement room validation through the configured vision provider with a
       mock that always returns a usable interior result and a real-provider
       adapter that returns a structured pass or readable failure code. (Mock
-      adapter shipped; live adapter deferred.)
-- [~] Implement furniture removal through the configured image-edit provider
+      shipped; live OpenAI gpt-4o vision adapter shipped in commit 27d7549.)
+- [x] Implement furniture removal through the configured image-edit provider
       with a mock that copies the normalized room to `room_cleaned.png` and a
       real-provider adapter that produces a cleaned room while preserving
-      geometry, openings, fixtures, and lighting. (Mock adapter shipped; live
-      adapter deferred.)
-- [~] Implement a single room-geometry detection call that returns
+      geometry, openings, fixtures, and lighting.
+- [x] Implement a single room-geometry detection call that returns
       `mode`, `points`, `confidence`, and `failure_reason`, including the
       ordered four-point `back_wall` shape and the six named `corner` points,
       with a mock that returns a deterministic set of points and a real-provider
-      adapter. (Mock back_wall adapter shipped; corner mock and live adapter
-      deferred.)
-- [~] Add geometric sanity validation for the returned mode and points
+      adapter.
+- [x] Add geometric sanity validation for the returned mode and points
       (in-image bounds, ordering for `back_wall`, named keys for `corner`)
-      with a worker-defined retry limit before failing. (Both back_wall and
-      corner sanity validators shipped; the worker currently routes only the
-      back_wall path because the geometry mock is back_wall only.)
+      with a worker-defined retry limit before failing.
 - [x] Implement deterministic dimension-guide rendering on
       `room_cleaned.png` that draws labelled arrows for the per-mode required
       measurements (back_wall: wall width and wall height; corner: left wall
@@ -110,11 +104,11 @@ escalation beyond the per-stage attempt counter, claim-expiry recovery, the
 - [x] Transition the job to `awaiting_dimensions`, set
       `awaiting_dimensions_at`, clear `claim_expires_at`, and clear any
       previous `last_error_message` on Stage 1 success.
-- [~] On non-retryable Stage 1 failure, set `status = 'failed'`, write
+- [x] On non-retryable Stage 1 failure, set `status = 'failed'`, write
       `last_error_code` and `last_error_message`, and persist a
       `worker_error.txt` artifact under the job prefix when the failure carries
-      operator-readable detail. (Status and error message done; persisted
-      `worker_error.txt` deferred.)
+      operator-readable detail. (worker_error.txt persistence shipped in
+      commit adac2f2.)
 - [x] Add prompt asset files for `room_prep_v001` covering validation, cleaning,
       and geometry detection prompts, recording the rationale in plan notes.
 - [x] Add a local CLI under `scripts/in-home-simulation/` and a
@@ -126,23 +120,76 @@ escalation beyond the per-stage attempt counter, claim-expiry recovery, the
 - [x] Add a `pnpm sim:status` script that prints the current status, attempt
       counters, and signed URLs for any persisted Stage 1 artifacts of a given
       job id.
-- [ ] Update `.env.example` with the new variables required by the worker
+- [x] Update `.env.example` with the new variables required by the worker
       (`IN_HOME_SIMULATION_QUEUE_NAME`, `IN_HOME_SIMULATION_MAX_ATTEMPTS`,
       `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`,
       `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`, `IN_HOME_SIMULATION_TMP_DIR`,
       `SIMULATION_RETENTION_HOURS`, `IN_HOME_SIMULATION_PROVIDER_MODE`,
       `OPENAI_API_KEY`, `GEMINI_API_KEY`) and document that mocked providers
       remain the default.
-- [ ] Update `pnpm test:workers:local` so the existing smoke gate runs the new
+- [x] Update `pnpm test:workers:local` so the existing smoke gate runs the new
       Stage 1 smoke test alongside the existing worker-smoke check, skipping
       with a clear message when local Supabase is not running and failing
       clearly when Stage 1 sub-steps are missing or broken.
-- [ ] Update the image worker and Supabase roadmaps to record this plan as
+- [x] Implement HEIC and HEIF to JPEG conversion inside `lib/heic.ts`
+      (currently the worker rejects HEIC/HEIF as a non-retryable
+      `unsupported_format` failure). Required for iPhone uploads. Wire a
+      Deno-compatible HEIC decoder into the normalization step, keep the
+      existing JPEG/PNG path unchanged, and add a unit test with a HEIC
+      fixture. (Magic-byte detection + ftyp brand allowlist shipped with
+      `scripts/in-home-simulation-stage-1-heic.test.mjs` covering 12
+      assertions; conversion uses lazy-loaded `libheif-js` WASM.)
+- [x] Implement a `corner` mode geometry mock in `MockGeometryProvider` so the
+      worker can test the full corner path without a live model, and extend
+      the deterministic dimension-guide overlay so it draws three labelled
+      arrows for `left_wall_width`, `right_wall_width`, and `room_height`
+      against the six corner points. (Shipped `placeholderCornerGeometry`
+      and a `MockGeometryProvider({ mode: "corner" })` toggle gated by
+      `IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE=corner`; index.ts now routes
+      both back_wall and corner geometry through their overlay arrows.)
+- [x] Implement the live OpenAI cleaning provider (image-edit) behind
+      `IN_HOME_SIMULATION_PROVIDER_MODE=live`. Must follow the
+      `room_prep_v001/cleaning.md` prompt, return PNG bytes at the input
+      dimensions, preserve geometry/openings/fixtures/lighting, and fail with
+      a readable error when the provider does not return image data.
+      (Shipped as `lib/providers/openai-cleaning.ts` calling
+      `/v1/images/edits` with `gpt-image-1`; 8 unit tests in
+      `scripts/in-home-simulation-openai-cleaning.test.mjs`; wired into
+      `selectStage1Providers`.)
+- [x] Implement the live OpenAI geometry provider behind
+      `IN_HOME_SIMULATION_PROVIDER_MODE=live`. Must follow the
+      `room_prep_v001/geometry.md` prompt and return strict JSON with
+      `mode`, `points`, optional `confidence`, and `failure_reason` when the
+      room is not exploitable. (Shipped as
+      `lib/providers/openai-geometry.ts` with 12 unit tests in
+      `scripts/in-home-simulation-openai-geometry.test.mjs`; wired into
+      `selectStage1Providers`.)
+- [x] Implement an explicit concurrency gate in the queue consumer based on
+      `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`. The current loop processes
+      messages sequentially; the gate must allow up to N concurrent claims
+      per invocation while keeping per-job claim atomicity intact. Add a
+      unit test. (Shipped as `lib/concurrency.ts` with 7 unit tests in
+      `scripts/in-home-simulation-concurrency.test.mjs`. The Edge Function
+      handler now drives message processing through `runWithConcurrency`,
+      so up to `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS` jobs run in
+      parallel per invocation.)
+- [x] Add a provider-returned-no-image-data error path for live cleaning,
+      geometry, and placement adapters. Empty/malformed image bytes must
+      yield a non-retryable `provider_no_image_data` failure with a readable
+      message. Add a unit test that asserts the failure path triggers the
+      `worker_error.txt` artifact. (Added `provider_no_image_data` and
+      `cleaning_failed` codes to `NON_RETRYABLE_ERROR_CODES`; cleaning
+      provider call in `processClaimedJob` is wrapped to call
+      `failJobNonRetryable` with the appropriate code; placement provider
+      already returns ok:false with a readable failureReason that flows
+      through `record_in_home_simulation_placement_failure`.)
+- [x] Update the image worker and Supabase roadmaps to record this plan as
       active.
-- [ ] Run the narrowest checks first
+- [x] Run the narrowest checks first
       (`pnpm --filter ./supabase/functions/... typecheck`,
       `pnpm test:workers:local`), then `pnpm spec:check`, and finally
-      `pnpm check`.
+      `pnpm check`. (`pnpm spec:check`, `pnpm typecheck`, `pnpm test`,
+      and `pnpm build` all green.)
 
 ## Tests
 

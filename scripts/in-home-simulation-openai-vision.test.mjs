@@ -17,7 +17,7 @@ describe("buildVisionValidationRequest", () => {
 
     expect(payload.model).toBe(OPENAI_VISION_DEFAULT_MODEL);
     expect(payload.response_format).toEqual({ type: "json_object" });
-    expect(payload.temperature).toBe(0);
+    expect(payload.temperature).toBeUndefined();
     expect(Array.isArray(payload.messages)).toBe(true);
     const lastMessage = payload.messages[payload.messages.length - 1];
     expect(lastMessage.role).toBe("user");

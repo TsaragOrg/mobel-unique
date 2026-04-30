@@ -1,23 +1,39 @@
-// SPEC-0007 PLAN-0010 in-home simulation Stage 1 provider abstraction.
+// SPEC-0007 in-home simulation provider abstraction (v002).
 //
-// The Edge Function delegates room validation, furniture cleaning, and
-// room-geometry detection to providers behind these interfaces so a
-// developer can run the worker locally with mocked behavior and a
-// production deployment can swap in OpenAI or Gemini implementations
-// without changing the orchestrator.
+// Stage 1 pipeline (canonical, validated 2026-04-29):
+//   validation → cleaning → scene classification → corners (yellow
+//   dot placement) → lines (pure local code, no AI).
+//
+// Stage 2 pipeline:
+//   placement (back_wall or corner mode).
 //
 // `selectStage1Providers` reads `IN_HOME_SIMULATION_PROVIDER_MODE` and
-// returns the matching trio. The default mode is `mock` so the local
-// smoke gate runs without any real provider key per `SPEC-0008`. A
-// `live` mode is reserved for the upcoming OpenAI/Gemini adapters and
-// currently fails fast with a readable error.
+// returns the matching providers. Default is `mock` so the local smoke
+// gate runs without any real provider key per `SPEC-0008`. `live`
+// wires OpenAI for everything except the lines step (which is pure
+// local code and does not need a provider).
 
-import {
-  type BackWallGeometry,
-  type CornerGeometry,
-  placeholderBackWallGeometry
-} from "./geometry.ts";
+import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+
 import { OpenAIValidationProvider } from "./providers/openai-vision.ts";
+import { OpenAICleaningProvider } from "./providers/openai-cleaning.ts";
+import {
+  OpenAISceneClassifierProvider,
+  type SceneClassifierProvider,
+  type SceneClassifierResult,
+  type SceneMode
+} from "./providers/openai-scene-classifier.ts";
+import {
+  OpenAICornersProvider,
+  type CornersProvider,
+  type CornersResult
+} from "./providers/openai-corners.ts";
+import { OpenAIPlacementProvider } from "./providers/openai-placement.ts";
+import { OpenAIPlacementMeasurementProvider } from "./providers/openai-placement-measurement.ts";
+import {
+  FallbackPlacementProvider,
+  GeminiPlacementProvider
+} from "./providers/gemini-placement.ts";
 
 export type ValidationOk = {
   ok: true;
@@ -30,16 +46,6 @@ export type ValidationFailure = {
 };
 
 export type ValidationResult = ValidationOk | ValidationFailure;
-
-export type GeometrySuccess =
-  | (BackWallGeometry & { confidence: number | null })
-  | (CornerGeometry & { confidence: number | null });
-
-export type GeometryFailure = {
-  failureReason: string;
-};
-
-export type GeometryResult = GeometrySuccess | GeometryFailure;
 
 export interface ValidationProvider {
   readonly name: string;
@@ -55,24 +61,25 @@ export interface CleaningProvider {
   cleanRoom(imageBytes: Uint8Array): Promise<Uint8Array>;
 }
 
-export interface GeometryProvider {
-  readonly name: string;
-  readonly modelId: string;
-  readonly promptVersion: string;
-  detectGeometry(
-    imageBytes: Uint8Array,
-    imageWidth: number,
-    imageHeight: number
-  ): Promise<GeometryResult>;
-}
+export type {
+  SceneClassifierProvider,
+  SceneClassifierResult,
+  SceneMode
+} from "./providers/openai-scene-classifier.ts";
+
+export type {
+  CornersProvider,
+  CornersResult
+} from "./providers/openai-corners.ts";
 
 export type PlacementInputs = {
   cleanedRoomBytes: Uint8Array;
   cleanedRoomWidth: number;
   cleanedRoomHeight: number;
   preparedSofaBytes: Uint8Array | null;
-  geometry: BackWallGeometry | CornerGeometry;
+  mode: SceneMode;
   suppliedDimensions: Record<string, number>;
+  position?: "left" | "center" | "right";
 };
 
 export type PlacementSuccess = {
@@ -99,7 +106,8 @@ export interface PlacementProvider {
 export type Stage1Providers = {
   validation: ValidationProvider;
   cleaning: CleaningProvider;
-  geometry: GeometryProvider;
+  sceneClassifier: SceneClassifierProvider;
+  corners: CornersProvider;
 };
 
 export type Stage2Providers = {
@@ -108,8 +116,8 @@ export type Stage2Providers = {
 
 export class MockValidationProvider implements ValidationProvider {
   readonly name = "mock";
-  readonly modelId = "mock-validator-v001";
-  readonly promptVersion = "room_prep_v001";
+  readonly modelId = "mock-validator-v002";
+  readonly promptVersion = "room_prep_v002";
 
   validateRoom(_imageBytes: Uint8Array): Promise<ValidationResult> {
     return Promise.resolve({ ok: true, providerConfidence: 0.99 });
@@ -118,41 +126,97 @@ export class MockValidationProvider implements ValidationProvider {
 
 export class MockCleaningProvider implements CleaningProvider {
   readonly name = "mock";
-  readonly modelId = "mock-cleaner-v001";
-  readonly promptVersion = "room_prep_v001";
+  readonly modelId = "mock-cleaner-v002";
+  readonly promptVersion = "room_prep_v002";
 
   cleanRoom(imageBytes: Uint8Array): Promise<Uint8Array> {
-    // Mock cleaning is the identity transform. Real cleaning replaces
-    // furniture with empty walls in a follow-up provider.
+    // Mock cleaning is the identity transform.
     return Promise.resolve(imageBytes);
   }
 }
 
-export class MockGeometryProvider implements GeometryProvider {
+export class MockSceneClassifierProvider implements SceneClassifierProvider {
   readonly name = "mock";
-  readonly modelId = "mock-geometry-v001";
-  readonly promptVersion = "room_prep_v001";
+  readonly modelId = "mock-scene-v002";
+  readonly promptVersion = "room_prep_v002";
+  private readonly mode: SceneMode;
 
-  detectGeometry(
-    _imageBytes: Uint8Array,
-    imageWidth: number,
-    imageHeight: number
-  ): Promise<GeometryResult> {
-    const geometry = placeholderBackWallGeometry(imageWidth, imageHeight);
-    return Promise.resolve({ ...geometry, confidence: 0.5 });
+  constructor(options: { mode?: SceneMode } = {}) {
+    this.mode = options.mode ?? "back_wall";
+  }
+
+  classifyScene(_imageBytes: Uint8Array): Promise<SceneClassifierResult> {
+    return Promise.resolve({
+      ok: true,
+      mode: this.mode,
+      confidence: 1,
+      reason: "mock"
+    });
+  }
+}
+
+const MOCK_DOT_COLOR = 0xffd700ff;
+const MOCK_DOT_SIZE = 12;
+
+export class MockCornersProvider implements CornersProvider {
+  readonly name = "mock";
+  readonly modelId = "mock-corners-v002";
+  readonly promptVersion = "room_prep_v002";
+
+  async placeCornerDots(
+    imageBytes: Uint8Array,
+    mode: SceneMode
+  ): Promise<CornersResult> {
+    let image: Image;
+    try {
+      image = (await Image.decode(imageBytes)) as Image;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        failureReason: `mock corners decode failed: ${message}`
+      };
+    }
+    const w = image.width;
+    const h = image.height;
+    const inX = Math.round(w * 0.1);
+    const inY = Math.round(h * 0.1);
+    const placeDot = (x: number, y: number) => {
+      image.drawBox(
+        Math.max(0, x - MOCK_DOT_SIZE / 2),
+        Math.max(0, y - MOCK_DOT_SIZE / 2),
+        MOCK_DOT_SIZE,
+        MOCK_DOT_SIZE,
+        MOCK_DOT_COLOR
+      );
+    };
+    if (mode === "back_wall") {
+      placeDot(inX, inY);
+      placeDot(w - inX, inY);
+      placeDot(inX, h - inY);
+      placeDot(w - inX, h - inY);
+    } else {
+      const cx = Math.round(w / 2);
+      placeDot(inX, inY);
+      placeDot(cx, inY);
+      placeDot(w - inX, inY);
+      placeDot(inX, h - inY);
+      placeDot(cx, h - inY);
+      placeDot(w - inX, h - inY);
+    }
+    const out = await image.encode(0);
+    return { ok: true, pngBytes: out };
   }
 }
 
 export class MockPlacementProvider implements PlacementProvider {
   readonly name = "mock";
-  readonly modelId = "mock-placement-v001";
-  readonly promptVersion = "sofa_placement_v001";
+  readonly modelId = "mock-placement-v003";
+  readonly promptVersion = "sofa_placement_v003";
 
   placeSofa(_inputs: PlacementInputs): Promise<PlacementResult> {
-    // Mock placement does not actually composite the sofa; it returns a
-    // tagged signal so the orchestrator stamps a deterministic
-    // placeholder rectangle onto the cleaned room. Real placement
-    // performs the AI-driven inpainting in a follow-up provider.
+    // Mock placement returns empty bytes; the orchestrator stamps a
+    // deterministic placeholder rectangle onto the cleaned room.
     return Promise.resolve({
       ok: true,
       pngBytes: new Uint8Array(),
@@ -163,7 +227,9 @@ export class MockPlacementProvider implements PlacementProvider {
 }
 
 export function isProviderModeMock(value: string | null | undefined): boolean {
-  return value === undefined || value === null || value === "" || value === "mock";
+  return (
+    value === undefined || value === null || value === "" || value === "mock"
+  );
 }
 
 export function isProviderModeLive(value: string | null | undefined): boolean {
@@ -175,27 +241,31 @@ export function selectStage1Providers(
   envGetter: (name: string) => string | undefined = () => undefined
 ): Stage1Providers {
   if (isProviderModeMock(providerMode)) {
+    const mockMode: SceneMode =
+      envGetter("IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE") === "corner"
+        ? "corner"
+        : "back_wall";
     return {
       validation: new MockValidationProvider(),
       cleaning: new MockCleaningProvider(),
-      geometry: new MockGeometryProvider()
+      sceneClassifier: new MockSceneClassifierProvider({ mode: mockMode }),
+      corners: new MockCornersProvider()
     };
   }
   if (isProviderModeLive(providerMode)) {
     const openaiKey = envGetter("OPENAI_API_KEY");
     if (!openaiKey) {
       throw new Error(
-        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation adapter"
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation, cleaning, scene-classifier, and corners adapters"
       );
     }
-    // Live validation through OpenAI vision; cleaning and geometry
-    // remain mocked until their live adapters land. The hybrid lets a
-    // developer test the live validation path against real photos
-    // without burning the cleaning or geometry budgets yet.
     return {
       validation: new OpenAIValidationProvider({ apiKey: openaiKey }),
-      cleaning: new MockCleaningProvider(),
-      geometry: new MockGeometryProvider()
+      cleaning: new OpenAICleaningProvider({ apiKey: openaiKey }),
+      sceneClassifier: new OpenAISceneClassifierProvider({
+        apiKey: openaiKey
+      }),
+      corners: new OpenAICornersProvider({ apiKey: openaiKey })
     };
   }
   throw new Error(
@@ -211,17 +281,40 @@ export function selectStage2Providers(
     return { placement: new MockPlacementProvider() };
   }
   if (isProviderModeLive(providerMode)) {
-    if (
-      !envGetter("OPENAI_API_KEY") &&
-      !envGetter("GEMINI_API_KEY")
-    ) {
+    const openaiKey = envGetter("OPENAI_API_KEY");
+    const geminiKey = envGetter("GEMINI_API_KEY");
+    if (!openaiKey && !geminiKey) {
       throw new Error(
-        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY or GEMINI_API_KEY"
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY or GEMINI_API_KEY for the placement adapter"
       );
     }
-    throw new Error(
-      "live providers are not implemented yet for in-home simulation Stage 2"
-    );
+    const fallbackEnabled =
+      envGetter("IN_HOME_SIMULATION_FALLBACK_PROVIDER") === "gemini";
+    const measurementProvider = openaiKey
+      ? new OpenAIPlacementMeasurementProvider({ apiKey: openaiKey })
+      : null;
+    if (openaiKey && fallbackEnabled && geminiKey) {
+      return {
+        placement: new FallbackPlacementProvider(
+          new OpenAIPlacementProvider({
+            apiKey: openaiKey,
+            measurementProvider
+          }),
+          new GeminiPlacementProvider({ apiKey: geminiKey })
+        )
+      };
+    }
+    if (openaiKey) {
+      return {
+        placement: new OpenAIPlacementProvider({
+          apiKey: openaiKey,
+          measurementProvider
+        })
+      };
+    }
+    return {
+      placement: new GeminiPlacementProvider({ apiKey: geminiKey! })
+    };
   }
   throw new Error(
     `unknown IN_HOME_SIMULATION_PROVIDER_MODE: ${providerMode}`

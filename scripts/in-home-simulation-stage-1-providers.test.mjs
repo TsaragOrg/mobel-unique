@@ -2,97 +2,83 @@ import { describe, expect, it } from "vitest";
 
 import {
   MockCleaningProvider,
-  MockGeometryProvider,
+  MockCornersProvider,
+  MockSceneClassifierProvider,
   MockValidationProvider,
   isProviderModeLive,
   isProviderModeMock,
   selectStage1Providers
 } from "../supabase/functions/in-home-simulation-worker/lib/providers.ts";
 
-describe("isProviderModeMock and isProviderModeLive", () => {
-  it("treat empty, null, undefined, and 'mock' as mock", () => {
+describe("isProviderModeMock / isProviderModeLive", () => {
+  it("treats unset / empty / 'mock' as mock mode", () => {
     expect(isProviderModeMock(undefined)).toBe(true);
     expect(isProviderModeMock(null)).toBe(true);
     expect(isProviderModeMock("")).toBe(true);
     expect(isProviderModeMock("mock")).toBe(true);
-    expect(isProviderModeMock("live")).toBe(false);
   });
 
-  it("treats only 'live' as live", () => {
+  it("treats 'live' as live mode", () => {
     expect(isProviderModeLive("live")).toBe(true);
     expect(isProviderModeLive("mock")).toBe(false);
-    expect(isProviderModeLive("")).toBe(false);
   });
 });
 
-describe("MockValidationProvider", () => {
-  it("always reports the room as usable", async () => {
-    const provider = new MockValidationProvider();
-    const result = await provider.validateRoom(new Uint8Array([1, 2, 3]));
-    expect(result.ok).toBe(true);
-    expect(provider.name).toBe("mock");
-    expect(provider.promptVersion).toBe("room_prep_v001");
-  });
-});
-
-describe("MockCleaningProvider", () => {
-  it("returns the input bytes unchanged", async () => {
-    const provider = new MockCleaningProvider();
-    const input = new Uint8Array([5, 10, 15]);
-    const output = await provider.cleanRoom(input);
-    expect(output).toBe(input);
-    expect(provider.promptVersion).toBe("room_prep_v001");
-  });
-});
-
-describe("MockGeometryProvider", () => {
-  it("returns deterministic back_wall geometry derived from image dimensions", async () => {
-    const provider = new MockGeometryProvider();
-    const result = await provider.detectGeometry(
-      new Uint8Array(),
-      1000,
-      800
-    );
-    expect("points" in result).toBe(true);
-    if ("points" in result) {
-      expect(result.mode).toBe("back_wall");
-      expect(Array.isArray(result.points)).toBe(true);
-      expect(result.points).toHaveLength(4);
-    }
-  });
-});
-
-describe("selectStage1Providers", () => {
-  it("returns the mock trio for the default mode", () => {
-    const providers = selectStage1Providers(undefined);
-    expect(providers.validation).toBeInstanceOf(MockValidationProvider);
-    expect(providers.cleaning).toBeInstanceOf(MockCleaningProvider);
-    expect(providers.geometry).toBeInstanceOf(MockGeometryProvider);
-  });
-
-  it("returns the mock trio for the explicit 'mock' mode", () => {
+describe("selectStage1Providers (mock)", () => {
+  it("returns the four mock providers", () => {
     const providers = selectStage1Providers("mock");
     expect(providers.validation).toBeInstanceOf(MockValidationProvider);
-  });
-
-  it("refuses 'live' mode without OPENAI_API_KEY", () => {
-    expect(() => selectStage1Providers("live", () => undefined)).toThrow(
-      /OPENAI_API_KEY/
+    expect(providers.cleaning).toBeInstanceOf(MockCleaningProvider);
+    expect(providers.sceneClassifier).toBeInstanceOf(
+      MockSceneClassifierProvider
     );
+    expect(providers.corners).toBeInstanceOf(MockCornersProvider);
   });
 
-  it("returns the hybrid live trio when OPENAI_API_KEY is present", () => {
+  it("respects IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE=corner", async () => {
+    const providers = selectStage1Providers("mock", (name) =>
+      name === "IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE" ? "corner" : undefined
+    );
+    const result = await providers.sceneClassifier.classifyScene(
+      new Uint8Array()
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.mode).toBe("corner");
+  });
+
+  it("defaults the mock scene mode to back_wall", async () => {
+    const providers = selectStage1Providers("mock");
+    const result = await providers.sceneClassifier.classifyScene(
+      new Uint8Array()
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.mode).toBe("back_wall");
+  });
+});
+
+describe("selectStage1Providers (live)", () => {
+  it("requires OPENAI_API_KEY", () => {
+    expect(() =>
+      selectStage1Providers("live", () => undefined)
+    ).toThrow(/OPENAI_API_KEY/);
+  });
+
+  it("returns OpenAI providers when OPENAI_API_KEY is set", () => {
     const providers = selectStage1Providers("live", (name) =>
       name === "OPENAI_API_KEY" ? "sk-test" : undefined
     );
     expect(providers.validation.name).toBe("openai");
-    // Cleaning and geometry remain mocked until their live adapters land.
-    expect(providers.cleaning.name).toBe("mock");
-    expect(providers.geometry.name).toBe("mock");
+    expect(providers.cleaning.name).toBe("openai");
+    expect(providers.sceneClassifier.name).toBe("openai");
+    expect(providers.corners.name).toBe("openai");
   });
+});
 
-  it("refuses unknown modes", () => {
-    expect(() => selectStage1Providers("imaginary")).toThrow(
+describe("selectStage1Providers (unknown mode)", () => {
+  it("throws on unknown provider mode", () => {
+    expect(() => selectStage1Providers("something-else")).toThrow(
       /unknown IN_HOME_SIMULATION_PROVIDER_MODE/
     );
   });

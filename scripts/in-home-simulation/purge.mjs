@@ -21,7 +21,9 @@ function ensureLocalSupabaseUrl(url) {
 
 async function main() {
   for (let i = 2; i < process.argv.length; i++) {
-    if (process.argv[i].startsWith("--")) {
+    if (process.argv[i] === "--") {
+      continue;
+    } else if (process.argv[i].startsWith("--")) {
       fail(`unknown flag: ${process.argv[i]}`, 2);
     }
   }

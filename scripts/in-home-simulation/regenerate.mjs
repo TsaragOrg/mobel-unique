@@ -37,7 +37,8 @@ function parseArgs(argv) {
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i];
-    if (value === "--wall-width") args.wallWidth = Number.parseFloat(argv[++i]);
+    if (value === "--") continue;
+    else if (value === "--wall-width") args.wallWidth = Number.parseFloat(argv[++i]);
     else if (value === "--wall-height") args.wallHeight = Number.parseFloat(argv[++i]);
     else if (value === "--left-wall") args.leftWallWidth = Number.parseFloat(argv[++i]);
     else if (value === "--right-wall") args.rightWallWidth = Number.parseFloat(argv[++i]);

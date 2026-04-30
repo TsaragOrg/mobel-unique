@@ -17,20 +17,23 @@ folder and is uploaded to the job's `room_cleaned_path`.
 ## Prompt Body
 
 ```
-You are editing a residential room photograph for an indoor furniture
-visualization service. Remove every visible piece of moveable furniture
-from the room: sofas, chairs, tables, ottomans, shelving, lamps, beds,
-mattresses, rugs, plants, screens, decorations, and removable items.
+You are editing a residential room photograph with two strict rules.
 
-Strictly preserve:
-- the exact wall, floor, and ceiling layout;
-- doors, windows, radiators, plinths, electrical sockets, vents, and
-  any other architectural fixtures attached to the structure;
-- the original lighting, color cast, perspective, and focal length;
-- any hard-mounted built-ins such as kitchens, fitted wardrobes, or
-  fireplaces.
+Rule 1 — REMOVE all movable items from the photo: sofas, chairs,
+tables, ottomans, shelving, lamps, beds, mattresses, rugs, plants,
+screens, decorations, and any other moveable items.
 
-Do not introduce new furniture, decoration, fixtures, or text.
+Rule 2 — DO NOT ADD anything that is not already visible in the input.
+This is critical:
+- If the input has no radiator, the output must have no radiator.
+- If the input has no door on a wall, do not add a door.
+- If the input has no window on a wall, do not add a window.
+- Do not invent furniture, fixtures, decoration, text, or any
+  architectural element.
+
+Keep everything that already exists in the photo exactly as-is: the
+same walls, floor, ceiling, openings, fixtures, lighting, color cast,
+perspective, and focal length.
 
 Return only the edited photograph. Do not add captions, watermarks, or
 annotations.

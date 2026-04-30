@@ -2,7 +2,7 @@
 
 Plan: PLAN-0011
 Spec: SPEC-0007
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -62,29 +62,26 @@ to `PLAN-0012`.
       job whose `retention_deadline` has passed, and refuses to claim a job
       whose `placement_attempt_count` already equals
       `max_attempts_per_stage`.
-- [~] Implement dimension validation against the job's `room_geometry_mode`
+- [x] Implement dimension validation against the job's `room_geometry_mode`
       and `supplied_dimensions`, rejecting cases such as a sofa wider than the
       supplied wall width for `back_wall`, a corner sofa wider than either
       supplied wall width for `corner`, and a sofa taller than the supplied
       wall or room height, with worker accept ranges separate from per-job
       validation. (SQL `submit_in_home_simulation_dimensions` enforces
-      per-mode key presence; sofa-vs-wall numeric range checks are deferred
-      until live providers and a real prepared-sofa size are wired.)
-- [~] Materialize the prepared sofa asset referenced by
+      per-mode key presence; numeric Stage 2 dimension validation shipped in
+      commit 4324ca6.)
+- [x] Materialize the prepared sofa asset referenced by
       `prepared_sofa_asset_id` and `prepared_render_cell_id` into
       `sofa_prepared.png` in the scratch folder, refusing the stage when the
       catalog row does not resolve to a public-usable render. (Worker
-      attempts to download the asset when `prepared_sofa_path` is set and
-      tolerates absence under the mock placement provider; live providers
-      will hard-require the asset.)
-- [~] Implement the composition sub-step that calls the configured image-edit
+      downloads the asset when `prepared_sofa_path` is set; live placement
+      providers hard-require the asset.)
+- [x] Implement the composition sub-step that calls the configured image-edit
       provider with `room_cleaned.png`, `room_geometry.json`, the supplied
       dimensions, and `sofa_prepared.png`, and produces `output.png`, with a
       mock that pastes the prepared sofa onto the cleaned room at a
       deterministic position scaled from the supplied dimensions and a
-      real-provider adapter that follows the placement prompt rules. (Mock
-      stamps a deterministic placeholder rectangle on the cleaned room;
-      live adapter deferred.)
+      real-provider adapter that follows the placement prompt rules.
 - [x] Add output normalization that resizes `output.png` to the cleaned
       room dimensions when the provider returns a different size or aspect
       ratio.
@@ -116,11 +113,11 @@ to `PLAN-0012`.
       output exists, clear `reserved_generation_index`, record
       `last_regeneration_error_message`, return the job to `succeeded`, and
       keep `latest_generated_output_index` pointing at the prior result.
-- [~] On non-retryable Stage 2 failure with no previous output, set
+- [x] On non-retryable Stage 2 failure with no previous output, set
       `status = 'failed'`, write `last_error_code` and `last_error_message`,
       and persist a `worker_error.txt` artifact under the job prefix when the
-      failure carries operator-readable detail. (Status and error message
-      done; persisted `worker_error.txt` deferred.)
+      failure carries operator-readable detail. (worker_error.txt persistence
+      shipped in commit adac2f2.)
 - [x] Add prompt asset files for `sofa_placement_v001` covering the
       placement prompt rules listed in `SPEC-0007 Prompting`.
 - [x] Add a `pnpm sim:dimensions:submit` CLI that attaches
@@ -147,7 +144,31 @@ to `PLAN-0012`.
       `test:in-home-simulation:stage-2` psql smoke is wired into vitest;
       adding it to the chained `test:workers:local` is deferred until the
       Stage 2 Edge Function smoke is added against live local Supabase.)
-- [x] Update the image worker and Supabase roadmaps to record this plan as
+- [x] Implement the live OpenAI placement provider (image-edit) behind
+      `IN_HOME_SIMULATION_PROVIDER_MODE=live`. Currently
+      `selectStage2Providers` throws `"live providers are not implemented yet
+      for in-home simulation Stage 2"`. The adapter must follow the
+      `sofa_placement_v001/placement.md` prompt, accept the cleaned room,
+      geometry JSON, supplied dimensions, and prepared sofa, return PNG bytes
+      at the cleaned-room dimensions (resize when needed), and fail with a
+      readable error when the provider does not return image data.
+      (Shipped as `lib/providers/openai-placement.ts` calling
+      `/v1/images/edits` with `gpt-image-1` and multi-image references for
+      the cleaned room and the prepared sofa; 9 unit tests in
+      `scripts/in-home-simulation-openai-placement.test.mjs`; wired into
+      `selectStage2Providers`.)
+- [x] Implement a Gemini fallback adapter that the worker can use when the
+      OpenAI primary fails or is unavailable, controlled by an
+      `IN_HOME_SIMULATION_FALLBACK_PROVIDER` flag and a non-empty
+      `GEMINI_API_KEY`. Cover at least placement (Stage 2) and document
+      whether the same fallback applies to validation, cleaning, and
+      geometry in Stage 1. (Shipped as
+      `lib/providers/gemini-placement.ts` plus
+      `FallbackPlacementProvider`; activated when both keys are present
+      and `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini`. Stage 1 fallback
+      remains primary-only — Gemini Stage 1 adapters can be added later if
+      reliability data justifies it.)
+- [ ] Update the image worker and Supabase roadmaps to record this plan as
       active.
 - [x] Run the narrowest checks first
       (`pnpm --filter ./supabase/functions/... typecheck`,

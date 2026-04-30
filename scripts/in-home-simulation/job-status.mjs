@@ -98,7 +98,7 @@ async function signedUrlFor({ supabaseUrl, serviceRoleKey, path }) {
 }
 
 async function main() {
-  const jobId = process.argv[2];
+  const jobId = process.argv.slice(2).find((value) => value !== "--");
   if (!jobId) {
     fail("missing job id. Usage: pnpm sim:status -- <job_id>", 2);
   }

@@ -2,7 +2,7 @@
 
 Plan: PLAN-0012
 Spec: SPEC-0007
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -55,66 +55,84 @@ events queue. The MVP operational view stays on database state per
 
 ## Tasks
 
-- [ ] Add or update resilience and purge tests so they fail before
-      implementation begins.
-- [ ] Implement the per-stage retry policy inside the
+- [x] Add or update resilience and purge tests so they fail before
+      implementation begins. (Shipped as
+      `in-home-simulation-resilience-smoke.test.mjs`,
+      `in-home-simulation-stage-1-retry.test.mjs`,
+      `in-home-simulation-stage-1-failure-action.test.mjs`,
+      `in-home-simulation-error-artifact.test.mjs`,
+      `in-home-simulation-events.test.mjs`,
+      `in-home-simulation-orphan-paths.test.mjs`.)
+- [x] Implement the per-stage retry policy inside the
       `in-home-simulation-worker` Edge Function so transient provider,
       network, timeout, and rate-limit errors decrement attempts and re-queue
       the same stage when attempts remain, and so non-retryable failures move
-      the job to `failed` immediately.
-- [ ] Implement the expired-claim recovery path, either as a Postgres function
+      the job to `failed` immediately. (Shipped as `lib/retry.ts` +
+      `decideStageFailureAction` in `index.ts` per commits 864ba34 and
+      d6bdd54.)
+- [x] Implement the expired-claim recovery path, either as a Postgres function
       or as a queue-driven Edge Function path, that scans
       `in_home_simulation_jobs` rows whose `claim_expires_at` is in the past,
       reloads the job before any image work, returns the job to `queued` or
       `placement_queued` while attempts remain and the retention deadline has
       not passed, and otherwise marks the job `failed` with a
-      claim-expired reason in `last_error_message`.
-- [ ] Add a recovery sweep CLI under `scripts/in-home-simulation/` exposed as
+      claim-expired reason in `last_error_message`. (Shipped as the SQL
+      surface in migration `20260428001500_in_home_simulation_resilience.sql`
+      per commit 186c528.)
+- [x] Add a recovery sweep CLI under `scripts/in-home-simulation/` exposed as
       `pnpm sim:recover-expired` that runs the recovery path once against
       local Supabase and prints a summary of recovered and failed jobs.
-- [ ] Create `supabase/functions/in-home-simulation-purge/` with a Deno entry
+- [x] Create `supabase/functions/in-home-simulation-purge/` with a Deno entry
       point that, given a target time horizon, lists `in_home_simulation_jobs`
       rows whose `retention_deadline` is in the past, deletes the full
       `simulations/{job_id}/` prefix from `simulation-private-artifacts`,
       sets the row to `status = 'expired'`, sets `expired_at`, clears
       `reserved_generation_index` and `claim_expires_at`, and updates each
       `simulation_generated_outputs` row's `purged_at` for the deleted
-      objects.
-- [ ] Make the purge function idempotent: a missing object under the job
+      objects. (Shipped per commit 03ee2b9.)
+- [x] Make the purge function idempotent: a missing object under the job
       prefix counts as already deleted, and a repeated purge attempt for the
       same job must not fail because earlier files were already removed.
-- [ ] Implement the orphan room-upload cleanup as part of the purge function
+- [x] Implement the orphan room-upload cleanup as part of the purge function
       or as a sibling helper, deleting objects under
       `simulation-private-artifacts` whose owning row does not exist in
       `in_home_simulation_jobs`, that are older than one hour, and that match
-      the room-upload path shape.
-- [ ] Add a `pnpm sim:purge` CLI that triggers the purge function once
+      the room-upload path shape. (Shipped per commit 3627687.)
+- [x] Add a `pnpm sim:purge` CLI that triggers the purge function once
       against local Supabase and prints a summary of purged jobs and orphan
       objects.
-- [ ] Add the operational view payload assembly in `pnpm sim:status` so it
+- [~] Add the operational view payload assembly in `pnpm sim:status` so it
       prints the SPEC-0007 observability fields: status transitions with
       timestamps, attempt counters per stage, provider and model used per
       sub-step from the persisted artifacts and outputs, prompt versions per
       family, input artifact paths, output artifact paths, and the latest
-      failure message when present.
-- [ ] Refuse to start any stage on a job whose `retention_deadline` has
+      failure message when present. (Stage 1/Stage 2 fields and signed URLs
+      shipped; full status-transition history feed pending verification
+      against the `worker_job_events` table.)
+- [x] Refuse to start any stage on a job whose `retention_deadline` has
       already passed, with a clear non-retryable failure path that does not
       consume the per-stage attempt budget intended for transient retries.
-- [ ] Update `.env.example` with any new resilience and purge variables (for
+      (Enforced inside the SQL claim functions in
+      `20260428001500_in_home_simulation_resilience.sql`.)
+- [x] Update `.env.example` with any new resilience and purge variables (for
       example a recovery sweep batch size, a purge dry-run flag, and the
       orphan upload age threshold), keeping `SIMULATION_RETENTION_HOURS`
-      capped at the SPEC-0003 maximum of 24.
+      capped at the SPEC-0003 maximum of 24. (`supabase/.env.example`
+      already lists `IN_HOME_SIMULATION_PURGE_BATCH_SIZE`,
+      `IN_HOME_SIMULATION_ORPHAN_MIN_AGE_HOURS`, and
+      `SIMULATION_RETENTION_HOURS`.)
 - [ ] Extend `pnpm test:workers:local` so the existing smoke gate runs the
       resilience and purge smoke tests alongside the worker-smoke, Stage 1,
       and Stage 2 checks, skipping with a clear message when local Supabase
       is not running and failing clearly when claim recovery, purge, or the
       observability view do not match `SPEC-0007`.
-- [ ] Update the image worker and Supabase roadmaps to record this plan as
+- [x] Update the image worker and Supabase roadmaps to record this plan as
       active.
-- [ ] Run the narrowest checks first
+- [x] Run the narrowest checks first
       (`pnpm --filter ./supabase/functions/... typecheck`,
       `pnpm test:workers:local`), then `pnpm spec:check`, and finally
-      `pnpm check`.
+      `pnpm check`. (All four commands green; resilience SQL and purge
+      Edge Function exercised by their dedicated vitest scripts.)
 
 ## Tests
 

@@ -29,7 +29,9 @@ function parseArgs(argv) {
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i];
-    if (value === "--photo") {
+    if (value === "--") {
+      continue;
+    } else if (value === "--photo") {
       args.photo = argv[++i];
     } else if (value === "--queue") {
       args.queue = argv[++i];

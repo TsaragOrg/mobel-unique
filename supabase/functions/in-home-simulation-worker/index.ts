@@ -1,10 +1,9 @@
-import { decode, Image } from "npm:imagescript@1.2.16";
+import { decode, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 import {
-  dimensionGuideArrowsForBackWall,
-  isHeicLikeExtension,
-  type GuideArrow
-} from "./lib/geometry.ts";
+  convertHeicBytesToJpeg,
+  shouldConvertHeic
+} from "./lib/heic.ts";
 import {
   COMPRESSED_JPEG_QUALITY,
   NORMALIZED_JPEG_QUALITY,
@@ -13,12 +12,11 @@ import {
   shouldCompress
 } from "./lib/normalize.ts";
 import {
-  type GeometryResult,
   selectStage1Providers,
-  selectStage2Providers
+  selectStage2Providers,
+  type SceneMode
 } from "./lib/providers.ts";
 import { decideStageFailureAction } from "./lib/retry.ts";
-import { validateBackWallGeometry } from "./lib/sanity.ts";
 import {
   validateSuppliedBackWallDimensions,
   validateSuppliedCornerDimensions
@@ -32,8 +30,12 @@ import {
   buildSubStepEvent,
   type WorkerJobEventRow
 } from "./lib/events.ts";
-
-const DEFAULT_MAX_GEOMETRY_ATTEMPTS = 3;
+import { runWithConcurrency } from "./lib/concurrency.ts";
+import {
+  classifyDots,
+  detectYellowDots,
+  drawDimensionLines
+} from "./lib/lines.ts";
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
@@ -92,15 +94,6 @@ const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_CLAIM_TTL_SECONDS = 600;
 const DEFAULT_QUEUE_NAME = "local_in_home_simulation_jobs";
 const DEFAULT_BATCH_SIZE = 1;
-const ARROW_COLOR = 0xff3b30ff;
-const ARROW_WIDTH_PX = 6;
-const LABEL_BACKING_COLOR = 0x000000c0;
-const LABEL_TEXT_COLOR = 0xffffffff;
-
-const BACK_WALL_LABELS = {
-  wallWidth: "Largeur mur",
-  wallHeight: "Hauteur mur"
-};
 
 function jsonResponse(body: WorkerResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -205,7 +198,7 @@ async function claimSpecificRoomPrepJob(
     serviceRoleKey,
     "claim_specific_in_home_simulation_room_prep_job",
     {
-      job_id: jobId,
+      target_job_id: jobId,
       worker_identifier: workerIdentifier,
       claim_ttl_seconds: claimTtlSeconds
     }
@@ -226,7 +219,7 @@ async function claimSpecificPlacementJob(
     serviceRoleKey,
     "claim_specific_in_home_simulation_placement_job",
     {
-      job_id: jobId,
+      target_job_id: jobId,
       worker_identifier: workerIdentifier,
       claim_ttl_seconds: claimTtlSeconds
     }
@@ -394,75 +387,11 @@ async function failJobNonRetryable(
   }
 }
 
-function drawArrow(image: Image, arrow: GuideArrow): void {
-  const headSize = Math.max(10, Math.round(ARROW_WIDTH_PX * 4));
-  image.drawBox(
-    Math.min(arrow.from.x, arrow.to.x),
-    Math.min(arrow.from.y, arrow.to.y),
-    Math.max(1, Math.abs(arrow.to.x - arrow.from.x) || ARROW_WIDTH_PX),
-    Math.max(1, Math.abs(arrow.to.y - arrow.from.y) || ARROW_WIDTH_PX),
-    ARROW_COLOR
-  );
-  image.drawBox(
-    Math.max(0, arrow.from.x - headSize / 2),
-    Math.max(0, arrow.from.y - headSize / 2),
-    headSize,
-    headSize,
-    ARROW_COLOR
-  );
-  image.drawBox(
-    Math.max(0, arrow.to.x - headSize / 2),
-    Math.max(0, arrow.to.y - headSize / 2),
-    headSize,
-    headSize,
-    ARROW_COLOR
-  );
-}
-
-let cachedFont: Uint8Array | null = null;
-async function defaultFont(): Promise<Uint8Array> {
-  if (cachedFont) return cachedFont;
-  const url =
-    "https://raw.githubusercontent.com/matmen/ImageScript/master/tests/fonts/Roboto-Regular.ttf";
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`could not load default font: HTTP ${response.status}`);
-  }
-  const buffer = await response.arrayBuffer();
-  cachedFont = new Uint8Array(buffer);
-  return cachedFont;
-}
-
-async function drawLabel(image: Image, arrow: GuideArrow): Promise<void> {
-  const midX = Math.round((arrow.from.x + arrow.to.x) / 2);
-  const midY = Math.round((arrow.from.y + arrow.to.y) / 2);
-  let labelImage: Image;
-  try {
-    const fontSize = Math.max(20, Math.round(image.height * 0.025));
-    labelImage = await Image.renderText(
-      await defaultFont(),
-      fontSize,
-      arrow.label,
-      LABEL_TEXT_COLOR
-    );
-  } catch (_error) {
-    return;
-  }
-
-  const padding = 6;
-  const boxWidth = labelImage.width + padding * 2;
-  const boxHeight = labelImage.height + padding * 2;
-  const boxX = Math.max(0, midX - Math.round(boxWidth / 2));
-  const boxY = Math.max(0, midY - Math.round(boxHeight / 2));
-
-  image.drawBox(boxX, boxY, boxWidth, boxHeight, LABEL_BACKING_COLOR);
-  image.composite(labelImage, boxX + padding, boxY + padding);
-}
-
 async function createScratchDir(jobId: string): Promise<string> {
-  const root =
-    Deno.env.get("IN_HOME_SIMULATION_TMP_DIR") ??
-    (await Deno.makeTempDir({ prefix: "in-home-simulation-" }));
+  const envRoot = Deno.env.get("IN_HOME_SIMULATION_TMP_DIR");
+  const root = envRoot && envRoot.length > 0
+    ? envRoot
+    : await Deno.makeTempDir({ prefix: "in-home-simulation-" });
   const jobDir = `${root}/${jobId}`;
   await Deno.mkdir(jobDir, { recursive: true });
   return jobDir;
@@ -489,28 +418,10 @@ async function processClaimedJob(
     );
   }
 
-  if (isHeicLikeExtension(claim.customer_room_original_path)) {
-    await failJobNonRetryable(
-      supabaseUrl,
-      serviceRoleKey,
-      claim.job_id,
-      "unsupported_format",
-      "HEIC/HEIF input is not supported yet. Convert the photo to JPEG or PNG and re-enqueue.",
-      { storagePrefix: claim.storage_prefix, stage: "stage_1" }
-    );
-    throw new Error(
-      "HEIC/HEIF input is not supported yet; job marked as failed"
-    );
-  }
-
   const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
   const providers = selectStage1Providers(
     providerMode,
     (name) => Deno.env.get(name) ?? undefined
-  );
-  const maxGeometryAttempts = parsePositiveInt(
-    "IN_HOME_SIMULATION_MAX_GEOMETRY_ATTEMPTS",
-    DEFAULT_MAX_GEOMETRY_ATTEMPTS
   );
 
   const scratchDir = await createScratchDir(claim.job_id);
@@ -522,9 +433,38 @@ async function processClaimedJob(
     );
     await Deno.writeFile(`${scratchDir}/room_original.bin`, sourceBytes);
 
+    let bytesForDecode = sourceBytes;
+    if (shouldConvertHeic(sourceBytes, claim.customer_room_original_path)) {
+      try {
+        const conversion = await convertHeicBytesToJpeg(
+          sourceBytes,
+          NORMALIZED_JPEG_QUALITY,
+          {
+            encodeJpeg: async (rgba, width, height, quality) => {
+              const image = new Image(width, height);
+              image.bitmap.set(rgba);
+              return await image.encodeJPEG(quality);
+            }
+          }
+        );
+        bytesForDecode = conversion.jpegBytes;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await failJobNonRetryable(
+          supabaseUrl,
+          serviceRoleKey,
+          claim.job_id,
+          "unsupported_format",
+          `Could not convert HEIC/HEIF input: ${message}`,
+          { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+        );
+        throw new Error(`heic conversion failed: ${message}`);
+      }
+    }
+
     let decoded: Image;
     try {
-      decoded = (await decode(sourceBytes)) as Image;
+      decoded = (await decode(bytesForDecode)) as Image;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failJobNonRetryable(
@@ -544,9 +484,9 @@ async function processClaimedJob(
     const normalizedBytes = await decoded.encodeJPEG(NORMALIZED_JPEG_QUALITY);
     await Deno.writeFile(`${scratchDir}/room_normalized.jpg`, normalizedBytes);
 
-    // Validation via the configured provider. The mock always passes; a
-    // live provider may reject obviously unusable photos with a readable
-    // failure code.
+    // Validation via the configured provider. The mock always passes;
+    // a live provider may reject obviously unusable photos with a
+    // readable failure code.
     const validationResult = await providers.validation.validateRoom(
       normalizedBytes
     );
@@ -564,13 +504,19 @@ async function processClaimedJob(
       );
     }
 
-    // Optional compression: shrink the longest edge to the worker max if
-    // the source exceeds it, then re-encode as JPEG at a lower quality.
+    // Compression: cap the longest edge at the worker max
+    // (IN_HOME_SIMULATION_MAX_EDGE_PX, default 720) so OpenAI input
+    // tokens stay small.
     const maxEdge = parseMaxEdge(
       Deno.env.get("IN_HOME_SIMULATION_MAX_EDGE_PX")
     );
     let compressedImage: Image = decoded;
-    if (shouldCompress({ width: decoded.width, height: decoded.height }, maxEdge)) {
+    if (
+      shouldCompress(
+        { width: decoded.width, height: decoded.height },
+        maxEdge
+      )
+    ) {
       const target = computeResizedDimensions(
         { width: decoded.width, height: decoded.height },
         maxEdge
@@ -585,11 +531,40 @@ async function processClaimedJob(
     );
     await Deno.writeFile(`${scratchDir}/room_compressed.jpg`, compressedBytes);
 
-    // Cleaning via the configured provider. The mock returns the input
-    // bytes unchanged. The cleaned artifact is whatever PNG bytes the
-    // cleaning provider produces, decoded so geometry and overlay can
-    // operate on consistent pixel dimensions.
-    const cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
+    // Cleaning via the configured provider. The cleaned artifact is
+    // whatever PNG bytes the cleaning provider produces.
+    let cleanedRawBytes: Uint8Array;
+    try {
+      cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = message.toLowerCase().includes("no image data") ||
+          message.toLowerCase().includes("zero bytes")
+        ? "provider_no_image_data"
+        : "cleaning_failed";
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        code,
+        `Cleaning provider failed: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(`${code}: ${message}`);
+    }
+    if (!cleanedRawBytes || cleanedRawBytes.length === 0) {
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "provider_no_image_data",
+        "Cleaning provider returned no image data",
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(
+        "provider_no_image_data: cleaning provider returned no image data"
+      );
+    }
     let cleanedImage: Image;
     try {
       cleanedImage = (await decode(cleanedRawBytes)) as Image;
@@ -608,83 +583,113 @@ async function processClaimedJob(
     const cleanedBytes = await cleanedImage.encode(0);
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
-    // Geometry detection via the configured provider with sanity
-    // validation and a worker-defined attempt limit. Currently only
-    // back_wall mode is enforced by the sanity validator; corner mode
-    // sanity will be wired in once corner detection is implemented.
-    let geometryResult: GeometryResult | null = null;
-    let geometryFailures: string[] = [];
-    for (let attempt = 1; attempt <= maxGeometryAttempts; attempt++) {
-      const candidate = await providers.geometry.detectGeometry(
-        cleanedBytes,
-        cleanedImage.width,
-        cleanedImage.height
-      );
-      if ("failureReason" in candidate) {
-        geometryFailures.push(`attempt ${attempt}: ${candidate.failureReason}`);
-        continue;
-      }
-      if (candidate.mode === "back_wall") {
-        const sanity = validateBackWallGeometry(
-          candidate,
-          cleanedImage.width,
-          cleanedImage.height
-        );
-        if (!sanity.ok) {
-          geometryFailures.push(
-            `attempt ${attempt} sanity: ${sanity.failureReason}`
-          );
-          continue;
-        }
-      }
-      geometryResult = candidate;
-      break;
-    }
-
-    if (!geometryResult || "failureReason" in geometryResult) {
-      const reason = geometryFailures.join("; ") ||
-        ("failureReason" in (geometryResult ?? { failureReason: "unknown" })
-          ? (geometryResult as { failureReason: string }).failureReason
-          : "geometry detection exhausted attempts");
+    // Scene classification: GPT-5 vision JSON decides back_wall vs
+    // corner. This is the dedicated classifier step — gpt-image-2 alone
+    // is not reliable at the 4-vs-6 dot decision.
+    const sceneResult = await providers.sceneClassifier.classifyScene(
+      cleanedBytes
+    );
+    if (!sceneResult.ok) {
       await failJobNonRetryable(
         supabaseUrl,
         serviceRoleKey,
         claim.job_id,
-        "geometry_detection_failed",
-        reason,
+        "scene_classification_failed",
+        `Scene classifier failed: ${sceneResult.failureReason}`,
         { storagePrefix: claim.storage_prefix, stage: "stage_1" }
       );
-      throw new Error(`geometry detection failed: ${reason}`);
+      throw new Error(
+        `scene_classification_failed: ${sceneResult.failureReason}`
+      );
     }
+    if (sceneResult.mode === "reshoot") {
+      const reason = sceneResult.reason ??
+        "scene classifier could not understand the room";
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "reshoot_required",
+        `Пожалуйста, переснимите фото: ${reason}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(`reshoot_required: ${reason}`);
+    }
+    const mode: "back_wall" | "corner" = sceneResult.mode;
+    const sceneConfidence = sceneResult.confidence;
+
+    // Corners: gpt-image-2 places yellow dots on the cleaned room.
+    const cornersResult = await providers.corners.placeCornerDots(
+      cleanedBytes,
+      mode
+    );
+    if (!cornersResult.ok) {
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "corners_failed",
+        `Corners provider failed: ${cornersResult.failureReason}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(
+        `corners_failed: ${cornersResult.failureReason}`
+      );
+    }
+    const annotatedBytes = cornersResult.pngBytes;
+    await Deno.writeFile(`${scratchDir}/room_corners.png`, annotatedBytes);
+
+    // Lines: pure local code finds the yellow dots, classifies them as
+    // back_wall (4) or corner (6), and renders the dimension overlay
+    // with Russian labels.
+    let annotatedImage: Image;
+    try {
+      annotatedImage = (await decode(annotatedBytes)) as Image;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "corners_decode_failed",
+        `Could not decode the corners artifact: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(`corners decode failed: ${message}`);
+    }
+    const detectedDots = detectYellowDots(annotatedImage);
+    const classification = classifyDots(detectedDots);
+    if (!classification.ok) {
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "dot_classification_failed",
+        `Dot classification failed: ${classification.failureReason}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(
+        `dot_classification_failed: ${classification.failureReason}`
+      );
+    }
+    await drawDimensionLines(annotatedImage, classification.corners);
+    const dimensionsBytes = await annotatedImage.encode(0);
+    await Deno.writeFile(
+      `${scratchDir}/room_dimensions.png`,
+      dimensionsBytes
+    );
 
     const geometryForPersist = {
-      mode: geometryResult.mode,
-      points: geometryResult.points
+      mode: classification.corners.mode,
+      classified: classification.corners,
+      detected_dots: detectedDots
     };
-    const geometryBytes = new TextEncoder().encode(
-      JSON.stringify(geometryForPersist, null, 2)
-    );
-    await Deno.writeFile(`${scratchDir}/room_geometry.json`, geometryBytes);
-
-    // Overlay rendering on the cleaned image.
-    const overlayImage = cleanedImage.clone() as Image;
-    const arrows = geometryResult.mode === "back_wall"
-      ? dimensionGuideArrowsForBackWall(
-        { mode: "back_wall", points: geometryResult.points },
-        overlayImage.width,
-        overlayImage.height,
-        BACK_WALL_LABELS
-      )
-      : [];
-    for (const arrow of arrows) drawArrow(overlayImage, arrow);
-    for (const arrow of arrows) await drawLabel(overlayImage, arrow);
-    const overlayBytes = await overlayImage.encode(0);
-    await Deno.writeFile(`${scratchDir}/room_guides.png`, overlayBytes);
 
     const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
     const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
     const cleanedPath = `${claim.storage_prefix}/room_cleaned.png`;
-    const guidesPath = `${claim.storage_prefix}/room_guides.png`;
+    const cornersPath = `${claim.storage_prefix}/room_corners.png`;
+    const dimensionsPath = `${claim.storage_prefix}/room_dimensions.png`;
 
     await uploadStorageObject(
       supabaseUrl,
@@ -710,8 +715,15 @@ async function processClaimedJob(
     await uploadStorageObject(
       supabaseUrl,
       serviceRoleKey,
-      guidesPath,
-      overlayBytes,
+      cornersPath,
+      annotatedBytes,
+      "image/png"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      dimensionsPath,
+      dimensionsBytes,
       "image/png"
     );
 
@@ -725,10 +737,10 @@ async function processClaimedJob(
         room_normalized_path: normalizedPath,
         room_compressed_path: compressedPath,
         room_cleaned_path: cleanedPath,
-        dimension_guide_overlay_path: guidesPath,
-        room_geometry_mode: geometryResult.mode,
+        dimension_guide_overlay_path: dimensionsPath,
+        room_geometry_mode: mode,
         room_geometry_points: geometryForPersist,
-        room_geometry_confidence: geometryResult.confidence ?? null
+        room_geometry_confidence: sceneConfidence
       }
     );
   } finally {
@@ -824,10 +836,6 @@ async function processPlacementJob(
       }
     }
 
-    const geometry = (claim.room_geometry_points ?? {}) as Record<
-      string,
-      unknown
-    >;
     const suppliedDimensions = (claim.supplied_dimensions ?? {}) as Record<
       string,
       number
@@ -853,15 +861,23 @@ async function processPlacementJob(
       );
     }
 
+    const positionRaw = (claim.supplied_dimensions as
+      | Record<string, unknown>
+      | null)?.position;
+    const position: "left" | "center" | "right" | undefined =
+      positionRaw === "left" || positionRaw === "right" ||
+        positionRaw === "center"
+        ? positionRaw
+        : undefined;
+
     const placementResult = await providers.placement.placeSofa({
       cleanedRoomBytes: cleanedRawBytes,
       cleanedRoomWidth: cleanedImage.width,
       cleanedRoomHeight: cleanedImage.height,
       preparedSofaBytes,
-      // The provider interface accepts BackWall or Corner geometry; the
-      // mock ignores the contents.
-      geometry: geometry as never,
-      suppliedDimensions
+      mode: claim.room_geometry_mode,
+      suppliedDimensions,
+      position
     });
 
     if (!placementResult.ok) {
@@ -1019,15 +1035,15 @@ Deno.serve(async (request) => {
     });
   }
 
-  const results: Array<{
+  type MessageOutcome = {
     job_id?: string;
     msg_id?: number;
     outcome: "completed" | "failed" | "skipped";
     job_status?: string;
     error?: string;
-  }> = [];
+  };
 
-  for (const msg of messages) {
+  const processMessage = async (msg: DequeuedMessage): Promise<MessageOutcome> => {
     const jobId = msg.message?.job_id;
     if (!jobId) {
       // Malformed message: drop it so it does not loop.
@@ -1039,12 +1055,11 @@ Deno.serve(async (request) => {
           msg.msg_id
         );
       } catch (_error) { /* fall through */ }
-      results.push({
+      return {
         msg_id: msg.msg_id,
         outcome: "skipped",
         error: "queue message missing job_id"
-      });
-      continue;
+      };
     }
 
     const messageType = msg.message?.type;
@@ -1061,13 +1076,12 @@ Deno.serve(async (request) => {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        results.push({
+        return {
           job_id: jobId,
           msg_id: msg.msg_id,
           outcome: "failed",
           error: message
-        });
-        continue;
+        };
       }
 
       if (placementClaim === null) {
@@ -1079,13 +1093,12 @@ Deno.serve(async (request) => {
             msg.msg_id
           );
         } catch (_error) { /* fall through */ }
-        results.push({
+        return {
           job_id: jobId,
           msg_id: msg.msg_id,
           outcome: "skipped",
           error: "job is not in placement_queued state"
-        });
-        continue;
+        };
       }
 
       try {
@@ -1111,12 +1124,12 @@ Deno.serve(async (request) => {
             msg.msg_id
           );
         } catch (_error) { /* fall through */ }
-        results.push({
+        return {
           job_id: jobId,
           msg_id: msg.msg_id,
           outcome: "completed",
           job_status: "succeeded"
-        });
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const action = decideStageFailureAction(error, {
@@ -1141,32 +1154,31 @@ Deno.serve(async (request) => {
           } catch (_error) { /* fall through */ }
           // Do not delete the pgmq message; the visibility timeout
           // makes it visible again so a future invocation can retry.
-          results.push({
+          return {
             job_id: jobId,
             msg_id: msg.msg_id,
             outcome: "failed",
             job_status: "placement_queued",
             error: `retryable (${action.reason}): ${message}`
-          });
-        } else {
-          try {
-            await deleteRoomPrepMessage(
-              supabaseUrl,
-              serviceRoleKey,
-              queueName,
-              msg.msg_id
-            );
-          } catch (_error) { /* fall through */ }
-          results.push({
-            job_id: jobId,
-            msg_id: msg.msg_id,
-            outcome: "failed",
-            job_status: "failed",
-            error: message
-          });
+          };
         }
+
+        try {
+          await deleteRoomPrepMessage(
+            supabaseUrl,
+            serviceRoleKey,
+            queueName,
+            msg.msg_id
+          );
+        } catch (_error) { /* fall through */ }
+        return {
+          job_id: jobId,
+          msg_id: msg.msg_id,
+          outcome: "failed",
+          job_status: "failed",
+          error: message
+        };
       }
-      continue;
     }
 
     let claim: RoomPrepClaimRow | null;
@@ -1180,13 +1192,12 @@ Deno.serve(async (request) => {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      results.push({
+      return {
         job_id: jobId,
         msg_id: msg.msg_id,
         outcome: "failed",
         error: message
-      });
-      continue;
+      };
     }
 
     if (claim === null) {
@@ -1201,13 +1212,12 @@ Deno.serve(async (request) => {
           msg.msg_id
         );
       } catch (_error) { /* fall through */ }
-      results.push({
+      return {
         job_id: jobId,
         msg_id: msg.msg_id,
         outcome: "skipped",
         error: "job is not in queued state"
-      });
-      continue;
+      };
     }
 
     try {
@@ -1233,12 +1243,12 @@ Deno.serve(async (request) => {
           msg.msg_id
         );
       } catch (_error) { /* fall through */ }
-      results.push({
+      return {
         job_id: jobId,
         msg_id: msg.msg_id,
         outcome: "completed",
         job_status: "awaiting_dimensions"
-      });
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const action = decideStageFailureAction(error, {
@@ -1263,14 +1273,13 @@ Deno.serve(async (request) => {
         } catch (_error) { /* fall through */ }
         // Do not delete the pgmq message; the visibility timeout
         // makes it visible again so a future invocation can retry.
-        results.push({
+        return {
           job_id: jobId,
           msg_id: msg.msg_id,
           outcome: "failed",
           job_status: "queued",
           error: `retryable (${action.reason}): ${message}`
-        });
-        continue;
+        };
       }
 
       try {
@@ -1281,15 +1290,17 @@ Deno.serve(async (request) => {
           msg.msg_id
         );
       } catch (_error) { /* fall through */ }
-      results.push({
+      return {
         job_id: jobId,
         msg_id: msg.msg_id,
         outcome: "failed",
         job_status: "failed",
         error: message
-      });
+      };
     }
-  }
+  };
+
+  const results = await runWithConcurrency(messages, batchSize, processMessage);
 
   return jsonResponse({
     status: aggregateOutcome(results),
