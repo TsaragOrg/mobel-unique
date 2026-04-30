@@ -17,6 +17,7 @@
 | Done   | SPEC-0010 | PLAN-0024 | First-party public catalog and sofa detail API routes are available for the public storefront flow.                  |
 | Done   | SPEC-0006 | PLAN-0025 | Sofa edit render coverage polls generated job status after Generate so cron-driven worker output appears in admin.   |
 | Done   | SPEC-0006 | PLAN-0026 | Admin render job creation no longer owns provider or model selection.                                                |
+| Done   | SPEC-0013 | PLAN-0028 | Admin render input uploads resize oversized AI references and source photos before signed upload.                    |
 
 ## Next
 

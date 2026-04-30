@@ -294,6 +294,40 @@ describe("fabric render storage and scratch helpers", () => {
     ]);
   });
 
+  it("creates the scratch folder before recording an early failure", async () => {
+    const calls = [];
+    const fs = {
+      mkdir: async (path, options) => {
+        calls.push({ options, path, type: "mkdir" });
+      },
+      remove: async (path) => {
+        calls.push({ path, type: "remove" });
+      },
+      writeFile: async (path, data) => {
+        calls.push({ data, path, type: "writeFile" });
+      },
+      writeTextFile: async (path, text) => {
+        calls.push({ path, text, type: "writeTextFile" });
+      },
+    };
+
+    await recordFabricRenderScratchFailure({
+      errorMessage: "input download failed",
+      fs,
+      scratchDir: "/tmp/job",
+    });
+
+    expect(calls).toEqual([
+      { options: { recursive: true }, path: "/tmp/job", type: "mkdir" },
+      { path: "/tmp/job/output.png", type: "remove" },
+      {
+        path: "/tmp/job/error.txt",
+        text: "input download failed",
+        type: "writeTextFile",
+      },
+    ]);
+  });
+
   it("reads PNG and JPEG dimensions without transforming image bytes", () => {
     const png1x1 = base64ToUint8Array(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",

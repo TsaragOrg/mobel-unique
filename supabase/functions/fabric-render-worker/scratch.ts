@@ -68,6 +68,7 @@ export async function recordFabricRenderScratchSuccess(
 export async function recordFabricRenderScratchFailure(
   input: RecordFabricRenderScratchFailureInput
 ): Promise<void> {
+  await input.fs.mkdir(input.scratchDir, { recursive: true });
   await safeRemove(input.fs, scratchPath(input.scratchDir, "output.png"));
   await input.fs.writeTextFile(
     scratchPath(input.scratchDir, "error.txt"),

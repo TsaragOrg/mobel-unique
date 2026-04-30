@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { prepareAdminImageUploadFile } from "../../lib/admin-image-upload";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
@@ -1160,12 +1161,20 @@ function FabricCreateContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения показывают ошибку, заметку про фото и отправку формы.
+  // FR: Ces valeurs affichent une erreur, une note sur la photo et l'envoi du formulaire.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadInfoMessage, setUploadInfoMessage] = useState<string | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // RU: Это действие сохраняет новую ткань и может уменьшить большое фото перед отправкой.
+  // FR: Cette action enregistre un tissu et peut reduire une grande image avant l'envoi.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
+    setUploadInfoMessage(null);
     setIsSubmitting(true);
 
     try {
@@ -1173,6 +1182,7 @@ function FabricCreateContent({
         accessToken,
         dependencies,
         form: event.currentTarget,
+        onUploadInfo: setUploadInfoMessage,
         requireFiles: true,
       });
       const fabric = await dependencies.createFabric(accessToken, payload);
@@ -1192,6 +1202,7 @@ function FabricCreateContent({
         buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
         errorMessage={errorMessage}
         onSubmit={handleSubmit}
+        uploadInfoMessage={uploadInfoMessage}
       />
     </section>
   );
@@ -1206,12 +1217,19 @@ function FabricEditContent({
   dependencies: AdminCatalogPageDependencies;
   fabricId: string;
 }) {
+  // RU: Эти значения показывают ошибку, заметку про фото, данные ткани и действия формы.
+  // FR: Ces valeurs affichent une erreur, une note sur la photo, les donnees du tissu et les actions du formulaire.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadInfoMessage, setUploadInfoMessage] = useState<string | null>(
+    null,
+  );
   const [fabric, setFabric] = useState<AdminCatalogFabric | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(false);
 
+  // RU: Этот автоматический блок загружает ткань при открытии страницы.
+  // FR: Ce bloc automatique charge le tissu a l'ouverture de la page.
   useEffect(() => {
     let isCurrent = true;
 
@@ -1234,6 +1252,8 @@ function FabricEditContent({
     };
   }, [accessToken, dependencies, fabricId]);
 
+  // RU: Это действие сохраняет ткань и может уменьшить новое большое фото перед отправкой.
+  // FR: Cette action enregistre le tissu et peut reduire une nouvelle grande image avant l'envoi.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1242,6 +1262,7 @@ function FabricEditContent({
     }
 
     setErrorMessage(null);
+    setUploadInfoMessage(null);
     setIsSubmitting(true);
 
     try {
@@ -1250,6 +1271,7 @@ function FabricEditContent({
         dependencies,
         existingFabric: fabric,
         form: event.currentTarget,
+        onUploadInfo: setUploadInfoMessage,
         requireFiles: false,
       });
       const nextFabric = await dependencies.updateFabric(
@@ -1302,6 +1324,7 @@ function FabricEditContent({
             errorMessage={errorMessage}
             fabric={fabric}
             onSubmit={handleSubmit}
+            uploadInfoMessage={uploadInfoMessage}
           />
           <aside className="admin-aside" aria-labelledby="fabric-state-title">
             <h2 id="fabric-state-title">Fabric state</h2>
@@ -1340,6 +1363,8 @@ function SofaCreateContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения показывают ошибку, отправку формы, список тегов и выбранные теги.
+  // FR: Ces valeurs affichent une erreur, l'envoi du formulaire, la liste des tags et les tags choisis.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
@@ -1889,6 +1914,8 @@ function SofaFabricAssignmentSection({
   sofaFabrics: AdminCatalogSofaFabric[];
   sofaId: string;
 }) {
+  // RU: Эти значения показывают ошибку, отправку формы и список назначенных тканей.
+  // FR: Ces valeurs affichent une erreur, l'envoi du formulaire et la liste des tissus assignes.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const assignedFabricIds = new Set(
@@ -2056,7 +2083,12 @@ function VisualMatrixSection({
   sofaFabrics: AdminCatalogSofaFabric[];
   sofaId: string;
 }) {
+  // RU: Эти значения показывают ошибку, заметку про фото и отправку формы.
+  // FR: Ces valeurs affichent une erreur, une note sur la photo et l'envoi du formulaire.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadInfoMessage, setUploadInfoMessage] = useState<string | null>(
+    null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -2112,11 +2144,14 @@ function VisualMatrixSection({
     }
   }
 
+  // RU: Это действие отправляет исходное фото и может уменьшить большое фото перед отправкой.
+  // FR: Cette action envoie la photo source et peut reduire une grande image avant l'envoi.
   async function handleSourcePhotoUpload(
     column: AdminCatalogVisualMatrixColumn,
     form: HTMLFormElement,
   ) {
     setErrorMessage(null);
+    setUploadInfoMessage(null);
     const formData = new FormData(form);
     const originalFabricId = String(formData.get(`source_fabric_${column.id}`));
     const file = readFileField(form, formData, `source_photo_${column.id}`);
@@ -2127,15 +2162,25 @@ function VisualMatrixSection({
     }
 
     try {
+      const preparedUpload = await prepareAdminImageUploadFile({
+        file,
+        purpose: "sofa_source_photo",
+      });
+      const uploadFile = preparedUpload.file;
+
+      if (preparedUpload.message) {
+        setUploadInfoMessage(preparedUpload.message);
+      }
+
       const upload = await dependencies.createUpload(accessToken, {
-        byte_size: file.size,
-        content_type: file.type,
+        byte_size: uploadFile.size,
+        content_type: uploadFile.type,
         original_fabric_id: originalFabricId,
         purpose: "sofa_source_photo",
         sofa_id: sofaId,
         visual_matrix_column_id: column.id,
       });
-      await dependencies.uploadToSignedUrl(upload, file);
+      await dependencies.uploadToSignedUrl(upload, uploadFile);
       await dependencies.completeUpload(accessToken, upload.upload_id);
       form.reset();
       await onRefresh();
@@ -2158,6 +2203,11 @@ function VisualMatrixSection({
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
+        </p>
+      ) : null}
+      {uploadInfoMessage ? (
+        <p className="form-info" role="status">
+          {uploadInfoMessage}
         </p>
       ) : null}
       <form
@@ -2721,17 +2771,24 @@ function FabricForm({
   errorMessage,
   fabric,
   onSubmit,
+  uploadInfoMessage,
 }: {
   buttonLabel: string;
   errorMessage: string | null;
   fabric?: AdminCatalogFabric;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
+  uploadInfoMessage: string | null;
 }) {
   return (
     <form className="admin-form admin-form-wide" onSubmit={onSubmit}>
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
+        </p>
+      ) : null}
+      {uploadInfoMessage ? (
+        <p className="form-info" role="status">
+          {uploadInfoMessage}
         </p>
       ) : null}
       <label className="field">
@@ -2906,12 +2963,14 @@ async function buildFabricPayload({
   dependencies,
   existingFabric,
   form,
+  onUploadInfo,
   requireFiles,
 }: {
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
   existingFabric?: AdminCatalogFabric;
   form: HTMLFormElement;
+  onUploadInfo(message: string): void;
   requireFiles: boolean;
 }): Promise<FabricMutationInput> {
   const formData = new FormData(form);
@@ -2930,6 +2989,7 @@ async function buildFabricPayload({
           accessToken,
           dependencies,
           file: swatchFile,
+          onUploadInfo,
           purpose: "fabric_swatch",
         })
       : Promise.resolve(existingFabric?.swatch_asset ?? null),
@@ -2938,6 +2998,7 @@ async function buildFabricPayload({
           accessToken,
           dependencies,
           file: aiReferenceFile,
+          onUploadInfo,
           purpose: "fabric_ai_reference",
         })
       : Promise.resolve(existingFabric?.ai_reference_asset ?? null),
@@ -2960,19 +3021,31 @@ async function uploadFabricAsset({
   accessToken,
   dependencies,
   file,
+  onUploadInfo,
   purpose,
 }: {
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
   file: File;
+  onUploadInfo(message: string): void;
   purpose: UploadCreateInput["purpose"];
 }) {
-  const upload = await dependencies.createUpload(accessToken, {
-    byte_size: file.size,
-    content_type: file.type,
+  const preparedUpload = await prepareAdminImageUploadFile({
+    file,
     purpose,
   });
-  await dependencies.uploadToSignedUrl(upload, file);
+  const uploadFile = preparedUpload.file;
+
+  if (preparedUpload.message) {
+    onUploadInfo(preparedUpload.message);
+  }
+
+  const upload = await dependencies.createUpload(accessToken, {
+    byte_size: uploadFile.size,
+    content_type: uploadFile.type,
+    purpose,
+  });
+  await dependencies.uploadToSignedUrl(upload, uploadFile);
 
   return dependencies.completeUpload(accessToken, upload.upload_id);
 }

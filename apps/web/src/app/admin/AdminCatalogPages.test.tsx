@@ -16,7 +16,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prepareAdminImageUploadFile } from "../../lib/admin-image-upload";
 import {
   AdminFabricCreatePage,
   AdminFabricEditPage,
@@ -36,8 +37,25 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("../../lib/admin-image-upload", () => ({
+  prepareAdminImageUploadFile: vi.fn(async ({ file }) => ({
+    file,
+    message: null,
+    resized: false,
+  })),
+}));
+
+beforeEach(() => {
+  vi.mocked(prepareAdminImageUploadFile).mockImplementation(async ({ file }) => ({
+    file,
+    message: null,
+    resized: false,
+  }));
+});
+
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -494,6 +512,24 @@ describe("Admin catalog pages", () => {
   });
 
   it("creates a fabric through the signed upload facade flow", async () => {
+    const preparedAiReference = new File(["prepared"], "reference.jpg", {
+      type: "image/jpeg",
+    });
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ file, purpose }) =>
+        purpose === "fabric_ai_reference"
+          ? {
+              file: preparedAiReference,
+              message:
+                "Image resized from 4000x3000 to 2048x1536 before upload.",
+              resized: true,
+            }
+          : {
+              file,
+              message: null,
+              resized: false,
+            },
+    );
     const dependencies = createDependencies();
 
     render(<AdminFabricCreatePage dependencies={dependencies} />);
@@ -527,6 +563,22 @@ describe("Admin catalog pages", () => {
         purpose: "fabric_swatch",
       });
     });
+    expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+      byte_size: preparedAiReference.size,
+      content_type: "image/jpeg",
+      purpose: "fabric_ai_reference",
+    });
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "ai-reference-upload",
+      }),
+      preparedAiReference,
+    );
+    expect(
+      screen.getByText(
+        "Image resized from 4000x3000 to 2048x1536 before upload.",
+      ),
+    ).toBeInTheDocument();
     expect(dependencies.uploadToSignedUrl).toHaveBeenCalledTimes(2);
     expect(dependencies.completeUpload).toHaveBeenCalledWith(
       "admin-token",
@@ -906,6 +958,24 @@ describe("Admin catalog pages", () => {
   });
 
   it("queues render preparation work from the sofa edit page", async () => {
+    const preparedSourcePhoto = new File(["prepared-source"], "source.jpg", {
+      type: "image/jpeg",
+    });
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ file, purpose }) =>
+        purpose === "sofa_source_photo"
+          ? {
+              file: preparedSourcePhoto,
+              message:
+                "Image resized from 4096x3072 to 2048x1536 before upload.",
+              resized: true,
+            }
+          : {
+              file,
+              message: null,
+              resized: false,
+            },
+    );
     const assignedFabric = {
       assigned_at: "2026-04-28T10:15:00.000Z",
       fabric: {
@@ -997,14 +1067,25 @@ describe("Admin catalog pages", () => {
 
     await waitFor(() => {
       expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
-        byte_size: 6,
-        content_type: "image/png",
+        byte_size: preparedSourcePhoto.size,
+        content_type: "image/jpeg",
         original_fabric_id: assignedFabric.fabric_id,
         purpose: "sofa_source_photo",
         sofa_id: assignedFabric.sofa_id,
         visual_matrix_column_id: visualColumn.id,
       });
     });
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "source-photo-upload",
+      }),
+      preparedSourcePhoto,
+    );
+    expect(
+      screen.getByText(
+        "Image resized from 4096x3072 to 2048x1536 before upload.",
+      ),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
