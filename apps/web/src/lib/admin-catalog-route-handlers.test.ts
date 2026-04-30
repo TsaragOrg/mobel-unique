@@ -23,6 +23,7 @@ import {
   handleListSofasRequest,
   handleListTagsRequest,
   handleListVisualMatrixColumnsRequest,
+  handlePublishSofaRequest,
   handleRemoveSofaFabricRequest,
   handleUpdateFabricRequest,
   handleUpdateSofaRequest,
@@ -30,6 +31,7 @@ import {
   handleUpdateTagRequest,
   handleUpdateVisualMatrixColumnRequest,
   handleSetManualRenderRequest,
+  handleUnpublishSofaRequest,
   handleUseRenderCandidateRequest,
   type AdminCatalogStore,
 } from "./admin-catalog-route-handlers";
@@ -739,6 +741,52 @@ function createFakeStore(): AdminCatalogStore {
         ready: false,
       };
     },
+    async publishSofa(sofaId) {
+      const existing = sofas.get(sofaId);
+
+      if (!existing) {
+        return null;
+      }
+
+      const publicName =
+        typeof existing.public_name === "string"
+          ? existing.public_name
+          : typeof existing.internal_name === "string"
+            ? existing.internal_name
+            : "sofa";
+      const next = {
+        ...existing,
+        lifecycle_state: "published",
+        public_slug:
+          typeof existing.public_slug === "string"
+            ? existing.public_slug
+            : publicName
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, ""),
+        updated_at: "2026-04-28T10:45:00.000Z",
+      };
+      sofas.set(sofaId, next);
+
+      return next;
+    },
+    async unpublishSofa(sofaId) {
+      const existing = sofas.get(sofaId);
+
+      if (!existing) {
+        return null;
+      }
+
+      const next = {
+        ...existing,
+        lifecycle_state: "draft",
+        updated_at: "2026-04-28T10:50:00.000Z",
+      };
+      sofas.set(sofaId, next);
+
+      return next;
+    },
     async listFabrics() {
       return [...fabrics.values()];
     },
@@ -1160,6 +1208,57 @@ describe("admin catalog route handlers", () => {
             },
           ],
           ready: false,
+        },
+      },
+      meta: {},
+    });
+  });
+
+  it("publishes and unpublishes a sofa through the admin boundary", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Internal sofa",
+          public_name: "Public sofa",
+          shopify_order_url: "https://shopify.example/products/public-sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+
+    const publishResponse = await handlePublishSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    expect(publishResponse.status).toBe(200);
+    await expect(publishResponse.json()).resolves.toMatchObject({
+      data: {
+        sofa: {
+          id: sofaId,
+          lifecycle_state: "published",
+          public_slug: "public-sofa",
+        },
+      },
+      meta: {},
+    });
+
+    const unpublishResponse = await handleUnpublishSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    expect(unpublishResponse.status).toBe(200);
+    await expect(unpublishResponse.json()).resolves.toMatchObject({
+      data: {
+        sofa: {
+          id: sofaId,
+          lifecycle_state: "draft",
+          public_slug: "public-sofa",
         },
       },
       meta: {},

@@ -9,6 +9,8 @@ const productionCronMigrationPath =
   "supabase/migrations/20260429000200_fabric_render_worker_cron.sql";
 const providerOwnershipMigrationPath =
   "supabase/migrations/20260429000300_fabric_render_worker_provider_ownership.sql";
+const adminPublicationMigrationPath =
+  "supabase/migrations/20260430000100_admin_sofa_publication.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -83,5 +85,26 @@ describe("fabric render worker foundation migration", () => {
     );
     expect(sql).not.toContain("coalesce(provider_name");
     expect(sql).not.toContain("coalesce(provider_model");
+  });
+
+  it("adds admin publication helpers that copy private render coverage to public references", async () => {
+    const sql = await readFile(adminPublicationMigrationPath, "utf8");
+
+    expect(sql).toContain("public.admin_publish_sofa");
+    expect(sql).toContain("public.admin_unpublish_sofa");
+    expect(sql).toContain("p_public_render_assets jsonb");
+    expect(sql).toContain("catalog-public-assets");
+    expect(sql).toContain("current_private_asset_id");
+    expect(sql).toContain("current_public_asset_id");
+    expect(sql).toContain("asset_kind");
+    expect(sql).toContain("visibility");
+    expect(sql).toContain("lifecycle_state");
+    expect(sql).toContain("public.sofa_publication_readiness_errors");
+    expect(sql).toContain("private_asset.visibility = 'private'");
+    expect(sql).toContain("count(distinct render_cell_id)");
+    expect(sql).toContain("valid_mappings");
+    expect(sql).toContain("update public.sofas");
+    expect(sql).toContain("lifecycle_state = 'published'");
+    expect(sql).toContain("lifecycle_state = 'draft'");
   });
 });

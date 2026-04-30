@@ -222,6 +222,54 @@ export async function handleGetSofaPublicationReadinessRequest(
   });
 }
 
+export async function handlePublishSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.publishSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUnpublishSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.unpublishSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
 export async function handleListVisualMatrixColumnsRequest(input: SofaInput) {
   return withAuthorizedStore(input, async (store) => {
     const columns = await store.listVisualMatrixColumns(input.sofaId);

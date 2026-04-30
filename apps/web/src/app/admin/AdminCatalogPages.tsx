@@ -2,11 +2,11 @@
 
 /*
 RU: Этот файл нужен для страниц админского каталога.
-RU: На экране админ видит диваны, ткани, формы, загрузку фото и подготовку картинок.
-RU: Здесь можно менять данные, запускать генерацию и выбирать готовую картинку.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку картинок и публикацию.
+RU: Здесь можно менять данные, запускать генерацию, выбирать готовую картинку, публиковать и снимать публикацию.
 FR: Ce fichier sert aux pages du catalogue admin.
-FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos et preparation d'images.
-FR: Ici, on peut modifier les donnees, lancer la generation et choisir l'image finale.
+FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images et publication.
+FR: Ici, on peut modifier les donnees, lancer la generation, choisir l'image finale, publier et retirer la publication.
 */
 
 import Link from "next/link";
@@ -325,6 +325,7 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     sofaId: string,
   ): Promise<AdminCatalogReadiness>;
+  publishSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   listFabrics(accessToken: string): Promise<AdminCatalogFabric[]>;
   listSofas(accessToken: string): Promise<AdminCatalogSofa[]>;
   listSofaFabrics(
@@ -344,6 +345,7 @@ export interface AdminCatalogPageDependencies {
     sofaId: string,
     fabricId: string,
   ): Promise<void>;
+  unpublishSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   setManualRender(
     accessToken: string,
     renderCellId: string,
@@ -689,6 +691,17 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.readiness as AdminCatalogReadiness;
     },
+    async publishSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/publish`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
+    },
     async listSofas(accessToken) {
       const data = await requestAdminJson(accessToken, "/api/admin/sofas");
 
@@ -740,6 +753,17 @@ export function createDefaultAdminCatalogDependencies(
           method: "DELETE",
         },
       );
+    },
+    async unpublishSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/unpublish`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
     },
     async setManualRender(accessToken, renderCellId, input) {
       const data = await requestAdminJson(
@@ -1420,6 +1444,8 @@ function SofaEditContent({
   dependencies: AdminCatalogPageDependencies;
   sofaId: string;
 }) {
+  // RU: Эти значения хранят сообщения, списки и выборы для страницы дивана.
+  // FR: Ces valeurs gardent les messages, listes et choix pour la page du canape.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fabrics, setFabrics] = useState<AdminCatalogFabric[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1435,6 +1461,9 @@ function SofaEditContent({
   const [visualMatrixColumns, setVisualMatrixColumns] = useState<
     AdminCatalogVisualMatrixColumn[]
   >([]);
+
+  // RU: Этот список показывает, какие шаги подготовки уже готовы.
+  // FR: Cette liste montre les etapes de preparation deja pretes.
   const sofaTestChecklist = useMemo(
     () =>
       buildSofaTestChecklist({
@@ -1446,6 +1475,8 @@ function SofaEditContent({
     [readiness, renderCoverage, sofaFabrics, visualMatrixColumns],
   );
 
+  // RU: Этот автоматический блок загружает данные дивана при открытии страницы.
+  // FR: Ce bloc automatique charge les donnees du canape a l'ouverture de la page.
   useEffect(() => {
     let isCurrent = true;
 
@@ -1489,6 +1520,8 @@ function SofaEditContent({
     };
   }, [accessToken, dependencies, sofaId]);
 
+  // RU: Это действие сохраняет основные данные дивана.
+  // FR: Cette action enregistre les donnees principales du canape.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
@@ -1516,6 +1549,8 @@ function SofaEditContent({
     }
   }
 
+  // RU: Это действие заново получает позиции и готовые картинки.
+  // FR: Cette action recharge les positions et les images pretes.
   async function refreshRenderPreparation() {
     const [nextColumns, nextCoverage] = await Promise.all([
       dependencies.listVisualMatrixColumns(accessToken, sofaId),
@@ -1589,7 +1624,15 @@ function SofaEditContent({
               sofaFabrics={sofaFabrics}
               visualMatrixColumns={visualMatrixColumns}
             />
-            <PublicationReadinessSection readiness={readiness} />
+            <PublicationReadinessSection
+              accessToken={accessToken}
+              dependencies={dependencies}
+              onReadinessChange={setReadiness}
+              onSofaChange={setSofa}
+              readiness={readiness}
+              sofa={sofa}
+              sofaId={sofaId}
+            />
           </div>
         </>
       ) : null}
@@ -1654,10 +1697,78 @@ function SofaTestChecklist({ items }: { items: SofaTestChecklistItem[] }) {
 }
 
 function PublicationReadinessSection({
+  accessToken,
+  dependencies,
+  onReadinessChange,
+  onSofaChange,
   readiness,
+  sofa,
+  sofaId,
 }: {
+  accessToken: string;
+  dependencies: AdminCatalogPageDependencies;
+  onReadinessChange(readiness: AdminCatalogReadiness): void;
+  onSofaChange(sofa: AdminCatalogSofa): void;
   readiness: AdminCatalogReadiness | null;
+  sofa: AdminCatalogSofa;
+  sofaId: string;
 }) {
+  // RU: Эти значения показывают ошибку и занятость кнопок публикации.
+  // FR: Ces valeurs affichent l'erreur et l'occupation des boutons de publication.
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(
+    null,
+  );
+  const [isPublicationActionBusy, setIsPublicationActionBusy] = useState(false);
+
+  // RU: Эти данные говорят, виден ли диван на публичном сайте.
+  // FR: Ces donnees indiquent si le canape est visible sur le site public.
+  const isPublished = sofa.lifecycle_state === "published";
+  const lifecycleLabel = isPublished ? "Published" : "Draft";
+
+  // RU: Это действие обновляет проверку готовности после публикации.
+  // FR: Cette action actualise la verification apres la publication.
+  async function refreshReadiness() {
+    const nextReadiness = await dependencies.getSofaReadiness(
+      accessToken,
+      sofaId,
+    );
+    onReadinessChange(nextReadiness);
+  }
+
+  // RU: Это действие делает диван видимым на публичном сайте.
+  // FR: Cette action rend le canape visible sur le site public.
+  async function handlePublish() {
+    setActionErrorMessage(null);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.publishSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
+  // RU: Это действие убирает диван с публичного сайта.
+  // FR: Cette action retire le canape du site public.
+  async function handleUnpublish() {
+    setActionErrorMessage(null);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.unpublishSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
   return (
     <section
       aria-labelledby="readiness-title"
@@ -1669,6 +1780,17 @@ function PublicationReadinessSection({
         number="5"
         title="Publication readiness"
       />
+      {actionErrorMessage ? (
+        <p className="form-error" role="alert">
+          {actionErrorMessage}
+        </p>
+      ) : null}
+      <dl className="admin-cell-details">
+        <div>
+          <dt>Status</dt>
+          <dd>{lifecycleLabel}</dd>
+        </div>
+      </dl>
       {readiness?.ready ? <p>Ready</p> : <p>Blocked</p>}
       {readiness?.errors.length ? (
         <ul className="admin-list">
@@ -1680,6 +1802,28 @@ function PublicationReadinessSection({
           ))}
         </ul>
       ) : null}
+      <div className="admin-actions">
+        <button
+          disabled={
+            isPublicationActionBusy || isPublished || !readiness?.ready
+          }
+          onClick={() => void handlePublish()}
+          type="button"
+        >
+          {isPublicationActionBusy && !isPublished
+            ? "Publishing"
+            : "Publish sofa"}
+        </button>
+        <button
+          disabled={isPublicationActionBusy || !isPublished}
+          onClick={() => void handleUnpublish()}
+          type="button"
+        >
+          {isPublicationActionBusy && isPublished
+            ? "Unpublishing"
+            : "Unpublish sofa"}
+        </button>
+      </div>
     </section>
   );
 }

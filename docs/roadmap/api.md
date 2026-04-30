@@ -13,9 +13,10 @@
 | Done   | SPEC-0013 | PLAN-0021 | Admin candidate listing, current render selection, and manual render attachment endpoints.                                  |
 | Done   | SPEC-0013 | PLAN-0023 | Source photo upload completion synchronizes the matching render cell and blocks redundant initial generation.               |
 | Done   | SPEC-0010 | PLAN-0024 | Public catalog, public tags, and public sofa detail read endpoints for published public-usable sofas.                       |
+| Done   | SPEC-0010 | PLAN-0029 | Authenticated admin publication and unpublication endpoints create and clear public render asset references.                |
 
 ## Next
 
-- Add authenticated admin publication and export endpoint implementations behind the established admin boundary.
+- Add authenticated admin export endpoint implementations behind the established admin boundary.
 - Build the public simulation email verification and job-creation API after the storefront read path.
 - Define remaining server-to-server authorization for internal and worker-only APIs.

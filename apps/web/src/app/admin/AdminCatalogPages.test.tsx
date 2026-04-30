@@ -1,10 +1,10 @@
 /*
 RU: Этот файл проверяет страницы админского каталога.
-RU: Во время проверки показаны формы, списки, кнопки загрузки и зона подготовки картинок.
-RU: Проверки помогают убедиться, что админ может запускать генерацию и выбирать готовую картинку.
+RU: Во время проверки показаны формы, списки, кнопки загрузки, подготовка картинок и публикация дивана.
+RU: Проверки помогают убедиться, что админ может запускать генерацию, выбирать картинку, публиковать и снимать публикацию.
 FR: Ce fichier verifie les pages du catalogue admin.
-FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi et zone de preparation d'images.
-FR: Les tests aident a verifier que l'admin peut lancer la generation et choisir l'image finale.
+FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi, preparation d'images et publication du canape.
+FR: Les tests aident a verifier que l'admin peut lancer la generation, choisir l'image, publier et retirer la publication.
 */
 
 import {
@@ -304,6 +304,42 @@ function createDependencies(
         },
       ],
       ready: false,
+    })),
+    publishSofa: vi.fn(async (_accessToken, sofaId) => ({
+      created_at: "2026-04-28T10:00:00.000Z",
+      depth_cm: 95,
+      footprint_measurements: null,
+      footprint_type: null,
+      height_cm: 82,
+      id: sofaId,
+      internal_name: "Manual test sofa",
+      lifecycle_state: "published",
+      manual_public_order: null,
+      public_description: "Manual copy",
+      public_name: "Canape test",
+      public_slug: "canape-test",
+      shopify_order_url: "https://example.com/products/manual-test",
+      tags: [],
+      updated_at: "2026-04-28T10:45:00.000Z",
+      length_cm: 220,
+    })),
+    unpublishSofa: vi.fn(async (_accessToken, sofaId) => ({
+      created_at: "2026-04-28T10:00:00.000Z",
+      depth_cm: 95,
+      footprint_measurements: null,
+      footprint_type: null,
+      height_cm: 82,
+      id: sofaId,
+      internal_name: "Manual test sofa",
+      lifecycle_state: "draft",
+      manual_public_order: null,
+      public_description: "Manual copy",
+      public_name: "Canape test",
+      public_slug: "canape-test",
+      shopify_order_url: "https://example.com/products/manual-test",
+      tags: [],
+      updated_at: "2026-04-28T10:50:00.000Z",
+      length_cm: 220,
     })),
     listSofas: vi.fn(async () => [
       {
@@ -1263,6 +1299,49 @@ describe("Admin catalog pages", () => {
     );
   });
 
+  it("publishes and unpublishes the sofa from the publication section", async () => {
+    const dependencies = createDependencies({
+      getSofaReadiness: vi
+        .fn()
+        .mockResolvedValueOnce({
+          errors: [],
+          ready: true,
+        })
+        .mockResolvedValue({
+          errors: [],
+          ready: true,
+        }),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("button", { name: "Publish sofa" }));
+
+    await waitFor(() => {
+      expect(dependencies.publishSofa).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000701",
+      );
+    });
+    expect(await screen.findByText("Published")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpublish sofa" }));
+
+    await waitFor(() => {
+      expect(dependencies.unpublishSofa).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000701",
+      );
+    });
+    expect(await screen.findByText("Draft")).toBeInTheDocument();
+  });
+
   it("default API dependencies call only first-party admin facade routes", async () => {
     const sofaId = "00000000-0000-4000-8000-000000000701";
     const fabricId = "00000000-0000-4000-8000-000000000903";
@@ -1603,6 +1682,8 @@ describe("Admin catalog pages", () => {
       "admin-token",
       "00000000-0000-4000-8000-000000000701",
     );
+    await dependencies.publishSofa("admin-token", sofaId);
+    await dependencies.unpublishSofa("admin-token", sofaId);
     await dependencies.listTags("admin-token");
     await dependencies.createTag("admin-token", {
       public_label: "Convertible",
@@ -1685,6 +1766,8 @@ describe("Admin catalog pages", () => {
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publication-readiness",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publish",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/unpublish",
       "/api/admin/tags",
       "/api/admin/tags",
       "/api/admin/tags/00000000-0000-4000-8000-000000000801",
