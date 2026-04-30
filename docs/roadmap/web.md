@@ -20,9 +20,10 @@
 | Done   | SPEC-0013 | PLAN-0028 | Admin render input uploads resize oversized AI references and source photos before signed upload.                    |
 | Done   | SPEC-0010 | PLAN-0029 | Sofa edit publication actions publish selected private render coverage as public catalog assets and unpublish safely. |
 | Done   | SPEC-0006 | PLAN-0030 | Sofa edit render coverage sends prompt notes and queues refine jobs from reviewed private candidates.                |
+| Done   | SPEC-0012 | PLAN-0025 | Public home page with landscape video hero, minimal public shell, process copy, and catalog CTA.                     |
 
 ## Next
 
-- Build public storefront pages on top of the public catalog read API.
+- Build public catalog and sofa detail pages on top of the public catalog read API.
 - Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.
