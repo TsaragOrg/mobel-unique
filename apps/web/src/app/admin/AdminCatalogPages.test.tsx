@@ -46,11 +46,13 @@ vi.mock("../../lib/admin-image-upload", () => ({
 }));
 
 beforeEach(() => {
-  vi.mocked(prepareAdminImageUploadFile).mockImplementation(async ({ file }) => ({
-    file,
-    message: null,
-    resized: false,
-  }));
+  vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+    async ({ file }) => ({
+      file,
+      message: null,
+      resized: false,
+    }),
+  );
 });
 
 afterEach(() => {
@@ -207,8 +209,15 @@ function createDependencies(
       id: "00000000-0000-4000-8000-000000000906",
       last_error_message: null,
       max_attempts: 3,
-      prompt_note: input.prompt_note,
+      prompt_note:
+        input.generation_mode === "initial" ? input.prompt_note : null,
       queued_at: "2026-04-28T10:30:00.000Z",
+      refinement_source_asset_id:
+        input.generation_mode === "refine"
+          ? input.refinement_source_asset_id
+          : null,
+      refine_prompt:
+        input.generation_mode === "refine" ? input.refine_prompt : null,
       render_cell_id: "00000000-0000-4000-8000-000000000905",
       sofa_id: input.sofa_id,
       status: "queued",
@@ -236,6 +245,8 @@ function createDependencies(
       max_attempts: 3,
       prompt_note: null,
       queued_at: "2026-04-28T10:30:00.000Z",
+      refinement_source_asset_id: null,
+      refine_prompt: null,
       render_cell_id: "00000000-0000-4000-8000-000000000905",
       sofa_id: "00000000-0000-4000-8000-000000000701",
       status: "succeeded",
@@ -1123,6 +1134,11 @@ describe("Admin catalog pages", () => {
       ),
     ).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText("Prompt note"), {
+      target: {
+        value: "Keep seams visible",
+      },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() => {
@@ -1131,7 +1147,7 @@ describe("Admin catalog pages", () => {
         {
           fabric_id: assignedFabric.fabric_id,
           generation_mode: "initial",
-          prompt_note: null,
+          prompt_note: "Keep seams visible",
           sofa_id: assignedFabric.sofa_id,
           visual_matrix_column_id: visualColumn.id,
         },
@@ -1258,6 +1274,28 @@ describe("Admin catalog pages", () => {
     await screen.findByAltText(
       "Candidate preview 00000000-0000-4000-8000-000000000908",
     );
+    fireEvent.change(screen.getByLabelText("Refine prompt"), {
+      target: {
+        value: "Reduce wrinkles on the left arm",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Refine" }));
+
+    await waitFor(() => {
+      expect(dependencies.createFabricRenderJob).toHaveBeenCalledWith(
+        "admin-token",
+        expect.objectContaining({
+          fabric_id: assignedFabric.fabric_id,
+          generation_mode: "refine",
+          prompt_note: null,
+          refine_prompt: "Reduce wrinkles on the left arm",
+          refinement_source_asset_id: "00000000-0000-4000-8000-000000000907",
+          sofa_id: assignedFabric.sofa_id,
+          visual_matrix_column_id: visualColumn.id,
+        }),
+      );
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Use candidate" }));
 
     await waitFor(() => {

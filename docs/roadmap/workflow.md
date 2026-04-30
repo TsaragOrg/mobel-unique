@@ -27,6 +27,7 @@
 | Done   | SPEC-0001 | PLAN-0027 | Supabase DEV deploy configures worker secrets, deploys the fabric render Edge Function, and upserts cron Vault secrets.                   |
 | Done   | SPEC-0013 | PLAN-0028 | Admin render input test coverage includes worker scratch failure recording for early local worker errors.                                 |
 | Done   | SPEC-0010 | PLAN-0029 | Admin publication checks cover public asset RPCs, first-party admin endpoints, and sofa edit publish/unpublish actions.                   |
+| Done   | SPEC-0006 | PLAN-0030 | Fabric render migration and worker source tests cover admin prompt notes and refine prompt ownership.                                     |
 
 ## Next
 

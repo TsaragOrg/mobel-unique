@@ -144,6 +144,8 @@ const fabricRenderJobRecord = {
   prompt_note: null,
   provider_key: "must-not-leak",
   queued_at: "2026-04-28T10:30:00.000Z",
+  refinement_source_asset_id: null,
+  refine_prompt: null,
   render_cell_id: "00000000-0000-4000-8000-000000000908",
   service_role_key: "must-not-leak",
   sofa_id: sofaRecord.id,
@@ -475,7 +477,31 @@ describe("admin catalog validation", () => {
       validateFabricRenderJobCreatePayload({
         fabric_id: fabricRecord.id,
         generation_mode: "refine",
+        prompt_note: null,
+        refine_prompt: "  reduce wrinkles on the left arm  ",
+        refinement_source_asset_id: fabricRenderCandidateRecord.asset_id,
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        fabric_id: fabricRecord.id,
+        generation_mode: "refine",
+        prompt_note: null,
+        refine_prompt: "reduce wrinkles on the left arm",
+        refinement_source_asset_id: fabricRenderCandidateRecord.asset_id,
+        sofa_id: sofaRecord.id,
+        visual_matrix_column_id: visualMatrixColumnRecord.id,
+      },
+    });
+    expect(
+      validateFabricRenderJobCreatePayload({
+        fabric_id: fabricRecord.id,
+        generation_mode: "refine",
+        prompt_note: "wrong place",
         refine_prompt: "try again",
+        refinement_source_asset_id: fabricRenderCandidateRecord.asset_id,
         sofa_id: sofaRecord.id,
         visual_matrix_column_id: visualMatrixColumnRecord.id,
       }),
@@ -483,7 +509,7 @@ describe("admin catalog validation", () => {
       error: {
         code: "VALIDATION_FAILED",
         details: {
-          fields: ["generation_mode", "refine_prompt"],
+          fields: ["prompt_note"],
         },
       },
       ok: false,
@@ -665,6 +691,8 @@ describe("admin catalog response shaping", () => {
     });
     expect(jobResponse).toMatchObject({
       id: fabricRenderJobRecord.id,
+      refinement_source_asset_id: null,
+      refine_prompt: null,
       status: "queued",
     });
     expect(coverageResponse.render_cells[0]).toMatchObject({

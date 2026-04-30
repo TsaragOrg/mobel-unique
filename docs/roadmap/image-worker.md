@@ -11,6 +11,7 @@
 | Done   | SPEC-0006 | PLAN-0020 | Existing fabric render worker matches Python-worker output sizing with Gemini aspect-ratio config and centered crop/resize normalization before private upload. |
 | Done   | SPEC-0006 | PLAN-0025 | Production fabric render worker invocation is protected by a shared secret and scheduled through Supabase Cron.                                                 |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render worker owns provider/model selection and records the actual provider metadata when claiming jobs.                                                 |
+| Done   | SPEC-0006 | PLAN-0030 | Fabric render refine jobs use the persisted refine prompt without prompt-note fallback.                                                                          |
 
 ## Next
 

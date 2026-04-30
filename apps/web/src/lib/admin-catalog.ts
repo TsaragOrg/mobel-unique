@@ -151,6 +151,8 @@ export interface AdminFabricRenderJobRecord {
   max_attempts: number;
   prompt_note: string | null;
   queued_at: string | null;
+  refinement_source_asset_id: string | null;
+  refine_prompt: string | null;
   render_cell_id: string;
   sofa_id: string;
   status: string;
@@ -407,14 +409,27 @@ export interface VisualMatrixColumnMutationInput {
 export type VisualMatrixColumnPatchInput =
   Partial<VisualMatrixColumnMutationInput>;
 
-export interface FabricRenderJobCreateInput {
-  fabric_id: string;
-  generation_mode: "initial";
-  idempotency_key?: string;
-  prompt_note: string | null;
-  sofa_id: string;
-  visual_matrix_column_id: string;
-}
+export type FabricRenderJobCreateInput =
+  | {
+      fabric_id: string;
+      generation_mode: "initial";
+      idempotency_key?: string;
+      prompt_note: string | null;
+      refinement_source_asset_id?: null;
+      refine_prompt?: null;
+      sofa_id: string;
+      visual_matrix_column_id: string;
+    }
+  | {
+      fabric_id: string;
+      generation_mode: "refine";
+      idempotency_key?: string;
+      prompt_note?: null;
+      refinement_source_asset_id: string;
+      refine_prompt: string;
+      sofa_id: string;
+      visual_matrix_column_id: string;
+    };
 
 const SOFA_FIELDS = [
   "internal_name",
@@ -815,7 +830,16 @@ export function validateFabricRenderJobCreatePayload(
   }
 
   const fields: string[] = [];
-  const value: Partial<FabricRenderJobCreateInput> = {};
+  const value: {
+    fabric_id?: string;
+    generation_mode?: "initial" | "refine";
+    idempotency_key?: string;
+    prompt_note?: string | null;
+    refinement_source_asset_id?: string | null;
+    refine_prompt?: string | null;
+    sofa_id?: string;
+    visual_matrix_column_id?: string;
+  } = {};
 
   for (const field of [
     "sofa_id",
@@ -833,23 +857,16 @@ export function validateFabricRenderJobCreatePayload(
     }
   }
 
-  if (payload.generation_mode !== "initial") {
+  const generationMode =
+    payload.generation_mode === "initial" ||
+    payload.generation_mode === "refine"
+      ? payload.generation_mode
+      : null;
+
+  if (!generationMode) {
     fields.push("generation_mode");
   } else {
-    value.generation_mode = "initial";
-  }
-
-  const promptNote = readStringField(payload, "prompt_note", {
-    allowNull: true,
-    required: false,
-  });
-
-  if (!promptNote.ok) {
-    fields.push(...promptNote.fields);
-  } else if (promptNote.present) {
-    value.prompt_note = promptNote.value;
-  } else {
-    value.prompt_note = null;
+    value.generation_mode = generationMode;
   }
 
   const idempotencyKey = readStringField(payload, "idempotency_key", {
@@ -863,21 +880,71 @@ export function validateFabricRenderJobCreatePayload(
     value.idempotency_key = idempotencyKey.value ?? undefined;
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(
-      payload,
-      "refinement_source_asset_id",
-    ) &&
-    payload.refinement_source_asset_id !== null
-  ) {
-    fields.push("refinement_source_asset_id");
+  if (generationMode === "initial") {
+    const promptNote = readStringField(payload, "prompt_note", {
+      allowNull: true,
+      required: false,
+    });
+
+    if (!promptNote.ok) {
+      fields.push(...promptNote.fields);
+    } else if (promptNote.present) {
+      value.prompt_note = promptNote.value;
+    } else {
+      value.prompt_note = null;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        payload,
+        "refinement_source_asset_id",
+      ) &&
+      payload.refinement_source_asset_id !== null
+    ) {
+      fields.push("refinement_source_asset_id");
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "refine_prompt") &&
+      payload.refine_prompt !== null
+    ) {
+      fields.push("refine_prompt");
+    }
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(payload, "refine_prompt") &&
-    payload.refine_prompt !== null
-  ) {
-    fields.push("refine_prompt");
+  if (generationMode === "refine") {
+    const refinementSourceAssetId = readUuidField(
+      payload,
+      "refinement_source_asset_id",
+      {
+        required: true,
+      },
+    );
+    const refinePrompt = readStringField(payload, "refine_prompt", {
+      allowNull: false,
+      required: true,
+    });
+
+    if (!refinementSourceAssetId.ok || !refinementSourceAssetId.present) {
+      fields.push("refinement_source_asset_id");
+    } else {
+      value.refinement_source_asset_id = refinementSourceAssetId.value;
+    }
+
+    if (!refinePrompt.ok || !refinePrompt.present) {
+      fields.push("refine_prompt");
+    } else {
+      value.refine_prompt = refinePrompt.value;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "prompt_note") &&
+      payload.prompt_note !== null
+    ) {
+      fields.push("prompt_note");
+    } else {
+      value.prompt_note = null;
+    }
   }
 
   if (fields.length > 0) {
@@ -1069,6 +1136,8 @@ export function shapeFabricRenderJobResponse(
     max_attempts: numberOrNull(record.max_attempts),
     prompt_note: stringOrNull(record.prompt_note),
     queued_at: stringOrNull(record.queued_at),
+    refinement_source_asset_id: stringOrNull(record.refinement_source_asset_id),
+    refine_prompt: stringOrNull(record.refine_prompt),
     render_cell_id: stringOrNull(record.render_cell_id),
     sofa_id: stringOrNull(record.sofa_id),
     status: stringOrNull(record.status),
@@ -1443,7 +1512,10 @@ export function createSupabaseAdminCatalogStore(
       };
     },
     async createFabricRenderJob(input) {
-      const relationError = await validateInitialRenderJobInput(client, input);
+      const relationError =
+        input.generation_mode === "refine"
+          ? await validateRefineRenderJobInput(client, input)
+          : await validateInitialRenderJobInput(client, input);
 
       if (relationError) {
         return relationError;
@@ -1477,13 +1549,24 @@ export function createSupabaseAdminCatalogStore(
       }
 
       const promptVersion = env.FABRIC_RENDER_PROMPT_VERSION ?? "v007";
-      const promptNote = input.prompt_note ?? null;
+      const promptNote =
+        input.generation_mode === "initial"
+          ? (input.prompt_note ?? null)
+          : null;
+      const refinementSourceAssetId =
+        input.generation_mode === "refine"
+          ? input.refinement_source_asset_id
+          : null;
+      const refinePrompt =
+        input.generation_mode === "refine" ? input.refine_prompt : null;
       const duplicate = await findActiveFabricRenderJob(client, {
         fabricAiReferenceAssetId: fabric.ai_reference_asset_id,
         fabricId: input.fabric_id,
         generationMode: input.generation_mode,
         promptNote,
         promptVersion,
+        refinementSourceAssetId,
+        refinePrompt,
         sofaId: input.sofa_id,
         targetSofaAssetId: sourcePhoto.asset_id,
         visualMatrixColumnId: input.visual_matrix_column_id,
@@ -1507,6 +1590,8 @@ export function createSupabaseAdminCatalogStore(
           prompt_note: promptNote,
           prompt_version: promptVersion,
           queued_at: new Date().toISOString(),
+          refinement_source_asset_id: refinementSourceAssetId,
+          refine_prompt: refinePrompt,
           render_cell_id: renderCell.id,
           sofa_id: input.sofa_id,
           status: "queued",
@@ -2314,6 +2399,8 @@ const FABRIC_RENDER_JOB_SELECT = [
   "render_cell_id",
   "generation_mode",
   "prompt_note",
+  "refinement_source_asset_id",
+  "refine_prompt",
   "status",
   "attempt_count",
   "max_attempts",
@@ -4136,6 +4223,27 @@ async function fetchRenderCandidatesForCell(
   );
 }
 
+async function fetchRenderCandidateForAsset(
+  client: SupabaseCatalogClient,
+  input: {
+    assetId: string;
+    renderCellId: string;
+  },
+) {
+  const { data, error } = await client
+    .from("fabric_render_candidates")
+    .select(FABRIC_RENDER_CANDIDATE_SELECT)
+    .eq("render_cell_id", input.renderCellId)
+    .eq("asset_id", input.assetId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminFabricRenderCandidateRecord | null;
+}
+
 async function fetchRenderCandidateById(
   client: SupabaseCatalogClient,
   candidateId: string,
@@ -4262,9 +4370,7 @@ async function createPublicRenderAssetCopiesForPublication(
 
   const privateAssetIds = requiredCells
     .map((cell) => cell.current_private_asset_id)
-    .filter(
-      (assetId): assetId is string => typeof assetId === "string",
-    );
+    .filter((assetId): assetId is string => typeof assetId === "string");
   const assetMap = await fetchAssetsByIds(client, privateAssetIds);
   const mappings: PublicationRenderAssetMapping[] = [];
 
@@ -4291,8 +4397,7 @@ async function createPublicRenderAssetCopiesForPublication(
           details: {
             render_cell_id: cell.id,
           },
-          message:
-            "Sofa has private render coverage that cannot be published.",
+          message: "Sofa has private render coverage that cannot be published.",
           status: 409,
         });
       }
@@ -4531,7 +4636,7 @@ function renderCellBlockers(input: {
 
 async function validateInitialRenderJobInput(
   client: SupabaseCatalogClient,
-  input: FabricRenderJobCreateInput,
+  input: Extract<FabricRenderJobCreateInput, { generation_mode: "initial" }>,
 ): Promise<AdminCatalogOperationErrorData | null> {
   const [sofa, fabric, column, assignment] = await Promise.all([
     fetchSofaLifecycle(client, input.sofa_id),
@@ -4636,6 +4741,56 @@ async function validateInitialRenderJobInput(
   return null;
 }
 
+async function validateRefineRenderJobInput(
+  client: SupabaseCatalogClient,
+  input: Extract<FabricRenderJobCreateInput, { generation_mode: "refine" }>,
+): Promise<AdminCatalogOperationErrorData | null> {
+  const initialContextError = await validateInitialRenderJobInput(client, {
+    fabric_id: input.fabric_id,
+    generation_mode: "initial",
+    prompt_note: null,
+    sofa_id: input.sofa_id,
+    visual_matrix_column_id: input.visual_matrix_column_id,
+  });
+
+  if (initialContextError) {
+    return initialContextError;
+  }
+
+  const renderCell = await fetchRenderCellForPair(client, {
+    fabricId: input.fabric_id,
+    sofaId: input.sofa_id,
+    visualMatrixColumnId: input.visual_matrix_column_id,
+  });
+
+  if (!renderCell) {
+    return {
+      code: "RENDER_CELL_NOT_FOUND",
+      message: "Render cell was not found.",
+      status: 404,
+    };
+  }
+
+  const candidate = await fetchRenderCandidateForAsset(client, {
+    assetId: input.refinement_source_asset_id,
+    renderCellId: renderCell.id,
+  });
+
+  if (!candidate) {
+    return {
+      code: "FABRIC_RENDER_CANDIDATE_NOT_FOUND",
+      details: {
+        fields: ["refinement_source_asset_id"],
+      },
+      message:
+        "Refinement source candidate was not found for this render cell.",
+      status: 422,
+    };
+  }
+
+  return null;
+}
+
 async function createRenderCellForJob(
   client: SupabaseCatalogClient,
   input: {
@@ -4677,6 +4832,8 @@ async function findActiveFabricRenderJob(
     generationMode: string;
     promptNote: string | null;
     promptVersion: string;
+    refinementSourceAssetId: string | null;
+    refinePrompt: string | null;
     sofaId: string;
     targetSofaAssetId: string;
     visualMatrixColumnId: string;
@@ -4698,6 +4855,16 @@ async function findActiveFabricRenderJob(
     input.promptNote === null
       ? query.is("prompt_note", null)
       : query.eq("prompt_note", input.promptNote);
+
+  query =
+    input.refinementSourceAssetId === null
+      ? query.is("refinement_source_asset_id", null)
+      : query.eq("refinement_source_asset_id", input.refinementSourceAssetId);
+
+  query =
+    input.refinePrompt === null
+      ? query.is("refine_prompt", null)
+      : query.eq("refine_prompt", input.refinePrompt);
 
   const { data, error } = await query.maybeSingle();
 

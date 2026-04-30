@@ -14,6 +14,7 @@
 | Done   | SPEC-0013 | PLAN-0023 | Source photo upload completion synchronizes the matching render cell and blocks redundant initial generation.               |
 | Done   | SPEC-0010 | PLAN-0024 | Public catalog, public tags, and public sofa detail read endpoints for published public-usable sofas.                       |
 | Done   | SPEC-0010 | PLAN-0029 | Authenticated admin publication and unpublication endpoints create and clear public render asset references.                |
+| Done   | SPEC-0006 | PLAN-0030 | Admin fabric render job creation accepts initial prompt notes and validated refine jobs from private candidates.            |
 
 ## Next
 

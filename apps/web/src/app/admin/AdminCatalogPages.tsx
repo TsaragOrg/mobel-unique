@@ -2,11 +2,11 @@
 
 /*
 RU: Этот файл нужен для страниц админского каталога.
-RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку картинок и публикацию.
-RU: Здесь можно менять данные, запускать генерацию, выбирать готовую картинку, публиковать и снимать публикацию.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений и публикацию.
+RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать и снимать публикацию.
 FR: Ce fichier sert aux pages du catalogue admin.
 FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images et publication.
-FR: Ici, on peut modifier les donnees, lancer la generation, choisir l'image finale, publier et retirer la publication.
+FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier et retirer la publication.
 */
 
 import Link from "next/link";
@@ -139,6 +139,8 @@ export interface AdminCatalogFabricRenderJob {
   max_attempts: number;
   prompt_note: string | null;
   queued_at: string | null;
+  refinement_source_asset_id: string | null;
+  refine_prompt: string | null;
   render_cell_id: string;
   sofa_id: string;
   status: string;
@@ -251,14 +253,27 @@ export interface VisualMatrixColumnMutationInput {
 export type VisualMatrixColumnPatchInput =
   Partial<VisualMatrixColumnMutationInput>;
 
-export interface FabricRenderJobCreateInput {
-  fabric_id: string;
-  generation_mode: "initial";
-  idempotency_key?: string;
-  prompt_note: string | null;
-  sofa_id: string;
-  visual_matrix_column_id: string;
-}
+export type FabricRenderJobCreateInput =
+  | {
+      fabric_id: string;
+      generation_mode: "initial";
+      idempotency_key?: string;
+      prompt_note: string | null;
+      refinement_source_asset_id?: null;
+      refine_prompt?: null;
+      sofa_id: string;
+      visual_matrix_column_id: string;
+    }
+  | {
+      fabric_id: string;
+      generation_mode: "refine";
+      idempotency_key?: string;
+      prompt_note?: null;
+      refinement_source_asset_id: string;
+      refine_prompt: string;
+      sofa_id: string;
+      visual_matrix_column_id: string;
+    };
 
 export interface AdminCatalogPageDependencies {
   archiveFabric(
@@ -1804,9 +1819,7 @@ function PublicationReadinessSection({
       ) : null}
       <div className="admin-actions">
         <button
-          disabled={
-            isPublicationActionBusy || isPublished || !readiness?.ready
-          }
+          disabled={isPublicationActionBusy || isPublished || !readiness?.ready}
           onClick={() => void handlePublish()}
           type="button"
         >
@@ -2552,6 +2565,11 @@ function RenderCoverageSection({
   const [reviewCandidates, setReviewCandidates] = useState<
     AdminCatalogRenderCandidate[]
   >([]);
+  // RU: Эти записи держат короткие подсказки админа для нового изображения.
+  // FR: Ces textes gardent les notes courtes de l'admin pour une nouvelle image.
+  const [initialPromptNotes, setInitialPromptNotes] = useState<
+    Record<string, string>
+  >({});
 
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
@@ -2567,6 +2585,15 @@ function RenderCoverageSection({
     };
   }, []);
 
+  // RU: Это действие запоминает короткую подсказку для выбранной ячейки.
+  // FR: Cette action garde une note courte pour la case choisie.
+  function handlePromptNoteChange(cellId: string, value: string) {
+    setInitialPromptNotes((current) => ({
+      ...current,
+      [cellId]: value,
+    }));
+  }
+
   // RU: Это действие ставит задачу в очередь и потом само проверяет готовность.
   // FR: Cette action place la tache en file puis verifie seule quand elle est prete.
   async function handleGenerate(cell: AdminCatalogRenderCell) {
@@ -2574,10 +2601,11 @@ function RenderCoverageSection({
     setActiveCellId(cell.id);
 
     try {
+      const promptNote = initialPromptNotes[cell.id]?.trim() || null;
       const job = await dependencies.createFabricRenderJob(accessToken, {
         fabric_id: cell.fabric_id,
         generation_mode: "initial",
-        prompt_note: null,
+        prompt_note: promptNote,
         sofa_id: cell.sofa_id,
         visual_matrix_column_id: cell.visual_matrix_column_id,
       });
@@ -2656,6 +2684,66 @@ function RenderCoverageSection({
       await onRefresh();
       setReviewCellId(null);
       setReviewCandidates([]);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  // RU: Это действие ставит выбранную картинку в очередь на улучшение.
+  // FR: Cette action place l'image choisie en file pour l'ameliorer.
+  async function handleRefineCandidate(
+    cell: AdminCatalogRenderCell,
+    candidate: AdminCatalogRenderCandidate,
+    form: HTMLFormElement,
+  ) {
+    const formData = new FormData(form);
+    const refinePrompt = String(formData.get("refine_prompt") ?? "").trim();
+
+    if (!refinePrompt) {
+      setErrorMessage("REFINE_PROMPT_REQUIRED");
+      return;
+    }
+
+    setErrorMessage(null);
+    setActiveCellId(cell.id);
+
+    try {
+      const job = await dependencies.createFabricRenderJob(accessToken, {
+        fabric_id: cell.fabric_id,
+        generation_mode: "refine",
+        prompt_note: null,
+        refinement_source_asset_id: candidate.asset_id,
+        refine_prompt: refinePrompt,
+        sofa_id: cell.sofa_id,
+        visual_matrix_column_id: cell.visual_matrix_column_id,
+      });
+      form.reset();
+      await onRefresh();
+      void pollFabricRenderJobResult({
+        accessToken,
+        dependencies,
+        isActive: () => isAliveRef.current,
+        jobId: job.id,
+        onRefresh,
+      })
+        .then((finishedJob) => {
+          if (!isAliveRef.current || !finishedJob) {
+            return;
+          }
+
+          if (finishedJob.status === "failed") {
+            setErrorMessage(
+              finishedJob.last_error_message ?? "FABRIC_RENDER_JOB_FAILED",
+            );
+          }
+        })
+        .catch((error) => {
+          if (isAliveRef.current) {
+            setErrorMessage(readErrorMessage(error));
+          }
+        });
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2793,24 +2881,42 @@ function RenderCoverageSection({
                                 <span>{cell.blockers.join(", ")}</span>
                               </div>
                             ) : null}
+                            {/* RU: Этот блок дает действия для одной ячейки матрицы. */}
+                            {/* FR: Ce bloc donne les actions pour une case du tableau. */}
                             <div className="admin-cell-actions">
                               {isSourcePhotoCompleteCell(cell) ? (
                                 <span className="admin-muted">
                                   Source photo is current
                                 </span>
                               ) : (
-                                <button
-                                  disabled={
-                                    !cell.can_generate_initial ||
-                                    activeCellId === cell.id
-                                  }
-                                  onClick={() => void handleGenerate(cell)}
-                                  type="button"
-                                >
-                                  {activeCellId === cell.id
-                                    ? "Queueing"
-                                    : "Generate"}
-                                </button>
+                                <>
+                                  <label className="field">
+                                    <span>Prompt note</span>
+                                    <textarea
+                                      name={`prompt_note_${cell.id}`}
+                                      onChange={(event) =>
+                                        handlePromptNoteChange(
+                                          cell.id,
+                                          event.currentTarget.value,
+                                        )
+                                      }
+                                      rows={2}
+                                      value={initialPromptNotes[cell.id] ?? ""}
+                                    />
+                                  </label>
+                                  <button
+                                    disabled={
+                                      !cell.can_generate_initial ||
+                                      activeCellId === cell.id
+                                    }
+                                    onClick={() => void handleGenerate(cell)}
+                                    type="button"
+                                  >
+                                    {activeCellId === cell.id
+                                      ? "Queueing"
+                                      : "Generate"}
+                                  </button>
+                                </>
                               )}
                               <button
                                 disabled={
@@ -2890,6 +2996,34 @@ function RenderCoverageSection({
                                     >
                                       Use candidate
                                     </button>
+                                    {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
+                                    {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
+                                    <form
+                                      className="admin-cell-form"
+                                      onSubmit={(event) => {
+                                        event.preventDefault();
+                                        void handleRefineCandidate(
+                                          cell,
+                                          candidate,
+                                          event.currentTarget,
+                                        );
+                                      }}
+                                    >
+                                      <label className="field">
+                                        <span>Refine prompt</span>
+                                        <textarea
+                                          name="refine_prompt"
+                                          required
+                                          rows={2}
+                                        />
+                                      </label>
+                                      <button
+                                        disabled={activeCellId === cell.id}
+                                        type="submit"
+                                      >
+                                        Refine
+                                      </button>
+                                    </form>
                                   </div>
                                 ))}
                               </div>
