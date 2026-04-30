@@ -16,8 +16,8 @@
 | Done   | SPEC-0010 | PLAN-0024 | Public per-sofa tag view added for safe public catalog assembly and tag filtering.                                         |
 | Done   | SPEC-0006 | PLAN-0025 | Supabase Cron invokes the fabric render worker through a Vault-backed secret.                                              |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render provider and model ownership moved from Vercel admin API to the Supabase worker claim path.                  |
+| Done   | SPEC-0010 | PLAN-0029 | Publication RPCs create public render asset references from selected private render coverage and clear them on unpublish.   |
 
 ## Next
 
-- Support admin publication transactions that create public asset copies for non-empty public catalog data.
 - Add full data model policies and retention behavior after the provider path.

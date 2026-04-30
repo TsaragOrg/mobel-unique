@@ -253,6 +253,16 @@ export interface AdminCatalogStore {
   getSofaPublicationReadiness(
     sofaId: string,
   ): Promise<PublicationReadiness | null>;
+  publishSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
+  unpublishSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
   listFabrics(): Promise<Array<AdminFabricRecord | JsonObject>>;
   listRenderCellCandidates(
     renderCellId: string,
@@ -889,6 +899,17 @@ export function buildPublicTagSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 
   return slug || "tag";
+}
+
+export function buildPublicRenderAssetObjectPath(input: {
+  contentType: string;
+  publicAssetId: string;
+  renderCellId: string;
+  sofaId: string;
+}) {
+  const extension = extensionForContentType(input.contentType);
+
+  return `sofas/${input.sofaId}/renders/${input.renderCellId}/${input.publicAssetId}.${extension}`;
 }
 
 export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
@@ -1644,65 +1665,100 @@ export function createSupabaseAdminCatalogStore(
       return fetchFabricRenderJob(client, jobId);
     },
     async getRenderCoverage(sofaId) {
-      const sofa = await fetchSofaLifecycle(client, sofaId);
-
-      if (!sofa) {
-        return null;
-      }
-
-      const [columns, sofaFabrics] = await Promise.all([
-        fetchVisualMatrixColumns(client, sofaId),
-        fetchSofaFabricAssignments(client, sofaId),
-      ]);
-      const renderCells = await ensureRenderCellsForCoverage(client, {
-        columns,
-        sofaFabrics,
-        sofaId,
-      });
-      const renderCellIds = renderCells.map((cell) => cell.id);
-      const [jobsByCellId, candidateCountsByCellId] = await Promise.all([
-        fetchLatestJobsByRenderCellIds(client, renderCellIds),
-        fetchCandidateCountsByRenderCellIds(client, renderCellIds),
-      ]);
-
-      return {
-        render_cells: decorateRenderCells({
-          candidateCountsByCellId,
-          cells: renderCells,
-          columns,
-          jobsByCellId,
-          sofaFabrics,
-        }),
-        sofa_fabrics: sofaFabrics,
-        sofa_id: sofaId,
-        visual_matrix_columns: columns,
-      };
+      return fetchAdminRenderCoverage(client, sofaId);
     },
     async getSofa(sofaId) {
       return fetchSofaWithTags(client, sofaId);
     },
     async getSofaPublicationReadiness(sofaId) {
-      const { data, error } = await client.rpc(
-        "sofa_publication_readiness_errors",
-        {
-          p_sofa_id: sofaId,
-        },
-      );
+      return fetchAdminSofaPublicationReadiness(client, sofaId);
+    },
+    async publishSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
 
-      if (error) {
-        throw mapSupabaseError(error);
-      }
-
-      const errorCodes = Array.isArray(data) ? data : [];
-
-      if (errorCodes.includes("sofa_not_found")) {
+      if (!sofa) {
         return null;
       }
 
-      return {
-        errors: errorCodes.map(mapReadinessError),
-        ready: errorCodes.length === 0,
-      };
+      if (sofa.lifecycle_state === "archived") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Archived sofas cannot be published.",
+          status: 409,
+        };
+      }
+
+      const readiness = await fetchAdminSofaPublicationReadiness(
+        client,
+        sofaId,
+      );
+
+      if (!readiness?.ready) {
+        return {
+          code: "SOFA_CONFLICT",
+          details: {
+            readiness_errors: readiness?.errors ?? [],
+          },
+          message: "Sofa is not ready for publication.",
+          status: 409,
+        };
+      }
+
+      const coverage = await fetchAdminRenderCoverage(client, sofaId);
+
+      if (!coverage) {
+        return {
+          code: "SOFA_NOT_FOUND",
+          message: "Sofa was not found.",
+          status: 404,
+        };
+      }
+
+      const mappings = await createPublicRenderAssetCopiesForPublication(
+        client,
+        coverage,
+      );
+
+      const { error } = await client.rpc("admin_publish_sofa", {
+        p_public_render_assets: mappings,
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        await removeUploadedPublicRenderCopies(client, mappings);
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be published.",
+        });
+      }
+
+      return fetchSofaWithTags(client, sofaId);
+    },
+    async unpublishSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      if (sofa.lifecycle_state === "archived") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Archived sofas cannot be unpublished.",
+          status: 409,
+        };
+      }
+
+      const { error } = await client.rpc("admin_unpublish_sofa", {
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be unpublished.",
+        });
+      }
+
+      return fetchSofaWithTags(client, sofaId);
     },
     async listSofas() {
       const { data, error } = await client
@@ -3183,6 +3239,72 @@ async function fetchSofaWithTags(
   } as AdminSofaRecord;
 }
 
+async function fetchAdminSofaPublicationReadiness(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const { data, error } = await client.rpc(
+    "sofa_publication_readiness_errors",
+    {
+      p_sofa_id: sofaId,
+    },
+  );
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  const errorCodes = Array.isArray(data) ? data : [];
+
+  if (errorCodes.includes("sofa_not_found")) {
+    return null;
+  }
+
+  return {
+    errors: errorCodes.map(mapReadinessError),
+    ready: errorCodes.length === 0,
+  };
+}
+
+async function fetchAdminRenderCoverage(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const sofa = await fetchSofaLifecycle(client, sofaId);
+
+  if (!sofa) {
+    return null;
+  }
+
+  const [columns, sofaFabrics] = await Promise.all([
+    fetchVisualMatrixColumns(client, sofaId),
+    fetchSofaFabricAssignments(client, sofaId),
+  ]);
+  const renderCells = await ensureRenderCellsForCoverage(client, {
+    columns,
+    sofaFabrics,
+    sofaId,
+  });
+  const renderCellIds = renderCells.map((cell) => cell.id);
+  const [jobsByCellId, candidateCountsByCellId] = await Promise.all([
+    fetchLatestJobsByRenderCellIds(client, renderCellIds),
+    fetchCandidateCountsByRenderCellIds(client, renderCellIds),
+  ]);
+
+  return {
+    render_cells: decorateRenderCells({
+      candidateCountsByCellId,
+      cells: renderCells,
+      columns,
+      jobsByCellId,
+      sofaFabrics,
+    }),
+    sofa_fabrics: sofaFabrics,
+    sofa_id: sofaId,
+    visual_matrix_columns: columns,
+  };
+}
+
 async function fetchFabricWithAssets(
   client: SupabaseCatalogClient,
   fabricId: string,
@@ -4113,6 +4235,179 @@ function privateReviewUrlTtlSeconds(env: NodeJS.ProcessEnv) {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : 10 * 60;
 }
 
+type PublicationRenderAssetMapping = {
+  byte_size: number;
+  content_type: string;
+  height_px: number;
+  object_path: string;
+  private_asset_id: string;
+  public_asset_id: string;
+  render_cell_id: string;
+  width_px: number;
+};
+
+async function createPublicRenderAssetCopiesForPublication(
+  client: SupabaseCatalogClient,
+  coverage: AdminRenderCoverageRecord,
+) {
+  const requiredCells = publicationRenderCells(coverage);
+
+  if (requiredCells.length === 0) {
+    throw new AdminCatalogOperationError({
+      code: "SOFA_CONFLICT",
+      message: "Sofa has no private render coverage to publish.",
+      status: 409,
+    });
+  }
+
+  const privateAssetIds = requiredCells
+    .map((cell) => cell.current_private_asset_id)
+    .filter(
+      (assetId): assetId is string => typeof assetId === "string",
+    );
+  const assetMap = await fetchAssetsByIds(client, privateAssetIds);
+  const mappings: PublicationRenderAssetMapping[] = [];
+
+  try {
+    for (const cell of requiredCells) {
+      const privateAssetId = cell.current_private_asset_id;
+      const asset =
+        typeof privateAssetId === "string"
+          ? assetMap.get(privateAssetId)
+          : null;
+
+      if (
+        typeof privateAssetId !== "string" ||
+        !asset ||
+        asset.visibility !== "private" ||
+        asset.lifecycle_state !== "active" ||
+        asset.bucket_id !== "catalog-private-assets" ||
+        !asset.object_path ||
+        !asset.width_px ||
+        !asset.height_px
+      ) {
+        throw new AdminCatalogOperationError({
+          code: "SOFA_CONFLICT",
+          details: {
+            render_cell_id: cell.id,
+          },
+          message:
+            "Sofa has private render coverage that cannot be published.",
+          status: 409,
+        });
+      }
+
+      const { data: blob, error: downloadError } = await client.storage
+        .from(asset.bucket_id)
+        .download(asset.object_path);
+
+      if (downloadError || !blob) {
+        throw mapSupabaseError(downloadError ?? {});
+      }
+
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const publicAssetId = randomUUID();
+      const objectPath = buildPublicRenderAssetObjectPath({
+        contentType: asset.content_type,
+        publicAssetId,
+        renderCellId: cell.id,
+        sofaId: cell.sofa_id,
+      });
+      const { error: uploadError } = await client.storage
+        .from("catalog-public-assets")
+        .upload(objectPath, bytes, {
+          contentType: asset.content_type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw mapSupabaseError(uploadError);
+      }
+
+      mappings.push({
+        byte_size: bytes.byteLength,
+        content_type: asset.content_type,
+        height_px: asset.height_px,
+        object_path: objectPath,
+        private_asset_id: privateAssetId,
+        public_asset_id: publicAssetId,
+        render_cell_id: cell.id,
+        width_px: asset.width_px,
+      });
+    }
+  } catch (error) {
+    await removeUploadedPublicRenderCopies(client, mappings);
+    throw error;
+  }
+
+  return mappings;
+}
+
+function publicationRenderCells(coverage: AdminRenderCoverageRecord) {
+  const columns = coverage.visual_matrix_columns.filter(
+    (column): column is AdminVisualMatrixColumnRecord =>
+      isRecord(column) && typeof column.id === "string",
+  );
+  const cells = coverage.render_cells.filter(
+    (cell): cell is AdminRenderCellRecord =>
+      isRecord(cell) &&
+      typeof cell.id === "string" &&
+      typeof cell.current_private_asset_id === "string",
+  );
+  const cellMap = new Map(
+    cells.map((cell) => [
+      renderCellKey(cell.fabric_id, cell.visual_matrix_column_id),
+      cell,
+    ]),
+  );
+  const requiredCells: AdminRenderCellRecord[] = [];
+
+  for (const assignment of coverage.sofa_fabrics) {
+    if (!isRecord(assignment) || assignment.public_order === null) {
+      continue;
+    }
+
+    const fabric = isRecord(assignment.fabric)
+      ? (assignment.fabric as unknown as AdminFabricRecord)
+      : null;
+
+    if (fabric && fabric.lifecycle_state !== "active") {
+      continue;
+    }
+
+    for (const column of columns) {
+      const cell = cellMap.get(
+        renderCellKey(String(assignment.fabric_id), column.id),
+      );
+
+      if (!cell) {
+        throw new AdminCatalogOperationError({
+          code: "SOFA_CONFLICT",
+          message: "Sofa private render coverage is incomplete.",
+          status: 409,
+        });
+      }
+
+      requiredCells.push(cell);
+    }
+  }
+
+  return requiredCells;
+}
+
+async function removeUploadedPublicRenderCopies(
+  client: SupabaseCatalogClient,
+  mappings: PublicationRenderAssetMapping[],
+) {
+  const objectPaths = mappings.map((mapping) => mapping.object_path);
+
+  if (objectPaths.length === 0) {
+    return;
+  }
+
+  await client.storage.from("catalog-public-assets").remove(objectPaths);
+}
+
 function renderCellKey(fabricId: string, visualMatrixColumnId: string) {
   return `${fabricId}:${visualMatrixColumnId}`;
 }
@@ -4604,6 +4899,34 @@ function mapSofaFabricMutationError(error: {
     message: "Catalog service is unavailable.",
     status: 500,
   };
+}
+
+function mapSofaPublicationRpcError(
+  error: {
+    code?: string;
+    message?: string;
+  },
+  options: {
+    conflictMessage: string;
+  },
+) {
+  if (error.code === "P0002") {
+    return new AdminCatalogOperationError({
+      code: "SOFA_NOT_FOUND",
+      message: "Sofa was not found.",
+      status: 404,
+    });
+  }
+
+  if (error.code === "23514") {
+    return new AdminCatalogOperationError({
+      code: "SOFA_CONFLICT",
+      message: options.conflictMessage,
+      status: 409,
+    });
+  }
+
+  return mapSupabaseError(error);
 }
 
 function mapVisualMatrixColumnMutationError(error: {

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildPublicRenderAssetObjectPath,
   buildPublicTagSlug,
   shapeFabricRenderCandidateResponse,
   shapeFabricRenderJobResponse,
@@ -717,5 +718,21 @@ describe("admin catalog response shaping", () => {
     expect(serialized).not.toContain("object_path");
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");
+  });
+});
+
+describe("admin catalog publication helpers", () => {
+  it("builds public render object paths without private bucket details", () => {
+    const path = buildPublicRenderAssetObjectPath({
+      contentType: "image/png",
+      publicAssetId: "00000000-0000-4000-8000-000000000910",
+      renderCellId: "00000000-0000-4000-8000-000000000908",
+      sofaId: sofaRecord.id,
+    });
+
+    expect(path).toBe(
+      "sofas/00000000-0000-4000-8000-000000000101/renders/00000000-0000-4000-8000-000000000908/00000000-0000-4000-8000-000000000910.png",
+    );
+    expect(path).not.toContain("catalog-private-assets");
   });
 });

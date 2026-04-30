@@ -18,9 +18,10 @@
 | Done   | SPEC-0006 | PLAN-0025 | Sofa edit render coverage polls generated job status after Generate so cron-driven worker output appears in admin.   |
 | Done   | SPEC-0006 | PLAN-0026 | Admin render job creation no longer owns provider or model selection.                                                |
 | Done   | SPEC-0013 | PLAN-0028 | Admin render input uploads resize oversized AI references and source photos before signed upload.                    |
+| Done   | SPEC-0010 | PLAN-0029 | Sofa edit publication actions publish selected private render coverage as public catalog assets and unpublish safely. |
 
 ## Next
 
 - Build public storefront pages on top of the public catalog read API.
-- Build admin publication and export workflows on top of the authenticated admin boundary.
+- Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.
