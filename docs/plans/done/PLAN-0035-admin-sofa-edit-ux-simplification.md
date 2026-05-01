@@ -1191,6 +1191,10 @@ Update these roadmap files:
 - Do not add drag-and-drop ordering in this plan; use numeric public order inputs and explicit save.
 - Do not expose AI reference thumbnails in matrix-heavy views; show only AI reference readiness text.
 
+## Post-Completion Maintenance
+
+- [x] Corrected the candidate comparison dialog so generated render candidates are compared against the source photo for the selected visual position, not against the current render. The admin API now carries a safe signed source photo preview URL for this comparison without exposing storage object paths.
+
 ## Self-Review
 
 - Spec coverage: SPEC-0014 tab workflow, header behavior, tab responsibilities, fabric cards, safe swatch preview URL, render cell statuses, render cell sheet, candidate review, explicit save model, mobile and desktop rules, error states, accessibility, testing, and roadmap impact are covered.
