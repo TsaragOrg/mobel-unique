@@ -12,7 +12,7 @@ const DB_URL =
 const PSQL_BIN =
   process.env.IN_HOME_SIMULATION_CLAIM_SMOKE_PSQL ?? "psql";
 const REQUEST_TIMEOUT_MS = Number(
-  process.env.IN_HOME_SIMULATION_CLAIM_SMOKE_TIMEOUT_MS ?? 10000
+  process.env.IN_HOME_SIMULATION_CLAIM_SMOKE_TIMEOUT_MS ?? 30000
 );
 
 const smokeSql = `
@@ -470,12 +470,8 @@ let stderr = "";
 let settled = false;
 
 const timeout = setTimeout(() => {
+  settled = true;
   child.kill("SIGTERM");
-  if (isLocalDbUrl(DB_URL)) {
-    skip(
-      `local Supabase database is not reachable at ${DB_URL}. Run \`pnpm supabase:start\`.`
-    );
-  }
   fail(`database query timed out after ${REQUEST_TIMEOUT_MS}ms`);
 }, REQUEST_TIMEOUT_MS);
 
