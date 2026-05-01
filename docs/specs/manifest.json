@@ -191,6 +191,17 @@
       "implementationPlans": [],
       "path": "docs/specs/accepted/SPEC-0013-admin-frontend-experience-and-page-flows.md",
       "areas": ["web", "api", "supabase"]
+    },
+    {
+      "id": "SPEC-0014",
+      "title": "Admin Sofa Edit UX Simplification",
+      "status": "accepted",
+      "layer": "feature",
+      "parent": "SPEC-0013",
+      "dependsOn": ["SPEC-0005", "SPEC-0006", "SPEC-0009", "SPEC-0010", "SPEC-0011", "SPEC-0013"],
+      "implementationPlans": ["PLAN-0035"],
+      "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
+      "areas": ["web", "api"]
     }
   ]
 }

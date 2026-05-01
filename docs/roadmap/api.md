@@ -16,6 +16,7 @@
 | Done   | SPEC-0010 | PLAN-0029 | Authenticated admin publication and unpublication endpoints create and clear public render asset references.                |
 | Done   | SPEC-0006 | PLAN-0030 | Admin fabric render job creation accepts initial prompt notes and validated refine jobs from private candidates.            |
 | Done | SPEC-0006 | PLAN-0031 | Manual fabric render pump invocation endpoints, generate-all, resume, and shared `request_id` orchestration.                |
+| Active | SPEC-0014 | PLAN-0035 | Admin fabric responses expose safe swatch preview URLs without storage object paths.                                      |
 
 ## Next
 
