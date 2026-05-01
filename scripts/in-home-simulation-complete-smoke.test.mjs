@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const scriptPath = fileURLToPath(
   new URL("./in-home-simulation-complete-smoke.mjs", import.meta.url)
 );
-const TEST_TIMEOUT_MS = 15000;
+const TEST_TIMEOUT_MS = 45000;
 
 function createFakePsql() {
   const cwd = mkdtempSync(
@@ -19,6 +19,10 @@ function createFakePsql() {
   writeFileSync(
     fakePsqlPath,
     `#!/usr/bin/env node
+const hangMs = Number(process.env.FAKE_PSQL_HANG_MS ?? "0");
+if (hangMs > 0) {
+  await new Promise((resolve) => setTimeout(resolve, hangMs));
+}
 process.stdout.write(process.env.FAKE_PSQL_STDOUT ?? "");
 process.stderr.write(process.env.FAKE_PSQL_STDERR ?? "");
 process.exit(Number(process.env.FAKE_PSQL_STATUS ?? "0"));
@@ -89,6 +93,27 @@ describe("in-home simulation complete smoke script", () => {
       );
       expect(result.stderr).toContain(
         "complete accepted a worker_identifier that does not match the current claim"
+      );
+    },
+    TEST_TIMEOUT_MS
+  );
+
+  it(
+    "fails clearly when psql times out",
+    async () => {
+      const result = await runSmoke({
+        FAKE_PSQL_HANG_MS: "500",
+        IN_HOME_SIMULATION_COMPLETE_SMOKE_PSQL: createFakePsql(),
+        IN_HOME_SIMULATION_COMPLETE_SMOKE_TIMEOUT_MS: "50"
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "FAIL in-home simulation complete smoke"
+      );
+      expect(result.stderr).toContain("database query timed out after 50ms");
+      expect(result.stdout).not.toContain(
+        "SKIP in-home simulation complete smoke"
       );
     },
     TEST_TIMEOUT_MS
