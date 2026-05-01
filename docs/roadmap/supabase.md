@@ -19,6 +19,7 @@
 | Done   | SPEC-0010 | PLAN-0029 | Publication RPCs create public render asset references from selected private render coverage and clear them on unpublish.   |
 | Done   | SPEC-0006 | PLAN-0030 | Fabric render jobs store `refine_prompt` and resolve it for the fabric render worker without provider-owned idempotency.   |
 | Done | SPEC-0006 | PLAN-0031 | Fabric render `request_id`, pump/job claiming helpers, Realtime-safe job observation, and local Gemini concurrency defaults. |
+| Done | SPEC-0006 | PLAN-0033 | Local Gemini worker output preservation avoids Supabase CLI Edge runtime CPU cancellation while deployed workers keep strict normalization. |
 
 ## Next
 
