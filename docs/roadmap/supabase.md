@@ -24,6 +24,7 @@
 | Done   | SPEC-0007 | PLAN-0011 | `in-home-simulation-worker` Stage 2 sofa placement with the OpenAI image-edit primary provider, Gemini fallback via `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini`, regeneration cycle persisting outputs at `simulations/{job_id}/outputs/output-{index}.png`, and the three-result MVP cap. |
 | Done   | SPEC-0007 | PLAN-0012 | `in-home-simulation-purge` Edge Function and resilience helpers covering per-stage retry classification, expired-claim recovery, idempotent 24-hour retention purge, orphan upload cleanup, and the operational observability view backed by `worker_job_events`. |
 | Active | SPEC-0007 | PLAN-0016 | `in-home-simulation-worker` Stage 1 corners geometric validator + 3-attempt retry, Stage 2 self-correcting placement feedback loop with the new `OpenAIPlacementMeasurementProvider` (GPT-5 vision JSON), prompt v003 across `OpenAIPlacementProvider`, `GeminiPlacementProvider`, and `MockPlacementProvider`, and the `--position` / `--sofa-*` / `--room-depth` extension to the `submit-dimensions` CLI. |
+| Done   | SPEC-0007 | PLAN-0034 | Renumber SPEC-0007 in-home simulation migrations off the colliding `20260428000100` and `20260428000200` timestamps used by SPEC-0011 admin and admin fabric-render-job-enqueue migrations so the Supabase DEV deploy stops failing with the `schema_migrations_pkey` duplicate-key error. |
 
 ## Next
 
