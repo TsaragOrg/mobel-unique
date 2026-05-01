@@ -144,20 +144,38 @@ export interface AdminFabricRenderJobRecord {
   attempt_count: number;
   completed_at: string | null;
   created_at: string;
+  fabric_ai_reference_asset_id: string;
   fabric_id: string;
   generation_mode: string;
   id: string;
   last_error_message: string | null;
   max_attempts: number;
   prompt_note: string | null;
+  prompt_version: string;
   queued_at: string | null;
+  request_id: string;
   refinement_source_asset_id: string | null;
   refine_prompt: string | null;
   render_cell_id: string;
   sofa_id: string;
   status: string;
+  target_sofa_asset_id: string;
   updated_at: string;
   visual_matrix_column_id: string;
+}
+
+export interface AdminFabricRenderJobBatchRecord {
+  fabric_render_jobs: Array<AdminFabricRenderJobRecord | JsonObject>;
+  job_ids: string[];
+  request_id: string | null;
+  status: "noop" | "queued";
+  total_jobs: number;
+}
+
+export interface AdminFabricRenderResumeRecord {
+  request_ids: string[];
+  status: "noop" | "started";
+  total_requests: number;
 }
 
 export interface AdminFabricRenderCandidateRecord {
@@ -231,6 +249,21 @@ export interface AdminCatalogStore {
   ): Promise<AdminUploadRecord | JsonObject>;
   createFabricRenderJob(
     input: FabricRenderJobCreateInput,
+  ): Promise<
+    AdminFabricRenderJobRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
+  createFabricRenderJobsForSofa(
+    sofaId: string,
+  ): Promise<
+    AdminFabricRenderJobBatchRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
+  resumeFabricRenderJobs(
+    input: FabricRenderResumeInput,
+  ): Promise<
+    AdminFabricRenderResumeRecord | JsonObject | AdminCatalogOperationErrorData
+  >;
+  retryFabricRenderJob(
+    jobId: string,
   ): Promise<
     AdminFabricRenderJobRecord | JsonObject | AdminCatalogOperationErrorData
   >;
@@ -431,6 +464,16 @@ export type FabricRenderJobCreateInput =
       visual_matrix_column_id: string;
     };
 
+export type FabricRenderResumeInput =
+  | {
+      request_id: string;
+      sofa_id?: null;
+    }
+  | {
+      request_id?: null;
+      sofa_id: string;
+    };
+
 const SOFA_FIELDS = [
   "internal_name",
   "public_name",
@@ -483,6 +526,8 @@ const FABRIC_RENDER_JOB_FIELDS = [
   "refinement_source_asset_id",
   "refine_prompt",
 ] as const;
+
+const FABRIC_RENDER_RESUME_FIELDS = ["request_id", "sofa_id"] as const;
 
 const UPLOAD_PURPOSES = [
   "fabric_swatch",
@@ -957,6 +1002,67 @@ export function validateFabricRenderJobCreatePayload(
   };
 }
 
+export function validateFabricRenderResumePayload(
+  payload: unknown,
+): ValidationResult<FabricRenderResumeInput> {
+  if (!isRecord(payload)) {
+    return invalidRequest("Request body must be a JSON object.");
+  }
+
+  const unsupportedFields = findUnsupportedFields(
+    payload,
+    FABRIC_RENDER_RESUME_FIELDS,
+  );
+
+  if (unsupportedFields.length > 0) {
+    return unsupportedField(unsupportedFields);
+  }
+
+  const requestId = readUuidField(payload, "request_id", {
+    required: false,
+  });
+  const sofaId = readUuidField(payload, "sofa_id", {
+    required: false,
+  });
+  const fields: string[] = [];
+
+  if (!requestId.ok) {
+    fields.push("request_id");
+  }
+
+  if (!sofaId.ok) {
+    fields.push("sofa_id");
+  }
+
+  if (requestId.present && sofaId.present) {
+    fields.push("request_id", "sofa_id");
+  }
+
+  if (!requestId.present && !sofaId.present) {
+    fields.push("request_id");
+  }
+
+  if (fields.length > 0) {
+    return validationFailed([...new Set(fields)]);
+  }
+
+  return requestId.present
+    ? {
+        ok: true,
+        value: {
+          request_id: requestId.value ?? "",
+          sofa_id: null,
+        },
+      }
+    : {
+        ok: true,
+        value: {
+          request_id: null,
+          sofa_id: sofaId.value ?? "",
+        },
+      };
+}
+
 export function buildPublicTagSlug(value: string) {
   const slug = value
     .normalize("NFKD")
@@ -1136,6 +1242,7 @@ export function shapeFabricRenderJobResponse(
     max_attempts: numberOrNull(record.max_attempts),
     prompt_note: stringOrNull(record.prompt_note),
     queued_at: stringOrNull(record.queued_at),
+    request_id: stringOrNull(record.request_id),
     refinement_source_asset_id: stringOrNull(record.refinement_source_asset_id),
     refine_prompt: stringOrNull(record.refine_prompt),
     render_cell_id: stringOrNull(record.render_cell_id),
@@ -1231,16 +1338,18 @@ export function shapeRenderCoverageResponse(
 export function createSupabaseAdminCatalogStore(
   env: NodeJS.ProcessEnv = process.env,
 ): AdminCatalogStore {
-  const client = createClient(
-    requiredEnv(env, "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"),
-    requiredEnv(env, "SUPABASE_SERVICE_ROLE_KEY"),
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+  const supabaseUrl = requiredEnv(
+    env,
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_URL",
+  );
+  const serviceRoleKey = requiredEnv(env, "SUPABASE_SERVICE_ROLE_KEY");
+  const client = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
     },
-  ) as SupabaseCatalogClient;
+  }) as SupabaseCatalogClient;
 
   return {
     async archiveFabric(fabricId) {
@@ -1580,6 +1689,7 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
+      const requestId = randomUUID();
       const { data, error } = await client
         .from("fabric_render_jobs")
         .insert({
@@ -1590,6 +1700,7 @@ export function createSupabaseAdminCatalogStore(
           prompt_note: promptNote,
           prompt_version: promptVersion,
           queued_at: new Date().toISOString(),
+          request_id: requestId,
           refinement_source_asset_id: refinementSourceAssetId,
           refine_prompt: refinePrompt,
           render_cell_id: renderCell.id,
@@ -1605,17 +1716,207 @@ export function createSupabaseAdminCatalogStore(
         return mapFabricRenderJobMutationError(error);
       }
 
-      const { error: enqueueError } = await client.rpc(
-        "fabric_render_admin_enqueue_job",
-        {
-          queue_name:
-            env.FABRIC_RENDER_QUEUE_NAME ?? "local_fabric_render_jobs",
-          render_job_id: data.id,
-        },
-      );
+      try {
+        await invokeFabricRenderPump({
+          env,
+          requestId,
+          supabaseUrl,
+        });
+      } catch (error) {
+        await markFabricRenderRequestStartFailed(client, requestId);
+        throw error;
+      }
 
-      if (enqueueError) {
-        throw mapSupabaseError(enqueueError);
+      return data as AdminFabricRenderJobRecord;
+    },
+    async createFabricRenderJobsForSofa(sofaId) {
+      const coverage = await fetchAdminRenderCoverage(client, sofaId);
+
+      if (!coverage) {
+        return {
+          code: "SOFA_NOT_FOUND",
+          message: "Sofa was not found.",
+          status: 404,
+        };
+      }
+
+      const requestId = randomUUID();
+      const now = new Date().toISOString();
+      const promptVersion = env.FABRIC_RENDER_PROMPT_VERSION ?? "v007";
+      const fabricById = new Map(
+        coverage.sofa_fabrics.map((sofaFabric) => [
+          sofaFabric.fabric_id,
+          isRecord(sofaFabric.fabric)
+            ? (sofaFabric.fabric as unknown as AdminFabricRecord)
+            : null,
+        ]),
+      );
+      const columnById = new Map(
+        coverage.visual_matrix_columns.map((column) => [column.id, column]),
+      );
+      const jobsToInsert: JsonObject[] = [];
+
+      for (const cell of coverage.render_cells) {
+        if (
+          cell.can_generate_initial !== true ||
+          cell.current_private_asset_id
+        ) {
+          continue;
+        }
+
+        const fabric = fabricById.get(cell.fabric_id);
+        const column = columnById.get(cell.visual_matrix_column_id);
+        const sourcePhoto = sourcePhotoForColumn(column);
+
+        if (!fabric?.ai_reference_asset_id || !sourcePhoto?.asset_id) {
+          continue;
+        }
+
+        jobsToInsert.push({
+          fabric_ai_reference_asset_id: fabric.ai_reference_asset_id,
+          fabric_id: cell.fabric_id,
+          generation_mode: "initial",
+          max_attempts: Number(env.FABRIC_RENDER_MAX_ATTEMPTS ?? 3),
+          prompt_note: null,
+          prompt_version: promptVersion,
+          queued_at: now,
+          request_id: requestId,
+          refinement_source_asset_id: null,
+          refine_prompt: null,
+          render_cell_id: cell.id,
+          sofa_id: sofaId,
+          status: "queued",
+          target_sofa_asset_id: sourcePhoto.asset_id,
+          visual_matrix_column_id: cell.visual_matrix_column_id,
+        });
+      }
+
+      if (jobsToInsert.length === 0) {
+        return {
+          fabric_render_jobs: [],
+          job_ids: [],
+          request_id: null,
+          status: "noop",
+          total_jobs: 0,
+        };
+      }
+
+      const { data, error } = await client
+        .from("fabric_render_jobs")
+        .insert(jobsToInsert)
+        .select(FABRIC_RENDER_JOB_SELECT);
+
+      if (error) {
+        return mapFabricRenderJobMutationError(error);
+      }
+
+      try {
+        await invokeFabricRenderPump({
+          env,
+          requestId,
+          supabaseUrl,
+        });
+      } catch (error) {
+        await markFabricRenderRequestStartFailed(client, requestId);
+        throw error;
+      }
+
+      const jobs = (data ?? []) as AdminFabricRenderJobRecord[];
+
+      return {
+        fabric_render_jobs: jobs,
+        job_ids: jobs.map((job) => job.id),
+        request_id: requestId,
+        status: "queued",
+        total_jobs: jobs.length,
+      };
+    },
+    async resumeFabricRenderJobs(input) {
+      const requestIds = await fetchQueuedFabricRenderRequestIds(client, input);
+
+      if (requestIds.length === 0) {
+        return {
+          request_ids: [],
+          status: "noop",
+          total_requests: 0,
+        };
+      }
+
+      for (const requestId of requestIds) {
+        try {
+          await invokeFabricRenderPump({
+            env,
+            requestId,
+            supabaseUrl,
+          });
+        } catch (error) {
+          await markFabricRenderRequestStartFailed(client, requestId);
+          throw error;
+        }
+      }
+
+      return {
+        request_ids: requestIds,
+        status: "started",
+        total_requests: requestIds.length,
+      };
+    },
+    async retryFabricRenderJob(jobId) {
+      const existingJob = await fetchFabricRenderJob(client, jobId);
+
+      if (!existingJob) {
+        return {
+          code: "FABRIC_RENDER_JOB_NOT_FOUND",
+          message: "Fabric render job was not found.",
+          status: 404,
+        };
+      }
+
+      if (existingJob.status !== "failed") {
+        return {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message: "Only failed fabric render jobs can be retried.",
+          status: 409,
+        };
+      }
+
+      const requestId = randomUUID();
+      const { data, error } = await client
+        .from("fabric_render_jobs")
+        .insert({
+          fabric_ai_reference_asset_id:
+            existingJob.fabric_ai_reference_asset_id,
+          fabric_id: existingJob.fabric_id,
+          generation_mode: existingJob.generation_mode,
+          max_attempts: Number(env.FABRIC_RENDER_MAX_ATTEMPTS ?? 3),
+          prompt_note: existingJob.prompt_note,
+          prompt_version: existingJob.prompt_version,
+          queued_at: new Date().toISOString(),
+          request_id: requestId,
+          refinement_source_asset_id: existingJob.refinement_source_asset_id,
+          refine_prompt: existingJob.refine_prompt,
+          render_cell_id: existingJob.render_cell_id,
+          sofa_id: existingJob.sofa_id,
+          status: "queued",
+          target_sofa_asset_id: existingJob.target_sofa_asset_id,
+          visual_matrix_column_id: existingJob.visual_matrix_column_id,
+        })
+        .select(FABRIC_RENDER_JOB_SELECT)
+        .single();
+
+      if (error) {
+        return mapFabricRenderJobMutationError(error);
+      }
+
+      try {
+        await invokeFabricRenderPump({
+          env,
+          requestId,
+          supabaseUrl,
+        });
+      } catch (error) {
+        await markFabricRenderRequestStartFailed(client, requestId);
+        throw error;
       }
 
       return data as AdminFabricRenderJobRecord;
@@ -2397,14 +2698,18 @@ const FABRIC_RENDER_JOB_SELECT = [
   "fabric_id",
   "visual_matrix_column_id",
   "render_cell_id",
+  "target_sofa_asset_id",
+  "fabric_ai_reference_asset_id",
   "generation_mode",
   "prompt_note",
   "refinement_source_asset_id",
   "refine_prompt",
+  "prompt_version",
   "status",
   "attempt_count",
   "max_attempts",
   "queued_at",
+  "request_id",
   "last_error_message",
   "completed_at",
   "created_at",
@@ -3372,6 +3677,7 @@ async function fetchAdminRenderCoverage(
     sofaFabrics,
     sofaId,
   });
+  await markExpiredFabricRenderJobsForSofa(client, sofaId);
   const renderCellIds = renderCells.map((cell) => cell.id);
   const [jobsByCellId, candidateCountsByCellId] = await Promise.all([
     fetchLatestJobsByRenderCellIds(client, renderCellIds),
@@ -3390,6 +3696,30 @@ async function fetchAdminRenderCoverage(
     sofa_id: sofaId,
     visual_matrix_columns: columns,
   };
+}
+
+async function markExpiredFabricRenderJobsForSofa(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const now = new Date().toISOString();
+  const { error } = await client
+    .from("fabric_render_jobs")
+    .update({
+      claimed_by: null,
+      claim_expires_at: null,
+      completed_at: now,
+      last_error_message: "Worker claim expired before manual resume",
+      status: "failed",
+      updated_at: now,
+    })
+    .eq("sofa_id", sofaId)
+    .eq("status", "processing")
+    .lt("claim_expires_at", now);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
 }
 
 async function fetchFabricWithAssets(
@@ -4159,6 +4489,37 @@ async function fetchFabricRenderJob(
   }
 
   return data as AdminFabricRenderJobRecord | null;
+}
+
+async function fetchQueuedFabricRenderRequestIds(
+  client: SupabaseCatalogClient,
+  input: FabricRenderResumeInput,
+): Promise<string[]> {
+  let query = client
+    .from("fabric_render_jobs")
+    .select("request_id")
+    .eq("status", "queued");
+
+  query =
+    input.request_id !== null && input.request_id !== undefined
+      ? query.eq("request_id", input.request_id)
+      : query.eq("sofa_id", input.sofa_id);
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return [
+    ...new Set<string>(
+      (data ?? [])
+        .map((job: JsonObject) => job.request_id)
+        .filter((requestId: unknown): requestId is string =>
+          typeof requestId === "string",
+        ),
+    ),
+  ];
 }
 
 async function fetchCandidateCountsByRenderCellIds(
@@ -5130,6 +5491,91 @@ function mapVisualMatrixColumnMutationError(error: {
     message: "Catalog service is unavailable.",
     status: 500,
   };
+}
+
+async function invokeFabricRenderPump(input: {
+  env: NodeJS.ProcessEnv;
+  requestId: string;
+  supabaseUrl: string;
+}) {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      fabricRenderWorkerFunctionUrl(input.env, input.supabaseUrl),
+      {
+        body: JSON.stringify({
+          mode: "pump",
+          request_id: input.requestId,
+        }),
+        headers: fabricRenderWorkerInvocationHeaders(input.env),
+        method: "POST",
+      },
+    );
+  } catch {
+    throw new AdminCatalogOperationError({
+      code: "FABRIC_RENDER_WORKER_INVOKE_FAILED",
+      message: "Fabric render worker could not be started.",
+      status: 500,
+    });
+  }
+
+  if (!response.ok) {
+    throw new AdminCatalogOperationError({
+      code: "FABRIC_RENDER_WORKER_INVOKE_FAILED",
+      details: {
+        http_status: response.status,
+      },
+      message: "Fabric render worker could not be started.",
+      status: 500,
+    });
+  }
+}
+
+function fabricRenderWorkerFunctionUrl(
+  env: NodeJS.ProcessEnv,
+  supabaseUrl: string,
+) {
+  return (
+    env.FABRIC_RENDER_WORKER_FUNCTION_URL ??
+    `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/fabric-render-worker`
+  );
+}
+
+function fabricRenderWorkerInvocationHeaders(
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const invocationSecret = env.FABRIC_RENDER_WORKER_INVOKE_SECRET;
+
+  if (invocationSecret) {
+    headers["x-fabric-render-worker-secret"] = invocationSecret;
+  }
+
+  return headers;
+}
+
+async function markFabricRenderRequestStartFailed(
+  client: SupabaseCatalogClient,
+  requestId: string,
+) {
+  const now = new Date().toISOString();
+  const { error } = await client
+    .from("fabric_render_jobs")
+    .update({
+      completed_at: now,
+      last_error_message: "Fabric render worker could not be started.",
+      status: "failed",
+      updated_at: now,
+    })
+    .eq("request_id", requestId)
+    .eq("status", "queued");
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
 }
 
 function mapFabricRenderJobMutationError(error: {

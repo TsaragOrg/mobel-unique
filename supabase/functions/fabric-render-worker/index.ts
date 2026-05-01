@@ -27,19 +27,57 @@ import {
   type ScratchFileSystem,
 } from "./scratch.ts";
 
+declare const EdgeRuntime:
+  | {
+      waitUntil?: (promise: Promise<unknown>) => void;
+    }
+  | undefined;
+
+type WorkerMode = "pump" | "job";
+
+type WorkerRequestBody = {
+  mode: WorkerMode;
+  requestId: string;
+};
+
 type WorkerResponse = {
   status?: string;
   job_id?: string;
-  queue_name?: string;
+  request_id?: string;
+  mode?: WorkerMode;
   output_path?: string;
+  queued?: number;
+  processing?: number;
+  succeeded?: number;
+  failed?: number;
+  canceled?: number;
+  started_count?: number;
+  max_concurrent_jobs?: number;
   error?: string;
 };
 
 type ClaimedJob = {
   status?: string;
   job_id?: string;
-  queue_name?: string;
+  request_id?: string;
   error?: string;
+};
+
+type RequestJobStatus = {
+  request_id?: string;
+  queued?: number;
+  processing?: number;
+  succeeded?: number;
+  failed?: number;
+  canceled?: number;
+  error?: string;
+};
+
+type SeededMockJob = {
+  status?: string;
+  job_id?: string;
+  request_id?: string;
+  queue_name?: string;
 };
 
 type ResolvedAsset = {
@@ -152,21 +190,17 @@ Deno.serve(async (request) => {
     return invocationError;
   }
 
-  const providerConfig = resolveWorkerProviderConfig();
-  if (!providerConfig) {
-    return jsonResponse({ error: "Unsupported fabric render provider" }, 501);
+  const parsedRequest = await parseWorkerRequestBody(request);
+  if (parsedRequest instanceof Response) {
+    return parsedRequest;
   }
 
   let supabaseUrl: string;
   let serviceRoleKey: string;
-  let geminiApiKey: string | undefined;
 
   try {
     supabaseUrl = requiredEnv("SUPABASE_URL");
     serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-    if (providerConfig.providerName === "gemini") {
-      geminiApiKey = requiredEnv("GEMINI_API_KEY");
-    }
   } catch (error) {
     return jsonResponse(
       { error: error instanceof Error ? error.message : String(error) },
@@ -174,62 +208,24 @@ Deno.serve(async (request) => {
     );
   }
 
-  const queueName =
-    Deno.env.get("FABRIC_RENDER_QUEUE_NAME") ?? "local_fabric_render_jobs";
-  const claimTtlSeconds = parsePositiveInteger(
-    Deno.env.get("FABRIC_RENDER_CLAIM_TTL_SECONDS"),
-    300,
-  );
-  const appEnv = Deno.env.get("APP_ENV") ?? "local";
-
   try {
-    if (
-      appEnv === "local" &&
-      request.headers.get("x-fabric-render-seed-mock-job") === "1"
-    ) {
-      await callRpc(
-        supabaseUrl,
+    let requestId = parsedRequest.requestId;
+
+    if (isLocalSeedRequest(request)) {
+      const seededJob = await seedLocalMockJob(supabaseUrl, serviceRoleKey);
+      requestId = seededJob.request_id ?? seededJob.job_id ?? requestId;
+    }
+
+    if (parsedRequest.mode === "pump") {
+      return await handlePumpMode({
+        requestId,
         serviceRoleKey,
-        "fabric_render_worker_seed_mock_job",
-        {
-          queue_name: queueName,
-        },
-      );
+        supabaseUrl,
+      });
     }
 
-    const claimedJob = await callRpc<ClaimedJob>(
-      supabaseUrl,
-      serviceRoleKey,
-      "fabric_render_worker_claim_next",
-      {
-        claim_ttl_seconds: claimTtlSeconds,
-        claim_provider_model: providerConfig.providerModel,
-        claim_provider_name: providerConfig.providerName,
-        queue_name: queueName,
-        worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
-      },
-    );
-
-    if (claimedJob.status === "empty") {
-      return new Response(null, { status: 204 });
-    }
-
-    if (claimedJob.status !== "processing" || !claimedJob.job_id) {
-      return jsonResponse(
-        {
-          error: claimedJob.error ?? "No claimable fabric render job",
-          queue_name: queueName,
-          status: claimedJob.status ?? "skipped",
-        },
-        409,
-      );
-    }
-
-    return await processClaimedJob({
-      geminiApiKey,
-      jobId: claimedJob.job_id,
-      providerConfig,
-      queueName,
+    return await handleJobMode({
+      requestId,
       serviceRoleKey,
       supabaseUrl,
     });
@@ -240,6 +236,54 @@ Deno.serve(async (request) => {
     );
   }
 });
+
+async function parseWorkerRequestBody(
+  request: Request,
+): Promise<WorkerRequestBody | Response> {
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse(
+      { error: "Fabric render worker request body must be JSON" },
+      400,
+    );
+  }
+
+  if (!isRecord(body)) {
+    return jsonResponse(
+      { error: "Fabric render worker request body must be an object" },
+      400,
+    );
+  }
+
+  const mode = body.mode;
+  if (mode !== "pump" && mode !== "job") {
+    return jsonResponse(
+      { error: "Fabric render worker mode is required" },
+      400,
+    );
+  }
+
+  const requestId = body.request_id;
+  if (typeof requestId !== "string" || requestId.trim().length === 0) {
+    return jsonResponse(
+      { error: "Fabric render request_id is required" },
+      400,
+    );
+  }
+
+  if (mode === "pump") {
+    return { mode: "pump", requestId: requestId.trim() };
+  }
+
+  return { mode: "job", requestId: requestId.trim() };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function validateWorkerInvocation(request: Request): Response | null {
   const expectedSecret = Deno.env.get("FABRIC_RENDER_WORKER_INVOKE_SECRET");
@@ -303,10 +347,328 @@ function resolveWorkerProviderConfig(): WorkerProviderConfig | null {
   };
 }
 
+async function handlePumpMode(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  requestId: string;
+}): Promise<Response> {
+  const maxConcurrentJobs = resolveMaxConcurrentJobs(
+    resolveWorkerProviderConfig(),
+  );
+  const requestStatus = await callRpc<RequestJobStatus>(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    "fabric_render_worker_request_status",
+    {
+      p_request_id: input.requestId,
+    },
+  );
+  const queuedCount = readRequestStatusCount(requestStatus, "queued");
+  const processingCount = readRequestStatusCount(requestStatus, "processing");
+  const availableSlots = Math.max(maxConcurrentJobs - processingCount, 0);
+  const startedCount = Math.min(queuedCount, availableSlots);
+
+  for (let index = 0; index < startedCount; index += 1) {
+    deferWorkerInvocation(
+      invokeWorkerJob({
+        requestId: input.requestId,
+        supabaseUrl: input.supabaseUrl,
+      }),
+    );
+  }
+
+  return jsonResponse({
+    canceled: readRequestStatusCount(requestStatus, "canceled"),
+    failed: readRequestStatusCount(requestStatus, "failed"),
+    max_concurrent_jobs: maxConcurrentJobs,
+    mode: "pump",
+    processing: processingCount,
+    queued: queuedCount,
+    request_id: input.requestId,
+    started_count: startedCount,
+    status: startedCount > 0 ? "started" : "idle",
+    succeeded: readRequestStatusCount(requestStatus, "succeeded"),
+  });
+}
+
+async function handleJobMode(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  requestId: string;
+}): Promise<Response> {
+  const providerConfig = resolveWorkerProviderConfig();
+  if (!providerConfig) {
+    return jsonResponse({ error: "Unsupported fabric render provider" }, 501);
+  }
+
+  let geminiApiKey: string | undefined;
+  try {
+    if (providerConfig.providerName === "gemini") {
+      geminiApiKey = requiredEnv("GEMINI_API_KEY");
+    }
+  } catch (error) {
+    return jsonResponse(
+      { error: error instanceof Error ? error.message : String(error) },
+      500,
+    );
+  }
+
+  const claimTtlSeconds = parsePositiveInteger(
+    Deno.env.get("FABRIC_RENDER_CLAIM_TTL_SECONDS"),
+    300,
+  );
+  const maxConcurrentJobs = resolveMaxConcurrentJobs(providerConfig);
+  const claimedJob = await callRpc<ClaimedJob>(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    "fabric_render_worker_claim_one_for_request",
+    {
+      claim_ttl_seconds: claimTtlSeconds,
+      claim_provider_model: providerConfig.providerModel,
+      claim_provider_name: providerConfig.providerName,
+      p_max_concurrent_jobs: maxConcurrentJobs,
+      p_request_id: input.requestId,
+      worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
+    },
+  );
+
+  if (
+    claimedJob.status === "empty" ||
+    claimedJob.status === "capacity_full"
+  ) {
+    return jsonResponse({
+      max_concurrent_jobs: maxConcurrentJobs,
+      mode: "job",
+      request_id: input.requestId,
+      status: claimedJob.status,
+    });
+  }
+
+  if (claimedJob.status !== "processing" || !claimedJob.job_id) {
+    return jsonResponse(
+      {
+        error: claimedJob.error ?? "No claimable fabric render job",
+        mode: "job",
+        request_id: input.requestId,
+        status: claimedJob.status ?? "skipped",
+      },
+      409,
+    );
+  }
+
+  try {
+    return await processClaimedJob({
+      geminiApiKey,
+      jobId: claimedJob.job_id,
+      providerConfig,
+      requestId: input.requestId,
+      serviceRoleKey: input.serviceRoleKey,
+      supabaseUrl: input.supabaseUrl,
+    });
+  } finally {
+    deferWorkerInvocation(
+      invokeWorkerPump({
+        requestId: input.requestId,
+        supabaseUrl: input.supabaseUrl,
+      }),
+    );
+  }
+}
+
+function readRequestStatusCount(
+  requestStatus: RequestJobStatus,
+  key: "queued" | "processing" | "succeeded" | "failed" | "canceled",
+): number {
+  const value = requestStatus[key];
+
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function resolveMaxConcurrentJobs(
+  providerConfig: WorkerProviderConfig | null,
+): number {
+  const configuredValue = Deno.env.get("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
+  const defaultValue =
+    isLocalWorkerEnvironment() && providerConfig?.providerName === "gemini"
+      ? 1
+      : 3;
+
+  return parsePositiveInteger(configuredValue, defaultValue);
+}
+
+async function invokeWorkerPump(input: {
+  supabaseUrl: string;
+  requestId: string;
+}): Promise<void> {
+  await invokeWorker({
+    mode: "pump",
+    requestId: input.requestId,
+    supabaseUrl: input.supabaseUrl,
+  });
+}
+
+async function invokeWorkerJob(input: {
+  supabaseUrl: string;
+  requestId: string;
+}): Promise<void> {
+  await invokeWorker({
+    mode: "job",
+    requestId: input.requestId,
+    supabaseUrl: input.supabaseUrl,
+  });
+}
+
+async function invokeWorker(input: {
+  supabaseUrl: string;
+  requestId: string;
+  mode: WorkerMode;
+}): Promise<void> {
+  const response = await fetch(resolveWorkerFunctionUrl(input.supabaseUrl), {
+    body: JSON.stringify({
+      mode: input.mode,
+      request_id: input.requestId,
+    }),
+    headers: buildWorkerInvocationHeaders(),
+    method: "POST",
+  });
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `fabric-render-worker ${input.mode} invocation returned HTTP ${response.status}: ${responseText}`,
+    );
+  }
+}
+
+function resolveWorkerFunctionUrl(supabaseUrl: string): string {
+  const configuredUrl = Deno.env
+    .get("FABRIC_RENDER_WORKER_FUNCTION_URL")
+    ?.trim();
+
+  if (
+    configuredUrl &&
+    !(isLocalWorkerEnvironment() && isLocalLoopbackUrl(configuredUrl))
+  ) {
+    return configuredUrl;
+  }
+
+  return `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/fabric-render-worker`;
+}
+
+function isLocalLoopbackUrl(url: string): boolean {
+  try {
+    const parsedUrl = new URL(url);
+
+    return (
+      parsedUrl.hostname === "127.0.0.1" ||
+      parsedUrl.hostname === "localhost" ||
+      parsedUrl.hostname === "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function buildWorkerInvocationHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const invocationSecret = Deno.env.get("FABRIC_RENDER_WORKER_INVOKE_SECRET");
+
+  if (invocationSecret) {
+    headers["x-fabric-render-worker-secret"] = invocationSecret;
+  }
+
+  return headers;
+}
+
+function deferWorkerInvocation(promise: Promise<void>): void {
+  const handledPromise = promise.catch((error) => {
+    console.error(
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+
+  if (
+    typeof EdgeRuntime !== "undefined" &&
+    typeof EdgeRuntime.waitUntil === "function"
+  ) {
+    EdgeRuntime.waitUntil(handledPromise);
+    return;
+  }
+
+  void handledPromise;
+}
+
+function isLocalSeedRequest(request: Request): boolean {
+  return (
+    isLocalWorkerEnvironment() &&
+    request.headers.get("x-fabric-render-seed-mock-job") === "1"
+  );
+}
+
+async function seedLocalMockJob(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<SeededMockJob> {
+  const queueName =
+    Deno.env.get("FABRIC_RENDER_QUEUE_NAME") ?? "local_fabric_render_jobs";
+
+  const seededJob = await callRpc<SeededMockJob>(
+    supabaseUrl,
+    serviceRoleKey,
+    "fabric_render_worker_seed_mock_job",
+    {
+      queue_name: queueName,
+    },
+  );
+
+  if (seededJob.request_id || !seededJob.job_id) {
+    return seededJob;
+  }
+
+  return {
+    ...seededJob,
+    request_id: await fetchFabricRenderJobRequestId(
+      supabaseUrl,
+      serviceRoleKey,
+      seededJob.job_id,
+    ),
+  };
+}
+
+async function fetchFabricRenderJobRequestId(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
+): Promise<string | undefined> {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/fabric_render_jobs?id=eq.${encodeURIComponent(jobId)}&select=request_id`,
+    {
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      method: "GET",
+    },
+  );
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `fabric_render_jobs request lookup returned HTTP ${response.status}: ${responseText}`,
+    );
+  }
+
+  const [job] = responseText ? JSON.parse(responseText) : [];
+
+  return typeof job?.request_id === "string" ? job.request_id : undefined;
+}
+
 async function processClaimedJob(input: {
   supabaseUrl: string;
   serviceRoleKey: string;
-  queueName: string;
+  requestId: string;
   jobId: string;
   providerConfig: WorkerProviderConfig;
   geminiApiKey?: string;
@@ -436,7 +798,7 @@ async function processClaimedJob(input: {
     return jsonResponse({
       job_id: input.jobId,
       output_path: outputPath,
-      queue_name: input.queueName,
+      request_id: input.requestId,
       status: "succeeded",
     });
   } catch (error) {
@@ -454,35 +816,22 @@ async function processClaimedJob(input: {
       scratchDir,
     });
 
-    if (providerFailure) {
-      await callRpc(
-        input.supabaseUrl,
-        input.serviceRoleKey,
-        "fabric_render_worker_fail",
-        {
-          error_message: message,
-          job_id: input.jobId,
-          retryable: providerFailure.retryable,
-        },
-      );
-    } else {
-      await callRpc(
-        input.supabaseUrl,
-        input.serviceRoleKey,
-        "fabric_render_worker_fail",
-        {
-          error_message: message,
-          job_id: input.jobId,
-          retryable: false,
-        },
-      );
-    }
+    await callRpc(
+      input.supabaseUrl,
+      input.serviceRoleKey,
+      "fabric_render_worker_fail",
+      {
+        error_message: message,
+        job_id: input.jobId,
+        retryable: false,
+      },
+    );
 
     return jsonResponse(
       {
         error: message,
         job_id: input.jobId,
-        queue_name: input.queueName,
+        request_id: input.requestId,
         status: "failed",
       },
       500,

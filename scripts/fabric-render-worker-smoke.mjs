@@ -39,7 +39,12 @@ let response;
 
 try {
   response = await fetch(FUNCTION_URL, {
+    body: JSON.stringify({
+      mode: "pump",
+      request_id: "00000000-0000-4000-8000-000000000001",
+    }),
     headers: buildWorkerHeaders({
+      "Content-Type": "application/json",
       "x-fabric-render-seed-mock-job": "1",
     }),
     method: "POST",
@@ -91,14 +96,14 @@ if (!response.ok) {
 }
 
 if (
-  body.status !== "succeeded" ||
-  !body.job_id ||
-  !body.queue_name ||
-  !body.output_path
+  body.mode !== "pump" ||
+  !body.request_id ||
+  (body.status !== "started" && body.status !== "idle") ||
+  typeof body.started_count !== "number"
 ) {
   fail(`unexpected fabric render smoke response: ${JSON.stringify(body)}`);
 }
 
 console.log(
-  `PASS fabric render worker smoke: processed job ${body.job_id} from ${body.queue_name} with ${body.output_path}`,
+  `PASS fabric render worker smoke: pump ${body.status} for request ${body.request_id} with ${body.started_count} started job workers`,
 );

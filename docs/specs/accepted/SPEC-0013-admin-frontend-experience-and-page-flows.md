@@ -581,11 +581,23 @@ The section uses:
 - `POST /api/admin/uploads/{upload_id}/complete`;
 - `POST /api/admin/render-cells/{render_cell_id}/manual-render`;
 - `POST /api/admin/fabric-render-jobs`;
+- `POST /api/admin/sofas/{sofa_id}/fabric-render-jobs/generate-all`;
 - `GET /api/admin/fabric-render-jobs/{job_id}`;
 - `POST /api/admin/fabric-render-jobs/{job_id}/retry`;
+- `POST /api/admin/fabric-render-jobs/resume`;
 - `POST /api/admin/fabric-render-jobs/{job_id}/cancel`;
 - `GET /api/admin/render-cells/{render_cell_id}/candidates`;
 - `POST /api/admin/render-candidates/{candidate_id}/use-as-current`.
+
+The section should also subscribe to an authorized Supabase Realtime channel,
+or an equivalent implementation-approved realtime adapter, for relevant
+`fabric_render_jobs` status changes for the current sofa. When the
+administrator opens a sofa edit page, the initial render coverage load must
+show any jobs that are already `queued` or `processing`, and the page must
+subscribe to subsequent Realtime updates for jobs belonging to that sofa.
+Realtime is only an observation mechanism: it must not start worker processing
+and must not expose worker-only function names, private paths, service
+credentials, or provider metadata to the browser.
 
 ### Required UI
 
@@ -611,11 +623,13 @@ A cell may expose:
 
 - upload manual render;
 - generate initial render when the API reports that the cell is eligible;
+- generate all eligible missing initial renders for the sofa;
 - regenerate render;
 - refine from selected candidate when supported by API;
 - open private candidate review;
 - use candidate as current render;
 - retry failed job;
+- resume queued jobs when no worker progress is active;
 - cancel queued or processing job when supported.
 
 Rules:
@@ -623,6 +637,13 @@ Rules:
 - manual upload sets a private render as current for the cell but does not publish it;
 - a cell completed by the current source photo for its original fabric must be shown as complete and must not present initial generation as the normal next action;
 - manual upload for a source-photo-complete cell may remain available as an explicit replacement action;
+- `Generate`, `Regenerate`, `Refine`, and `Retry` actions must be explicit administrator actions and must start processing through the admin API, not through direct browser calls to worker-only functions;
+- `Generate all` must be one explicit administrator action that creates multiple jobs through the admin API and lets the worker pump keep up to the configured number of one-job workers active until that request has no queued jobs left;
+- Realtime job updates should replace continuous polling as the primary live-update mechanism once implemented;
+- when a job reaches `succeeded`, the UI should refresh render coverage or candidate data once so the administrator can review the new private candidate;
+- when a job reaches `failed`, the UI must show the safe failure state and offer manual retry when the API allows retry;
+- when queued jobs remain for the sofa and no related job is visibly processing, the UI should offer an explicit resume action that invokes pump mode through the admin API;
+- if Realtime is unavailable, the UI may offer manual refresh or a clearly bounded compatibility polling path, but backend job state remains the source of truth;
 - generated candidates remain private until the admin explicitly selects one as current and publication creates public copies;
 - worker success must never automatically select a candidate as current;
 - job failures are operational and must not become public render states;

@@ -4,14 +4,61 @@ import { describe, expect, it } from "vitest";
 const functionPath = "supabase/functions/fabric-render-worker/index.ts";
 
 describe("fabric render worker Edge Function", () => {
-  it("claims, completes, and fails jobs through the expected RPC helpers", async () => {
+  it("claims, completes, and fails request-scoped jobs through the expected RPC helpers", async () => {
     const source = await readFile(functionPath, "utf8");
 
     expect(source).toContain("fabric_render_worker_seed_mock_job");
-    expect(source).toContain("fabric_render_worker_claim_next");
+    expect(source).toContain("fabric_render_worker_request_status");
+    expect(source).toContain("fabric_render_worker_claim_one_for_request");
     expect(source).toContain("fabric_render_worker_resolve_inputs");
     expect(source).toContain("fabric_render_worker_succeed");
     expect(source).toContain("fabric_render_worker_fail");
+    expect(source).not.toContain("fabric_render_worker_claim_next");
+  });
+
+  it("parses explicit pump and job invocation bodies with request_id", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("parseWorkerRequestBody");
+    expect(source).toContain('mode: "pump"');
+    expect(source).toContain('mode: "job"');
+    expect(source).toContain("request_id");
+    expect(source).toContain("requestId");
+    expect(source).toContain("Fabric render worker mode is required");
+    expect(source).toContain("Fabric render request_id is required");
+  });
+
+  it("uses pump mode only for bounded request orchestration", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const pumpIndex = source.indexOf("async function handlePumpMode");
+    const jobIndex = source.indexOf("async function handleJobMode");
+    const pumpSource = source.slice(pumpIndex, jobIndex);
+
+    expect(pumpIndex).toBeGreaterThan(-1);
+    expect(jobIndex).toBeGreaterThan(pumpIndex);
+    expect(pumpSource).toContain("fabric_render_worker_request_status");
+    expect(pumpSource).toContain("resolveMaxConcurrentJobs");
+    expect(source).toContain("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
+    expect(pumpSource).toContain("Math.min");
+    expect(pumpSource).toContain("invokeWorkerJob");
+    expect(pumpSource).toContain("started_count");
+    expect(pumpSource).not.toContain("processClaimedJob");
+  });
+
+  it("uses job mode to claim one request job and re-invoke pump after completion", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const jobIndex = source.indexOf("async function handleJobMode");
+    const processIndex = source.indexOf("async function processClaimedJob");
+    const jobSource = source.slice(jobIndex, processIndex);
+
+    expect(jobIndex).toBeGreaterThan(-1);
+    expect(processIndex).toBeGreaterThan(jobIndex);
+    expect(jobSource).toContain("fabric_render_worker_claim_one_for_request");
+    expect(jobSource).toContain("p_max_concurrent_jobs");
+    expect(jobSource).toContain("processClaimedJob");
+    expect(jobSource).toContain("invokeWorkerPump");
+    expect(jobSource).toContain("finally");
+    expect(jobSource).toContain('status === "capacity_full"');
   });
 
   it("stores deterministic mock output as a private generated PNG artifact", async () => {
@@ -46,7 +93,7 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("recordFabricRenderScratchSuccess");
     expect(source).toContain("recordFabricRenderScratchFailure");
     expect(source).toContain("readImageDimensions");
-    expect(source).toContain("retryable: providerFailure.retryable");
+    expect(source).not.toContain("retryable: providerFailure.retryable");
     expect(source).toContain("retryable: false");
   });
 
@@ -62,6 +109,17 @@ describe("fabric render worker Edge Function", () => {
     );
   });
 
+  it("does not self-invoke a local Edge Function through host loopback", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("isLocalLoopbackUrl");
+    expect(source).toContain('parsedUrl.hostname === "127.0.0.1"');
+    expect(source).toContain('parsedUrl.hostname === "localhost"');
+    expect(source).toContain(
+      "!(isLocalWorkerEnvironment() && isLocalLoopbackUrl(configuredUrl))",
+    );
+  });
+
   it("owns provider and model selection inside the worker", async () => {
     const source = await readFile(functionPath, "utf8");
 
@@ -74,6 +132,10 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain(
       "claim_provider_model: providerConfig.providerModel",
     );
+    expect(source).toContain("p_max_concurrent_jobs: maxConcurrentJobs");
+    expect(source).toContain("function resolveMaxConcurrentJobs");
+    expect(source).toContain('providerConfig?.providerName === "gemini"');
+    expect(source).toContain("? 1");
     expect(source).toContain(
       "providerModel: input.providerConfig.providerModel",
     );

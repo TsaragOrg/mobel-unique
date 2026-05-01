@@ -142,8 +142,10 @@ const fabricRenderJobRecord = {
   last_error_message: "Safe provider error",
   max_attempts: 3,
   prompt_note: null,
+  prompt_version: "v007",
   provider_key: "must-not-leak",
   queued_at: "2026-04-28T10:30:00.000Z",
+  request_id: "00000000-0000-4000-8000-000000000917",
   refinement_source_asset_id: null,
   refine_prompt: null,
   render_cell_id: "00000000-0000-4000-8000-000000000908",
@@ -203,6 +205,24 @@ describe("admin catalog validation", () => {
     expect(source).not.toContain("provider_name: providerName");
     expect(source).not.toContain('.eq("provider_name"');
     expect(source).not.toContain('.eq("provider_model"');
+  });
+
+  it("creates request-scoped fabric render jobs and invokes the worker pump", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("const requestId = randomUUID()");
+    expect(source).toContain("request_id: requestId");
+    expect(source).toContain("invokeFabricRenderPump");
+    expect(source).toContain("markFabricRenderRequestStartFailed");
+    expect(source).toContain("markExpiredFabricRenderJobsForSofa");
+    expect(source).toContain("Worker claim expired before manual resume");
+    expect(source).toContain('mode: "pump"');
+    expect(source).toContain("FABRIC_RENDER_WORKER_FUNCTION_URL");
+    expect(source).toContain("FABRIC_RENDER_WORKER_INVOKE_SECRET");
+    expect(source).not.toContain("fabric_render_admin_enqueue_job");
   });
 
   it("validates a draft sofa create payload", () => {
@@ -691,6 +711,7 @@ describe("admin catalog response shaping", () => {
     });
     expect(jobResponse).toMatchObject({
       id: fabricRenderJobRecord.id,
+      request_id: fabricRenderJobRecord.request_id,
       refinement_source_asset_id: null,
       refine_prompt: null,
       status: "queued",

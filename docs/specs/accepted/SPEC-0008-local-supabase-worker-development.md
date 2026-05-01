@@ -125,6 +125,13 @@ The local worker development flow should be:
    the job state changed as expected.
 9. The developer stops the local Supabase stack when finished.
 
+Normal local admin `Generate`, `Generate all`, and `Refine` workflows must
+start fabric render worker processing through the same service-side admin API
+path used by DEV and PROD. Developers should not need to run a separate manual
+`curl` invocation for the product workflow after local Supabase and Edge
+Functions are running. Direct local worker invocation may remain available for
+smoke tests and diagnostics only.
+
 ## Repository Tooling
 
 The repository must include Supabase CLI as a root development dependency.
@@ -133,14 +140,27 @@ The root `package.json` should expose scripts for common local Supabase tasks:
 
 - `supabase:start`: start the local Supabase stack;
 - `supabase:stop`: stop the local Supabase stack;
-- `supabase:reset`: reset the local database and reapply migrations;
+- `supabase:reset`: reset the local database, reapply migrations, and load
+  local admin catalog fixtures;
+- `supabase:reset:db-only`: reset the local database and reapply migrations
+  without loading optional local admin catalog fixtures;
 - `supabase:status`: print local Supabase URLs and keys;
 - `supabase:functions:serve`: serve local Edge Functions;
+- `seed:local:admin-fixtures`: load local admin catalog fixture data and
+  fixture images into the local Supabase database and Storage;
 - `test:workers:local`: run local worker infrastructure smoke tests.
 
 The exact script commands may be refined during implementation, but they must
 wrap Supabase CLI rather than requiring developers to remember raw commands for
 normal local work.
+
+The local admin fixture seed must remain local-only by default. It must refuse
+non-local Supabase URLs unless explicitly overridden. It should create enough
+catalog data for repeated admin testing without manual recreation, including at
+least three fabrics, at least two sofas, source photos, sofa-fabric
+assignments, visual positions, and render cells eligible for fabric rendering.
+When no local fixture manifest exists, the script may fall back to placeholder
+images so the reset command remains usable.
 
 The repository should not require a custom `docker-compose.yml` for the MVP
 local worker foundation. Supabase CLI owns the local Docker stack.
@@ -266,6 +286,9 @@ The local worker foundation must document at least:
 - `SUPABASE_ANON_KEY` when needed by local frontend tests;
 - `SUPABASE_SERVICE_ROLE_KEY` for local server-side services only;
 - `FABRIC_RENDER_QUEUE_NAME`;
+- `FABRIC_RENDER_MAX_CONCURRENT_JOBS`, with local Gemini testing documented as
+  sequential by default unless a developer explicitly opts into higher
+  concurrency;
 - `FABRIC_RENDER_CLAIM_TTL_SECONDS`;
 - `IN_HOME_SIMULATION_QUEUE_NAME`;
 - `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`;

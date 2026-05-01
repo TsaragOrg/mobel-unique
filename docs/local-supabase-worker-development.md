@@ -59,6 +59,51 @@ Reset the local database and reapply migrations:
 pnpm supabase:reset
 ```
 
+This also runs `pnpm supabase:realtime:local-compat` and
+`pnpm seed:local:admin-fixtures` after the Supabase SQL seed. The Realtime
+compatibility step keeps local Postgres change subscriptions working with the
+current Supabase CLI stack. The fixture seed loads local admin catalog data
+into the local database and Storage:
+
+- at least three fabrics;
+- at least two sofas;
+- source photos for each seeded sofa;
+- render cells that make the non-source fabrics eligible for `Generate all`.
+
+The seed uses built-in placeholder PNGs by default. To use real local images,
+copy `fixtures/local-admin-catalog/manifest.example.json` to
+`fixtures/local-admin-catalog/manifest.json`, then place the referenced images
+under `fixtures/local-admin-catalog/images/`. Supported formats are PNG, JPEG,
+and WebP. The local `manifest.json` and `images/` directory are ignored by Git.
+
+If you need to reset only the database and skip admin fixtures, run:
+
+```bash
+pnpm supabase:reset:db-only
+```
+
+This still runs the Realtime compatibility step because local admin pages depend
+on Supabase Realtime for `fabric_render_jobs` status updates.
+
+If an admin page subscribes successfully but generated candidates do not appear
+until a browser refresh or another Generate action, inspect the browser console
+or Realtime logs for `ERROR 42P10`. That means the local Realtime server
+accepted the channel but failed to install the Postgres change subscription.
+Run:
+
+```bash
+pnpm supabase:realtime:local-compat
+```
+
+Then refresh the admin page and rerun the generation.
+
+When testing the real Gemini provider locally, keep
+`FABRIC_RENDER_MAX_CONCURRENT_JOBS=1` in `supabase/.env.local` unless you are
+explicitly stress-testing the local Edge runtime. The Supabase CLI runtime can
+cancel parallel image-generation workers with CPU or wall-clock limits before
+they can mark the job failed. Production can still set a higher value, such as
+`3`, after validating provider and runtime limits.
+
 Serve local Edge Functions:
 
 ```bash
