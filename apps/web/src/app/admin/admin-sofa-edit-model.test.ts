@@ -93,12 +93,8 @@ describe("admin sofa edit model", () => {
     expect(getRenderCellPrimaryAction("ready")).toMatchObject({
       label: "View current render",
     });
-    expect(getRenderCellPrimaryAction("queued")).toMatchObject({
-      label: "View job",
-    });
-    expect(getRenderCellPrimaryAction("processing")).toMatchObject({
-      label: "View job progress",
-    });
+    expect(getRenderCellPrimaryAction("queued")).toBeNull();
+    expect(getRenderCellPrimaryAction("processing")).toBeNull();
     expect(getRenderCellPrimaryAction("failed")).toMatchObject({
       label: "Retry generation",
     });

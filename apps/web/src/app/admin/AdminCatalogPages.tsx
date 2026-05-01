@@ -248,6 +248,12 @@ export interface AdminCatalogRenderCoverage {
   visual_matrix_columns: AdminCatalogVisualMatrixColumn[];
 }
 
+type AdminLargeImagePreview = {
+  alt: string;
+  src: string;
+  title: string;
+};
+
 type SofaTestChecklistItem = {
   completeText: string;
   id: string;
@@ -1843,7 +1849,6 @@ function SofaEditContent({
                   {formatLifecycleState(sofa.lifecycle_state)}
                 </span>
                 <span>{sofa.public_name ?? "No public name"}</span>
-                <span>{sofa.id}</span>
               </div>
             </div>
             {aggregateReadiness ? (
@@ -3214,6 +3219,11 @@ function RenderCoverageSection({
   const [reviewCandidates, setReviewCandidates] = useState<
     AdminCatalogRenderCandidate[]
   >([]);
+  // RU: Это значение хранит вариант, для которого показано поле улучшения.
+  // FR: Cette valeur garde l'option dont le champ d'amelioration est visible.
+  const [openRefineCandidateId, setOpenRefineCandidateId] = useState<
+    string | null
+  >(null);
   // RU: Это значение хранит вариант, который открыт для сравнения с исходным фото.
   // FR: Cette valeur garde l'option ouverte pour comparaison avec la photo source.
   const [compareCandidateId, setCompareCandidateId] = useState<string | null>(
@@ -3223,6 +3233,10 @@ function RenderCoverageSection({
   // FR: Cette valeur indique si la fenetre de l'image actuelle est ouverte.
   const [isCurrentRenderPreviewOpen, setIsCurrentRenderPreviewOpen] =
     useState(false);
+  // RU: Это значение хранит картинку, которую админ открыл крупно.
+  // FR: Cette valeur garde l'image que l'admin a ouverte en grand.
+  const [largeImagePreview, setLargeImagePreview] =
+    useState<AdminLargeImagePreview | null>(null);
   // RU: Эти записи держат короткие подсказки админа для нового изображения.
   // FR: Ces textes gardent les notes courtes de l'admin pour une nouvelle image.
   const [initialPromptNotes, setInitialPromptNotes] = useState<
@@ -3255,6 +3269,20 @@ function RenderCoverageSection({
     }));
   }
 
+  // RU: Это действие показывает поле улучшения для выбранного варианта.
+  // FR: Cette action affiche le champ d'amelioration pour l'option choisie.
+  function handleOpenRefineCandidate(candidateId: string) {
+    setErrorMessage(null);
+    setOpenRefineCandidateId(candidateId);
+  }
+
+  // RU: Это действие прячет поле улучшения, если админ передумал.
+  // FR: Cette action cache le champ d'amelioration si l'admin change d'avis.
+  function handleCloseRefineCandidate() {
+    setErrorMessage(null);
+    setOpenRefineCandidateId(null);
+  }
+
   // RU: Это действие открывает подробности выбранной ячейки картинки.
   // FR: Cette action ouvre les details de la case image choisie.
   function handleOpenRenderCell(
@@ -3265,8 +3293,10 @@ function RenderCoverageSection({
     setSelectedCellId(cell.id);
     setReviewCellId(null);
     setReviewCandidates([]);
+    setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
+    setLargeImagePreview(null);
   }
 
   // RU: Это действие закрывает подробности ячейки картинки.
@@ -3277,8 +3307,10 @@ function RenderCoverageSection({
     setSelectedCellId(null);
     setReviewCellId(null);
     setReviewCandidates([]);
+    setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
+    setLargeImagePreview(null);
     opener?.focus();
   }
 
@@ -3318,6 +3350,11 @@ function RenderCoverageSection({
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
     : null;
+  // RU: Это значение решает, нужна ли главная кнопка для открытой ячейки.
+  // FR: Cette valeur decide si la case ouverte a besoin du bouton principal.
+  const selectedPrimaryAction = selectedStatus
+    ? getRenderCellPrimaryAction(selectedStatus)
+    : null;
   // RU: Это значение решает, можно ли попросить еще один вариант картинки.
   // FR: Cette valeur decide si on peut demander une autre option d'image.
   const canGenerateNewCandidate = Boolean(
@@ -3348,7 +3385,6 @@ function RenderCoverageSection({
       : (comparableCandidates.find(
           (candidate) => candidate.id === compareCandidateId,
         ) ?? null);
-
   async function handleGenerateAll() {
     if (!coverage) {
       return;
@@ -3431,8 +3467,10 @@ function RenderCoverageSection({
   // RU: Это действие просит еще один вариант картинки для выбранной ячейки.
   // FR: Cette action demande une autre option d'image pour la case choisie.
   async function handleGenerateNewCandidate(cell: AdminCatalogRenderCell) {
+    setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
+    setLargeImagePreview(null);
     await handleGenerate(cell);
   }
 
@@ -3449,8 +3487,10 @@ function RenderCoverageSection({
       );
       setReviewCandidates(candidates);
       setReviewCellId(cell.id);
+      setOpenRefineCandidateId(null);
       setCompareCandidateId(null);
       setIsCurrentRenderPreviewOpen(false);
+      setLargeImagePreview(null);
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -3461,14 +3501,18 @@ function RenderCoverageSection({
   // RU: Это действие открывает отдельное окно сравнения исходного фото и выбранного варианта.
   // FR: Cette action ouvre une fenetre separee pour comparer la photo source et l'option choisie.
   function handleCompareCandidate(candidate: AdminCatalogRenderCandidate) {
+    setOpenRefineCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
+    setLargeImagePreview(null);
     setCompareCandidateId(candidate.id);
   }
 
   // RU: Это действие открывает большое окно текущей картинки.
   // FR: Cette action ouvre la grande fenetre de l'image actuelle.
   function handleOpenCurrentRenderPreview() {
+    setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
+    setLargeImagePreview(null);
     setIsCurrentRenderPreviewOpen(true);
   }
 
@@ -3482,6 +3526,18 @@ function RenderCoverageSection({
   // FR: Cette action ferme la fenetre de comparaison des options.
   function handleCloseCompareCandidate() {
     setCompareCandidateId(null);
+  }
+
+  // RU: Это действие открывает выбранную картинку почти на весь экран.
+  // FR: Cette action ouvre l'image choisie presque sur tout l'ecran.
+  function handleOpenLargeImagePreview(preview: AdminLargeImagePreview) {
+    setLargeImagePreview(preview);
+  }
+
+  // RU: Это действие закрывает большое окно картинки.
+  // FR: Cette action ferme la grande fenetre de l'image.
+  function handleCloseLargeImagePreview() {
+    setLargeImagePreview(null);
   }
 
   // RU: Это действие переключает вариант в окне сравнения.
@@ -3508,6 +3564,8 @@ function RenderCoverageSection({
   async function handleUseCandidate(candidate: AdminCatalogRenderCandidate) {
     setErrorMessage(null);
     setActiveCellId(candidate.render_cell_id);
+    setOpenRefineCandidateId(null);
+    setLargeImagePreview(null);
 
     try {
       const nextCandidate = await dependencies.useRenderCandidate(
@@ -3527,6 +3585,7 @@ function RenderCoverageSection({
       await onRefresh();
       setReviewCellId(null);
       setReviewCandidates([]);
+      setOpenRefineCandidateId(null);
       setCompareCandidateId(null);
       setIsCurrentRenderPreviewOpen(false);
     } catch (error) {
@@ -3565,6 +3624,7 @@ function RenderCoverageSection({
         visual_matrix_column_id: cell.visual_matrix_column_id,
       });
       form.reset();
+      setOpenRefineCandidateId(null);
       await onRefresh();
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
@@ -3622,6 +3682,10 @@ function RenderCoverageSection({
     status: RenderCellDisplayStatus,
   ) {
     const primaryAction = getRenderCellPrimaryAction(status);
+
+    if (!primaryAction) {
+      return;
+    }
 
     if (primaryAction.targetTab) {
       onSelectTab?.(primaryAction.targetTab);
@@ -3837,14 +3901,29 @@ function RenderCoverageSection({
                   ) : (
                     <p>{getSofaFabricDisplayName(selectedAssignment)}</p>
                   )}
+                  {/* RU: Этот блок показывает текущую готовую картинку ячейки. */}
+                  {/* FR: Ce bloc montre l'image actuelle prete de la case. */}
                   {selectedCell.current_private_preview_url ? (
                     <figure className="admin-current-render-preview">
                       <figcaption>Current render</figcaption>
-                      <img
-                        alt="Current render preview"
-                        className="admin-preview-image"
-                        src={selectedCell.current_private_preview_url}
-                      />
+                      <button
+                        aria-label="Open current render preview larger"
+                        className="admin-image-preview-button"
+                        onClick={() =>
+                          handleOpenLargeImagePreview({
+                            alt: "Current render preview",
+                            src: selectedCell.current_private_preview_url ?? "",
+                            title: "Current render",
+                          })
+                        }
+                        type="button"
+                      >
+                        <img
+                          alt="Current render preview"
+                          className="admin-preview-image"
+                          src={selectedCell.current_private_preview_url}
+                        />
+                      </button>
                     </figure>
                   ) : selectedCell.current_private_asset_id ? (
                     <span className="admin-muted">
@@ -3927,6 +4006,8 @@ function RenderCoverageSection({
                       />
                     </label>
                   ) : null}
+                  {/* RU: Этот список показывает готовые варианты для выбранной ячейки. */}
+                  {/* FR: Cette liste montre les options pretes pour la case choisie. */}
                   {reviewCellId === selectedCell.id ? (
                     <div className="admin-candidate-list">
                       {reviewCandidates.length === 0 ? (
@@ -3935,11 +4016,24 @@ function RenderCoverageSection({
                       {reviewCandidates.map((candidate) => (
                         <div className="admin-candidate-row" key={candidate.id}>
                           {candidate.preview_url ? (
-                            <img
-                              alt={`Candidate preview ${candidate.id}`}
-                              className="admin-preview-image"
-                              src={candidate.preview_url}
-                            />
+                            <button
+                              aria-label={`Open candidate preview ${candidate.id} larger`}
+                              className="admin-image-preview-button"
+                              onClick={() =>
+                                handleOpenLargeImagePreview({
+                                  alt: `Candidate preview ${candidate.id}`,
+                                  src: candidate.preview_url ?? "",
+                                  title: "Candidate",
+                                })
+                              }
+                              type="button"
+                            >
+                              <img
+                                alt={`Candidate preview ${candidate.id}`}
+                                className="admin-preview-image"
+                                src={candidate.preview_url}
+                              />
+                            </button>
                           ) : null}
                           <span>
                             {candidate.generation_mode} -{" "}
@@ -3968,34 +4062,55 @@ function RenderCoverageSection({
                           >
                             Use candidate
                           </button>
-                          {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
-                          {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
-                          <form
-                            className="admin-cell-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void handleRefineCandidate(
-                                selectedCell,
-                                candidate,
-                                event.currentTarget,
-                              );
-                            }}
-                          >
-                            <label className="field">
-                              <span>Refine prompt</span>
-                              <textarea
-                                name="refine_prompt"
-                                required
-                                rows={2}
-                              />
-                            </label>
+                          {openRefineCandidateId === candidate.id ? (
+                            <>
+                              {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
+                              {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
+                              <form
+                                className="admin-cell-form"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  void handleRefineCandidate(
+                                    selectedCell,
+                                    candidate,
+                                    event.currentTarget,
+                                  );
+                                }}
+                              >
+                                <label className="field">
+                                  <span>Refine prompt</span>
+                                  <textarea
+                                    name="refine_prompt"
+                                    required
+                                    rows={2}
+                                  />
+                                </label>
+                                <button
+                                  disabled={activeCellId === selectedCell.id}
+                                  type="submit"
+                                >
+                                  Refine
+                                </button>
+                                <button
+                                  disabled={activeCellId === selectedCell.id}
+                                  onClick={handleCloseRefineCandidate}
+                                  type="button"
+                                >
+                                  Cancel refine
+                                </button>
+                              </form>
+                            </>
+                          ) : (
                             <button
                               disabled={activeCellId === selectedCell.id}
-                              type="submit"
+                              onClick={() =>
+                                handleOpenRefineCandidate(candidate.id)
+                              }
+                              type="button"
                             >
-                              Refine
+                              Use refine
                             </button>
-                          </form>
+                          )}
                         </div>
                       ))}
                       {canGenerateNewCandidate ? (
@@ -4044,31 +4159,62 @@ function RenderCoverageSection({
                     </form>
                   ) : null}
                 </div>
-                <footer className="admin-render-cell-sheet-footer">
-                  <button onClick={handleCloseRenderCell} type="button">
-                    Close
-                  </button>
-                  <button
-                    disabled={
-                      activeCellId === selectedCell.id ||
-                      (selectedStatus === "failed" && !selectedCell.latest_job) ||
-                      (selectedStatus === "ready" &&
-                        !selectedCell.current_private_preview_url)
-                    }
-                    onClick={() =>
-                      handleRenderCellPrimaryAction(
-                        selectedCell,
-                        selectedStatus,
-                      )
-                    }
-                    type="button"
-                  >
-                    {activeCellId === selectedCell.id
-                      ? "Working"
-                      : getRenderCellPrimaryAction(selectedStatus).label}
-                  </button>
-                </footer>
+                {selectedPrimaryAction ? (
+                  <footer className="admin-render-cell-sheet-footer">
+                    <button
+                      disabled={
+                        activeCellId === selectedCell.id ||
+                        (selectedStatus === "failed" &&
+                          !selectedCell.latest_job) ||
+                        (selectedStatus === "ready" &&
+                          !selectedCell.current_private_preview_url)
+                      }
+                      onClick={() =>
+                        handleRenderCellPrimaryAction(
+                          selectedCell,
+                          selectedStatus,
+                        )
+                      }
+                      type="button"
+                    >
+                      {activeCellId === selectedCell.id
+                        ? "Working"
+                        : selectedPrimaryAction.label}
+                    </button>
+                  </footer>
+                ) : null}
               </aside>
+              {/* RU: Это окно показывает выбранную картинку крупно по центру. */}
+              {/* FR: Cette fenetre montre l'image choisie en grand au centre. */}
+              {largeImagePreview ? (
+                <section
+                  aria-label={`Large image: ${largeImagePreview.title}`}
+                  className="admin-alert-dialog admin-image-lightbox-dialog"
+                  role="dialog"
+                >
+                  <header className="admin-render-cell-sheet-header">
+                    <div>
+                      <p className="eyebrow">Large image</p>
+                      <h3>{largeImagePreview.title}</h3>
+                    </div>
+                    <button
+                      aria-label="Close large image"
+                      onClick={handleCloseLargeImagePreview}
+                      type="button"
+                    >
+                      Close
+                    </button>
+                  </header>
+                  <figure className="admin-image-lightbox-frame">
+                    <figcaption>{largeImagePreview.title}</figcaption>
+                    <img
+                      alt={largeImagePreview.alt}
+                      className="admin-image-lightbox-image"
+                      src={largeImagePreview.src}
+                    />
+                  </figure>
+                </section>
+              ) : null}
               {isCurrentRenderPreviewOpen &&
               selectedCell.current_private_preview_url ? (
                 <section
@@ -4096,14 +4242,27 @@ function RenderCoverageSection({
                   </header>
                   <figure className="admin-render-compare-frame">
                     <figcaption>Current render</figcaption>
-                    <img
-                      alt="Current render preview"
-                      className="admin-preview-image"
-                      src={selectedCell.current_private_preview_url}
-                    />
+                    <button
+                      aria-label="Open current render preview larger"
+                      className="admin-image-preview-button"
+                      onClick={() =>
+                        handleOpenLargeImagePreview({
+                          alt: "Current render preview",
+                          src: selectedCell.current_private_preview_url ?? "",
+                          title: "Current render",
+                        })
+                      }
+                      type="button"
+                    >
+                      <img
+                        alt="Current render preview"
+                        className="admin-preview-image"
+                        src={selectedCell.current_private_preview_url}
+                      />
+                    </button>
                   </figure>
-                  <footer className="admin-render-cell-sheet-footer">
-                    {canGenerateNewCandidate ? (
+                  {canGenerateNewCandidate ? (
+                    <footer className="admin-render-cell-sheet-footer">
                       <button
                         disabled={activeCellId === selectedCell.id}
                         onClick={() =>
@@ -4115,14 +4274,8 @@ function RenderCoverageSection({
                           ? "Queueing"
                           : "Generate new candidate"}
                       </button>
-                    ) : null}
-                    <button
-                      onClick={handleCloseCurrentRenderPreview}
-                      type="button"
-                    >
-                      Close
-                    </button>
-                  </footer>
+                    </footer>
+                  ) : null}
                 </section>
               ) : null}
               {compareCandidate && selectedSourcePhotoPreviewUrl ? (
@@ -4150,19 +4303,45 @@ function RenderCoverageSection({
                   <div className="admin-render-compare-grid">
                     <figure className="admin-render-compare-frame">
                       <figcaption>Source photo</figcaption>
-                      <img
-                        alt="Source photo preview"
-                        className="admin-preview-image"
-                        src={selectedSourcePhotoPreviewUrl}
-                      />
+                      <button
+                        aria-label="Open source photo preview larger"
+                        className="admin-image-preview-button"
+                        onClick={() =>
+                          handleOpenLargeImagePreview({
+                            alt: "Source photo preview",
+                            src: selectedSourcePhotoPreviewUrl,
+                            title: "Source photo",
+                          })
+                        }
+                        type="button"
+                      >
+                        <img
+                          alt="Source photo preview"
+                          className="admin-preview-image"
+                          src={selectedSourcePhotoPreviewUrl}
+                        />
+                      </button>
                     </figure>
                     <figure className="admin-render-compare-frame">
                       <figcaption>Candidate</figcaption>
-                      <img
-                        alt={`Candidate preview ${compareCandidate.id}`}
-                        className="admin-preview-image"
-                        src={compareCandidate.preview_url ?? ""}
-                      />
+                      <button
+                        aria-label={`Open candidate preview ${compareCandidate.id} larger`}
+                        className="admin-image-preview-button"
+                        onClick={() =>
+                          handleOpenLargeImagePreview({
+                            alt: `Candidate preview ${compareCandidate.id}`,
+                            src: compareCandidate.preview_url ?? "",
+                            title: "Candidate",
+                          })
+                        }
+                        type="button"
+                      >
+                        <img
+                          alt={`Candidate preview ${compareCandidate.id}`}
+                          className="admin-preview-image"
+                          src={compareCandidate.preview_url ?? ""}
+                        />
+                      </button>
                     </figure>
                   </div>
                   <footer className="admin-render-cell-sheet-footer">
