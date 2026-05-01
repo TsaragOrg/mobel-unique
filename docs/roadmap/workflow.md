@@ -34,6 +34,7 @@
 | Done   | SPEC-0007 | PLAN-0010 | Root smoke commands `test:in-home-simulation:stage-1`, `test:in-home-simulation:claim`, `test:in-home-simulation:test-seed`, `test:in-home-simulation:complete`, `test:in-home-simulation:pgmq-consumer`, chained `test:workers:local`, the `sim:enqueue:stage1` and `sim:status` local CLIs, and the unit-test set covering HEIC magic-byte detection, OpenAI vision validation, OpenAI vision geometry, OpenAI image-edit cleaning, and the bounded-concurrency queue runner for the in-home simulation Stage 1 worker. |
 | Done   | SPEC-0007 | PLAN-0011 | Root smoke command `test:in-home-simulation:stage-2`, the `sim:dimensions:submit` and `sim:regenerate` local CLIs, and the unit-test set covering OpenAI image-edit placement and the Gemini fallback adapter for the in-home simulation Stage 2 worker. |
 | Done   | SPEC-0007 | PLAN-0012 | Root smoke command `test:in-home-simulation:resilience`, the `sim:recover-expired` and `sim:purge` local CLIs, and the `in-home-simulation-purge` Edge Function for the in-home simulation worker. |
+| Done   | SPEC-0007 | PLAN-0034 | `scripts/supabase-migrations-unique.test.mjs` added to the root test gate to fail the build whenever two `supabase/migrations/` files share a timestamp prefix.                              |
 
 ## Next
 
