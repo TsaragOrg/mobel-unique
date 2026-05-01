@@ -2054,15 +2054,25 @@ describe("Admin catalog pages", () => {
     );
   });
 
-  it("compares a generated candidate with the current image in a separate dialog", async () => {
-    // RU: Эти значения описывают ячейку с текущей картинкой и новыми вариантами.
-    // FR: Ces valeurs decrivent une case avec une image actuelle et de nouvelles options.
+  it("compares a generated candidate with the source photo in a separate dialog", async () => {
+    // RU: Эти значения описывают ячейку с исходным фото, текущей картинкой и новыми вариантами.
+    // FR: Ces valeurs decrivent une case avec la photo source, l'image actuelle et de nouvelles options.
     const sofaId = "00000000-0000-4000-8000-000000000701";
     const fabricId = "00000000-0000-4000-8000-000000000903";
     const visualColumn = {
       admin_label: "Front",
       created_at: "2026-04-28T10:00:00.000Z",
-      current_source_photo: null,
+      current_source_photo: {
+        asset: null,
+        asset_id: "00000000-0000-4000-8000-000000000911",
+        created_at: "2026-04-28T10:05:00.000Z",
+        id: "00000000-0000-4000-8000-000000000905",
+        original_fabric_id: fabricId,
+        preview_url: "https://storage.example/source-photo-preview",
+        sofa_id: sofaId,
+        updated_at: "2026-04-28T10:05:00.000Z",
+        visual_matrix_column_id: "00000000-0000-4000-8000-000000000904",
+      },
       current_source_photo_id: "00000000-0000-4000-8000-000000000905",
       deleted_at: null,
       id: "00000000-0000-4000-8000-000000000904",
@@ -2231,9 +2241,9 @@ describe("Admin catalog pages", () => {
 
     expect(
       within(compareDialog).getByRole("img", {
-        name: "Current render preview",
+        name: "Source photo preview",
       }),
-    ).toHaveAttribute("src", "https://storage.example/current-render-preview");
+    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
     expect(
       within(compareDialog).getByRole("img", {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
