@@ -153,9 +153,10 @@ Service-role credentials and AI provider keys must remain server-side only.
 2. The system identifies a missing visual-column-and-fabric render that can be
    completed by AI generation and is not already satisfied by the current source
    photo for that cell's original fabric.
-3. The API creates a fabric render job for one sofa, one fabric, and one visual
-   matrix column.
-4. The worker claims the queued job.
+3. The administrator explicitly requests `initial` generation or `refine` for
+   one sofa, one fabric, and one visual matrix column.
+4. The API creates a durable fabric render job and starts service-side worker
+   processing for that requested job.
 5. For `initial` mode, the worker resolves the fabric AI reference sofa image
    and target sofa image.
 6. For `refine` mode, the worker resolves the selected current output image and
@@ -166,8 +167,10 @@ Service-role credentials and AI provider keys must remain server-side only.
 9. The generated render candidate remains private until the admin workflow
    explicitly makes it the public-usable render for the related visual matrix
    cell and the sofa is published.
-10. On failure, the worker stores a human-readable error message, marks the job
-    as `failed` or returns it to `queued` for retry when the error is retryable.
+10. On failure, the API or worker stores a human-readable safe error message
+    and marks the job as `failed`.
+11. The administrator may manually request retry or a new generation attempt
+    after reviewing the failure.
 
 ## Data Model
 
@@ -184,6 +187,7 @@ target fabric, and one sofa visual matrix column.
 The logical job record must track:
 
 - job id;
+- request id for the explicit admin action that created one or more jobs;
 - sofa id;
 - fabric id;
 - visual matrix column id;
@@ -199,7 +203,8 @@ The logical job record must track:
 - prompt version;
 - status;
 - attempt count;
-- maximum attempts;
+- maximum attempts metadata when retained by the existing schema, which must
+  not drive automatic background retry in the MVP manual workflow;
 - queued timestamp;
 - claimed by identifier when available;
 - claim expiration timestamp when a worker is processing the job;
@@ -265,6 +270,8 @@ This spec does not approve final API route names.
 Future API contracts must provide server-side admin-only behavior for:
 
 - creating an initial fabric render job;
+- creating multiple initial fabric render jobs for all eligible missing cells on
+  a sofa through one explicit administrator action;
 - creating a refine fabric render job from an existing render artifact for the
   same sofa, fabric, and visual matrix column;
 - listing relevant render jobs for admin review;
@@ -306,6 +313,17 @@ do not need to be repeated as separate job-creation checks in the MVP.
 The API must not expose service-role credentials, AI provider keys, or private
 storage write credentials to the browser.
 
+Fabric render job creation is a manual admin workflow. After creating the
+durable job record or records, the API must start worker processing service-side
+for that same admin request. Jobs created by one admin action must share a
+lightweight `request_id` so the worker pump can drain only that requested work
+without introducing a separate batch table. If worker start fails before the
+worker owns any created job, the API must either avoid creating durable jobs or
+persist the created jobs as `failed` with a safe error message. A fabric render
+job must not remain
+indefinitely `queued` only because an automatic scheduler is expected to pick it
+up later.
+
 ## Worker Jobs
 
 ### Job Type
@@ -325,13 +343,46 @@ column. The job supports two generation modes:
 The first production implementation must run as Supabase Edge Functions written
 in TypeScript on the Deno runtime.
 
-Supabase Queues must provide durable job queueing. Each fabric render generation
-must be queued as an independent message so an admin batch can create many jobs
-at once while each job remains retryable, observable, and claimable on its own.
+Supabase Queues must provide durable job handoff and atomic claiming where the
+implementation uses queue messages. Each fabric render generation must remain
+an independent durable job so an admin batch can create many jobs at once while
+each job remains observable and claimable on its own.
 
-The queue consumer function may process more than one queued message per
-invocation, but it must respect a configurable concurrency limit based on the
-active Gemini project rate limits and the operational needs of the MVP.
+After the admin API writes durable jobs, it must invoke the internal fabric
+render Supabase Edge Function in pump mode. Pump mode must inspect durable
+database state for one `request_id`, keep at most
+`FABRIC_RENDER_MAX_CONCURRENT_JOBS` job workers active, and stop when there is
+no queued work left for that request.
+
+Job mode must claim one eligible job atomically, process only that job, mark it
+`succeeded` or `failed`, and invoke pump mode after completion so the freed
+worker slot can be filled if more queued jobs remain for the same `request_id`.
+
+For example, if an administrator clicks `Generate all` and the API creates 15
+jobs, the pump starts at most three job workers when
+`FABRIC_RENDER_MAX_CONCURRENT_JOBS` is `3`. As each one-job worker completes,
+it invokes the pump again. The pump starts the next queued job only when fewer
+than three jobs are currently processing for the request. When no queued jobs
+remain, pump mode starts nothing and the mechanism stops.
+
+Pump mode is orchestration only. It must not perform image generation itself
+and must not hold one long-running invocation open for an entire large set of
+images.
+
+If the invocation chain stops before all queued jobs for a `request_id` are
+started, the remaining jobs must stay visible as `queued`. A later explicit
+administrator resume action may invoke pump mode again for that `request_id` or
+for queued jobs on the sofa, according to the implementation plan.
+
+Supabase Cron must not be the primary fabric render execution mechanism.
+Automatic cron pickup or automatic cron retry must not process failed fabric
+render work without a fresh administrator action. Operator-only diagnostics and
+local smoke helpers may invoke the worker directly, but they do not define the
+product workflow.
+
+One job-mode invocation processes one job. Concurrency comes from multiple
+one-job worker invocations running at the same time, bounded by
+`FABRIC_RENDER_MAX_CONCURRENT_JOBS` and the active Gemini project rate limits.
 
 The production runtime must not depend on Python or a long-running external
 worker process for this spec.
@@ -539,26 +590,22 @@ dimensions are not the authoritative generated candidate dimensions.
 
 ### Retries
 
-The default maximum attempts for one fabric render job is three total attempts.
+Fabric render retry is a manual administrator action in the MVP.
 
-The worker may retry transient provider, network, timeout, or rate-limit errors
-until the maximum attempt count is reached.
+The worker must not automatically retry provider, network, timeout,
+rate-limit, input, storage, or environment errors in the background.
 
-The worker must not retry errors caused by missing input artifacts, invalid job
-metadata, unsupported image files, upload-invariant violations such as an
-oversized source artifact, or missing required environment variables.
+The worker may classify transient and permanent errors for diagnostics and for
+admin-facing retry eligibility, but that classification must not cause
+automatic background processing.
 
 For each processing attempt, the worker must increment `attempt_count` when it
 successfully claims the job and starts the attempt.
 
-If an error is retryable and attempts remain, the job must return to `queued`
-with the last error message preserved for operational review.
-
-If an error is non-retryable, or if no attempts remain after a retryable error,
-the job must become `failed`.
-
-After the final failed attempt, the job status must become `failed` and the last
-error message must remain available for admin review.
+After any failed processing attempt, the job status must become `failed` and the
+last error message must remain available for admin review. Retrying must happen
+only after the administrator explicitly requests retry or a new generation
+attempt.
 
 This failure record is operational. It helps administrators and operators
 understand why generation did not complete, but it must not be treated as a
@@ -571,12 +618,14 @@ execution timeout allowed by the active Supabase plan and environment.
 
 The first production implementation must not introduce a shorter
 application-level provider timeout for Gemini image generation. The generation
-request may use the full Edge Function execution budget because each invocation
-is processing queued jobs rather than serving an interactive browser request.
+request may use the full Edge Function execution budget because the worker runs
+outside the browser request even though the worker start is triggered by a
+manual admin action.
 
 If the Supabase platform timeout interrupts an invocation before the job can be
-marked `succeeded` or `failed`, the job claim recovery and retry rules must make
-the job eligible for another attempt without exposing a stale generated output.
+marked `succeeded` or `failed`, recovery must mark the attempt as failed or
+otherwise expose a safe failed state for admin review. Recovery must not
+silently retry without a new administrator action.
 
 ### Idempotency And Claiming
 
@@ -600,12 +649,9 @@ When a worker claims a job, the claim operation must:
 The default fabric render claim TTL is 5 minutes.
 
 If a job is in `processing` and `claim_expires_at` has passed before the job
-reaches `succeeded`, `failed`, or `canceled`, the recovery process must inspect
-the job before retrying it:
-
-- if attempts remain, the job returns to `queued`;
-- if no attempts remain, the job becomes `failed` and the last error message
-  must identify that the worker claim expired.
+reaches `succeeded`, `failed`, or `canceled`, the recovery process must mark the
+job `failed` and the last error message must identify that the worker claim
+expired. A new attempt requires an explicit administrator action.
 
 If a persistent generated output exists for a job whose status is not
 `succeeded`, the recovery process must not make that output public-usable. The
@@ -658,9 +704,9 @@ The worker environment must include:
 - `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase service credential;
 - `GEMINI_API_KEY`: server-only Gemini provider key;
 - `FABRIC_RENDER_QUEUE_NAME`: Supabase Queue name for fabric render jobs;
-- `FABRIC_RENDER_MAX_ATTEMPTS`: optional override for maximum attempts;
-- `FABRIC_RENDER_MAX_CONCURRENT_JOBS`: optional concurrency limit for one queue
-  consumer invocation;
+- `FABRIC_RENDER_MAX_CONCURRENT_JOBS`: optional concurrency limit for active
+  one-job worker invocations per admin request, defaulting to an
+  implementation-plan-defined safe value;
 - `FABRIC_RENDER_CLAIM_TTL_SECONDS`: optional override for the worker claim TTL,
   defaulting to 300 seconds;
 - `FABRIC_RENDER_TMP_DIR`: optional local temporary directory root, defaulting
@@ -692,6 +738,11 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
   `error.txt` for `refine` mode.
 - The production runtime is Supabase Edge Functions written in TypeScript on the
   Deno runtime, with Supabase Queues providing durable job queueing.
+- Jobs created by one admin action share a `request_id`.
+- Pump mode starts one-job worker invocations up to the configured concurrency
+  limit and stops when no queued jobs remain for the request.
+- Job mode processes exactly one claimed job and invokes pump mode after
+  completion so remaining queued jobs can continue without cron.
 - The first `initial` mode prompt version is fixed as `v007`.
 - The base system prompt is not editable, and admin-supplied prompt notes may
   only be appended as additional instructions for `initial` mode.
@@ -699,11 +750,13 @@ No service-role credential or AI provider key may be exposed to `apps/web`.
   mode and is not treated as an appended prompt note.
 - The first provider is Gemini with model `gemini-3-pro-image-preview`.
 - The required job statuses are defined.
-- Retryable and non-retryable failure categories are defined.
-- Worker processing claims have a default 5-minute TTL and expired claims are
-  retried only while attempts remain.
+- Failure persistence and manual retry behavior are defined.
+- Worker processing claims have a default 5-minute TTL and expired claims become
+  failed until an administrator explicitly requests another attempt.
 - API job-creation preconditions are defined without duplicating upload-time
   image readability and 2048 px limit checks.
+- API job creation starts service-side worker processing for the requested
+  manual admin action and must not depend on cron pickup as the product path.
 - The fabric render queue consumer Edge Function uses the maximum execution
   timeout allowed by the active Supabase plan and environment.
 - The first production worker accepts target sofa and fabric AI reference images

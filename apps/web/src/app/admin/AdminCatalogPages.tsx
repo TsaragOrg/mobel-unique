@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import {
   FormEvent,
   ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,11 +24,6 @@ import { prepareAdminImageUploadFile } from "../../lib/admin-image-upload";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
-
-// RU: Эти числа задают частоту проверки результата после запуска генерации.
-// FR: Ces nombres reglent la frequence de verification apres le lancement.
-const FABRIC_RENDER_JOB_POLL_INTERVAL_MS = 3000;
-const FABRIC_RENDER_JOB_POLL_ATTEMPTS = 100;
 
 export interface AdminCatalogTag {
   id: string;
@@ -139,6 +135,7 @@ export interface AdminCatalogFabricRenderJob {
   max_attempts: number;
   prompt_note: string | null;
   queued_at: string | null;
+  request_id: string;
   refinement_source_asset_id: string | null;
   refine_prompt: string | null;
   render_cell_id: string;
@@ -275,6 +272,30 @@ export type FabricRenderJobCreateInput =
       visual_matrix_column_id: string;
     };
 
+export interface FabricRenderJobBatchResult {
+  fabric_render_jobs: AdminCatalogFabricRenderJob[];
+  job_ids: string[];
+  request_id: string | null;
+  status: "noop" | "queued";
+  total_jobs: number;
+}
+
+export type FabricRenderResumeInput =
+  | {
+      request_id: string;
+      sofa_id?: null;
+    }
+  | {
+      request_id?: null;
+      sofa_id: string;
+    };
+
+export interface FabricRenderResumeResult {
+  request_ids: string[];
+  status: "noop" | "started";
+  total_requests: number;
+}
+
 export interface AdminCatalogPageDependencies {
   archiveFabric(
     accessToken: string,
@@ -311,6 +332,10 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     input: FabricRenderJobCreateInput,
   ): Promise<AdminCatalogFabricRenderJob>;
+  generateFabricRenderJobsForSofa(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<FabricRenderJobBatchResult>;
   createVisualMatrixColumn(
     accessToken: string,
     sofaId: string,
@@ -360,6 +385,14 @@ export interface AdminCatalogPageDependencies {
     sofaId: string,
     fabricId: string,
   ): Promise<void>;
+  resumeFabricRenderJobs(
+    accessToken: string,
+    input: FabricRenderResumeInput,
+  ): Promise<FabricRenderResumeResult>;
+  retryFabricRenderJob(
+    accessToken: string,
+    jobId: string,
+  ): Promise<AdminCatalogFabricRenderJob>;
   unpublishSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   setManualRender(
     accessToken: string,
@@ -395,6 +428,10 @@ export interface AdminCatalogPageDependencies {
     columnId: string,
     input: VisualMatrixColumnPatchInput,
   ): Promise<AdminCatalogVisualMatrixColumn>;
+  subscribeToFabricRenderJobs?(
+    sofaId: string,
+    onJobChange: (job: Partial<AdminCatalogFabricRenderJob>) => void,
+  ): () => void;
   useRenderCandidate(
     accessToken: string,
     candidateId: string,
@@ -626,6 +663,17 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.fabric_render_job as AdminCatalogFabricRenderJob;
     },
+    async generateFabricRenderJobsForSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/fabric-render-jobs/generate-all`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data as FabricRenderJobBatchResult;
+    },
     async createVisualMatrixColumn(accessToken, sofaId, input) {
       const data = await requestAdminJson(
         accessToken,
@@ -769,6 +817,29 @@ export function createDefaultAdminCatalogDependencies(
         },
       );
     },
+    async resumeFabricRenderJobs(accessToken, input) {
+      const data = await requestAdminJson(
+        accessToken,
+        "/api/admin/fabric-render-jobs/resume",
+        {
+          body: JSON.stringify(input),
+          method: "POST",
+        },
+      );
+
+      return data as FabricRenderResumeResult;
+    },
+    async retryFabricRenderJob(accessToken, jobId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/fabric-render-jobs/${jobId}/retry`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.fabric_render_job as AdminCatalogFabricRenderJob;
+    },
     async unpublishSofa(accessToken, sofaId) {
       const data = await requestAdminJson(
         accessToken,
@@ -855,6 +926,49 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.visual_matrix_column as AdminCatalogVisualMatrixColumn;
+    },
+    subscribeToFabricRenderJobs(sofaId, onJobChange) {
+      const supabase = getBrowserSupabaseClient();
+      const channel = supabase
+        .channel(`admin:fabric-render-jobs:${sofaId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            filter: `sofa_id=eq.${sofaId}`,
+            schema: "public",
+            table: "fabric_render_jobs",
+          },
+          (payload) => {
+            if (
+              payload.new &&
+              typeof payload.new === "object" &&
+              !Array.isArray(payload.new)
+            ) {
+              onJobChange(
+                payload.new as Partial<AdminCatalogFabricRenderJob>,
+              );
+            }
+          },
+        )
+        .on("system", {}, (payload) => {
+          if (payload?.status === "error") {
+            console.warn("Fabric render Realtime subscription failed.", payload);
+          }
+        });
+
+      void channel.subscribe((status, error) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(
+            "Fabric render Realtime channel could not subscribe.",
+            error,
+          );
+        }
+      });
+
+      return () => {
+        void supabase.removeChannel(channel);
+      };
     },
     async useRenderCandidate(accessToken, candidateId) {
       const data = await requestAdminJson(
@@ -1566,7 +1680,7 @@ function SofaEditContent({
 
   // RU: Это действие заново получает позиции и готовые картинки.
   // FR: Cette action recharge les positions et les images pretes.
-  async function refreshRenderPreparation() {
+  const refreshRenderPreparation = useCallback(async () => {
     const [nextColumns, nextCoverage] = await Promise.all([
       dependencies.listVisualMatrixColumns(accessToken, sofaId),
       dependencies.getRenderCoverage(accessToken, sofaId),
@@ -1574,7 +1688,64 @@ function SofaEditContent({
 
     setVisualMatrixColumns(nextColumns);
     setRenderCoverage(nextCoverage);
-  }
+  }, [accessToken, dependencies, sofaId]);
+
+  useEffect(() => {
+    if (!dependencies.subscribeToFabricRenderJobs) {
+      return;
+    }
+
+    let isCurrent = true;
+    let isRefreshing = false;
+    let needsRefresh = false;
+
+    async function refreshFromRealtime() {
+      if (!isCurrent) {
+        return;
+      }
+
+      if (isRefreshing) {
+        needsRefresh = true;
+        return;
+      }
+
+      isRefreshing = true;
+
+      try {
+        await refreshRenderPreparation();
+      } catch (error) {
+        if (isCurrent) {
+          setErrorMessage(readErrorMessage(error));
+        }
+      } finally {
+        isRefreshing = false;
+
+        if (needsRefresh) {
+          needsRefresh = false;
+          void refreshFromRealtime();
+        }
+      }
+    }
+
+    const unsubscribe = dependencies.subscribeToFabricRenderJobs(
+      sofaId,
+      (job) => {
+        if (
+          typeof job.status === "string" &&
+          (job.status === "queued" ||
+            job.status === "processing" ||
+            isTerminalFabricRenderJobStatus(job.status))
+        ) {
+          void refreshFromRealtime();
+        }
+      },
+    );
+
+    return () => {
+      isCurrent = false;
+      unsubscribe();
+    };
+  }, [dependencies, refreshRenderPreparation, sofaId]);
 
   if (!sofa && !errorMessage) {
     return (
@@ -2494,52 +2665,8 @@ function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {
   );
 }
 
-async function pollFabricRenderJobResult({
-  accessToken,
-  dependencies,
-  isActive,
-  jobId,
-  onRefresh,
-}: {
-  accessToken: string;
-  dependencies: AdminCatalogPageDependencies;
-  isActive(): boolean;
-  jobId: string;
-  onRefresh(): Promise<void>;
-}) {
-  for (
-    let attempt = 0;
-    attempt < FABRIC_RENDER_JOB_POLL_ATTEMPTS;
-    attempt += 1
-  ) {
-    if (!isActive()) {
-      return null;
-    }
-
-    const job = await dependencies.getFabricRenderJob(accessToken, jobId);
-
-    if (isTerminalFabricRenderJobStatus(job.status)) {
-      if (isActive()) {
-        await onRefresh();
-      }
-
-      return job;
-    }
-
-    await waitForFabricRenderJobPollDelay();
-  }
-
-  return null;
-}
-
 function isTerminalFabricRenderJobStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
-}
-
-function waitForFabricRenderJobPollDelay() {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, FABRIC_RENDER_JOB_POLL_INTERVAL_MS);
-  });
 }
 
 function RenderCoverageSection({
@@ -2594,6 +2721,76 @@ function RenderCoverageSection({
     }));
   }
 
+  const renderCells = coverage?.render_cells ?? [];
+  const canGenerateAll = renderCells.some(
+    (cell) => cell.can_generate_initial && !cell.current_private_asset_id,
+  );
+  const hasQueuedJobs = renderCells.some(
+    (cell) => cell.latest_job?.status === "queued",
+  );
+  const hasProcessingJobs = renderCells.some(
+    (cell) => cell.latest_job?.status === "processing",
+  );
+  const canResumeQueuedJobs = Boolean(
+    coverage && hasQueuedJobs && !hasProcessingJobs,
+  );
+
+  async function handleGenerateAll() {
+    if (!coverage) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setActiveCellId("__generate_all__");
+
+    try {
+      await dependencies.generateFabricRenderJobsForSofa(
+        accessToken,
+        coverage.sofa_id,
+      );
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  async function handleResumeQueuedJobs() {
+    if (!coverage) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setActiveCellId("__resume__");
+
+    try {
+      await dependencies.resumeFabricRenderJobs(accessToken, {
+        request_id: null,
+        sofa_id: coverage.sofa_id,
+      });
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
+  async function handleRetryJob(job: AdminCatalogFabricRenderJob) {
+    setErrorMessage(null);
+    setActiveCellId(job.render_cell_id);
+
+    try {
+      await dependencies.retryFabricRenderJob(accessToken, job.id);
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
   // RU: Это действие ставит задачу в очередь и потом само проверяет готовность.
   // FR: Cette action place la tache en file puis verifie seule quand elle est prete.
   async function handleGenerate(cell: AdminCatalogRenderCell) {
@@ -2602,7 +2799,7 @@ function RenderCoverageSection({
 
     try {
       const promptNote = initialPromptNotes[cell.id]?.trim() || null;
-      const job = await dependencies.createFabricRenderJob(accessToken, {
+      await dependencies.createFabricRenderJob(accessToken, {
         fabric_id: cell.fabric_id,
         generation_mode: "initial",
         prompt_note: promptNote,
@@ -2610,29 +2807,6 @@ function RenderCoverageSection({
         visual_matrix_column_id: cell.visual_matrix_column_id,
       });
       await onRefresh();
-      void pollFabricRenderJobResult({
-        accessToken,
-        dependencies,
-        isActive: () => isAliveRef.current,
-        jobId: job.id,
-        onRefresh,
-      })
-        .then((finishedJob) => {
-          if (!isAliveRef.current || !finishedJob) {
-            return;
-          }
-
-          if (finishedJob.status === "failed") {
-            setErrorMessage(
-              finishedJob.last_error_message ?? "FABRIC_RENDER_JOB_FAILED",
-            );
-          }
-        })
-        .catch((error) => {
-          if (isAliveRef.current) {
-            setErrorMessage(readErrorMessage(error));
-          }
-        });
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2710,7 +2884,7 @@ function RenderCoverageSection({
     setActiveCellId(cell.id);
 
     try {
-      const job = await dependencies.createFabricRenderJob(accessToken, {
+      await dependencies.createFabricRenderJob(accessToken, {
         fabric_id: cell.fabric_id,
         generation_mode: "refine",
         prompt_note: null,
@@ -2721,29 +2895,6 @@ function RenderCoverageSection({
       });
       form.reset();
       await onRefresh();
-      void pollFabricRenderJobResult({
-        accessToken,
-        dependencies,
-        isActive: () => isAliveRef.current,
-        jobId: job.id,
-        onRefresh,
-      })
-        .then((finishedJob) => {
-          if (!isAliveRef.current || !finishedJob) {
-            return;
-          }
-
-          if (finishedJob.status === "failed") {
-            setErrorMessage(
-              finishedJob.last_error_message ?? "FABRIC_RENDER_JOB_FAILED",
-            );
-          }
-        })
-        .catch((error) => {
-          if (isAliveRef.current) {
-            setErrorMessage(readErrorMessage(error));
-          }
-        });
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2812,6 +2963,22 @@ function RenderCoverageSection({
         number="4"
         title="Render coverage"
       />
+      <div className="admin-inline-actions">
+        <button
+          disabled={!canGenerateAll || activeCellId === "__generate_all__"}
+          onClick={() => void handleGenerateAll()}
+          type="button"
+        >
+          {activeCellId === "__generate_all__" ? "Queueing" : "Generate all"}
+        </button>
+        <button
+          disabled={!canResumeQueuedJobs || activeCellId === "__resume__"}
+          onClick={() => void handleResumeQueuedJobs()}
+          type="button"
+        >
+          {activeCellId === "__resume__" ? "Resuming" : "Resume queued jobs"}
+        </button>
+      </div>
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
@@ -2881,9 +3048,29 @@ function RenderCoverageSection({
                                 <span>{cell.blockers.join(", ")}</span>
                               </div>
                             ) : null}
+                            {cell.latest_job?.status === "failed" ? (
+                              <div className="admin-cell-blockers">
+                                <strong>Generation failed</strong>
+                                <span>
+                                  {cell.latest_job.last_error_message ??
+                                    "FABRIC_RENDER_JOB_FAILED"}
+                                </span>
+                              </div>
+                            ) : null}
                             {/* RU: Этот блок дает действия для одной ячейки матрицы. */}
                             {/* FR: Ce bloc donne les actions pour une case du tableau. */}
                             <div className="admin-cell-actions">
+                              {cell.latest_job?.status === "failed" ? (
+                                <button
+                                  disabled={activeCellId === cell.id}
+                                  onClick={() =>
+                                    void handleRetryJob(cell.latest_job!)
+                                  }
+                                  type="button"
+                                >
+                                  Retry failed job
+                                </button>
+                              ) : null}
                               {isSourcePhotoCompleteCell(cell) ? (
                                 <span className="admin-muted">
                                   Source photo is current

@@ -15,6 +15,7 @@ import {
   validateFabricCreatePayload,
   validateFabricPatchPayload,
   validateFabricRenderJobCreatePayload,
+  validateFabricRenderResumePayload,
   validateManualRenderMutationPayload,
   validateSofaFabricMutationPayload,
   validateSofaCreatePayload,
@@ -25,6 +26,8 @@ import {
   validateVisualMatrixColumnPatchPayload,
   type AdminCatalogOperationErrorData,
   type AdminCatalogStore,
+  type AdminFabricRenderJobBatchRecord,
+  type AdminFabricRenderResumeRecord,
 } from "./admin-catalog";
 
 export type { AdminCatalogStore } from "./admin-catalog";
@@ -423,12 +426,109 @@ export async function handleCreateFabricRenderJobRequest(input: RequestInput) {
       return catalogErrorResponse(result);
     }
 
+    const fabricRenderJob = shapeFabricRenderJobResponse(result);
+
     return jsonResponse(
       {
         data: {
-          fabric_render_job: shapeFabricRenderJobResponse(result),
-          job_id: shapeFabricRenderJobResponse(result)?.id,
-          status: shapeFabricRenderJobResponse(result)?.status,
+          fabric_render_job: fabricRenderJob,
+          job_id: fabricRenderJob?.id,
+          request_id: fabricRenderJob?.request_id,
+          status: fabricRenderJob?.status,
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleGenerateAllFabricRenderJobsRequest(
+  input: SofaInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.createFabricRenderJobsForSofa(input.sofaId);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    const batch = result as AdminFabricRenderJobBatchRecord;
+    const status = batch.status === "queued" ? 201 : 200;
+
+    return jsonResponse(
+      {
+        data: {
+          fabric_render_jobs: batch.fabric_render_jobs.map(
+            shapeFabricRenderJobResponse,
+          ),
+          job_ids: batch.job_ids,
+          request_id: batch.request_id,
+          status: batch.status,
+          total_jobs: batch.total_jobs,
+        },
+        meta: {},
+      },
+      status,
+    );
+  });
+}
+
+export async function handleResumeFabricRenderJobsRequest(input: RequestInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const body = await readJsonObject(input.request);
+
+    if (!body.ok) {
+      return validationResponse(body);
+    }
+
+    const validation = validateFabricRenderResumePayload(body.value);
+
+    if (!validation.ok) {
+      return validationResponse(validation);
+    }
+
+    const result = await store.resumeFabricRenderJobs(validation.value);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    const resume = result as AdminFabricRenderResumeRecord;
+
+    return jsonResponse(
+      {
+        data: {
+          request_ids: resume.request_ids,
+          status: resume.status,
+          total_requests: resume.total_requests,
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleRetryFabricRenderJobRequest(
+  input: FabricRenderJobInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.retryFabricRenderJob(input.jobId);
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    const fabricRenderJob = shapeFabricRenderJobResponse(result);
+
+    return jsonResponse(
+      {
+        data: {
+          fabric_render_job: fabricRenderJob,
+          job_id: fabricRenderJob?.id,
+          request_id: fabricRenderJob?.request_id,
+          status: fabricRenderJob?.status,
         },
         meta: {},
       },

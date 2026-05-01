@@ -7,6 +7,7 @@ const FUNCTION_URL =
 const REQUEST_TIMEOUT_MS = Number(
   process.env.FABRIC_RENDER_WORKER_SMOKE_TIMEOUT_MS ?? 5000,
 );
+const REQUEST_ID = process.env.FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID;
 
 function skip(message) {
   console.log(`SKIP fabric render Gemini smoke: ${message}`);
@@ -45,11 +46,23 @@ if (process.env.FABRIC_RENDER_ENABLE_GEMINI_SMOKE !== "1") {
   );
 }
 
+if (!REQUEST_ID) {
+  skip(
+    "Set FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID to a queued Gemini fabric render request_id.",
+  );
+}
+
 let response;
 
 try {
   response = await fetch(FUNCTION_URL, {
-    headers: buildWorkerHeaders({}),
+    body: JSON.stringify({
+      mode: "pump",
+      request_id: REQUEST_ID,
+    }),
+    headers: buildWorkerHeaders({
+      "Content-Type": "application/json",
+    }),
     method: "POST",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -72,13 +85,6 @@ try {
 }
 
 const responseText = await response.text();
-
-if (response.status === 204) {
-  skip(
-    "no queued Gemini fabric render job was available. " +
-      "Create one valid local job with private target sofa and fabric reference assets before running this smoke test.",
-  );
-}
 
 if (
   isLocalFunctionUrl(FUNCTION_URL) &&
@@ -105,17 +111,18 @@ if (!response.ok) {
   );
 }
 
-if (
-  body.status !== "succeeded" ||
-  !body.job_id ||
-  !body.queue_name ||
-  !body.output_path
-) {
+if (body.status === "idle") {
+  skip(
+    "no queued Gemini fabric render job was available for the provided request_id.",
+  );
+}
+
+if (body.mode !== "pump" || body.status !== "started" || !body.request_id) {
   fail(
     `unexpected fabric render Gemini smoke response: ${JSON.stringify(body)}`,
   );
 }
 
 console.log(
-  `PASS fabric render Gemini smoke: processed job ${body.job_id} from ${body.queue_name} with ${body.output_path}`,
+  `PASS fabric render Gemini smoke: pump started for request ${body.request_id}`,
 );

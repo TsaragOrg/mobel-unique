@@ -302,6 +302,8 @@ Rules:
 Fields:
 
 - `id` uuid primary key;
+- `request_id` uuid identifying the explicit admin action that created one or
+  more fabric render jobs;
 - `sofa_id` uuid reference to `sofas`;
 - `sequence` integer, required;
 - `admin_label` text;
@@ -448,7 +450,8 @@ Fields:
 - `prompt_version` text, required for queued jobs;
 - `status` with values from `fabric_render_job_status`;
 - `attempt_count` integer;
-- `max_attempts` integer;
+- `max_attempts` integer retained as operational metadata when present, but not
+  used for automatic background retry in the MVP manual workflow;
 - `queued_at` timestamp;
 - `claimed_by` text;
 - `claimed_at` timestamp;
@@ -462,6 +465,8 @@ Fields:
 Required constraints and indexes:
 
 - index on `(status, queued_at)`;
+- index on `(request_id, status, queued_at)` or an equivalent helper index for
+  pump-mode job claiming;
 - index on `(sofa_id, fabric_id, visual_matrix_column_id)`;
 - index on `claim_expires_at` for processing jobs;
 - check constraints preventing negative attempt counts;
@@ -470,7 +475,11 @@ Required constraints and indexes:
 Rules:
 
 - only server-side admin-authorized logic may create jobs;
-- the queue message must reference this table row by id;
+- jobs created by one admin action must share one `request_id`;
+- the worker pump uses `request_id` to keep at most the configured number of
+  one-job workers active for the request and to stop when no queued jobs remain;
+- the queue message or internal worker invocation must reference either one job
+  row by id or the request id according to the implementation plan;
 - successful jobs create a private `fabric_render_candidates` row;
 - failed jobs are operational records, not public render validation states.
 

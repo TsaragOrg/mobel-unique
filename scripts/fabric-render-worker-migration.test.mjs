@@ -13,6 +13,8 @@ const adminPublicationMigrationPath =
   "supabase/migrations/20260430000100_admin_sofa_publication.sql";
 const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
+const manualPumpRealtimeMigrationPath =
+  "supabase/migrations/20260430000300_manual_fabric_render_pump_realtime.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -125,5 +127,41 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("'refine_prompt', target_job.refine_prompt");
     expect(sql).not.toContain("coalesce(provider_name");
     expect(sql).not.toContain("coalesce(provider_model");
+  });
+
+  it("adds request-scoped manual pump helpers and supersedes cron pickup", async () => {
+    const sql = await readFile(manualPumpRealtimeMigrationPath, "utf8");
+
+    expect(sql).toContain("add column if not exists request_id uuid");
+    expect(sql).toContain("alter column request_id set default gen_random_uuid()");
+    expect(sql).toContain("set request_id = id");
+    expect(sql).toContain("alter column request_id set not null");
+    expect(sql).toContain("fabric_render_jobs_request_status_idx");
+    expect(sql).toContain("fabric_render_jobs_request_processing_idx");
+    expect(sql).toContain("public.fabric_render_worker_request_status");
+    expect(sql).toContain("public.fabric_render_worker_claim_one_for_request");
+    expect(sql).toContain("p_max_concurrent_jobs integer");
+    expect(sql).toContain("pg_advisory_xact_lock");
+    expect(sql).toContain("hashtextextended(p_request_id::text, 0)");
+    expect(sql).toContain("active_job_count >= p_max_concurrent_jobs");
+    expect(sql).toContain("status', 'capacity_full'");
+    expect(sql).toContain("for update skip locked");
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("Worker claim expired before manual resume");
+    expect(sql).toContain(
+      "grant select on public.fabric_render_jobs to authenticated",
+    );
+    expect(sql).toContain(
+      "spec_0031_admin_fabric_render_jobs_realtime_select",
+    );
+    expect(sql).toContain(
+      "auth.jwt() -> 'app_metadata' -> 'mobel_unique' ->> 'role'",
+    );
+    expect(sql).toContain("supabase_realtime");
+    expect(sql).toContain("fabric_render_jobs");
+    expect(sql).toContain("fabric-render-worker-runner");
+    expect(sql).toContain("cron.unschedule");
+    expect(sql).not.toContain("cron.schedule(");
+    expect(sql).not.toContain("attempt_count < max_attempts");
   });
 });

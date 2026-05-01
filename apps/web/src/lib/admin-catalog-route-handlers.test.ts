@@ -13,6 +13,8 @@ import {
   handleDeleteTagRequest,
   handleDeleteVisualMatrixColumnRequest,
   handleGetFabricRenderJobRequest,
+  handleGenerateAllFabricRenderJobsRequest,
+  handleResumeFabricRenderJobsRequest,
   handleGetFabricRequest,
   handleGetRenderCoverageRequest,
   handleGetSofaPublicationReadinessRequest,
@@ -25,6 +27,7 @@ import {
   handleListVisualMatrixColumnsRequest,
   handlePublishSofaRequest,
   handleRemoveSofaFabricRequest,
+  handleRetryFabricRenderJobRequest,
   handleUpdateFabricRequest,
   handleUpdateSofaRequest,
   handleUpdateSofaFabricRequest,
@@ -506,6 +509,7 @@ function createFakeStore(): AdminCatalogStore {
         attempt_count: 0,
         completed_at: null,
         created_at: "2026-04-28T10:30:00.000Z",
+        fabric_ai_reference_asset_id: aiReferenceAsset.id,
         fabric_id: input.fabric_id,
         generation_mode: input.generation_mode,
         id: `00000000-0000-4000-8000-${String(970 + renderJobCounter).padStart(
@@ -515,12 +519,19 @@ function createFakeStore(): AdminCatalogStore {
         last_error_message: null,
         max_attempts: 3,
         prompt_note: inputPromptNote,
+        prompt_version: "v007",
         queued_at: "2026-04-28T10:30:00.000Z",
+        request_id: `00000000-0000-4000-8000-${String(
+          1970 + renderJobCounter,
+        ).padStart(12, "0")}`,
         refinement_source_asset_id: inputRefinementSourceAssetId,
         refine_prompt: inputRefinePrompt,
         render_cell_id: cell.id,
         sofa_id: input.sofa_id,
         status: "queued",
+        target_sofa_asset_id:
+          (sourcePhoto?.["asset_id"] as string | undefined) ??
+          "00000000-0000-4000-8000-000000000904",
         updated_at: "2026-04-28T10:30:00.000Z",
         visual_matrix_column_id: input.visual_matrix_column_id,
       };
@@ -564,6 +575,145 @@ function createFakeStore(): AdminCatalogStore {
       renderCandidates.set(candidate.id, candidate);
 
       return job;
+    },
+    async createFabricRenderJobsForSofa(sofaId) {
+      if (!sofas.has(sofaId)) {
+        return {
+          code: "SOFA_NOT_FOUND",
+          message: "Sofa was not found.",
+          status: 404,
+        };
+      }
+
+      const activeJobCellIds = new Set(
+        [...renderJobs.values()]
+          .filter((job) => job.status === "queued" || job.status === "processing")
+          .map((job) => job.render_cell_id),
+      );
+      const eligibleCells = [...renderCells.values()].filter(
+        (cell) =>
+          cell.sofa_id === sofaId &&
+          !cell.current_private_asset_id &&
+          !activeJobCellIds.has(cell.id),
+      );
+
+      if (eligibleCells.length === 0) {
+        return {
+          fabric_render_jobs: [],
+          job_ids: [],
+          request_id: null,
+          status: "noop",
+          total_jobs: 0,
+        };
+      }
+
+      const requestId = `00000000-0000-4000-8000-${String(
+        2970 + renderJobCounter,
+      ).padStart(12, "0")}`;
+      const jobs = eligibleCells.map((cell) => {
+        renderJobCounter += 1;
+
+        const job = {
+          attempt_count: 0,
+          completed_at: null,
+          created_at: "2026-04-28T10:30:00.000Z",
+          fabric_ai_reference_asset_id: aiReferenceAsset.id,
+          fabric_id: cell.fabric_id,
+          generation_mode: "initial",
+          id: `00000000-0000-4000-8000-${String(
+            970 + renderJobCounter,
+          ).padStart(12, "0")}`,
+          last_error_message: null,
+          max_attempts: 3,
+          prompt_note: null,
+          prompt_version: "v007",
+          queued_at: "2026-04-28T10:30:00.000Z",
+          request_id: requestId,
+          refinement_source_asset_id: null,
+          refine_prompt: null,
+          render_cell_id: cell.id,
+          sofa_id: sofaId,
+          status: "queued",
+          target_sofa_asset_id: "00000000-0000-4000-8000-000000000904",
+          updated_at: "2026-04-28T10:30:00.000Z",
+          visual_matrix_column_id: cell.visual_matrix_column_id,
+        };
+
+        renderJobs.set(job.id, job);
+
+        return job;
+      });
+
+      return {
+        fabric_render_jobs: jobs,
+        job_ids: jobs.map((job) => job.id),
+        request_id: requestId,
+        status: "queued",
+        total_jobs: jobs.length,
+      };
+    },
+    async resumeFabricRenderJobs(input) {
+      const requestIds = [
+        ...new Set(
+          [...renderJobs.values()]
+            .filter(
+              (job) =>
+                job.status === "queued" &&
+                (input.request_id
+                  ? job.request_id === input.request_id
+                  : job.sofa_id === input.sofa_id),
+            )
+            .map((job) => job.request_id as string),
+        ),
+      ];
+
+      return {
+        request_ids: requestIds,
+        status: requestIds.length > 0 ? "started" : "noop",
+        total_requests: requestIds.length,
+      };
+    },
+    async retryFabricRenderJob(jobId) {
+      const existingJob = renderJobs.get(jobId);
+
+      if (!existingJob) {
+        return {
+          code: "FABRIC_RENDER_JOB_NOT_FOUND",
+          message: "Fabric render job was not found.",
+          status: 404,
+        };
+      }
+
+      if (existingJob.status !== "failed") {
+        return {
+          code: "FABRIC_RENDER_JOB_CONFLICT",
+          message: "Only failed fabric render jobs can be retried.",
+          status: 409,
+        };
+      }
+
+      renderJobCounter += 1;
+
+      const retryJob = {
+        ...existingJob,
+        attempt_count: 0,
+        completed_at: null,
+        created_at: "2026-04-28T10:45:00.000Z",
+        id: `00000000-0000-4000-8000-${String(
+          3970 + renderJobCounter,
+        ).padStart(12, "0")}`,
+        last_error_message: null,
+        queued_at: "2026-04-28T10:45:00.000Z",
+        request_id: `00000000-0000-4000-8000-${String(
+          4970 + renderJobCounter,
+        ).padStart(12, "0")}`,
+        status: "queued",
+        updated_at: "2026-04-28T10:45:00.000Z",
+      };
+
+      renderJobs.set(retryJob.id, retryJob);
+
+      return retryJob;
     },
     async createVisualMatrixColumn(sofaId, input) {
       if (!sofas.has(sofaId)) {
@@ -1116,6 +1266,142 @@ describe("admin catalog route handlers", () => {
       }),
     });
     expect(nonAdminResponse.status).toBe(403);
+  });
+
+  it("returns request-scoped generate-all fabric render job batches", async () => {
+    const requestId = "00000000-0000-4000-8000-000000003001";
+    const jobId = "00000000-0000-4000-8000-000000003002";
+    const store = {
+      async createFabricRenderJobsForSofa(sofaId: string) {
+        return {
+          fabric_render_jobs: [
+            {
+              attempt_count: 0,
+              completed_at: null,
+              created_at: "2026-04-28T10:30:00.000Z",
+              fabric_id: "00000000-0000-4000-8000-000000003003",
+              generation_mode: "initial",
+              id: jobId,
+              last_error_message: null,
+              max_attempts: 3,
+              prompt_note: null,
+              queued_at: "2026-04-28T10:30:00.000Z",
+              request_id: requestId,
+              refinement_source_asset_id: null,
+              refine_prompt: null,
+              render_cell_id: "00000000-0000-4000-8000-000000003004",
+              sofa_id: sofaId,
+              status: "queued",
+              updated_at: "2026-04-28T10:30:00.000Z",
+              visual_matrix_column_id:
+                "00000000-0000-4000-8000-000000003005",
+            },
+          ],
+          job_ids: [jobId],
+          request_id: requestId,
+          status: "queued",
+          total_jobs: 1,
+        };
+      },
+    } as unknown as AdminCatalogStore;
+
+    const response = await handleGenerateAllFabricRenderJobsRequest({
+      ...createInput(store),
+      sofaId: "00000000-0000-4000-8000-000000003006",
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        fabric_render_jobs: [
+          {
+            id: jobId,
+            request_id: requestId,
+          },
+        ],
+        job_ids: [jobId],
+        request_id: requestId,
+        status: "queued",
+        total_jobs: 1,
+      },
+    });
+  });
+
+  it("resumes queued fabric render requests through an explicit admin action", async () => {
+    const requestId = "00000000-0000-4000-8000-000000003011";
+    const store = {
+      async resumeFabricRenderJobs(input: { request_id?: string | null }) {
+        return {
+          request_ids: input.request_id ? [input.request_id] : [],
+          status: input.request_id ? "started" : "noop",
+          total_requests: input.request_id ? 1 : 0,
+        };
+      },
+    } as unknown as AdminCatalogStore;
+
+    const response = await handleResumeFabricRenderJobsRequest({
+      ...createInput(store),
+      request: jsonRequest({
+        request_id: requestId,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        request_ids: [requestId],
+        status: "started",
+        total_requests: 1,
+      },
+    });
+  });
+
+  it("returns a new request-scoped job for manual fabric render retry", async () => {
+    const requestId = "00000000-0000-4000-8000-000000003021";
+    const jobId = "00000000-0000-4000-8000-000000003022";
+    const store = {
+      async retryFabricRenderJob() {
+        return {
+          attempt_count: 0,
+          completed_at: null,
+          created_at: "2026-04-28T10:45:00.000Z",
+          fabric_id: "00000000-0000-4000-8000-000000003023",
+          generation_mode: "initial",
+          id: jobId,
+          last_error_message: null,
+          max_attempts: 3,
+          prompt_note: null,
+          queued_at: "2026-04-28T10:45:00.000Z",
+          request_id: requestId,
+          refinement_source_asset_id: null,
+          refine_prompt: null,
+          render_cell_id: "00000000-0000-4000-8000-000000003024",
+          sofa_id: "00000000-0000-4000-8000-000000003025",
+          status: "queued",
+          updated_at: "2026-04-28T10:45:00.000Z",
+          visual_matrix_column_id: "00000000-0000-4000-8000-000000003026",
+        };
+      },
+    } as unknown as AdminCatalogStore;
+
+    const response = await handleRetryFabricRenderJobRequest({
+      ...createInput(store),
+      jobId: "00000000-0000-4000-8000-000000003027",
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        fabric_render_job: {
+          id: jobId,
+          request_id: requestId,
+          status: "queued",
+        },
+        job_id: jobId,
+        request_id: requestId,
+        status: "queued",
+      },
+    });
   });
 
   it("runs the concrete draft sofa and tag flow", async () => {
@@ -1755,6 +2041,10 @@ describe("admin catalog route handlers", () => {
     const jobBody = await jobResponse.json();
     const jobId = jobBody.data.job_id as string;
     expect(jobBody.data).toMatchObject({
+      fabric_render_job: {
+        request_id: jobBody.data.request_id,
+      },
+      request_id: expect.any(String),
       status: "queued",
     });
 

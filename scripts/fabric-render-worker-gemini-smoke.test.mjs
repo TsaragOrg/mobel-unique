@@ -54,41 +54,56 @@ describe("fabric render worker Gemini smoke script", () => {
     expect(result.stdout).toContain("FABRIC_RENDER_ENABLE_GEMINI_SMOKE=1");
   });
 
-  it("passes when the function returns a succeeded Gemini job", async () => {
+  it("skips when the Gemini smoke request_id is missing", async () => {
+    const result = await runSmoke({
+      FABRIC_RENDER_ENABLE_GEMINI_SMOKE: "1",
+      GEMINI_API_KEY: "test-key",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("SKIP fabric render Gemini smoke");
+    expect(result.stdout).toContain("FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID");
+  });
+
+  it("passes when the function starts a Gemini pump request", async () => {
     const body = encodeURIComponent(
       JSON.stringify({
-        job_id: "00000000-0000-4000-8000-000000000007",
-        queue_name: "local_fabric_render_jobs",
-        status: "succeeded",
-        output_path:
-          "fabric-render/00000000-0000-4000-8000-000000000007/output.png",
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000007",
+        started_count: 1,
+        status: "started",
       }),
     );
     const result = await runSmoke({
       FABRIC_RENDER_ENABLE_GEMINI_SMOKE: "1",
       FABRIC_RENDER_WORKER_FUNCTION_URL: `data:application/json,${body}`,
+      FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID:
+        "00000000-0000-4000-8000-000000000007",
       GEMINI_API_KEY: "test-key",
     });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("PASS fabric render Gemini smoke");
-    expect(result.stdout).toContain("output.png");
+    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000007");
   });
 
   it("sends the worker invocation secret header when configured", async () => {
     let receivedSecret = null;
+    let receivedBody = null;
     const server = createServer((request, response) => {
       receivedSecret = request.headers["x-fabric-render-worker-secret"] ?? null;
+      request.on("data", (chunk) => {
+        receivedBody = JSON.parse(String(chunk));
+      });
       response.writeHead(200, {
         "Content-Type": "application/json",
       });
       response.end(
         JSON.stringify({
-          job_id: "00000000-0000-4000-8000-000000000007",
-          queue_name: "local_fabric_render_jobs",
-          status: "succeeded",
-          output_path:
-            "fabric-render/00000000-0000-4000-8000-000000000007/output.png",
+          mode: "pump",
+          request_id: "00000000-0000-4000-8000-000000000007",
+          started_count: 1,
+          status: "started",
         }),
       );
     });
@@ -103,11 +118,17 @@ describe("fabric render worker Gemini smoke script", () => {
         FABRIC_RENDER_ENABLE_GEMINI_SMOKE: "1",
         FABRIC_RENDER_WORKER_FUNCTION_URL: `http://127.0.0.1:${port}/functions/v1/fabric-render-worker`,
         FABRIC_RENDER_WORKER_INVOKE_SECRET: "local-secret",
+        FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID:
+          "00000000-0000-4000-8000-000000000007",
         GEMINI_API_KEY: "test-key",
       });
 
       expect(result.status).toBe(0);
       expect(receivedSecret).toBe("local-secret");
+      expect(receivedBody).toMatchObject({
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000007",
+      });
     } finally {
       await new Promise((resolve) => {
         server.close(resolve);
@@ -117,8 +138,17 @@ describe("fabric render worker Gemini smoke script", () => {
 
   it("skips clearly when no Gemini job is queued", async () => {
     const server = createServer((request, response) => {
-      response.writeHead(204);
-      response.end();
+      response.writeHead(200, {
+        "Content-Type": "application/json",
+      });
+      response.end(
+        JSON.stringify({
+          mode: "pump",
+          request_id: "00000000-0000-4000-8000-000000000007",
+          started_count: 0,
+          status: "idle",
+        }),
+      );
     });
 
     await new Promise((resolve) => {
@@ -130,6 +160,8 @@ describe("fabric render worker Gemini smoke script", () => {
       const result = await runSmoke({
         FABRIC_RENDER_ENABLE_GEMINI_SMOKE: "1",
         FABRIC_RENDER_WORKER_FUNCTION_URL: `http://127.0.0.1:${port}/functions/v1/fabric-render-worker`,
+        FABRIC_RENDER_WORKER_SMOKE_REQUEST_ID:
+          "00000000-0000-4000-8000-000000000007",
         GEMINI_API_KEY: "test-key",
       });
 

@@ -241,7 +241,8 @@ The implementation should organize Edge Functions by security boundary:
 - public read and public simulation functions may be callable by anonymous browsers but must enforce all public access rules internally;
 - admin functions must require admin authorization;
 - internal cleanup and worker-control functions must require scheduler or service authorization;
-- worker functions must use service-side credentials and should be invoked by queue polling, scheduler, or service-side orchestration, not by public UI.
+- worker functions must use service-side credentials and must not be invoked by public UI;
+- fabric render worker functions should be invoked by service-side orchestration after explicit admin actions, not by scheduler-first pickup.
 
 The final function names may differ from the logical route groups if an implementation plan documents the mapping. The logical contracts in this spec remain the product-facing contract.
 
@@ -890,7 +891,14 @@ Rules:
 - refine mode requires a non-empty `refine_prompt` and must not accept `prompt_note`;
 - refine mode sends only the selected current output image and the refine prompt to the provider, not the fixed `v007` prompt, fabric AI reference image, or target sofa image;
 - no equivalent active job may exist unless the admin explicitly requests a new generation;
-- the API creates the durable `fabric_render_jobs` row and sends the queue message.
+- the API creates the durable `fabric_render_jobs` row with a `request_id` for this explicit admin action and starts service-side worker processing by invoking the internal fabric render Edge Function pump after the database write succeeds;
+- if worker start fails before the worker owns the job, the API must avoid creating a durable job or persist the created job as `failed` with a safe error message;
+- fabric render job creation must not depend on cron pickup or automatic background retry as the normal product path.
+
+The worker pump may start one-job worker invocations for queued jobs that share
+the `request_id`, up to `FABRIC_RENDER_MAX_CONCURRENT_JOBS`. Implementation
+plans must define claim order, concurrency, timeout behavior, and how admin
+actions such as 15 or 50 generated renders are drained without cron.
 
 When rejecting an ineligible source-photo-satisfied cell, the API should use a stable validation error such as `FABRIC_RENDER_JOB_CONFLICT` with a readable message explaining that the source photo already satisfies the original fabric render cell.
 
@@ -899,7 +907,42 @@ Response:
 ```json
 {
   "job_id": "fabric-render-job-id",
+  "request_id": "admin-action-request-id",
   "status": "queued"
+}
+```
+
+The response status reflects the durable job status at response time. A
+successful response does not mean image generation has completed.
+
+### `POST /api/admin/sofas/{sofa_id}/fabric-render-jobs/generate-all`
+
+Creates initial fabric render generation jobs for all eligible missing render
+cells on one sofa.
+
+Rules:
+
+- the endpoint is an explicit administrator action;
+- the API must validate the sofa and all eligible render cells using the same
+  initial mode rules as single-job creation;
+- the API must create one durable `fabric_render_jobs` row per eligible cell;
+- all jobs created by the request must share one generated `request_id`;
+- the API must invoke the internal fabric render Edge Function pump once after
+  the database write succeeds;
+- if no cells are eligible, the endpoint must return a safe no-op response and
+  must not invoke the worker;
+- if worker start fails before any worker owns the jobs, the API must avoid
+  creating durable jobs or persist the created jobs as `failed` with a safe
+  error message according to the implementation plan.
+
+Response:
+
+```json
+{
+  "request_id": "admin-action-request-id",
+  "job_ids": ["fabric-render-job-id"],
+  "status": "queued",
+  "total_jobs": 15
 }
 ```
 
@@ -915,9 +958,25 @@ Retries a failed fabric render job when retry is allowed.
 
 Rules:
 
-- retry must create a new queue message or new durable job according to the implementation plan;
+- retry is a manual administrator action;
+- retry must create a new queue message or new durable job with a new `request_id` and invoke the internal fabric render Edge Function pump according to the implementation plan;
 - retry must not make any previous output public-usable;
 - retry must preserve enough audit context for admin troubleshooting.
+
+### `POST /api/admin/fabric-render-jobs/resume`
+
+Manually resumes queued fabric render jobs that are not currently being
+processed.
+
+Rules:
+
+- resume is an explicit administrator action;
+- the request must be scoped by `request_id`, `sofa_id`, or another
+  implementation-plan-approved admin-safe scope;
+- resume must invoke the internal fabric render Edge Function pump;
+- resume must not restart `processing`, `succeeded`, `failed`, or `canceled`
+  jobs;
+- resume must not depend on cron or automatic background pickup.
 
 ### `POST /api/admin/fabric-render-jobs/{job_id}/cancel`
 
@@ -1038,7 +1097,7 @@ The signed URL must be short-lived and admin-only.
 
 Worker Edge Functions are internal surfaces.
 
-The API or scheduler may invoke:
+The API may invoke:
 
 - fabric render worker processing;
 - in-home simulation room preparation processing;
@@ -1048,6 +1107,7 @@ Rules:
 
 - worker functions must require service-side authorization in DEV and PROD;
 - local smoke tests may use unauthenticated local function invocation only when documented by local development plans;
+- fabric render worker invocation must be triggered by an explicit admin request and must not rely on cron as the normal product path;
 - worker functions must claim jobs atomically from durable job tables;
 - workers must record status transitions and safe operational errors;
 - workers must not return private paths to browser callers.
@@ -1057,7 +1117,8 @@ Rules:
 The fabric render worker must:
 
 - read `fabric_render_jobs`;
-- claim queued jobs atomically;
+- in pump mode, keep up to the configured number of job workers active for a `request_id`;
+- in job mode, claim one eligible job atomically from durable database state and process only that job;
 - read private input assets;
 - write private generated output assets;
 - create `fabric_render_candidates`;

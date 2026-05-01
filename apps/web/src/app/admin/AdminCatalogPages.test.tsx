@@ -8,6 +8,7 @@ FR: Les tests aident a verifier que l'admin peut lancer la generation, choisir l
 */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -212,6 +213,7 @@ function createDependencies(
       prompt_note:
         input.generation_mode === "initial" ? input.prompt_note : null,
       queued_at: "2026-04-28T10:30:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000916",
       refinement_source_asset_id:
         input.generation_mode === "refine"
           ? input.refinement_source_asset_id
@@ -223,6 +225,13 @@ function createDependencies(
       status: "queued",
       updated_at: "2026-04-28T10:30:00.000Z",
       visual_matrix_column_id: input.visual_matrix_column_id,
+    })),
+    generateFabricRenderJobsForSofa: vi.fn(async () => ({
+      fabric_render_jobs: [],
+      job_ids: [],
+      request_id: "00000000-0000-4000-8000-000000000916",
+      status: "queued" as const,
+      total_jobs: 0,
     })),
     createVisualMatrixColumn: vi.fn(async (_accessToken, sofaId, input) => ({
       ...visualMatrixColumn,
@@ -245,6 +254,7 @@ function createDependencies(
       max_attempts: 3,
       prompt_note: null,
       queued_at: "2026-04-28T10:30:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000916",
       refinement_source_asset_id: null,
       refine_prompt: null,
       render_cell_id: "00000000-0000-4000-8000-000000000905",
@@ -386,6 +396,31 @@ function createDependencies(
     redirect: vi.fn(),
     refreshAccessToken: vi.fn(async () => null),
     removeSofaFabric: vi.fn(async () => {}),
+    resumeFabricRenderJobs: vi.fn(async () => ({
+      request_ids: ["00000000-0000-4000-8000-000000000916"],
+      status: "started" as const,
+      total_requests: 1,
+    })),
+    retryFabricRenderJob: vi.fn(async (_accessToken, jobId) => ({
+      attempt_count: 0,
+      completed_at: null,
+      created_at: "2026-04-28T10:45:00.000Z",
+      fabric_id: fabric.id,
+      generation_mode: "initial",
+      id: jobId,
+      last_error_message: null,
+      max_attempts: 3,
+      prompt_note: null,
+      queued_at: "2026-04-28T10:45:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000917",
+      refinement_source_asset_id: null,
+      refine_prompt: null,
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      status: "queued",
+      updated_at: "2026-04-28T10:45:00.000Z",
+      visual_matrix_column_id: visualMatrixColumn.id,
+    })),
     setManualRender: vi.fn(async (_accessToken, renderCellId, input) => ({
       blockers: [],
       can_generate_initial: true,
@@ -1153,10 +1188,210 @@ describe("Admin catalog pages", () => {
         },
       );
     });
+    expect(dependencies.getFabricRenderJob).not.toHaveBeenCalled();
+  });
+
+  it("refreshes sofa render coverage from fabric render Realtime updates", async () => {
+    let onJobChange:
+      | ((job: { status: string; sofa_id: string }) => void)
+      | null = null;
+    const unsubscribe = vi.fn();
+    const subscribeToFabricRenderJobs = vi.fn((_sofaId, callback) => {
+      onJobChange = callback;
+
+      return unsubscribe;
+    });
+    const dependencies = createDependencies({
+      subscribeToFabricRenderJobs,
+    });
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+
+    const { unmount } = render(
+      <AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    expect(subscribeToFabricRenderJobs).toHaveBeenCalledWith(
+      sofaId,
+      expect.any(Function),
+    );
+    const initialCoverageCalls = vi.mocked(dependencies.getRenderCoverage).mock
+      .calls.length;
+
+    await act(async () => {
+      onJobChange?.({
+        sofa_id: sofaId,
+        status: "succeeded",
+      });
+    });
+
     await waitFor(() => {
-      expect(dependencies.getFabricRenderJob).toHaveBeenCalledWith(
+      expect(dependencies.getRenderCoverage).toHaveBeenCalledTimes(
+        initialCoverageCalls + 1,
+      );
+    });
+
+    unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it("offers generate-all, retry, and resume actions from render coverage state", async () => {
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: "00000000-0000-4000-8000-000000000705",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const fabricA = {
+      ai_reference_asset: null,
+      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000903",
+      internal_name: "Failed fabric",
+      is_premium: false,
+      lifecycle_state: "active",
+      public_name: "Failed fabric",
+      swatch_asset: null,
+      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const fabricB = {
+      ...fabricA,
+      id: "00000000-0000-4000-8000-000000000913",
+      internal_name: "Queued fabric",
+      public_name: "Queued fabric",
+    };
+    const assignments = [fabricA, fabricB].map((fabric, index) => ({
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric,
+      fabric_id: fabric.id,
+      public_order: index + 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    }));
+    const failedJob = {
+      attempt_count: 1,
+      completed_at: "2026-04-28T10:35:00.000Z",
+      created_at: "2026-04-28T10:30:00.000Z",
+      fabric_id: fabricA.id,
+      generation_mode: "initial",
+      id: "00000000-0000-4000-8000-000000000906",
+      last_error_message: "Provider timeout",
+      max_attempts: 3,
+      prompt_note: null,
+      queued_at: "2026-04-28T10:30:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000916",
+      refinement_source_asset_id: null,
+      refine_prompt: null,
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: sofaId,
+      status: "failed",
+      updated_at: "2026-04-28T10:35:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const queuedJob = {
+      ...failedJob,
+      completed_at: null,
+      fabric_id: fabricB.id,
+      id: "00000000-0000-4000-8000-000000000916",
+      last_error_message: null,
+      render_cell_id: "00000000-0000-4000-8000-000000000915",
+      request_id: "00000000-0000-4000-8000-000000000917",
+      status: "queued",
+    };
+    const dependencies = createDependencies({
+      generateFabricRenderJobsForSofa: vi.fn(async () => ({
+        fabric_render_jobs: [],
+        job_ids: ["00000000-0000-4000-8000-000000000918"],
+        request_id: "00000000-0000-4000-8000-000000000919",
+        status: "queued" as const,
+        total_jobs: 1,
+      })),
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          {
+            blockers: [],
+            can_generate_initial: true,
+            candidate_count: 0,
+            current_private_asset_id: null,
+            current_public_asset_id: null,
+            fabric_id: fabricA.id,
+            has_private_render: false,
+            has_public_render: false,
+            id: failedJob.render_cell_id,
+            latest_job: failedJob,
+            sofa_id: sofaId,
+            source_photo_id: visualColumn.current_source_photo_id,
+            source_type: "ai_generated",
+            updated_at: "2026-04-28T10:00:00.000Z",
+            visual_matrix_column_id: visualColumn.id,
+          },
+          {
+            blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+            can_generate_initial: false,
+            candidate_count: 0,
+            current_private_asset_id: null,
+            current_public_asset_id: null,
+            fabric_id: fabricB.id,
+            has_private_render: false,
+            has_public_render: false,
+            id: queuedJob.render_cell_id,
+            latest_job: queuedJob,
+            sofa_id: sofaId,
+            source_photo_id: visualColumn.current_source_photo_id,
+            source_type: "ai_generated",
+            updated_at: "2026-04-28T10:00:00.000Z",
+            visual_matrix_column_id: visualColumn.id,
+          },
+        ],
+        sofa_fabrics: assignments,
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listFabrics: vi.fn(async () => [fabricA, fabricB]),
+      listSofaFabrics: vi.fn(async () => assignments),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    expect(screen.getByText("Provider timeout")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+    await waitFor(() => {
+      expect(dependencies.generateFabricRenderJobsForSofa).toHaveBeenCalledWith(
         "admin-token",
-        "00000000-0000-4000-8000-000000000906",
+        sofaId,
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Resume queued jobs" }),
+    );
+    await waitFor(() => {
+      expect(dependencies.resumeFabricRenderJobs).toHaveBeenCalledWith(
+        "admin-token",
+        {
+          request_id: null,
+          sofa_id: sofaId,
+        },
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry failed job" }));
+    await waitFor(() => {
+      expect(dependencies.retryFabricRenderJob).toHaveBeenCalledWith(
+        "admin-token",
+        failedJob.id,
       );
     });
   });

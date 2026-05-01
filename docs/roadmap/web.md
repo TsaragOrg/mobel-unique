@@ -21,6 +21,7 @@
 | Done   | SPEC-0010 | PLAN-0029 | Sofa edit publication actions publish selected private render coverage as public catalog assets and unpublish safely. |
 | Done   | SPEC-0006 | PLAN-0030 | Sofa edit render coverage sends prompt notes and queues refine jobs from reviewed private candidates.                |
 | Done   | SPEC-0012 | PLAN-0025 | Public home page with landscape video hero, minimal public shell, process copy, and catalog CTA.                     |
+| Done | SPEC-0006 | PLAN-0031 | Sofa edit render coverage observes request-scoped fabric render jobs through Realtime and exposes manual resume.     |
 
 ## Next
 

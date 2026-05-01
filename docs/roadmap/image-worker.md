@@ -12,6 +12,7 @@
 | Done   | SPEC-0006 | PLAN-0025 | Production fabric render worker invocation is protected by a shared secret and scheduled through Supabase Cron.                                                 |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render worker owns provider/model selection and records the actual provider metadata when claiming jobs.                                                 |
 | Done   | SPEC-0006 | PLAN-0030 | Fabric render refine jobs use the persisted refine prompt without prompt-note fallback.                                                                          |
+| Done | SPEC-0006 | PLAN-0031 | Fabric render Edge Function uses manual pump/job modes with bounded active one-job workers instead of cron-driven draining.                                      |
 
 ## Next
 

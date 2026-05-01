@@ -68,14 +68,13 @@ describe("fabric render worker smoke script", () => {
     expect(result.stdout).toContain("pnpm supabase:start");
   });
 
-  it("passes when the function returns a succeeded job", async () => {
+  it("passes when the function accepts a manual pump request", async () => {
     const body = encodeURIComponent(
       JSON.stringify({
-        job_id: "00000000-0000-4000-8000-000000000006",
-        queue_name: "local_fabric_render_jobs",
-        status: "succeeded",
-        output_path:
-          "fabric-render/00000000-0000-4000-8000-000000000006/output.png",
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000006",
+        started_count: 1,
+        status: "started",
       }),
     );
     const result = await runSmoke({
@@ -84,24 +83,27 @@ describe("fabric render worker smoke script", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("PASS fabric render worker smoke");
-    expect(result.stdout).toContain("local_fabric_render_jobs");
-    expect(result.stdout).toContain("output.png");
+    expect(result.stdout).toContain("started");
+    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000006");
   });
 
   it("sends the worker invocation secret header when configured", async () => {
     let receivedSecret = null;
+    let receivedBody = null;
     const server = createServer((request, response) => {
       receivedSecret = request.headers["x-fabric-render-worker-secret"] ?? null;
+      request.on("data", (chunk) => {
+        receivedBody = JSON.parse(String(chunk));
+      });
       response.writeHead(200, {
         "Content-Type": "application/json",
       });
       response.end(
         JSON.stringify({
-          job_id: "00000000-0000-4000-8000-000000000006",
-          queue_name: "local_fabric_render_jobs",
-          status: "succeeded",
-          output_path:
-            "fabric-render/00000000-0000-4000-8000-000000000006/output.png",
+          mode: "pump",
+          request_id: "00000000-0000-4000-8000-000000000006",
+          started_count: 1,
+          status: "started",
         }),
       );
     });
@@ -119,6 +121,10 @@ describe("fabric render worker smoke script", () => {
 
       expect(result.status).toBe(0);
       expect(receivedSecret).toBe("local-secret");
+      expect(receivedBody).toMatchObject({
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000001",
+      });
     } finally {
       await new Promise((resolve) => {
         server.close(resolve);
