@@ -3677,6 +3677,7 @@ async function fetchAdminRenderCoverage(
     sofaFabrics,
     sofaId,
   });
+  await markExpiredFabricRenderJobsForSofa(client, sofaId);
   const renderCellIds = renderCells.map((cell) => cell.id);
   const [jobsByCellId, candidateCountsByCellId] = await Promise.all([
     fetchLatestJobsByRenderCellIds(client, renderCellIds),
@@ -3695,6 +3696,30 @@ async function fetchAdminRenderCoverage(
     sofa_id: sofaId,
     visual_matrix_columns: columns,
   };
+}
+
+async function markExpiredFabricRenderJobsForSofa(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const now = new Date().toISOString();
+  const { error } = await client
+    .from("fabric_render_jobs")
+    .update({
+      claimed_by: null,
+      claim_expires_at: null,
+      completed_at: now,
+      last_error_message: "Worker claim expired before manual resume",
+      status: "failed",
+      updated_at: now,
+    })
+    .eq("sofa_id", sofaId)
+    .eq("status", "processing")
+    .lt("claim_expires_at", now);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
 }
 
 async function fetchFabricWithAssets(

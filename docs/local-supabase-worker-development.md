@@ -97,6 +97,13 @@ pnpm supabase:realtime:local-compat
 
 Then refresh the admin page and rerun the generation.
 
+When testing the real Gemini provider locally, keep
+`FABRIC_RENDER_MAX_CONCURRENT_JOBS=1` in `supabase/.env.local` unless you are
+explicitly stress-testing the local Edge runtime. The Supabase CLI runtime can
+cancel parallel image-generation workers with CPU or wall-clock limits before
+they can mark the job failed. Production can still set a higher value, such as
+`3`, after validating provider and runtime limits.
+
 Serve local Edge Functions:
 
 ```bash

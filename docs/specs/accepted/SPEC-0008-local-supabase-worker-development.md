@@ -286,6 +286,9 @@ The local worker foundation must document at least:
 - `SUPABASE_ANON_KEY` when needed by local frontend tests;
 - `SUPABASE_SERVICE_ROLE_KEY` for local server-side services only;
 - `FABRIC_RENDER_QUEUE_NAME`;
+- `FABRIC_RENDER_MAX_CONCURRENT_JOBS`, with local Gemini testing documented as
+  sequential by default unless a developer explicitly opts into higher
+  concurrency;
 - `FABRIC_RENDER_CLAIM_TTL_SECONDS`;
 - `IN_HOME_SIMULATION_QUEUE_NAME`;
 - `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`;

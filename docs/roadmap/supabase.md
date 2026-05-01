@@ -18,7 +18,7 @@
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render provider and model ownership moved from Vercel admin API to the Supabase worker claim path.                  |
 | Done   | SPEC-0010 | PLAN-0029 | Publication RPCs create public render asset references from selected private render coverage and clear them on unpublish.   |
 | Done   | SPEC-0006 | PLAN-0030 | Fabric render jobs store `refine_prompt` and resolve it for the fabric render worker without provider-owned idempotency.   |
-| Done | SPEC-0006 | PLAN-0031 | Fabric render `request_id`, pump/job claiming helpers, and Realtime-safe job observation support.                           |
+| Done | SPEC-0006 | PLAN-0031 | Fabric render `request_id`, pump/job claiming helpers, Realtime-safe job observation, and local Gemini concurrency defaults. |
 
 ## Next
 

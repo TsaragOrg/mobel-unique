@@ -100,6 +100,11 @@ which invokes pump mode again for the same request or sofa-scoped queued jobs.
 - [x] Add Realtime subscription support to the sofa edit render coverage flow.
 - [x] Refresh render coverage or candidate data once when Realtime reports a
       succeeded job.
+- [x] Fail expired `processing` claims during render coverage reads so runtime
+      cancellations do not leave the admin UI permanently blocked.
+- [x] Default local Gemini worker concurrency to one unless explicitly
+      overridden, because the local Supabase Edge runtime can cancel parallel
+      image-generation invocations before they write a terminal status.
 - [x] Update local environment examples and smoke scripts for the manual
       pump/job workflow.
 - [x] Update roadmaps and move this plan to `docs/plans/done` when complete.
@@ -149,6 +154,9 @@ Update these roadmaps as the plan moves:
   batch table.
 - Pump mode is orchestration only and should return quickly.
 - Job mode owns image generation and processes exactly one job per invocation.
+- Local Gemini testing is sequential by default. The production/deployed
+  runtime may still configure higher concurrency after validating provider and
+  runtime limits.
 - Realtime is only an observation mechanism. It must not start work.
 - Cron migrations and old cron workflow tests are historical and should be
   superseded by this plan's manual pump/job contract.

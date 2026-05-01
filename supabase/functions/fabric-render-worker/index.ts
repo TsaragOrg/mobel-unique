@@ -352,9 +352,8 @@ async function handlePumpMode(input: {
   serviceRoleKey: string;
   requestId: string;
 }): Promise<Response> {
-  const maxConcurrentJobs = parsePositiveInteger(
-    Deno.env.get("FABRIC_RENDER_MAX_CONCURRENT_JOBS"),
-    3,
+  const maxConcurrentJobs = resolveMaxConcurrentJobs(
+    resolveWorkerProviderConfig(),
   );
   const requestStatus = await callRpc<RequestJobStatus>(
     input.supabaseUrl,
@@ -418,10 +417,7 @@ async function handleJobMode(input: {
     Deno.env.get("FABRIC_RENDER_CLAIM_TTL_SECONDS"),
     300,
   );
-  const maxConcurrentJobs = parsePositiveInteger(
-    Deno.env.get("FABRIC_RENDER_MAX_CONCURRENT_JOBS"),
-    3,
-  );
+  const maxConcurrentJobs = resolveMaxConcurrentJobs(providerConfig);
   const claimedJob = await callRpc<ClaimedJob>(
     input.supabaseUrl,
     input.serviceRoleKey,
@@ -486,6 +482,18 @@ function readRequestStatusCount(
   const value = requestStatus[key];
 
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function resolveMaxConcurrentJobs(
+  providerConfig: WorkerProviderConfig | null,
+): number {
+  const configuredValue = Deno.env.get("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
+  const defaultValue =
+    isLocalWorkerEnvironment() && providerConfig?.providerName === "gemini"
+      ? 1
+      : 3;
+
+  return parsePositiveInteger(configuredValue, defaultValue);
 }
 
 async function invokeWorkerPump(input: {

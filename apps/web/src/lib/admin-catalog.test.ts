@@ -217,6 +217,8 @@ describe("admin catalog validation", () => {
     expect(source).toContain("request_id: requestId");
     expect(source).toContain("invokeFabricRenderPump");
     expect(source).toContain("markFabricRenderRequestStartFailed");
+    expect(source).toContain("markExpiredFabricRenderJobsForSofa");
+    expect(source).toContain("Worker claim expired before manual resume");
     expect(source).toContain('mode: "pump"');
     expect(source).toContain("FABRIC_RENDER_WORKER_FUNCTION_URL");
     expect(source).toContain("FABRIC_RENDER_WORKER_INVOKE_SECRET");

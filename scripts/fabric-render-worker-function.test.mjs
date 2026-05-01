@@ -37,7 +37,8 @@ describe("fabric render worker Edge Function", () => {
     expect(pumpIndex).toBeGreaterThan(-1);
     expect(jobIndex).toBeGreaterThan(pumpIndex);
     expect(pumpSource).toContain("fabric_render_worker_request_status");
-    expect(pumpSource).toContain("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
+    expect(pumpSource).toContain("resolveMaxConcurrentJobs");
+    expect(source).toContain("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
     expect(pumpSource).toContain("Math.min");
     expect(pumpSource).toContain("invokeWorkerJob");
     expect(pumpSource).toContain("started_count");
@@ -132,6 +133,9 @@ describe("fabric render worker Edge Function", () => {
       "claim_provider_model: providerConfig.providerModel",
     );
     expect(source).toContain("p_max_concurrent_jobs: maxConcurrentJobs");
+    expect(source).toContain("function resolveMaxConcurrentJobs");
+    expect(source).toContain('providerConfig?.providerName === "gemini"');
+    expect(source).toContain("? 1");
     expect(source).toContain(
       "providerModel: input.providerConfig.providerModel",
     );
