@@ -34,6 +34,7 @@ declare const EdgeRuntime:
   | undefined;
 
 type WorkerMode = "pump" | "job";
+type CapacityScope = "request" | "global";
 
 type WorkerRequestBody = {
   mode: WorkerMode;
@@ -53,6 +54,8 @@ type WorkerResponse = {
   canceled?: number;
   started_count?: number;
   max_concurrent_jobs?: number;
+  active_processing?: number;
+  capacity_scope?: CapacityScope;
   error?: string;
 };
 
@@ -70,6 +73,8 @@ type RequestJobStatus = {
   succeeded?: number;
   failed?: number;
   canceled?: number;
+  active_processing?: number;
+  capacity_scope?: CapacityScope;
   error?: string;
 };
 
@@ -352,20 +357,25 @@ async function handlePumpMode(input: {
   serviceRoleKey: string;
   requestId: string;
 }): Promise<Response> {
-  const maxConcurrentJobs = resolveMaxConcurrentJobs(
-    resolveWorkerProviderConfig(),
-  );
+  const providerConfig = resolveWorkerProviderConfig();
+  const maxConcurrentJobs = resolveMaxConcurrentJobs(providerConfig);
+  const capacityScope = resolveCapacityScope(providerConfig);
   const requestStatus = await callRpc<RequestJobStatus>(
     input.supabaseUrl,
     input.serviceRoleKey,
     "fabric_render_worker_request_status",
     {
+      p_capacity_scope: capacityScope,
       p_request_id: input.requestId,
     },
   );
   const queuedCount = readRequestStatusCount(requestStatus, "queued");
   const processingCount = readRequestStatusCount(requestStatus, "processing");
-  const availableSlots = Math.max(maxConcurrentJobs - processingCount, 0);
+  const activeProcessingCount = readRequestStatusCount(
+    requestStatus,
+    "active_processing",
+  );
+  const availableSlots = Math.max(maxConcurrentJobs - activeProcessingCount, 0);
   const startedCount = Math.min(queuedCount, availableSlots);
 
   for (let index = 0; index < startedCount; index += 1) {
@@ -379,6 +389,8 @@ async function handlePumpMode(input: {
 
   return jsonResponse({
     canceled: readRequestStatusCount(requestStatus, "canceled"),
+    active_processing: activeProcessingCount,
+    capacity_scope: capacityScope,
     failed: readRequestStatusCount(requestStatus, "failed"),
     max_concurrent_jobs: maxConcurrentJobs,
     mode: "pump",
@@ -418,6 +430,7 @@ async function handleJobMode(input: {
     300,
   );
   const maxConcurrentJobs = resolveMaxConcurrentJobs(providerConfig);
+  const capacityScope = resolveCapacityScope(providerConfig);
   const claimedJob = await callRpc<ClaimedJob>(
     input.supabaseUrl,
     input.serviceRoleKey,
@@ -426,6 +439,7 @@ async function handleJobMode(input: {
       claim_ttl_seconds: claimTtlSeconds,
       claim_provider_model: providerConfig.providerModel,
       claim_provider_name: providerConfig.providerName,
+      p_capacity_scope: capacityScope,
       p_max_concurrent_jobs: maxConcurrentJobs,
       p_request_id: input.requestId,
       worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
@@ -437,6 +451,7 @@ async function handleJobMode(input: {
     claimedJob.status === "capacity_full"
   ) {
     return jsonResponse({
+      capacity_scope: capacityScope,
       max_concurrent_jobs: maxConcurrentJobs,
       mode: "job",
       request_id: input.requestId,
@@ -467,7 +482,9 @@ async function handleJobMode(input: {
     });
   } finally {
     deferWorkerInvocation(
-      invokeWorkerPump({
+      invokeNextWorkerPump({
+        capacityScope,
+        serviceRoleKey: input.serviceRoleKey,
         requestId: input.requestId,
         supabaseUrl: input.supabaseUrl,
       }),
@@ -477,7 +494,13 @@ async function handleJobMode(input: {
 
 function readRequestStatusCount(
   requestStatus: RequestJobStatus,
-  key: "queued" | "processing" | "succeeded" | "failed" | "canceled",
+  key:
+    | "queued"
+    | "processing"
+    | "active_processing"
+    | "succeeded"
+    | "failed"
+    | "canceled",
 ): number {
   const value = requestStatus[key];
 
@@ -496,6 +519,16 @@ function resolveMaxConcurrentJobs(
   return parsePositiveInteger(configuredValue, defaultValue);
 }
 
+function resolveCapacityScope(
+  providerConfig: WorkerProviderConfig | null,
+): CapacityScope {
+  if (isLocalWorkerEnvironment() && providerConfig?.providerName === "gemini") {
+    return "global";
+  }
+
+  return "request";
+}
+
 async function invokeWorkerPump(input: {
   supabaseUrl: string;
   requestId: string;
@@ -505,6 +538,67 @@ async function invokeWorkerPump(input: {
     requestId: input.requestId,
     supabaseUrl: input.supabaseUrl,
   });
+}
+
+async function invokeNextWorkerPump(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  requestId: string;
+  capacityScope: CapacityScope;
+}): Promise<void> {
+  const requestStatus = await callRpc<RequestJobStatus>(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    "fabric_render_worker_request_status",
+    {
+      p_capacity_scope: input.capacityScope,
+      p_request_id: input.requestId,
+    },
+  );
+
+  if (readRequestStatusCount(requestStatus, "queued") > 0) {
+    await invokeWorkerPump({
+      requestId: input.requestId,
+      supabaseUrl: input.supabaseUrl,
+    });
+    return;
+  }
+
+  if (input.capacityScope === "global") {
+    const nextRequestId = await readNextRequestId({
+      currentRequestId: input.requestId,
+      serviceRoleKey: input.serviceRoleKey,
+      supabaseUrl: input.supabaseUrl,
+    });
+
+    if (nextRequestId) {
+      await invokeWorkerPump({
+        requestId: nextRequestId,
+        supabaseUrl: input.supabaseUrl,
+      });
+    }
+  }
+}
+
+async function readNextRequestId(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  currentRequestId: string;
+}): Promise<string | null> {
+  const nextRequestId = await callRpc<string | null>(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    "fabric_render_worker_next_queued_request_id",
+    {
+      p_current_request_id: input.currentRequestId,
+    },
+  );
+
+  if (typeof nextRequestId === "string" && nextRequestId.trim().length > 0) {
+    return nextRequestId;
+  }
+
+  return null;
 }
 
 async function invokeWorkerJob(input: {

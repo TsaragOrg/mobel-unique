@@ -15,6 +15,8 @@ const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 const manualPumpRealtimeMigrationPath =
   "supabase/migrations/20260430000300_manual_fabric_render_pump_realtime.sql";
+const globalCapacityMigrationPath =
+  "supabase/migrations/20260501000100_fabric_render_worker_global_capacity.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -163,5 +165,21 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("cron.unschedule");
     expect(sql).not.toContain("cron.schedule(");
     expect(sql).not.toContain("attempt_count < max_attempts");
+  });
+
+  it("adds a global capacity scope for local Gemini request chains", async () => {
+    const sql = await readFile(globalCapacityMigrationPath, "utf8");
+
+    expect(sql).toContain("p_capacity_scope text default 'request'");
+    expect(sql).toContain("active_processing");
+    expect(sql).toContain("fabric_render_worker_global_capacity");
+    expect(sql).toContain("p_capacity_scope = 'global'");
+    expect(sql).toContain("public.fabric_render_worker_next_queued_request_id");
+    expect(sql).toContain("status = 'queued'");
+    expect(sql).toContain("job.request_id <> p_current_request_id");
+    expect(sql).toContain("active_job_count >= p_max_concurrent_jobs");
+    expect(sql).toContain("grant execute on function public.fabric_render_worker_request_status(uuid, text)");
+    expect(sql).toContain("grant execute on function public.fabric_render_worker_claim_one_for_request");
+    expect(sql).toContain("grant execute on function public.fabric_render_worker_next_queued_request_id(uuid)");
   });
 });
