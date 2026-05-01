@@ -745,7 +745,8 @@ async function processClaimedJob(input: {
           });
     const normalizationTarget = selectNormalizationTarget(resolvedJob);
     const normalizedImage =
-      input.providerConfig.providerName === "gemini"
+      input.providerConfig.providerName === "gemini" &&
+        shouldNormalizeGeneratedOutput()
         ? await normalizeGeneratedOutput({
             outputBytes: generatedImage.outputBytes,
             outputContentType: generatedImage.contentType,
@@ -993,6 +994,25 @@ function selectNormalizationTarget(resolvedJob: ResolvedJob): ResolvedAsset {
   return resolvedJob.target_sofa;
 }
 
+function shouldNormalizeGeneratedOutput(): boolean {
+  const configuredMode = Deno.env
+    .get("FABRIC_RENDER_OUTPUT_NORMALIZATION")
+    ?.trim();
+
+  if (configuredMode === "strict") {
+    return true;
+  }
+
+  if (
+    configuredMode === "preserve-provider-output" &&
+    isLocalWorkerEnvironment()
+  ) {
+    return false;
+  }
+
+  return !isLocalWorkerEnvironment();
+}
+
 function preserveGeneratedImage(input: {
   contentType: string;
   outputBytes: Uint8Array;
@@ -1000,7 +1020,7 @@ function preserveGeneratedImage(input: {
   const dimensions = readImageDimensions(input.outputBytes, input.contentType);
 
   return {
-    contentType: "image/png" as const,
+    contentType: input.contentType,
     crop: null,
     cropApplied: false,
     normalizedHeightPx: dimensions.heightPx,

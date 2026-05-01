@@ -171,6 +171,9 @@ describe("fabric render worker Edge Function", () => {
     const source = await readFile(functionPath, "utf8");
     const generatedImageIndex = source.indexOf("const generatedImage");
     const normalizationIndex = source.indexOf("normalizeGeneratedOutput({");
+    const localNormalizationIndex = source.indexOf(
+      "shouldNormalizeGeneratedOutput",
+    );
     const scratchSuccessIndex = source.indexOf(
       "recordFabricRenderScratchSuccess({",
     );
@@ -179,10 +182,13 @@ describe("fabric render worker Edge Function", () => {
     const succeedIndex = source.indexOf("fabric_render_worker_succeed");
 
     expect(normalizationIndex).toBeGreaterThan(generatedImageIndex);
+    expect(localNormalizationIndex).toBeGreaterThan(generatedImageIndex);
     expect(normalizationIndex).toBeLessThan(scratchSuccessIndex);
     expect(normalizationIndex).toBeLessThan(dimensionReadIndex);
     expect(normalizationIndex).toBeLessThan(uploadIndex);
     expect(normalizationIndex).toBeLessThan(succeedIndex);
+    expect(source).toContain("FABRIC_RENDER_OUTPUT_NORMALIZATION");
+    expect(source).toContain('"preserve-provider-output"');
     expect(source).toContain("selectNormalizationTarget");
     expect(source).toContain("resolvedJob.target_sofa");
     expect(source).toContain("resolvedJob.refinement_source");

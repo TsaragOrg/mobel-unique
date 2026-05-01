@@ -104,6 +104,16 @@ cancel parallel image-generation workers with CPU or wall-clock limits before
 they can mark the job failed. Production can still set a higher value, such as
 `3`, after validating provider and runtime limits.
 
+The local worker also skips exact generated-output crop/resize normalization by
+default because the TypeScript PNG decode, resize, and encode path can hit the
+Supabase CLI Edge runtime CPU hard limit after Gemini returns an image. Deployed
+environments still normalize output by default. To force local normalization for
+focused worker testing, set this in `supabase/.env.local`:
+
+```bash
+FABRIC_RENDER_OUTPUT_NORMALIZATION=strict
+```
+
 Serve local Edge Functions:
 
 ```bash
