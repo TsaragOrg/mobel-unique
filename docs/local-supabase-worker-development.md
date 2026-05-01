@@ -104,6 +104,12 @@ cancel parallel image-generation workers with CPU or wall-clock limits before
 they can mark the job failed. Production can still set a higher value, such as
 `3`, after validating provider and runtime limits.
 
+With local Gemini, the fabric render worker treats this capacity as global
+across separate manual `Generate` requests, not only within one `request_id`.
+If an administrator queues multiple cells quickly, one Gemini job runs at a
+time; when it finishes, the worker continues the same request or starts the
+oldest queued request.
+
 The local worker also skips exact generated-output crop/resize normalization by
 default because the TypeScript PNG decode, resize, and encode path can hit the
 Supabase CLI Edge runtime CPU hard limit after Gemini returns an image. Deployed

@@ -38,6 +38,9 @@ describe("fabric render worker Edge Function", () => {
     expect(jobIndex).toBeGreaterThan(pumpIndex);
     expect(pumpSource).toContain("fabric_render_worker_request_status");
     expect(pumpSource).toContain("resolveMaxConcurrentJobs");
+    expect(pumpSource).toContain("resolveCapacityScope");
+    expect(pumpSource).toContain("p_capacity_scope");
+    expect(pumpSource).toContain("active_processing");
     expect(source).toContain("FABRIC_RENDER_MAX_CONCURRENT_JOBS");
     expect(pumpSource).toContain("Math.min");
     expect(pumpSource).toContain("invokeWorkerJob");
@@ -55,10 +58,21 @@ describe("fabric render worker Edge Function", () => {
     expect(processIndex).toBeGreaterThan(jobIndex);
     expect(jobSource).toContain("fabric_render_worker_claim_one_for_request");
     expect(jobSource).toContain("p_max_concurrent_jobs");
+    expect(jobSource).toContain("p_capacity_scope");
     expect(jobSource).toContain("processClaimedJob");
-    expect(jobSource).toContain("invokeWorkerPump");
+    expect(jobSource).toContain("invokeNextWorkerPump");
     expect(jobSource).toContain("finally");
     expect(jobSource).toContain('status === "capacity_full"');
+  });
+
+  it("continues the next queued request when local global capacity frees up", async () => {
+    const source = await readFile(functionPath, "utf8");
+
+    expect(source).toContain("async function invokeNextWorkerPump");
+    expect(source).toContain("fabric_render_worker_next_queued_request_id");
+    expect(source).toContain("readNextRequestId");
+    expect(source).toContain("capacityScope === \"global\"");
+    expect(source).toContain("return nextRequestId");
   });
 
   it("stores deterministic mock output as a private generated PNG artifact", async () => {
@@ -134,7 +148,10 @@ describe("fabric render worker Edge Function", () => {
     );
     expect(source).toContain("p_max_concurrent_jobs: maxConcurrentJobs");
     expect(source).toContain("function resolveMaxConcurrentJobs");
+    expect(source).toContain("function resolveCapacityScope");
     expect(source).toContain('providerConfig?.providerName === "gemini"');
+    expect(source).toContain('return "global"');
+    expect(source).toContain('return "request"');
     expect(source).toContain("? 1");
     expect(source).toContain(
       "providerModel: input.providerConfig.providerModel",
