@@ -1288,6 +1288,66 @@ button:disabled {
   width: 100%;
 }
 
+.admin-image-preview-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: zoom-in;
+  display: block;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  width: fit-content;
+}
+
+.admin-image-preview-button:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid #1f5f99;
+  outline-offset: 3px;
+}
+
+.admin-current-render-preview .admin-image-preview-button,
+.admin-render-compare-frame .admin-image-preview-button {
+  width: 100%;
+}
+
+.admin-image-lightbox-dialog {
+  display: grid;
+  gap: 14px;
+  left: 50%;
+  max-height: calc(100vh - 32px);
+  max-width: 1180px;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1180px, calc(100vw - 32px));
+  z-index: 2;
+}
+
+.admin-image-lightbox-frame {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.admin-image-lightbox-frame figcaption {
+  color: #6f5f4a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-image-lightbox-image {
+  background: #171717;
+  border: 1px solid #d6d2c8;
+  display: block;
+  height: auto;
+  max-height: calc(100vh - 180px);
+  object-fit: contain;
+  width: 100%;
+}
+
 .admin-render-cell .admin-cell-form {
   background: #ffffff;
   border: 1px solid #d6d2c8;

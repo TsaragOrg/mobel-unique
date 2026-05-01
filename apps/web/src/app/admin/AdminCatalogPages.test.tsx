@@ -763,6 +763,9 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
+    expect(
+      screen.queryByText("00000000-0000-4000-8000-000000000701"),
+    ).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Public description"), {
       target: { value: "Updated manually" },
     });
@@ -1141,6 +1144,111 @@ describe("Admin catalog pages", () => {
         },
       );
     });
+  });
+
+  it("keeps Processing render cells informational without a job action", async () => {
+    // RU: Эти значения описывают ячейку, где создание картинки уже идет.
+    // FR: Ces valeurs decrivent une case ou la creation d'image est en cours.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_preview_url: swatchPreviewUrl,
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const processingJob = {
+      attempt_count: 1,
+      completed_at: null,
+      created_at: "2026-04-28T10:30:00.000Z",
+      fabric_id: assignedFabric.fabric_id,
+      generation_mode: "initial",
+      id: "00000000-0000-4000-8000-000000000906",
+      last_error_message: null,
+      max_attempts: 3,
+      prompt_note: null,
+      queued_at: "2026-04-28T10:30:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000916",
+      refinement_source_asset_id: null,
+      refine_prompt: null,
+      render_cell_id: "00000000-0000-4000-8000-000000000905",
+      sofa_id: sofaId,
+      status: "processing",
+      updated_at: "2026-04-28T10:35:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          {
+            blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+            can_generate_initial: false,
+            candidate_count: 0,
+            current_private_asset_id: null,
+            current_public_asset_id: null,
+            fabric_id: assignedFabric.fabric_id,
+            has_private_render: false,
+            has_public_render: false,
+            id: processingJob.render_cell_id,
+            latest_job: processingJob,
+            sofa_id: sofaId,
+            source_photo_id: visualColumn.current_source_photo_id,
+            source_type: "ai_generated",
+            updated_at: "2026-04-28T10:00:00.000Z",
+            visual_matrix_column_id: visualColumn.id,
+          },
+        ],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front: Processing/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+
+    expect(
+      within(dialog).queryByRole("button", { name: "View job progress" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "View job" }),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Job progress")).not.toBeInTheDocument();
   });
 
   it("shows source-photo-complete render cells without the normal generate action", async () => {
@@ -1986,6 +2094,20 @@ describe("Admin catalog pages", () => {
     await within(dialog).findByAltText(
       "Candidate preview 00000000-0000-4000-8000-000000000908",
     );
+    expect(
+      within(dialog).queryByLabelText("Refine prompt"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use refine" }));
+    expect(within(dialog).getByLabelText("Refine prompt")).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Cancel refine" }),
+    );
+    expect(
+      within(dialog).queryByLabelText("Refine prompt"),
+    ).not.toBeInTheDocument();
+    expect(dependencies.createFabricRenderJob).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use refine" }));
     fireEvent.change(within(dialog).getByLabelText("Refine prompt"), {
       target: {
         value: "Reduce wrinkles on the left arm",
@@ -2171,16 +2293,52 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Boucle ivoire, Front: Ready/i }),
     );
     const cellDialog = screen.getByRole("dialog", { name: /Render cell/i });
+    expect(
+      within(cellDialog).getByRole("button", { name: "Close render cell" }),
+    ).toBeInTheDocument();
+    expect(
+      within(cellDialog).queryByRole("button", { name: "Close" }),
+    ).not.toBeInTheDocument();
+
+    // RU: Эта картинка нужна, чтобы проверить открытие большого просмотра по клику.
+    // FR: Cette image sert a verifier l'ouverture du grand apercu au clic.
+    const currentRenderPreview = within(cellDialog).getByRole("img", {
+      name: "Current render preview",
+    });
 
     expect(
-      within(cellDialog).getByRole("img", { name: "Current render preview" }),
+      currentRenderPreview,
     ).toHaveAttribute("src", "https://storage.example/current-render-preview");
+
+    fireEvent.click(currentRenderPreview);
+    const currentImageDialog = screen.getByRole("dialog", {
+      name: /Large image: Current render/i,
+    });
+    expect(
+      within(currentImageDialog).getByRole("img", {
+        name: "Current render preview",
+      }),
+    ).toHaveAttribute("src", "https://storage.example/current-render-preview");
+    fireEvent.click(
+      within(currentImageDialog).getByRole("button", {
+        name: "Close large image",
+      }),
+    );
+
     fireEvent.click(
       within(cellDialog).getByRole("button", { name: "View current render" }),
     );
     const currentRenderDialog = screen.getByRole("dialog", {
       name: /Current render/i,
     });
+    expect(
+      within(currentRenderDialog).getByRole("button", {
+        name: "Close current render",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(currentRenderDialog).queryByRole("button", { name: "Close" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       within(currentRenderDialog).getByRole("button", {
         name: "Generate new candidate",
@@ -2229,6 +2387,27 @@ describe("Admin catalog pages", () => {
         }),
       );
     });
+
+    // RU: Эта картинка нужна, чтобы проверить большой просмотр варианта по клику.
+    // FR: Cette image sert a verifier le grand apercu de l'option au clic.
+    const candidatePreview = within(cellDialog).getByRole("img", {
+      name: "Candidate preview 00000000-0000-4000-8000-000000000909",
+    });
+
+    fireEvent.click(candidatePreview);
+    const candidateImageDialog = screen.getByRole("dialog", {
+      name: /Large image: Candidate/i,
+    });
+    expect(
+      within(candidateImageDialog).getByRole("img", {
+        name: "Candidate preview 00000000-0000-4000-8000-000000000909",
+      }),
+    ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
+    fireEvent.click(
+      within(candidateImageDialog).getByRole("button", {
+        name: "Close large image",
+      }),
+    );
 
     fireEvent.click(
       within(cellDialog).getByRole("button", {

@@ -71,7 +71,7 @@ export function getRenderCellDisplayBlockers(blockers: string[]) {
 
 export function getRenderCellPrimaryAction(
   status: RenderCellDisplayStatus,
-): RenderCellPrimaryAction {
+): RenderCellPrimaryAction | null {
   switch (status) {
     case "blocked":
       return {
@@ -87,13 +87,8 @@ export function getRenderCellPrimaryAction(
         label: "Retry generation",
       };
     case "processing":
-      return {
-        label: "View job progress",
-      };
     case "queued":
-      return {
-        label: "View job",
-      };
+      return null;
     case "ready":
       return {
         label: "View current render",
