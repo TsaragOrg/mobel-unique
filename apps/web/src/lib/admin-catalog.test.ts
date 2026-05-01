@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPublicRenderAssetObjectPath,
   buildPublicTagSlug,
+  isMissingFabricRenderJobRequestIdColumnError,
   shapeFabricRenderCandidateResponse,
   shapeFabricRenderJobResponse,
   shapeFabricResponse,
@@ -584,6 +585,22 @@ describe("admin catalog validation", () => {
 });
 
 describe("admin catalog response shaping", () => {
+  it("detects local fabric render job schemas without request ids", () => {
+    expect(
+      isMissingFabricRenderJobRequestIdColumnError({
+        code: "42703",
+        message: "column fabric_render_jobs.request_id does not exist",
+      }),
+    ).toBe(true);
+
+    expect(
+      isMissingFabricRenderJobRequestIdColumnError({
+        code: "42703",
+        message: "column sofas.request_id does not exist",
+      }),
+    ).toBe(false);
+  });
+
   it("returns only admin-safe sofa fields", () => {
     const response = shapeSofaResponse(sofaRecord);
     const serialized = JSON.stringify(response);
@@ -621,45 +638,59 @@ describe("admin catalog response shaping", () => {
   });
 
   it("returns only admin-safe fabric and asset fields", () => {
-    const response = shapeFabricResponse(fabricRecord);
-    const serialized = JSON.stringify(response);
+    const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.example";
 
-    expect(response).toEqual({
-      ai_reference_asset: {
-        asset_kind: "fabric_ai_reference",
-        byte_size: 2200,
-        content_type: "image/jpeg",
-        height_px: 1200,
-        id: aiReferenceAsset.id,
+    try {
+      const response = shapeFabricResponse(fabricRecord);
+      const serialized = JSON.stringify(response);
+
+      expect(response).toEqual({
+        ai_reference_asset: {
+          asset_kind: "fabric_ai_reference",
+          byte_size: 2200,
+          content_type: "image/jpeg",
+          height_px: 1200,
+          id: aiReferenceAsset.id,
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        ai_reference_asset_id: aiReferenceAsset.id,
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Internal fabric",
+        is_premium: true,
         lifecycle_state: "active",
-        visibility: "private",
-        width_px: 1600,
-      },
-      ai_reference_asset_id: aiReferenceAsset.id,
-      archived_at: null,
-      created_at: "2026-04-28T10:00:00.000Z",
-      id: "00000000-0000-4000-8000-000000000903",
-      internal_name: "Internal fabric",
-      is_premium: true,
-      lifecycle_state: "active",
-      public_name: "Boucle ivoire",
-      swatch_asset: {
-        asset_kind: "fabric_swatch_public",
-        byte_size: 1200,
-        content_type: "image/png",
-        height_px: 256,
-        id: swatchAsset.id,
-        lifecycle_state: "active",
-        visibility: "public",
-        width_px: 256,
-      },
-      swatch_asset_id: swatchAsset.id,
-      updated_at: "2026-04-28T10:05:00.000Z",
-    });
-    expect(serialized).not.toContain("service_role");
-    expect(serialized).not.toContain("object_path");
-    expect(serialized).not.toContain("catalog-private-assets");
-    expect(serialized).not.toContain("provider_key");
+        public_name: "Boucle ivoire",
+        swatch_preview_url:
+          "https://supabase.example/storage/v1/object/public/catalog-public-assets/fabrics/fabric-id/swatches/swatch.png",
+        swatch_asset: {
+          asset_kind: "fabric_swatch_public",
+          byte_size: 1200,
+          content_type: "image/png",
+          height_px: 256,
+          id: swatchAsset.id,
+          lifecycle_state: "active",
+          visibility: "public",
+          width_px: 256,
+        },
+        swatch_asset_id: swatchAsset.id,
+        updated_at: "2026-04-28T10:05:00.000Z",
+      });
+      expect(
+        shapeFabricResponse({ ...fabricRecord, swatch_asset: null }),
+      ).toMatchObject({
+        swatch_preview_url: null,
+      });
+      expect(serialized).not.toContain("service_role");
+      expect(serialized).not.toContain("object_path");
+      expect(serialized).not.toContain("catalog-private-assets");
+      expect(serialized).not.toContain("provider_key");
+    } finally {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
+    }
   });
 
   it("returns only admin-safe visual matrix, coverage, and job fields", () => {
@@ -673,6 +704,8 @@ describe("admin catalog response shaping", () => {
           blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
           can_generate_initial: false,
           current_private_asset_id: "00000000-0000-4000-8000-000000000904",
+          current_private_preview_url:
+            "https://storage.example/current-private-preview",
           current_public_asset_id: null,
           fabric_id: fabricRecord.id,
           has_private_render: true,
@@ -688,7 +721,16 @@ describe("admin catalog response shaping", () => {
           visual_matrix_column_id: visualMatrixColumnRecord.id,
         },
       ],
-      sofa_fabrics: [],
+      sofa_fabrics: [
+        {
+          assigned_at: "2026-04-28T10:05:00.000Z",
+          fabric: fabricRecord,
+          fabric_id: fabricRecord.id,
+          public_order: 1,
+          sofa_id: sofaRecord.id,
+          updated_at: "2026-04-28T10:05:00.000Z",
+        },
+      ],
       sofa_id: sofaRecord.id,
       visual_matrix_columns: [visualMatrixColumnRecord],
     });
@@ -719,6 +761,8 @@ describe("admin catalog response shaping", () => {
     expect(coverageResponse.render_cells[0]).toMatchObject({
       blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
       candidate_count: 1,
+      current_private_preview_url:
+        "https://storage.example/current-private-preview",
       latest_job: {
         id: fabricRenderJobRecord.id,
       },
@@ -727,6 +771,85 @@ describe("admin catalog response shaping", () => {
     expect(serialized).not.toContain("object_path");
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");
+  });
+
+  it("keeps render coverage cells scoped to current fabrics and columns", () => {
+    const staleColumnId = "00000000-0000-4000-8000-000000000998";
+    const removedFabricId = "00000000-0000-4000-8000-000000000999";
+    const coverageResponse = shapeRenderCoverageResponse({
+      render_cells: [
+        {
+          blockers: [],
+          can_generate_initial: false,
+          current_private_asset_id: "00000000-0000-4000-8000-000000000904",
+          current_public_asset_id: null,
+          fabric_id: fabricRecord.id,
+          has_private_render: true,
+          has_public_render: false,
+          id: "00000000-0000-4000-8000-000000000908",
+          candidate_count: 0,
+          latest_job: null,
+          sofa_id: sofaRecord.id,
+          source_photo_id: "00000000-0000-4000-8000-000000000905",
+          source_type: "source_photo",
+          updated_at: "2026-04-28T10:30:00.000Z",
+          visual_matrix_column_id: visualMatrixColumnRecord.id,
+        },
+        {
+          blockers: ["MISSING_SOURCE_PHOTO"],
+          can_generate_initial: false,
+          current_private_asset_id: null,
+          current_public_asset_id: null,
+          fabric_id: fabricRecord.id,
+          has_private_render: false,
+          has_public_render: false,
+          id: "00000000-0000-4000-8000-000000000918",
+          candidate_count: 0,
+          latest_job: null,
+          sofa_id: sofaRecord.id,
+          source_photo_id: null,
+          source_type: "ai_generated",
+          updated_at: "2026-04-28T10:30:00.000Z",
+          visual_matrix_column_id: staleColumnId,
+        },
+        {
+          blockers: ["MISSING_FABRIC_AI_REFERENCE"],
+          can_generate_initial: false,
+          current_private_asset_id: null,
+          current_public_asset_id: null,
+          fabric_id: removedFabricId,
+          has_private_render: false,
+          has_public_render: false,
+          id: "00000000-0000-4000-8000-000000000928",
+          candidate_count: 0,
+          latest_job: null,
+          sofa_id: sofaRecord.id,
+          source_photo_id: null,
+          source_type: "ai_generated",
+          updated_at: "2026-04-28T10:30:00.000Z",
+          visual_matrix_column_id: visualMatrixColumnRecord.id,
+        },
+      ],
+      sofa_fabrics: [
+        {
+          assigned_at: "2026-04-28T10:05:00.000Z",
+          fabric: fabricRecord,
+          fabric_id: fabricRecord.id,
+          public_order: 1,
+          sofa_id: sofaRecord.id,
+          updated_at: "2026-04-28T10:05:00.000Z",
+        },
+      ],
+      sofa_id: sofaRecord.id,
+      visual_matrix_columns: [visualMatrixColumnRecord],
+    });
+
+    expect(coverageResponse.render_cells).toHaveLength(1);
+    expect(coverageResponse.render_cells[0]).toMatchObject({
+      fabric_id: fabricRecord.id,
+      id: "00000000-0000-4000-8000-000000000908",
+      visual_matrix_column_id: visualMatrixColumnRecord.id,
+    });
   });
 
   it("returns only admin-safe render candidate fields with a signed preview URL", () => {
