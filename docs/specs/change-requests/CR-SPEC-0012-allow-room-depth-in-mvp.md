@@ -1,7 +1,7 @@
 # CR-SPEC-0012 Allow Room Depth In MVP
 
 Target spec ids: SPEC-0012
-Related draft specs: SPEC-0014
+Related draft specs: SPEC-0015
 Status: proposed
 
 ## Reason For Change

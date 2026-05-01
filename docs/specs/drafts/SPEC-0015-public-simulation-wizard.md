@@ -1,6 +1,6 @@
 # Public Simulation Wizard
 
-Spec: SPEC-0014
+Spec: SPEC-0015
 Status: draft
 Layer: technical
 Parent Spec: SPEC-0012
