@@ -35,6 +35,7 @@
 | Done   | SPEC-0007 | PLAN-0011 | Root smoke command `test:in-home-simulation:stage-2`, the `sim:dimensions:submit` and `sim:regenerate` local CLIs, and the unit-test set covering OpenAI image-edit placement and the Gemini fallback adapter for the in-home simulation Stage 2 worker. |
 | Done   | SPEC-0007 | PLAN-0012 | Root smoke command `test:in-home-simulation:resilience`, the `sim:recover-expired` and `sim:purge` local CLIs, and the `in-home-simulation-purge` Edge Function for the in-home simulation worker. |
 | Done   | SPEC-0007 | PLAN-0034 | `scripts/supabase-migrations-unique.test.mjs` added to the root test gate to fail the build whenever two `supabase/migrations/` files share a timestamp prefix.                              |
+| Done   | SPEC-0014 | PLAN-0035 | Workflow guard accepts completed plan moves from `active` to `done`. |
 
 ## Next
 

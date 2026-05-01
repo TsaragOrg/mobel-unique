@@ -203,6 +203,7 @@ export interface AdminRenderCellRecord {
   candidate_count?: number;
   accepted_fabric_render_candidate_id?: string | null;
   current_private_asset_id: string | null;
+  current_private_preview_url?: string | null;
   current_public_asset_id: string | null;
   fabric_id: string;
   has_private_render?: boolean;
@@ -255,7 +256,9 @@ export interface AdminCatalogStore {
   createFabricRenderJobsForSofa(
     sofaId: string,
   ): Promise<
-    AdminFabricRenderJobBatchRecord | JsonObject | AdminCatalogOperationErrorData
+    | AdminFabricRenderJobBatchRecord
+    | JsonObject
+    | AdminCatalogOperationErrorData
   >;
   resumeFabricRenderJobs(
     input: FabricRenderResumeInput,
@@ -1136,6 +1139,32 @@ export function shapeStorageAssetResponse(
   };
 }
 
+function buildAdminPublicAssetUrl(asset: JsonObject | null) {
+  if (
+    !asset ||
+    asset.bucket_id !== "catalog-public-assets" ||
+    asset.visibility !== "public" ||
+    typeof asset.object_path !== "string"
+  ) {
+    return null;
+  }
+
+  const publicAssetBaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? null;
+
+  if (!publicAssetBaseUrl) {
+    return null;
+  }
+
+  const baseUrl = publicAssetBaseUrl.replace(/\/+$/, "");
+  const encodedPath = asset.object_path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${baseUrl}/storage/v1/object/public/catalog-public-assets/${encodedPath}`;
+}
+
 export function shapeFabricResponse(record: AdminFabricRecord | JsonObject) {
   const aiReferenceAsset = isRecord(record.ai_reference_asset)
     ? record.ai_reference_asset
@@ -1154,6 +1183,7 @@ export function shapeFabricResponse(record: AdminFabricRecord | JsonObject) {
     is_premium: Boolean(record.is_premium),
     lifecycle_state: stringOrNull(record.lifecycle_state),
     public_name: stringOrNull(record.public_name),
+    swatch_preview_url: buildAdminPublicAssetUrl(swatchAsset),
     swatch_asset: shapeStorageAssetResponse(swatchAsset),
     swatch_asset_id: stringOrNull(record.swatch_asset_id),
     updated_at: stringOrNull(record.updated_at),
@@ -1290,6 +1320,9 @@ export function shapeRenderCellResponse(
     can_generate_initial: Boolean(record.can_generate_initial),
     candidate_count: numberOrNull(record.candidate_count) ?? 0,
     current_private_asset_id: stringOrNull(record.current_private_asset_id),
+    current_private_preview_url: stringOrNull(
+      record.current_private_preview_url,
+    ),
     current_public_asset_id: stringOrNull(record.current_public_asset_id),
     fabric_id: stringOrNull(record.fabric_id),
     has_private_render:
@@ -1324,15 +1357,55 @@ export function shapeRenderCoverageResponse(
   const renderCells = Array.isArray(record.render_cells)
     ? record.render_cells.filter(isRecord)
     : [];
+  const currentRenderCells = filterRenderCellsForCoveragePairs(
+    renderCells,
+    sofaFabrics,
+    visualMatrixColumns,
+  );
 
   return {
-    render_cells: renderCells.map(shapeRenderCellResponse),
+    render_cells: currentRenderCells.map(shapeRenderCellResponse),
     sofa_fabrics: sofaFabrics.map(shapeSofaFabricResponse),
     sofa_id: stringOrNull(record.sofa_id),
     visual_matrix_columns: visualMatrixColumns.map(
       shapeVisualMatrixColumnResponse,
     ),
   };
+}
+
+function filterRenderCellsForCoveragePairs<
+  T extends { fabric_id?: unknown; visual_matrix_column_id?: unknown },
+>(
+  renderCells: T[],
+  sofaFabrics: Array<{ fabric_id?: unknown }>,
+  visualMatrixColumns: Array<{ id?: unknown }>,
+) {
+  const fabricIds = new Set(
+    sofaFabrics
+      .map((sofaFabric) => sofaFabric.fabric_id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const columnIds = new Set(
+    visualMatrixColumns
+      .map((column) => column.id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const currentKeys = new Set<string>();
+
+  for (const fabricId of fabricIds) {
+    for (const columnId of columnIds) {
+      currentKeys.add(renderCellKey(fabricId, columnId));
+    }
+  }
+
+  return renderCells.filter(
+    (cell) =>
+      typeof cell.fabric_id === "string" &&
+      typeof cell.visual_matrix_column_id === "string" &&
+      currentKeys.has(
+        renderCellKey(cell.fabric_id, cell.visual_matrix_column_id),
+      ),
+  );
 }
 
 export function createSupabaseAdminCatalogStore(
@@ -1730,7 +1803,7 @@ export function createSupabaseAdminCatalogStore(
       return data as AdminFabricRenderJobRecord;
     },
     async createFabricRenderJobsForSofa(sofaId) {
-      const coverage = await fetchAdminRenderCoverage(client, sofaId);
+      const coverage = await fetchAdminRenderCoverage(client, sofaId, env);
 
       if (!coverage) {
         return {
@@ -2051,7 +2124,7 @@ export function createSupabaseAdminCatalogStore(
       return fetchFabricRenderJob(client, jobId);
     },
     async getRenderCoverage(sofaId) {
-      return fetchAdminRenderCoverage(client, sofaId);
+      return fetchAdminRenderCoverage(client, sofaId, env);
     },
     async getSofa(sofaId) {
       return fetchSofaWithTags(client, sofaId);
@@ -2090,7 +2163,7 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
-      const coverage = await fetchAdminRenderCoverage(client, sofaId);
+      const coverage = await fetchAdminRenderCoverage(client, sofaId, env);
 
       if (!coverage) {
         return {
@@ -2692,7 +2765,7 @@ const RENDER_CELL_SELECT = [
   "updated_at",
 ].join(",");
 
-const FABRIC_RENDER_JOB_SELECT = [
+const FABRIC_RENDER_JOB_SELECT_FIELDS = [
   "id",
   "sofa_id",
   "fabric_id",
@@ -2714,7 +2787,13 @@ const FABRIC_RENDER_JOB_SELECT = [
   "completed_at",
   "created_at",
   "updated_at",
-].join(",");
+] as const;
+
+const FABRIC_RENDER_JOB_SELECT = FABRIC_RENDER_JOB_SELECT_FIELDS.join(",");
+
+const FABRIC_RENDER_JOB_LEGACY_SELECT = FABRIC_RENDER_JOB_SELECT_FIELDS.filter(
+  (field) => field !== "request_id",
+).join(",");
 
 const FABRIC_RENDER_CANDIDATE_SELECT = [
   "id",
@@ -3661,6 +3740,7 @@ async function fetchAdminSofaPublicationReadiness(
 async function fetchAdminRenderCoverage(
   client: SupabaseCatalogClient,
   sofaId: string,
+  env: NodeJS.ProcessEnv,
 ) {
   const sofa = await fetchSofaLifecycle(client, sofaId);
 
@@ -3672,11 +3752,16 @@ async function fetchAdminRenderCoverage(
     fetchVisualMatrixColumns(client, sofaId),
     fetchSofaFabricAssignments(client, sofaId),
   ]);
-  const renderCells = await ensureRenderCellsForCoverage(client, {
+  const ensuredRenderCells = await ensureRenderCellsForCoverage(client, {
     columns,
     sofaFabrics,
     sofaId,
   });
+  const renderCells = filterRenderCellsForCoveragePairs(
+    ensuredRenderCells,
+    sofaFabrics,
+    columns,
+  );
   await markExpiredFabricRenderJobsForSofa(client, sofaId);
   const renderCellIds = renderCells.map((cell) => cell.id);
   const [jobsByCellId, candidateCountsByCellId] = await Promise.all([
@@ -3685,10 +3770,12 @@ async function fetchAdminRenderCoverage(
   ]);
 
   return {
-    render_cells: decorateRenderCells({
+    render_cells: await decorateRenderCells({
       candidateCountsByCellId,
       cells: renderCells,
+      client,
       columns,
+      env,
       jobsByCellId,
       sofaFabrics,
     }),
@@ -4450,13 +4537,26 @@ async function fetchLatestJobsByRenderCellIds(
     return jobMap;
   }
 
-  const { data, error } = await client
+  let { data, error } = await client
     .from("fabric_render_jobs")
     .select(FABRIC_RENDER_JOB_SELECT)
     .in("render_cell_id", [...new Set(renderCellIds)])
     .order("created_at", {
       ascending: false,
     });
+
+  if (isMissingFabricRenderJobRequestIdColumnError(error)) {
+    const retry = await client
+      .from("fabric_render_jobs")
+      .select(FABRIC_RENDER_JOB_LEGACY_SELECT)
+      .in("render_cell_id", [...new Set(renderCellIds)])
+      .order("created_at", {
+        ascending: false,
+      });
+
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     throw mapSupabaseError(error);
@@ -4472,6 +4572,18 @@ async function fetchLatestJobsByRenderCellIds(
   }
 
   return jobMap;
+}
+
+export function isMissingFabricRenderJobRequestIdColumnError(
+  error: {
+    code?: string;
+    message?: string;
+  } | null,
+) {
+  return Boolean(
+    error?.code === "42703" &&
+    error.message?.includes("fabric_render_jobs.request_id"),
+  );
 }
 
 async function fetchFabricRenderJob(
@@ -4515,8 +4627,9 @@ async function fetchQueuedFabricRenderRequestIds(
     ...new Set<string>(
       (data ?? [])
         .map((job: JsonObject) => job.request_id)
-        .filter((requestId: unknown): requestId is string =>
-          typeof requestId === "string",
+        .filter(
+          (requestId: unknown): requestId is string =>
+            typeof requestId === "string",
         ),
     ),
   ];
@@ -4924,10 +5037,12 @@ async function syncSourcePhotoRenderCell(
   }
 }
 
-function decorateRenderCells(input: {
+async function decorateRenderCells(input: {
   candidateCountsByCellId: Map<string, number>;
   cells: AdminRenderCellRecord[];
+  client: SupabaseCatalogClient;
   columns: AdminVisualMatrixColumnRecord[];
+  env: NodeJS.ProcessEnv;
   jobsByCellId: Map<string, AdminFabricRenderJobRecord>;
   sofaFabrics: AdminSofaFabricRecord[];
 }) {
@@ -4936,7 +5051,7 @@ function decorateRenderCells(input: {
     input.sofaFabrics.map((sofaFabric) => [sofaFabric.fabric_id, sofaFabric]),
   );
 
-  return input.cells.map((cell) => {
+  const decoratedCells = input.cells.map((cell) => {
     const column = columnMap.get(cell.visual_matrix_column_id);
     const sofaFabric = sofaFabricMap.get(cell.fabric_id);
     const fabric = isRecord(sofaFabric?.fabric)
@@ -4960,6 +5075,40 @@ function decorateRenderCells(input: {
       latest_job: latestJob,
     };
   });
+
+  return attachCurrentPrivatePreviewUrlsToRenderCells(
+    input.client,
+    decoratedCells,
+    input.env,
+  );
+}
+
+async function attachCurrentPrivatePreviewUrlsToRenderCells(
+  client: SupabaseCatalogClient,
+  cells: AdminRenderCellRecord[],
+  env: NodeJS.ProcessEnv,
+) {
+  const currentPrivateAssetIds = cells
+    .map((cell) => cell.current_private_asset_id)
+    .filter((id): id is string => typeof id === "string");
+  const assetMap = await fetchAssetsByIds(client, currentPrivateAssetIds);
+
+  return Promise.all(
+    cells.map(async (cell) => {
+      const asset =
+        typeof cell.current_private_asset_id === "string"
+          ? (assetMap.get(cell.current_private_asset_id) ?? null)
+          : null;
+      const previewUrl = asset
+        ? await createPrivateAssetSignedUrl(client, asset, env)
+        : null;
+
+      return {
+        ...cell,
+        current_private_preview_url: previewUrl,
+      };
+    }),
+  );
 }
 
 function renderCellBlockers(input: {

@@ -497,6 +497,10 @@ function validateChangedFiles(paths, knownSpecs) {
   }
 
   for (const planPath of planChanges) {
+    if (!existsSync(planPath)) {
+      continue;
+    }
+
     const markdown = readMarkdown(planPath);
     const spec = extractField(markdown, "Spec");
     if (!knownSpecs.has(spec ?? "")) {

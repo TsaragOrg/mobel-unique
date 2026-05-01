@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdminAuth, type AdminAuthUser } from "./admin-auth";
 import {
   handleArchiveFabricRequest,
@@ -54,6 +54,10 @@ const nonAdminUser: AdminAuthUser = {
   id: "00000000-0000-4000-8000-000000000302",
   user_metadata: {},
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function createRouteAuth({
   activeDevice = true,
@@ -139,11 +143,13 @@ function createFakeStore(): AdminCatalogStore {
   let visualColumnCounter = 0;
   const swatchAsset = {
     asset_kind: "fabric_swatch_public",
+    bucket_id: "catalog-public-assets",
     byte_size: 1200,
     content_type: "image/png",
     height_px: 256,
     id: "00000000-0000-4000-8000-000000000901",
     lifecycle_state: "active",
+    object_path: "fabrics/fabric-id/swatches/swatch.png",
     visibility: "public",
     width_px: 256,
   };
@@ -587,7 +593,9 @@ function createFakeStore(): AdminCatalogStore {
 
       const activeJobCellIds = new Set(
         [...renderJobs.values()]
-          .filter((job) => job.status === "queued" || job.status === "processing")
+          .filter(
+            (job) => job.status === "queued" || job.status === "processing",
+          )
           .map((job) => job.render_cell_id),
       );
       const eligibleCells = [...renderCells.values()].filter(
@@ -699,9 +707,10 @@ function createFakeStore(): AdminCatalogStore {
         attempt_count: 0,
         completed_at: null,
         created_at: "2026-04-28T10:45:00.000Z",
-        id: `00000000-0000-4000-8000-${String(
-          3970 + renderJobCounter,
-        ).padStart(12, "0")}`,
+        id: `00000000-0000-4000-8000-${String(3970 + renderJobCounter).padStart(
+          12,
+          "0",
+        )}`,
         last_error_message: null,
         queued_at: "2026-04-28T10:45:00.000Z",
         request_id: `00000000-0000-4000-8000-${String(
@@ -1293,8 +1302,7 @@ describe("admin catalog route handlers", () => {
               sofa_id: sofaId,
               status: "queued",
               updated_at: "2026-04-28T10:30:00.000Z",
-              visual_matrix_column_id:
-                "00000000-0000-4000-8000-000000003005",
+              visual_matrix_column_id: "00000000-0000-4000-8000-000000003005",
             },
           ],
           job_ids: [jobId],
@@ -1633,6 +1641,8 @@ describe("admin catalog route handlers", () => {
   });
 
   it("runs the concrete fabric upload, CRUD, assignment, and readiness flow", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example");
+
     const store = createFakeStore();
     const input = createInput(store);
 
@@ -1691,11 +1701,14 @@ describe("admin catalog route handlers", () => {
 
     const listFabricsResponse = await handleListFabricsRequest(input);
     expect(listFabricsResponse.status).toBe(200);
-    await expect(listFabricsResponse.json()).resolves.toMatchObject({
+    const listFabricsBody = await listFabricsResponse.json();
+    expect(listFabricsBody).toMatchObject({
       data: {
         fabrics: [
           {
             id: fabricId,
+            swatch_preview_url:
+              "https://supabase.example/storage/v1/object/public/catalog-public-assets/fabrics/fabric-id/swatches/swatch.png",
             swatch_asset: {
               visibility: "public",
             },
@@ -1703,12 +1716,20 @@ describe("admin catalog route handlers", () => {
         ],
       },
     });
+    expect(JSON.stringify(listFabricsBody)).not.toContain("object_path");
 
     const getFabricResponse = await handleGetFabricRequest({
       ...input,
       fabricId,
     });
     expect(getFabricResponse.status).toBe(200);
+    const getFabricBody = await getFabricResponse.json();
+    expect(getFabricBody.data.fabric).toMatchObject({
+      id: fabricId,
+      swatch_preview_url:
+        "https://supabase.example/storage/v1/object/public/catalog-public-assets/fabrics/fabric-id/swatches/swatch.png",
+    });
+    expect(JSON.stringify(getFabricBody)).not.toContain("object_path");
 
     const updateFabricResponse = await handleUpdateFabricRequest({
       ...input,
@@ -1754,6 +1775,8 @@ describe("admin catalog route handlers", () => {
         sofa_fabric: {
           fabric: {
             id: fabricId,
+            swatch_preview_url:
+              "https://supabase.example/storage/v1/object/public/catalog-public-assets/fabrics/fabric-id/swatches/swatch.png",
           },
           fabric_id: fabricId,
           public_order: 1,
