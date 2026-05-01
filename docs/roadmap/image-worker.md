@@ -12,9 +12,12 @@
 | Done   | SPEC-0006 | PLAN-0025 | Production fabric render worker invocation is protected by a shared secret and scheduled through Supabase Cron.                                                 |
 | Done   | SPEC-0006 | PLAN-0026 | Fabric render worker owns provider/model selection and records the actual provider metadata when claiming jobs.                                                 |
 | Done   | SPEC-0006 | PLAN-0030 | Fabric render refine jobs use the persisted refine prompt without prompt-note fallback.                                                                          |
-| Done | SPEC-0006 | PLAN-0031 | Fabric render Edge Function uses manual pump/job modes with bounded active one-job workers instead of cron-driven draining.                                      |
+| Done   | SPEC-0006 | PLAN-0031 | Fabric render Edge Function uses manual pump/job modes with bounded active one-job workers instead of cron-driven draining.                                      |
+| Done   | SPEC-0007 | PLAN-0010 | In-home simulation Stage 1 room preparation Edge Function: HEIC/HEIF conversion, EXIF normalization, OpenAI vision validation, OpenAI image-edit cleaning, OpenAI vision geometry detection (back_wall and corner), deterministic dimension-guide overlay, concurrency-bounded queue consumer, and provider-no-image-data error path. Mock providers ship as the default per SPEC-0008. |
+| Done   | SPEC-0007 | PLAN-0011 | In-home simulation Stage 2 sofa placement Edge Function with the OpenAI image-edit primary provider, Gemini fallback via `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini`, regeneration cycle with regeneration-indexed outputs, and the three-result MVP cap. |
+| Done   | SPEC-0007 | PLAN-0012 | In-home simulation resilience: per-stage retry classifier, expired-claim recovery, dedicated `in-home-simulation-purge` Edge Function with idempotent retention purge and orphan upload cleanup, and the operational observability surface emitted through `worker_job_events`. |
+| Active | SPEC-0007 | PLAN-0016 | In-home simulation Stage 1 corners geometric validator with 3-attempt retry and Stage 2 self-correcting placement feedback loop with vision-based measurement, prompt v003 (FRAME-EDGE WARNING / SELF-CHECK / DOORS-DO-NOT-BLOCK / EXACTLY / ANTI-REGRESSION / calibrated corner positions / FEEDBACK_BLOCK), and `--position` / `--sofa-*` / `--room-depth` extension to `submit-dimensions`. |
 
 ## Next
 
 - Add public publication workflows through later plans.
-- Implement the accepted in-home simulation worker spec after the fabric render foundation proves the worker path.

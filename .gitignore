@@ -30,3 +30,10 @@ test-assets/
 
 # Raw public video sources
 apps/web/public/*.mov
+
+# In-home simulation local scratch
+tmp/
+.tmp/
+
+# Local pipeline-only auto-downloaded font cache
+scripts/in-home-simulation-live-pipeline/.font-cache/

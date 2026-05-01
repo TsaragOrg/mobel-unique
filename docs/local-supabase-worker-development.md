@@ -155,3 +155,123 @@ OPENAI_API_KEY=
 ```
 
 Do not commit provider keys or any other real secrets.
+
+## In-Home Simulation Stage 1 Local Loop
+
+After the local Supabase stack is running, you can drive the in-home
+simulation worker (`SPEC-0007`, `PLAN-0010`) end to end with two CLIs.
+
+Start the Edge Function runtime in one terminal:
+
+```bash
+pnpm supabase:functions:serve
+```
+
+In another terminal, enqueue a Stage 1 job using a JPEG or PNG room photo:
+
+```bash
+pnpm sim:enqueue:stage1 -- --photo /absolute/path/to/your/room.jpg
+```
+
+The CLI uploads the photo to `simulation-private-artifacts`, seeds the
+catalog and simulation-session fixtures it needs, inserts an
+`in_home_simulation_jobs` row in the `queued` state, and sends a
+`local_in_home_simulation_jobs` queue message. It prints the resulting
+`job_id` on success.
+
+Trigger one Stage 1 invocation by calling the Edge Function:
+
+```bash
+curl -X POST $(pnpm -s supabase:status | awk '/API URL/ {print $3}')/functions/v1/in-home-simulation-worker
+```
+
+The response reports `noop`, `claimed`, `completed`, or `failed`. On
+`completed`, the job is now in `awaiting_dimensions` and the worker has
+written `room_guides.png` to
+`simulations/{job_id}/room_guides.png`.
+
+Inspect the job and grab signed URLs to view the artifacts:
+
+```bash
+pnpm sim:status -- <job_id>
+```
+
+The status output includes signed URLs (10 minute TTL) for every
+persisted artifact and any generated outputs.
+
+### Limitations of the current Stage 1 implementation
+
+`PLAN-0010` is in progress. The current Stage 1 implementation:
+
+- accepts only JPEG and PNG inputs. HEIC and HEIF photos must be
+  converted to JPEG before enqueueing.
+- runs validation, cleaning, and geometry detection through the mock
+  provider stack by default. `IN_HOME_SIMULATION_PROVIDER_MODE=live`
+  is reserved and currently fails fast until the OpenAI/Gemini
+  adapters land.
+- relies on the deterministic placeholder back-wall geometry from the
+  mock geometry provider until the live adapter is wired.
+
+## In-Home Simulation Stage 2 Local Loop
+
+After Stage 1 reports `awaiting_dimensions`, you can drive Stage 2
+(sofa placement) and the regeneration cycle locally.
+
+Submit the visitor's wall dimensions for a back_wall job:
+
+```bash
+pnpm sim:dimensions:submit -- <job_id> --wall-width 4.0 --wall-height 2.5
+```
+
+For a corner job:
+
+```bash
+pnpm sim:dimensions:submit -- <job_id> --left-wall 3.0 --right-wall 3.0 --room-height 2.5
+```
+
+The CLI calls `submit_in_home_simulation_dimensions`, which transitions
+the job to `placement_queued` and sends the placement work message.
+
+Trigger one Edge Function invocation:
+
+```bash
+curl -X POST $(pnpm -s supabase:status | awk '/API URL/ {print $3}')/functions/v1/in-home-simulation-worker
+```
+
+On `completed`, the job is back in `succeeded`. The current placement
+implementation stamps a deterministic placeholder rectangle on the
+cleaned room as the result; replace the mock placement provider with
+the OpenAI/Gemini adapter for production-quality output.
+
+Inspect the job and grab signed URLs for every generated output:
+
+```bash
+pnpm sim:status -- <job_id>
+```
+
+Request a regeneration within the SPEC-0004 three-result cap, with an
+optional wall-dimension override:
+
+```bash
+pnpm sim:regenerate -- <job_id>
+pnpm sim:regenerate -- <job_id> --wall-width 4.5 --wall-height 2.5
+```
+
+Trigger another Edge Function invocation per regeneration request.
+
+### Limitations of the current Stage 2 implementation
+
+`PLAN-0011` is in progress. The current Stage 2 implementation:
+
+- runs placement through the mock provider that stamps a placeholder
+  rectangle. `IN_HOME_SIMULATION_PROVIDER_MODE=live` is reserved and
+  currently fails fast until the OpenAI/Gemini adapters land.
+- enforces dimension key presence per geometry mode in SQL but defers
+  numeric sofa-vs-wall range checks until the prepared-sofa physical
+  size is sourced.
+- does not persist `worker_error.txt` artifacts on failure; the
+  failure code and message are still recorded on the job row.
+
+`PLAN-0012` adds per-stage retry policy, expired-claim recovery, the
+24-hour retention purge, orphan upload cleanup, and the operational
+observability surface.
