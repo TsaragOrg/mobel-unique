@@ -1,7 +1,7 @@
 # SPEC-0014 Admin Sofa Edit UX Simplification
 
 Spec: SPEC-0014
-Status: draft
+Status: accepted
 Layer: feature
 Parent Spec: SPEC-0013
 Depends On: SPEC-0005, SPEC-0006, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0013
