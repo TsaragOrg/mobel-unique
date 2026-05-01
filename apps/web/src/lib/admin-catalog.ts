@@ -122,6 +122,7 @@ export interface AdminSofaSourcePhotoRecord {
   created_at: string;
   id: string;
   original_fabric_id: string;
+  preview_url?: string | null;
   sofa_id: string;
   updated_at: string;
   visual_matrix_column_id: string;
@@ -1227,6 +1228,7 @@ export function shapeSofaSourcePhotoResponse(
     created_at: stringOrNull(record.created_at),
     id: stringOrNull(record.id),
     original_fabric_id: stringOrNull(record.original_fabric_id),
+    preview_url: stringOrNull(record.preview_url),
     sofa_id: stringOrNull(record.sofa_id),
     updated_at: stringOrNull(record.updated_at),
     visual_matrix_column_id: stringOrNull(record.visual_matrix_column_id),
@@ -2026,7 +2028,7 @@ export function createSupabaseAdminCatalogStore(
         return mapVisualMatrixColumnMutationError(error);
       }
 
-      const [column] = await attachSourcePhotosToColumns(client, [data]);
+      const [column] = await attachSourcePhotosToColumns(client, [data], env);
 
       return column;
     },
@@ -2280,7 +2282,7 @@ export function createSupabaseAdminCatalogStore(
         return null;
       }
 
-      return fetchVisualMatrixColumns(client, sofaId);
+      return fetchVisualMatrixColumns(client, sofaId, env);
     },
     async removeSofaFabric(sofaId, fabricId) {
       const existing = await fetchSofaFabricAssignment(
@@ -2569,7 +2571,7 @@ export function createSupabaseAdminCatalogStore(
         }
       }
 
-      const column = await fetchVisualMatrixColumn(client, columnId);
+      const column = await fetchVisualMatrixColumn(client, columnId, env);
 
       if (!column || column.deleted_at) {
         return {
@@ -3749,7 +3751,7 @@ async function fetchAdminRenderCoverage(
   }
 
   const [columns, sofaFabrics] = await Promise.all([
-    fetchVisualMatrixColumns(client, sofaId),
+    fetchVisualMatrixColumns(client, sofaId, env),
     fetchSofaFabricAssignments(client, sofaId),
   ]);
   const ensuredRenderCells = await ensureRenderCellsForCoverage(client, {
@@ -3895,6 +3897,7 @@ async function fetchAssetsByIds(
 async function fetchVisualMatrixColumns(
   client: SupabaseCatalogClient,
   sofaId: string,
+  env?: NodeJS.ProcessEnv,
 ) {
   const { data, error } = await client
     .from("visual_matrix_columns")
@@ -3909,12 +3912,13 @@ async function fetchVisualMatrixColumns(
     throw mapSupabaseError(error);
   }
 
-  return attachSourcePhotosToColumns(client, data ?? []);
+  return attachSourcePhotosToColumns(client, data ?? [], env);
 }
 
 async function fetchVisualMatrixColumn(
   client: SupabaseCatalogClient,
   columnId: string,
+  env?: NodeJS.ProcessEnv,
 ) {
   const { data, error } = await client
     .from("visual_matrix_columns")
@@ -3930,7 +3934,7 @@ async function fetchVisualMatrixColumn(
     return null;
   }
 
-  const [column] = await attachSourcePhotosToColumns(client, [data]);
+  const [column] = await attachSourcePhotosToColumns(client, [data], env);
 
   return column ?? null;
 }
@@ -3938,11 +3942,16 @@ async function fetchVisualMatrixColumn(
 async function attachSourcePhotosToColumns(
   client: SupabaseCatalogClient,
   columns: JsonObject[],
+  env?: NodeJS.ProcessEnv,
 ) {
   const sourcePhotoIds = columns
     .map((column) => column.current_source_photo_id)
     .filter((id: unknown): id is string => typeof id === "string");
-  const sourcePhotoMap = await fetchSourcePhotosByIds(client, sourcePhotoIds);
+  const sourcePhotoMap = await fetchSourcePhotosByIds(
+    client,
+    sourcePhotoIds,
+    env,
+  );
 
   return columns.map(
     (column) =>
@@ -3959,6 +3968,7 @@ async function attachSourcePhotosToColumns(
 async function fetchSourcePhotosByIds(
   client: SupabaseCatalogClient,
   sourcePhotoIds: string[],
+  env?: NodeJS.ProcessEnv,
 ) {
   const sourcePhotoMap = new Map<string, AdminSofaSourcePhotoRecord>();
 
@@ -3980,17 +3990,26 @@ async function fetchSourcePhotosByIds(
     .filter((id: unknown): id is string => typeof id === "string");
   const assetMap = await fetchAssetsByIds(client, assetIds);
 
-  for (const sourcePhoto of data ?? []) {
-    if (typeof sourcePhoto.id === "string") {
-      sourcePhotoMap.set(sourcePhoto.id, {
-        ...sourcePhoto,
-        asset:
+  await Promise.all(
+    (data ?? []).map(async (sourcePhoto: JsonObject) => {
+      if (typeof sourcePhoto.id === "string") {
+        const asset =
           typeof sourcePhoto.asset_id === "string"
             ? (assetMap.get(sourcePhoto.asset_id) ?? null)
-            : null,
-      } as AdminSofaSourcePhotoRecord);
-    }
-  }
+            : null;
+        const previewUrl =
+          env && asset
+            ? await createPrivateAssetSignedUrl(client, asset, env)
+            : null;
+
+        sourcePhotoMap.set(sourcePhoto.id, {
+          ...sourcePhoto,
+          asset,
+          preview_url: previewUrl,
+        } as AdminSofaSourcePhotoRecord);
+      }
+    }),
+  );
 
   return sourcePhotoMap;
 }

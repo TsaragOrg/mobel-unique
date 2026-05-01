@@ -117,6 +117,7 @@ export interface AdminCatalogSofaSourcePhoto {
   created_at: string;
   id: string;
   original_fabric_id: string;
+  preview_url?: string | null;
   sofa_id: string;
   updated_at: string;
   visual_matrix_column_id: string;
@@ -3213,8 +3214,8 @@ function RenderCoverageSection({
   const [reviewCandidates, setReviewCandidates] = useState<
     AdminCatalogRenderCandidate[]
   >([]);
-  // RU: Это значение хранит вариант, который открыт для сравнения с текущей картинкой.
-  // FR: Cette valeur garde l'option ouverte pour comparaison avec l'image actuelle.
+  // RU: Это значение хранит вариант, который открыт для сравнения с исходным фото.
+  // FR: Cette valeur garde l'option ouverte pour comparaison avec la photo source.
   const [compareCandidateId, setCompareCandidateId] = useState<string | null>(
     null,
   );
@@ -3310,6 +3311,10 @@ function RenderCoverageSection({
         (column) => column.id === selectedCell.visual_matrix_column_id,
       ) ?? null)
     : null;
+  // RU: Эта ссылка показывает исходное фото для выбранной позиции.
+  // FR: Ce lien montre la photo source de la position choisie.
+  const selectedSourcePhotoPreviewUrl =
+    selectedColumn?.current_source_photo?.preview_url ?? null;
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
     : null;
@@ -3453,8 +3458,8 @@ function RenderCoverageSection({
     }
   }
 
-  // RU: Это действие открывает отдельное окно сравнения с выбранным вариантом.
-  // FR: Cette action ouvre une fenetre separee pour comparer avec l'option choisie.
+  // RU: Это действие открывает отдельное окно сравнения исходного фото и выбранного варианта.
+  // FR: Cette action ouvre une fenetre separee pour comparer la photo source et l'option choisie.
   function handleCompareCandidate(candidate: AdminCatalogRenderCandidate) {
     setIsCurrentRenderPreviewOpen(false);
     setCompareCandidateId(candidate.id);
@@ -3946,7 +3951,7 @@ function RenderCoverageSection({
                           {!candidate.is_current && candidate.preview_url ? (
                             <button
                               aria-label={`Compare candidate ${candidate.id}`}
-                              disabled={!selectedCell.current_private_preview_url}
+                              disabled={!selectedSourcePhotoPreviewUrl}
                               onClick={() => handleCompareCandidate(candidate)}
                               type="button"
                             >
@@ -4120,7 +4125,7 @@ function RenderCoverageSection({
                   </footer>
                 </section>
               ) : null}
-              {compareCandidate && selectedCell.current_private_preview_url ? (
+              {compareCandidate && selectedSourcePhotoPreviewUrl ? (
                 <section
                   aria-label={`Compare render candidate ${compareCandidate.id}`}
                   className="admin-alert-dialog admin-render-compare-dialog"
@@ -4144,11 +4149,11 @@ function RenderCoverageSection({
                   </header>
                   <div className="admin-render-compare-grid">
                     <figure className="admin-render-compare-frame">
-                      <figcaption>Current render</figcaption>
+                      <figcaption>Source photo</figcaption>
                       <img
-                        alt="Current render preview"
+                        alt="Source photo preview"
                         className="admin-preview-image"
-                        src={selectedCell.current_private_preview_url}
+                        src={selectedSourcePhotoPreviewUrl}
                       />
                     </figure>
                     <figure className="admin-render-compare-frame">
