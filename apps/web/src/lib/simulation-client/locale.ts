@@ -11,6 +11,42 @@ export const SIMULATION_LOCALE = {
     separator: " · "
   },
 
+  screen0EmailGate: {
+    eyebrow: "Vérification",
+    title: "Vérifiez votre adresse e-mail",
+    instructionEmail:
+      "Saisissez votre adresse e-mail pour recevoir un code de vérification à usage unique. Ce code ouvre l'accès à la simulation.",
+    emailFieldLabel: "Adresse e-mail",
+    emailFieldPlaceholder: "vous@exemple.com",
+    // TODO: FR native review — consent for the launch-window stub. Confirm legal wording.
+    consentEmailUseLabel:
+      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour me transmettre les informations relatives à ma simulation.",
+    // TODO: FR native review — optional marketing consent. Confirm wording and legal status.
+    consentMarketingLabel:
+      "J'accepte de recevoir occasionnellement des actualités MÖBEL UNIQUE (facultatif).",
+    submitEmailButton: "Recevoir le code",
+    instructionCode:
+      "Saisissez le code à 6 chiffres que vous venez de recevoir par e-mail.",
+    codeFieldLabel: "Code de vérification",
+    submitCodeButton: "Vérifier et continuer",
+    resendLink: "Renvoyer le code",
+    backToEmailLink: "Modifier l'adresse e-mail",
+    // TODO: FR native review — error wording shown when the email payload is invalid.
+    errorInvalidEmail: "Cette adresse e-mail ne semble pas valide.",
+    // TODO: FR native review — error wording shown when consent is missing.
+    errorConsentRequired:
+      "Vous devez accepter l'utilisation de votre e-mail pour continuer.",
+    // TODO: FR native review — error wording for an invalid or expired code.
+    errorInvalidCode:
+      "Ce code n'est pas valide ou a expiré. Demandez un nouveau code.",
+    // TODO: FR native review — generic rate-limited error.
+    errorRateLimited:
+      "Trop de tentatives. Réessayez dans quelques minutes.",
+    // TODO: FR native review — generic verification error fallback.
+    errorGeneric:
+      "La vérification n'a pas abouti. Réessayez dans quelques instants."
+  },
+
   screen1PhotoUpload: {
     eyebrow: "Étape 1 sur 3 — Photo de la pièce",
     title: "Photo de votre pièce",

@@ -1579,6 +1579,75 @@ button:disabled {
   justify-content: center;
 }
 
+.simulation-email-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 520px;
+  padding: clamp(40px, 6vw, 80px) clamp(22px, 5vw, 70px);
+}
+
+.simulation-email-gate-form h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 4.6vw, 3rem);
+  font-weight: 200;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.simulation-email-gate-form p {
+  color: var(--public-muted);
+  margin: 0;
+}
+
+.simulation-email-gate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.simulation-email-gate-field > span {
+  color: var(--public-ink);
+  font-size: 0.96rem;
+  font-weight: 500;
+}
+
+.simulation-email-gate-field input {
+  background: transparent;
+  border: 1px solid var(--public-line);
+  color: var(--public-ink);
+  font-size: 1rem;
+  outline: none;
+  padding: 12px 14px;
+}
+
+.simulation-email-gate-consent {
+  align-items: flex-start;
+  color: var(--public-ink);
+  display: grid;
+  font-size: 0.92rem;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+}
+
+.simulation-email-gate-consent input {
+  margin-top: 4px;
+}
+
+.simulation-email-gate-error {
+  color: #b34141;
+  font-size: 0.96rem;
+  margin: 0;
+}
+
+.simulation-email-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
 @media (max-width: 1040px) {
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

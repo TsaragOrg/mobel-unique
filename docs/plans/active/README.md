@@ -13,3 +13,4 @@ Every active plan must reference a registered spec id from `docs/specs/manifest.
 | PLAN-0042 | SPEC-0015 | active | workflow | Production launch test, cross-team sign-off, and operations runbook. |
 | PLAN-0044 | SPEC-0013 | active | web | Admin interface visual system, shared shell, and phased harmonization across protected admin pages. |
 | PLAN-0049 | SPEC-0016 | active | web | Admin fabric create and edit forms generate square cropped swatch uploads in the browser. |
+| PLAN-0050 | SPEC-0015 | active | web | Public simulation email gate UI: two-step verification screen at `/sofas/[slug]/simulate/start` that mints the access cookie before the wizard. |
