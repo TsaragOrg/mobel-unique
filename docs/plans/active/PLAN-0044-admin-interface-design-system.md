@@ -122,12 +122,12 @@ Existing tests to preserve and extend:
 
 ### Phase 7: Final QA And Cleanup
 
-- [ ] Remove stale admin CSS selectors after pages are migrated.
+- [x] Remove stale admin CSS selectors after pages are migrated.
 - [ ] Ensure public homepage styles and admin styles do not collide.
 - [ ] Verify focus states and keyboard reachability for navigation, forms, drawers, dialogs, and matrix actions.
-- [ ] Verify that admin routes still emit `noindex, nofollow`.
-- [ ] Run the quality gate listed below.
-- [ ] Update `docs/roadmap/web.md`.
+- [x] Verify that admin routes still emit `noindex, nofollow`.
+- [x] Run the quality gate listed below.
+- [x] Update `docs/roadmap/web.md`.
 
 ## Tests
 

@@ -33,6 +33,7 @@
   Sofa edit progress: the sofa edit workflow now uses the shared admin header while preserving workflow tabs and readiness signals.
   Panel progress: sofa edit tabs, readiness chips, panel borders, render matrix controls, fabric cards, and drawer/dialog surfaces now use admin design tokens.
   Overlay progress: admin drawers, confirmation dialogs, image previews, lightboxes, compare dialogs, desktop render matrix, and mobile render sheets now share the same neutral token system.
+  Cleanup progress: stale manual-test navigation/checklist helpers and obsolete admin selectors were removed after the shared workflow migration.
 - Build public catalog and sofa detail pages on top of the public catalog read API.
 - Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.

@@ -255,14 +255,6 @@ type AdminLargeImagePreview = {
   title: string;
 };
 
-type SofaTestChecklistItem = {
-  completeText: string;
-  id: string;
-  isComplete: boolean;
-  label: string;
-  missingText: string;
-};
-
 export interface SofaMutationInput {
   depth_cm?: number;
   height_cm?: number;
@@ -2058,62 +2050,6 @@ function getSofaEditAggregateReadiness(
   return "ready";
 }
 
-function SofaTestNavigation() {
-  const links = [
-    { href: "#sofa-basics", label: "Sofa basics", number: "1" },
-    { href: "#fabric-assignments", label: "Fabric assignments", number: "2" },
-    { href: "#visual-matrix", label: "Visual matrix", number: "3" },
-    { href: "#render-coverage", label: "Render coverage", number: "4" },
-    {
-      href: "#publication-readiness",
-      label: "Publication readiness",
-      number: "5",
-    },
-  ];
-
-  return (
-    <nav aria-label="Sofa test sections" className="admin-test-nav">
-      {links.map((link) => (
-        <a aria-label={link.label} href={link.href} key={link.href}>
-          <span aria-hidden="true">{link.number}</span>
-          {link.label}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
-function SofaTestChecklist({ items }: { items: SofaTestChecklistItem[] }) {
-  return (
-    <section
-      aria-labelledby="sofa-test-checklist-title"
-      className="admin-test-checklist"
-    >
-      <h2 id="sofa-test-checklist-title">Manual test checklist</h2>
-      <ul aria-label="Manual sofa test checklist">
-        {items.map((item) => (
-          <li
-            aria-label={`${item.label}: ${item.isComplete ? "Done" : "Missing"}`}
-            className="admin-checklist-item"
-            key={item.id}
-          >
-            <span className="admin-checklist-label">{item.label}</span>
-            <span
-              className={
-                item.isComplete
-                  ? "admin-checklist-state admin-checklist-state-ready"
-                  : "admin-checklist-state"
-              }
-            >
-              {item.isComplete ? item.completeText : item.missingText}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function PublicationReadinessSection({
   accessToken,
   dependencies,
@@ -2271,68 +2207,6 @@ function SectionStepHeading({
       <h2 id={headingId}>{title}</h2>
     </div>
   );
-}
-
-function buildSofaTestChecklist({
-  readiness,
-  renderCoverage,
-  sofaFabrics,
-  visualMatrixColumns,
-}: {
-  readiness: AdminCatalogReadiness | null;
-  renderCoverage: AdminCatalogRenderCoverage | null;
-  sofaFabrics: AdminCatalogSofaFabric[];
-  visualMatrixColumns: AdminCatalogVisualMatrixColumn[];
-}): SofaTestChecklistItem[] {
-  const renderCells = renderCoverage?.render_cells ?? [];
-  const hasSourcePhoto = visualMatrixColumns.some((column) =>
-    Boolean(column.current_source_photo_id),
-  );
-
-  return [
-    {
-      completeText: `${sofaFabrics.length} assigned`,
-      id: "fabric-assignment",
-      isComplete: sofaFabrics.length > 0,
-      label: "Fabric assigned",
-      missingText: "Missing",
-    },
-    {
-      completeText: `${visualMatrixColumns.length} columns`,
-      id: "visual-matrix-column",
-      isComplete: visualMatrixColumns.length > 0,
-      label: "Visual column",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Ready",
-      id: "source-photo",
-      isComplete: hasSourcePhoto,
-      label: "Source photo",
-      missingText: "Missing",
-    },
-    {
-      completeText: `${renderCells.reduce((total, cell) => total + cell.candidate_count, 0)} candidates`,
-      id: "generated-candidate",
-      isComplete: renderCells.some((cell) => cell.candidate_count > 0),
-      label: "Generated candidate",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Selected",
-      id: "private-render",
-      isComplete: renderCells.some((cell) => cell.has_private_render),
-      label: "Private render",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Ready",
-      id: "publication-readiness",
-      isComplete: Boolean(readiness?.ready),
-      label: "Publication readiness",
-      missingText: "Blocked",
-    },
-  ];
 }
 
 function TagManagerContent({

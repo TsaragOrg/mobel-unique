@@ -847,6 +847,9 @@ describe("Admin catalog pages", () => {
       screen.queryByRole("navigation", { name: "Sofa test sections" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("heading", { name: "Manual test checklist" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "Publish sofa" }),
     ).not.toBeInTheDocument();
 
