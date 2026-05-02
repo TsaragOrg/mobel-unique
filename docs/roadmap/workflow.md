@@ -40,6 +40,7 @@
 | Done   | SPEC-0007 | PLAN-0037 | Root test workflow isolates the in-home simulation psql smoke harness tests from file-level Vitest parallelism and makes psql timeouts fail clearly. |
 | Active | SPEC-0015 | PLAN-0038 | In-home simulation worker test suite updated for the SPEC-0015 cleanups: scene classifier and Gemini placement adapter tests removed, Stage 1 providers test asserts the three-provider mock+live shape (no scene classifier), Stage 2 dimensions test requires `room_depth` for both modes. |
 | Active | SPEC-0015 | PLAN-0038 | Regression test added for the Stage 1 claim migration (`20260502000100`) that asserts `drop function if exists` precedes both `create or replace function` calls and both functions return `room_geometry_mode` coalesced to `back_wall`. |
+| Active | SPEC-0015 | PLAN-0039 | Vitest regression test added for the three SPEC-0015 persistence migrations (`simulation_idempotency_keys`, `simulation_rate_limits`, `simulation_cost_meter`) covering schema shape, primary keys, constraints, indexes, and service-role-only RLS policies. |
 
 ## Next
 

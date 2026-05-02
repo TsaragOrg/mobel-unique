@@ -33,22 +33,24 @@ touch prompts, providers, or the validated v003 pipeline.
 
 ### Database migrations
 
-- [ ] Add a SQL test that asserts `idempotency_keys` exists with the
-      expected columns, primary key, and an `expires_at` index.
-- [ ] Add migration creating `idempotency_keys`
+- [x] Add a Vitest assertion that asserts `simulation_idempotency_keys`
+      exists with the expected columns, primary key, and an
+      `expires_at` index.
+- [x] Add migration creating `simulation_idempotency_keys`
       (`key_hash text primary key`, `simulation_job_id uuid references in_home_simulation_jobs`,
       `created_at timestamptz default now()`,
       `expires_at timestamptz default now() + interval '24 hours'`)
       with RLS denying anon read/write and a service-role policy for the API.
-- [ ] Add SQL test for `simulation_rate_limits` (composite PK on
-      `(subject_kind, subject_value_hash, window_start)`, count column,
-      cleanup of expired windows).
-- [ ] Add migration creating `simulation_rate_limits` with the columns
-      above and matching RLS.
-- [ ] Add SQL test for `simulation_cost_meter` (one row per `cost_date`,
-      monotonically incremented `usd_cost_estimate_cents`,
+- [x] Add Vitest assertion for `simulation_rate_limits` (composite PK
+      on `(subject_kind, subject_value_hash, window_start)`, count
+      column, `subject_kind in ('ip','email')` check, index on
+      `window_start` for the cleanup sweep).
+- [x] Add migration creating `simulation_rate_limits` with the
+      columns above and matching RLS.
+- [x] Add Vitest assertion for `simulation_cost_meter` (one row per
+      `cost_date`, `usd_cost_estimate_cents` cents counter,
       `worker_paused boolean default false`).
-- [ ] Add migration creating `simulation_cost_meter` with RLS.
+- [x] Add migration creating `simulation_cost_meter` with RLS.
 - [ ] Add SQL test that the room-prep claim RPC and placement claim RPC
       return zero rows when `simulation_cost_meter.worker_paused = true`
       for today's `cost_date`.
