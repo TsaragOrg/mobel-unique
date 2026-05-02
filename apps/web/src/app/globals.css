@@ -1282,6 +1282,55 @@ button:disabled {
   margin: 0;
 }
 
+.simulation-status-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 0 0 80px;
+}
+
+.simulation-status-body {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: clamp(60px, 8vw, 120px) clamp(22px, 5vw, 70px);
+  text-align: center;
+}
+
+.simulation-status-body h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 4.6vw, 3.2rem);
+  font-weight: 200;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.simulation-status-reassurance {
+  color: var(--public-muted);
+  font-size: 1.02rem;
+  margin: 0;
+  max-width: 480px;
+}
+
+.simulation-status-spinner {
+  animation: simulation-status-spinner-rotate 1.4s linear infinite;
+  border: 3px solid var(--public-line);
+  border-radius: 50%;
+  border-top-color: var(--public-ink);
+  display: inline-block;
+  height: 36px;
+  width: 36px;
+}
+
+@keyframes simulation-status-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1040px) {
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
