@@ -123,7 +123,7 @@ Existing tests to preserve and extend:
 ### Phase 7: Final QA And Cleanup
 
 - [x] Remove stale admin CSS selectors after pages are migrated.
-- [ ] Ensure public homepage styles and admin styles do not collide.
+- [x] Ensure public homepage styles and admin styles do not collide.
 - [ ] Verify focus states and keyboard reachability for navigation, forms, drawers, dialogs, and matrix actions.
 - [x] Verify that admin routes still emit `noindex, nofollow`.
 - [x] Run the quality gate listed below.
@@ -167,6 +167,7 @@ Roadmap should track the plan as active while work is in progress, then move it 
 - Do not enable or redesign the public homepage upload behavior in this plan.
 - Do not change API contracts unless a later spec or change request explicitly requires it.
 - Do not introduce a reusable Codex skill until the visual system is implemented and proven in this repo.
+- Local visual QA on May 2, 2026 covered the public home page and admin login at desktop and mobile widths with no console errors; protected list views still need an authenticated browser pass.
 - Prefer incremental PRs if the full plan becomes too large:
   - PR 1: shell, tokens, login, dashboard;
   - PR 2: list pages and form pages;
