@@ -66,7 +66,7 @@ Existing tests to preserve and extend:
 
 - [x] Add admin-scoped CSS tokens for color, spacing, radius, shadow, typography, and focus.
 - [x] Create or consolidate shared admin shell structure for protected admin pages.
-- [ ] Standardize admin navigation across dashboard and catalog pages.
+- [x] Standardize admin navigation across dashboard and catalog pages.
 - [x] Define page header pattern with title, description/context, and primary action area.
 - [ ] Standardize base action variants: primary, secondary, quiet, danger, and inline link.
 - [x] Add tests for dashboard shell/navigation and protected state preservation.
@@ -78,7 +78,7 @@ Existing tests to preserve and extend:
 - [x] Update `/admin` dashboard layout and action hierarchy.
 - [x] Preserve existing auth validation, logout, loading, and forbidden behavior.
 - [x] Add or update tests for login form visibility and dashboard actions.
-- [ ] Browser-verify desktop and mobile login/dashboard views.
+- [x] Browser-verify desktop and mobile login/dashboard views.
 
 ### Phase 3: List Pages
 

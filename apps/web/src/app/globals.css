@@ -722,6 +722,8 @@ button:disabled {
 .admin-nav a:focus-visible,
 .admin-brand:focus-visible,
 .admin-action-card:focus-visible,
+.admin-primary-link:focus-visible,
+.admin-secondary-link:focus-visible,
 .admin-app button:focus-visible {
   outline: 2px solid var(--admin-focus);
   outline-offset: 3px;
@@ -854,29 +856,45 @@ button:disabled {
 
 .admin-primary-button,
 .admin-secondary-button,
+.admin-primary-link,
+.admin-secondary-link,
 .admin-app .admin-form button {
   align-items: center;
   border-radius: 0;
+  display: inline-flex;
   font-size: 0.98rem;
+  justify-content: center;
   min-height: 48px;
   padding: 12px 18px;
+  text-decoration: none;
+}
+
+.admin-primary-button,
+.admin-primary-link,
+.admin-app .admin-form button {
+  background: var(--admin-ink);
+  border-color: var(--admin-ink);
+  border-style: solid;
+  border-width: 1px;
+  color: #ffffff;
 }
 
 .admin-primary-button,
 .admin-app .admin-form button {
-  background: var(--admin-ink);
-  border-color: var(--admin-ink);
-  color: #ffffff;
   width: 100%;
 }
 
-.admin-secondary-button {
+.admin-secondary-button,
+.admin-secondary-link {
   background: var(--admin-paper);
   border-color: var(--admin-line);
+  border-style: solid;
+  border-width: 1px;
   color: var(--admin-ink);
 }
 
-.admin-secondary-button:hover {
+.admin-secondary-button:hover,
+.admin-secondary-link:hover {
   border-color: var(--admin-ink);
 }
 
@@ -940,6 +958,19 @@ button:disabled {
   max-width: 1120px;
   min-height: 100vh;
   padding: 32px 20px 56px;
+}
+
+.admin-list-page {
+  display: grid;
+  gap: 20px;
+}
+
+.admin-list-page .admin-page-header {
+  margin-bottom: 4px;
+}
+
+.admin-list-page .admin-inline-form {
+  margin: 0;
 }
 
 @media (max-width: 1040px) {
@@ -1716,7 +1747,7 @@ button:disabled {
 .admin-list li,
 .admin-list-row {
   align-items: center;
-  border-top: 1px solid #d6d2c8;
+  border-top: 1px solid var(--admin-line, #dfdfdf);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
@@ -1728,7 +1759,7 @@ button:disabled {
 }
 
 .admin-muted {
-  color: #6b6b65;
+  color: var(--admin-muted, #5b5b5b);
 }
 
 .admin-cell-stack {
@@ -1909,7 +1940,7 @@ button:disabled {
 
 .admin-table th,
 .admin-table td {
-  border-bottom: 1px solid #d6d2c8;
+  border-bottom: 1px solid var(--admin-line, #dfdfdf);
   padding: 12px;
   text-align: left;
   white-space: nowrap;
@@ -1922,8 +1953,10 @@ button:disabled {
 }
 
 .admin-table th {
-  color: #6f5f4a;
-  font-size: 0.875rem;
+  color: var(--admin-soft, #8a8a8a);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 

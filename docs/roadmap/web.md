@@ -28,6 +28,7 @@
 ## Next
 
 - Implement PLAN-0044 admin interface visual system and harmonize protected admin pages in phases: shell, login/dashboard, lists, forms, sofa edit workflow, drawers, and render matrix.
+  Progress: shared admin shell now covers login, dashboard, and protected catalog pages; sofa, fabric, and tag list headers use the shared page header pattern.
 - Build public catalog and sofa detail pages on top of the public catalog read API.
 - Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.

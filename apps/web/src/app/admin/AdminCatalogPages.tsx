@@ -32,6 +32,7 @@ import {
   type SofaEditReadinessKind,
   type SofaEditTabKey,
 } from "./admin-sofa-edit-model";
+import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
 
@@ -1159,29 +1160,38 @@ function ProtectedAdminCatalogPage({
 
   if (pageState === "checking") {
     return (
-      <main className="admin-workspace" aria-live="polite">
-        <p role="status">Checking admin session.</p>
-      </main>
+      <AdminShell showNavigation={false} variant="auth">
+        <section className="admin-auth-card" aria-live="polite">
+          <p className="admin-status-text" role="status">
+            Checking admin session.
+          </p>
+        </section>
+      </AdminShell>
     );
   }
 
   if (pageState === "forbidden") {
     return (
-      <main className="admin-workspace">
-        <section aria-labelledby="admin-denied-title">
-          <p className="eyebrow">Mobel Unique</p>
-          <h1 id="admin-denied-title">Admin access unavailable</h1>
-          <p>This account is not authorized for the admin area.</p>
+      <AdminShell showNavigation={false} variant="auth">
+        <section
+          className="admin-auth-card"
+          aria-labelledby="admin-denied-title"
+        >
+          <AdminPageHeader
+            description="This account is not authorized for the admin area."
+            eyebrow="Secure workspace"
+            title="Admin access unavailable"
+            titleId="admin-denied-title"
+          />
         </section>
-      </main>
+      </AdminShell>
     );
   }
 
   return (
-    <main className="admin-workspace">
-      <AdminNavigation />
+    <AdminShell>
       {accessToken ? render(accessToken, activeDependencies) : null}
-    </main>
+    </AdminShell>
   );
 }
 
@@ -1226,16 +1236,21 @@ function SofaListContent({
   }, [accessToken, dependencies]);
 
   return (
-    <section aria-labelledby="sofas-title" className="admin-section">
-      <div className="admin-heading-row">
-        <div>
-          <p className="eyebrow">Catalog</p>
-          <h1 id="sofas-title">Sofas</h1>
-        </div>
-        <Link className="button-link" href="/admin/sofas/new">
-          New sofa
-        </Link>
-      </div>
+    <section
+      aria-labelledby="sofas-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        actions={
+          <Link className="admin-primary-link" href="/admin/sofas/new">
+            New sofa
+          </Link>
+        }
+        description="Review sofa records, publishing state, storefront links, and recent catalog updates."
+        eyebrow="Catalog"
+        title="Sofas"
+        titleId="sofas-title"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
@@ -1318,16 +1333,21 @@ function FabricListContent({
   }, [accessToken, dependencies]);
 
   return (
-    <section aria-labelledby="fabrics-title" className="admin-section">
-      <div className="admin-heading-row">
-        <div>
-          <p className="eyebrow">Catalog</p>
-          <h1 id="fabrics-title">Fabrics</h1>
-        </div>
-        <Link className="button-link" href="/admin/fabrics/new">
-          New fabric
-        </Link>
-      </div>
+    <section
+      aria-labelledby="fabrics-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        actions={
+          <Link className="admin-primary-link" href="/admin/fabrics/new">
+            New fabric
+          </Link>
+        }
+        description="Track fabric records, premium flags, swatch readiness, and AI reference assets."
+        eyebrow="Catalog"
+        title="Fabrics"
+        titleId="fabrics-title"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
@@ -2367,9 +2387,16 @@ function TagManagerContent({
   }
 
   return (
-    <section aria-labelledby="tags-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="tags-title">Tags</h1>
+    <section
+      aria-labelledby="tags-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        description="Create and maintain the public tags used to organize catalog filters."
+        eyebrow="Catalog"
+        title="Tags"
+        titleId="tags-title"
+      />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
@@ -4554,17 +4581,6 @@ function SofaForm({
       </fieldset>
       <button type="submit">{buttonLabel}</button>
     </form>
-  );
-}
-
-function AdminNavigation() {
-  return (
-    <nav className="admin-nav" aria-label="Admin">
-      <Link href="/admin">Dashboard</Link>
-      <Link href="/admin/sofas">Sofas</Link>
-      <Link href="/admin/fabrics">Fabrics</Link>
-      <Link href="/admin/tags">Tags</Link>
-    </nav>
   );
 }
 

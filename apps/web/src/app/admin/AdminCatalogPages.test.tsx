@@ -544,6 +544,16 @@ describe("Admin catalog pages", () => {
     render(<AdminSofasPage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Sofas" });
+    expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", {
+        name: "Admin",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New sofa" })).toHaveAttribute(
+      "href",
+      "/admin/sofas/new",
+    );
     expect(await screen.findByText("Manual test sofa")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
   });
@@ -593,6 +603,11 @@ describe("Admin catalog pages", () => {
     render(<AdminFabricsPage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Fabrics" });
+    expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New fabric" })).toHaveAttribute(
+      "href",
+      "/admin/fabrics/new",
+    );
     expect(await screen.findByText("Internal fabric")).toBeInTheDocument();
     expect(screen.getByText("Boucle ivoire")).toBeInTheDocument();
     expect(screen.getAllByText("Premium").length).toBeGreaterThan(0);
