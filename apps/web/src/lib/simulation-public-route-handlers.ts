@@ -10,25 +10,70 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  deriveSimulationSessionTokenHash,
   issueSimulationAccessToken,
+  validateSimulationAccessToken,
   type SimulationEnvironment
 } from "./simulation-access-token";
 import type {
   CreateEmailVerificationResponse,
+  RoomGeometryMode,
+  SimulationJobStatus,
   SimulationPublicErrorBody,
   SimulationPublicErrorCode,
+  SimulationStatusResponse,
   VerifyEmailVerificationResponse
 } from "./simulation-public-api";
 
 export const VERIFICATION_REQUEST_TTL_SECONDS = 60 * 60;
+export const SIMULATION_SIGNED_URL_DEFAULT_TTL_SECONDS = 120;
 const VERIFICATION_REQUEST_ID_PREFIX = "stub-";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REGENERATION_LIMIT = 3;
 
 export interface SimulationPublicEmailHandlerDeps {
   accessTokenSecret: string;
   environment: SimulationEnvironment;
   now?: () => Date;
   generateVerificationRequestId?: () => string;
+}
+
+export interface SimulationJobView {
+  jobId: string;
+  status: SimulationJobStatus;
+  roomGeometryMode: RoomGeometryMode;
+  createdAt: Date;
+  retentionDeadline: Date;
+  storagePrefix: string;
+  dimensionGuideOverlayPath: string | null;
+  generatedOutputCount: number;
+  latestGeneratedOutputIndex: number | null;
+  lastErrorMessage: string | null;
+  lastRegenerationErrorMessage: string | null;
+}
+
+export interface SimulationJobReader {
+  findOwnedJob(input: {
+    jobId: string;
+    accessTokenHash: string;
+  }): Promise<SimulationJobView | null>;
+}
+
+export interface SimulationStorageSigner {
+  signObjectUrl(input: {
+    storagePath: string;
+    ttlSeconds: number;
+  }): Promise<string>;
+}
+
+export interface SimulationPublicStatusHandlerDeps {
+  accessTokenSecret: string;
+  jobReader: SimulationJobReader;
+  storageSigner: SimulationStorageSigner;
+  signedUrlTtlSeconds?: number;
+  now?: () => Date;
 }
 
 export async function handleCreateEmailVerificationRequest(input: {
@@ -91,8 +136,117 @@ export async function handleVerifyEmailVerificationRequest(input: {
   });
 }
 
+export async function handleGetSimulationStatusRequest(input: {
+  jobId: string;
+  token: string | null;
+  deps: SimulationPublicStatusHandlerDeps;
+}): Promise<Response> {
+  if (!input.jobId || !UUID_REGEX.test(input.jobId)) {
+    return notFoundResponse();
+  }
+
+  const validation = validateSimulationAccessToken({
+    token: input.token,
+    secret: input.deps.accessTokenSecret,
+    now: input.deps.now
+  });
+
+  if (!validation.valid) {
+    if (validation.reason === "missing") {
+      return errorResponse(
+        "AUTH_REQUIRED",
+        "Authentication is required.",
+        401
+      );
+    }
+    return errorResponse("AUTH_INVALID", "Authentication is invalid.", 401);
+  }
+
+  const accessTokenHash = deriveSimulationSessionTokenHash(
+    validation.verificationRequestId
+  );
+
+  const job = await input.deps.jobReader.findOwnedJob({
+    jobId: input.jobId,
+    accessTokenHash
+  });
+
+  if (!job) {
+    return notFoundResponse();
+  }
+
+  const ttl =
+    input.deps.signedUrlTtlSeconds ?? SIMULATION_SIGNED_URL_DEFAULT_TTL_SECONDS;
+  const responseBody = await buildSimulationStatusBody({
+    job,
+    storageSigner: input.deps.storageSigner,
+    ttlSeconds: ttl
+  });
+
+  return jsonResponse({ data: responseBody }, 200);
+}
+
 export function defaultVerificationRequestIdGenerator(): string {
   return `${VERIFICATION_REQUEST_ID_PREFIX}${randomUUID()}`;
+}
+
+async function buildSimulationStatusBody(input: {
+  job: SimulationJobView;
+  storageSigner: SimulationStorageSigner;
+  ttlSeconds: number;
+}): Promise<SimulationStatusResponse> {
+  const { job, storageSigner, ttlSeconds } = input;
+
+  const response: SimulationStatusResponse = {
+    simulation_job_id: job.jobId,
+    status: job.status,
+    room_geometry_mode: job.roomGeometryMode,
+    created_at: job.createdAt.toISOString(),
+    retention_deadline: job.retentionDeadline.toISOString(),
+    generated_output_count: job.generatedOutputCount,
+    regeneration_available:
+      job.status === "succeeded" &&
+      job.generatedOutputCount < REGENERATION_LIMIT
+  };
+
+  if (job.status === "awaiting_dimensions") {
+    response.required_dimensions =
+      job.roomGeometryMode === "back_wall"
+        ? ["wall_width", "wall_height", "room_depth"]
+        : ["left_wall_width", "right_wall_width", "room_height", "room_depth"];
+
+    if (job.dimensionGuideOverlayPath) {
+      response.dimension_guide_overlay_url = await storageSigner.signObjectUrl({
+        storagePath: job.dimensionGuideOverlayPath,
+        ttlSeconds
+      });
+    }
+  }
+
+  const showResult =
+    job.status === "succeeded" ||
+    job.status === "placement_queued" ||
+    job.status === "placement_processing";
+
+  if (
+    showResult &&
+    job.latestGeneratedOutputIndex !== null &&
+    job.generatedOutputCount > 0
+  ) {
+    const outputPath = `${job.storagePrefix}/outputs/output-${job.latestGeneratedOutputIndex}.png`;
+    response.latest_output_url = await storageSigner.signObjectUrl({
+      storagePath: outputPath,
+      ttlSeconds
+    });
+  }
+
+  if (job.status === "failed" || job.status === "canceled") {
+    response.last_error = job.lastErrorMessage ?? null;
+  } else if (job.status === "succeeded" && job.lastRegenerationErrorMessage) {
+    response.last_error = job.lastRegenerationErrorMessage;
+  }
+
+  return response;
 }
 
 function defaultGenerateVerificationRequestId(): string {
@@ -139,6 +293,14 @@ function errorResponse(
     error: { code, message }
   };
   return jsonResponse(body, status);
+}
+
+function notFoundResponse(): Response {
+  return errorResponse(
+    "JOB_NOT_FOUND",
+    "Simulation not found or no longer accessible.",
+    404
+  );
 }
 
 function jsonResponse(

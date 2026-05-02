@@ -101,13 +101,26 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 ### `GET /api/public/simulations/{id}`
 
-- [ ] Route handler tests for each status (`queued`,
+- [x] Add atomic SQL RPC `create_in_home_simulation_job_for_visitor`
+      (production create-job, idempotent get-or-create on email/consent/
+      session, returns zero rows when the sofa+fabric+visual triple is
+      not publishable) and `get_in_home_simulation_job_for_visitor`
+      (owned-job read filtered by `simulation_sessions.access_token_hash`).
+      Both gated by `service_role` only. Vitest regressions added in
+      `scripts/simulation-create-job-for-visitor-migration.test.mjs`
+      and `scripts/simulation-get-job-for-visitor-migration.test.mjs`.
+- [x] Extend `simulation-access-token.ts` with
+      `deriveSimulationSessionTokenHash` and
+      `deriveSimulationSessionEmailHash` helpers that produce the same
+      hashes the SQL RPCs derive from the `verification_request_id`,
+      so the API can resolve ownership without a round-trip.
+- [x] Route handler tests for each status (`queued`,
       `room_prep_processing`, `awaiting_dimensions`, `placement_queued`,
       `placement_processing`, `succeeded`, `failed`, `canceled`,
       `expired`), with the `awaiting_dimensions` response carrying a
       signed URL for `dimension_guide_overlay.png` and the `succeeded`
       response carrying a signed URL for the latest `output-{n}.png`.
-- [ ] Implement the route handler. Signed URLs are short-lived (default
+- [x] Implement the route handler. Signed URLs are short-lived (default
       120 seconds). The handler must reject cross-job access with the
       same response shape as a not-found result.
 

@@ -7,7 +7,7 @@
 // scope; the catalog owner replaces the implementation later when
 // real email verification ships.
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 export const SIMULATION_ACCESS_TOKEN_COOKIE = "simulation_access_token";
 export const SIMULATION_ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
@@ -132,6 +132,22 @@ export function parseSimulationAccessTokenFromHeaders(
     return null;
   }
   return parseSimulationAccessTokenFromCookieHeader(cookieHeader);
+}
+
+export function deriveSimulationSessionTokenHash(
+  verificationRequestId: string
+): string {
+  return createHash("sha256")
+    .update(`access_token:${verificationRequestId}`)
+    .digest("hex");
+}
+
+export function deriveSimulationSessionEmailHash(
+  verificationRequestId: string
+): string {
+  return createHash("sha256")
+    .update(`email:${verificationRequestId}`)
+    .digest("hex");
 }
 
 export function parseSimulationAccessTokenFromCookieHeader(

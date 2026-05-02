@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   SIMULATION_ACCESS_TOKEN_COOKIE,
   SIMULATION_ACCESS_TOKEN_TTL_SECONDS,
+  deriveSimulationSessionEmailHash,
+  deriveSimulationSessionTokenHash,
   issueSimulationAccessToken,
   parseSimulationAccessTokenFromCookieHeader,
   parseSimulationAccessTokenFromHeaders,
@@ -282,5 +284,44 @@ describe("parseSimulationAccessTokenFromHeaders", () => {
   it("returns null when neither source carries a token", () => {
     const headers = new Headers();
     expect(parseSimulationAccessTokenFromHeaders(headers)).toBe(null);
+  });
+});
+
+describe("deriveSimulationSessionTokenHash", () => {
+  it("returns a 64-char hex sha-256 digest", () => {
+    const hash = deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID);
+    expect(/^[0-9a-f]{64}$/.test(hash)).toBe(true);
+  });
+
+  it("is deterministic", () => {
+    const a = deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID);
+    const b = deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID);
+    expect(a).toBe(b);
+  });
+
+  it("differs from the email hash for the same verification id", () => {
+    const tokenHash = deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID);
+    const emailHash = deriveSimulationSessionEmailHash(VERIFICATION_REQUEST_ID);
+    expect(tokenHash).not.toBe(emailHash);
+  });
+
+  it("does not include the raw verification id", () => {
+    const hash = deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID);
+    expect(hash).not.toContain(VERIFICATION_REQUEST_ID);
+  });
+});
+
+describe("deriveSimulationSessionEmailHash", () => {
+  it("returns a 64-char hex sha-256 digest", () => {
+    const hash = deriveSimulationSessionEmailHash(VERIFICATION_REQUEST_ID);
+    expect(/^[0-9a-f]{64}$/.test(hash)).toBe(true);
+  });
+
+  it("matches the SQL `extensions.digest('email:<id>', 'sha256')` pattern", () => {
+    const a = deriveSimulationSessionEmailHash("stub-x");
+    const b = deriveSimulationSessionEmailHash("stub-x");
+    const c = deriveSimulationSessionEmailHash("stub-y");
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
   });
 });
