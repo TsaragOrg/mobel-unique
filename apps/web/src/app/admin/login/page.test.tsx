@@ -18,6 +18,12 @@ describe("Admin login page", () => {
         name: "Admin sign in"
       })
     ).toBeInTheDocument();
+    expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", {
+        name: "Admin"
+      })
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(

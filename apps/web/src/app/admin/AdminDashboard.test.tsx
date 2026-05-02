@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import AdminDashboard, {
@@ -67,17 +67,24 @@ describe("Admin dashboard", () => {
       name: "Admin dashboard",
     });
     expect(dependencies.verifyAdminSession).toHaveBeenCalledWith("admin-token");
-    expect(screen.getByRole("link", { name: "Sofas" })).toHaveAttribute(
-      "href",
-      "/admin/sofas",
-    );
-    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute(
-      "href",
-      "/admin/tags",
-    );
-    expect(screen.getByRole("link", { name: "Fabrics" })).toHaveAttribute(
-      "href",
-      "/admin/fabrics",
-    );
+    expect(screen.getAllByText("MOBEL UNIQUE").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("navigation", {
+        name: "Admin",
+      }),
+    ).toBeInTheDocument();
+    const catalogActions = screen.getByRole("navigation", {
+      name: "Catalog actions",
+    });
+
+    expect(
+      within(catalogActions).getByRole("link", { name: "Sofas" }),
+    ).toHaveAttribute("href", "/admin/sofas");
+    expect(
+      within(catalogActions).getByRole("link", { name: "Tags" }),
+    ).toHaveAttribute("href", "/admin/tags");
+    expect(
+      within(catalogActions).getByRole("link", { name: "Fabrics" }),
+    ).toHaveAttribute("href", "/admin/fabrics");
   });
 });

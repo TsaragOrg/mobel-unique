@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AdminPageHeader, AdminShell } from "../AdminShell";
 import AdminLoginForm from "./AdminLoginForm";
 
 export const metadata: Metadata = {
@@ -11,12 +12,16 @@ export const metadata: Metadata = {
 
 export default function AdminLoginPage() {
   return (
-    <main className="shell admin-shell">
-      <section className="panel admin-panel" aria-labelledby="admin-login-title">
-        <p className="eyebrow">Mobel Unique</p>
-        <h1 id="admin-login-title">Admin sign in</h1>
+    <AdminShell showNavigation={false} variant="auth">
+      <section className="admin-auth-card" aria-labelledby="admin-login-title">
+        <AdminPageHeader
+          description="Use your admin account to manage Mobel Unique catalog content."
+          eyebrow="Secure workspace"
+          title="Admin sign in"
+          titleId="admin-login-title"
+        />
         <AdminLoginForm />
       </section>
-    </main>
+    </AdminShell>
   );
 }
