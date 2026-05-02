@@ -3,15 +3,32 @@ import { HomeHeroVideo } from "./home-hero-video";
 
 export const metadata: Metadata = {
   description:
-    "Choisis un canapé MÖBEL UNIQUE et projette-le chez toi avec une simulation assistée par IA.",
-  title: "MÖBEL UNIQUE | Simulation de canapé à domicile",
+    "Téléversez une photo de votre pièce et visualisez un canapé MÖBEL UNIQUE chez vous avec une simulation assistée par IA.",
+  title: "MÖBEL UNIQUE | Simulez ce canapé chez vous",
 };
 
 const steps = [
-  "Choisis ton canapé",
-  "Sélectionne un tissu et une vue",
-  "Ajoute une photo de ton salon",
-  "Découvre une visualisation générée par IA",
+  "Ajoutez une photo",
+  "Lancez la simulation",
+  "Découvrez le rendu chez vous",
+];
+
+const benefits = [
+  {
+    description: "Visualisez le canapé dans votre pièce en un instant.",
+    icon: "lightning",
+    title: "Simulation instantanée",
+  },
+  {
+    description: "Proportions et perspectives adaptées à votre intérieur.",
+    icon: "sofa",
+    title: "Ajustement réaliste",
+  },
+  {
+    description: "Une expérience simple, rapide et précise.",
+    icon: "clock",
+    title: "Rendu en quelques secondes",
+  },
 ];
 
 export default function Home() {
@@ -21,66 +38,115 @@ export default function Home() {
         <a className="home-brand" href="/">
           MÖBEL UNIQUE
         </a>
-        <a className="home-header-link" href="/catalog">
-          Choisir un canapé
+        <nav className="home-header-nav" aria-label="Navigation publique">
+          <a href="/catalog">Collections</a>
+          <a href="#process">À propos</a>
+          <a href="#limits">Simulation</a>
+        </nav>
+        <a className="home-menu-link" href="/catalog" aria-label="Voir les collections">
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
         </a>
       </header>
 
-      <section className="home-hero" aria-labelledby="page-title">
-        <div className="home-hero-copy">
-          <p className="home-kicker">Visualisation IA à domicile</p>
-          <h1 id="page-title">
-            In-home simulation, in-home sofa simulation with AI
-          </h1>
-          <p className="home-lede">
-            Sélectionne un canapé MÖBEL UNIQUE, ajoute une photo de ton salon et
-            découvre une projection visuelle avant de finaliser ton achat.
-          </p>
-          <p className="home-shopify-note">
-            La commande finale se fait sur Shopify après ta vérification du
-            modèle, des dimensions et du tissu.
-          </p>
+      <section className="home-hero" id="simulation-preview" aria-labelledby="page-title">
+        <div className="home-hero-media">
+          <HomeHeroVideo />
         </div>
 
-        <div className="home-hero-media">
-          <div
-            className="home-phone-frame"
-            data-orientation="landscape"
-            aria-label="Aperçu dans un iPhone en mode paysage"
-          >
-            <HomeHeroVideo />
-          </div>
+        <div className="home-hero-copy" id="process">
+          <h1 id="page-title">
+            <span>Simulez ce canapé</span>
+            <span>chez vous</span>
+          </h1>
+          <span className="home-title-rule" aria-hidden="true" />
+          <p className="home-lede">
+            Téléversez une photo de votre pièce pour visualiser instantanément
+            ce canapé dans votre intérieur.
+          </p>
+          <ol className="home-steps">
+            {steps.map((step, index) => (
+              <li key={step}>
+                <span>{index + 1}.</span>
+                {step}
+              </li>
+            ))}
+          </ol>
           <a className="home-primary-cta" href="/catalog">
-            Choisir un canapé pour simuler chez toi
+            <span>Choisir un autre canapé</span>
+            <span aria-hidden="true">→</span>
           </a>
         </div>
-      </section>
 
-      <section className="home-process" aria-labelledby="process-title">
-        <div className="home-section-heading">
-          <p className="home-kicker">Parcours simple</p>
-          <h2 id="process-title">De la sélection à la projection chez toi</h2>
+        <div className="home-upload-card" aria-label="Zone de photo pour simulation">
+          <UploadIcon />
+          <strong>Déposez votre photo</strong>
+          <span>ou cliquez pour importer</span>
+          <small>JPG, PNG — Max 10 Mo</small>
         </div>
-        <ol className="home-steps">
-          {steps.map((step) => (
-            <li key={step}>{step}</li>
-          ))}
-        </ol>
       </section>
 
-      <section className="home-note" aria-labelledby="ai-note-title">
-        <h2 id="ai-note-title">À garder en tête</h2>
-        <p>
-          La visualisation générée par IA est une estimation destinée à t’aider
-          à te projeter. Les mesures, les proportions et le rendu du tissu
-          doivent être vérifiés avant la commande finale.
-        </p>
+      <section className="home-benefits" aria-label="Bénéfices de la simulation">
+        {benefits.map((benefit) => (
+          <article className="home-benefit" key={benefit.title}>
+            <BenefitIcon name={benefit.icon} />
+            <div>
+              <h2>{benefit.title}</h2>
+              <p>{benefit.description}</p>
+            </div>
+          </article>
+        ))}
       </section>
+
+      <p className="home-assurance" id="limits">
+        Le rendu généré reste une estimation visuelle. L'achat final reste
+        séparé sur Shopify après vérification du modèle, des dimensions et du
+        tissu.
+      </p>
 
       <footer className="home-footer">
         <span>MÖBEL UNIQUE</span>
-        <span>Simulation privée, sélection maîtrisée, achat final sur Shopify.</span>
+        <span>Simulation privée, sélection maîtrisée.</span>
       </footer>
     </main>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="home-upload-icon">
+      <path d="M16 22V6" />
+      <path d="m9 13 7-7 7 7" />
+      <path d="M7 22v5h18v-5" />
+    </svg>
+  );
+}
+
+function BenefitIcon({ name }: { name: string }) {
+  if (name === "sofa") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="home-benefit-icon">
+        <path d="M8 16h16a4 4 0 0 1 4 4v5H4v-5a4 4 0 0 1 4-4Z" />
+        <path d="M9 16v-3a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3" />
+        <path d="M7 25v3" />
+        <path d="M25 25v3" />
+      </svg>
+    );
+  }
+
+  if (name === "clock") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="home-benefit-icon">
+        <circle cx="16" cy="16" r="11" />
+        <path d="M16 9v8l5 3" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="home-benefit-icon">
+      <path d="M17 2 6 18h9l-1 12 12-18h-9l1-10Z" />
+    </svg>
   );
 }

@@ -1,64 +1,182 @@
-import { render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import Home, { metadata } from "./page";
 
 describe("Home page", () => {
-  it("renders the public home hero and simulation path", () => {
+  beforeAll(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() =>
+      Promise.resolve(),
+    );
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  beforeEach(() => {
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear();
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+  });
+
+  it("renders the redesigned public home hero and simulation path", () => {
     const { container } = render(<Home />);
 
     expect(
       screen.getByRole("heading", {
-        name: "In-home simulation, in-home sofa simulation with AI",
+        name: "Simulez ce canapé chez vous",
       }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("MÖBEL UNIQUE")[0]).toBeInTheDocument();
 
-    expect(screen.getByText("Choisis ton canapé")).toBeInTheDocument();
-    expect(screen.getByText("Sélectionne un tissu et une vue")).toBeInTheDocument();
-    expect(screen.getByText("Ajoute une photo de ton salon")).toBeInTheDocument();
-    expect(screen.getByText("Découvre une visualisation générée par IA")).toBeInTheDocument();
+    expect(screen.getByText("Ajoutez une photo")).toBeInTheDocument();
+    expect(screen.getByText("Lancez la simulation")).toBeInTheDocument();
+    expect(screen.getByText("Découvrez le rendu chez vous")).toBeInTheDocument();
 
     expect(
-      screen.getByText(/La commande finale se fait sur Shopify/i),
+      screen.getByText(/L'achat final reste séparé sur Shopify/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/visualisation générée par IA est une estimation/i),
+      screen.getByText(/Le rendu généré reste une estimation visuelle/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Changer la couleur du canapé" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Changer la couleur")).toBeInTheDocument();
+    expect(screen.getByText("Déposez votre photo")).toBeInTheDocument();
+    expect(screen.getByText("ou cliquez pour importer")).toBeInTheDocument();
+    expect(screen.getByText("JPG, PNG — Max 10 Mo")).toBeInTheDocument();
+    expect(screen.getByText("Simulation instantanée")).toBeInTheDocument();
+    expect(screen.getByText("Ajustement réaliste")).toBeInTheDocument();
+    expect(screen.getByText("Rendu en quelques secondes")).toBeInTheDocument();
 
     const cta = screen.getByRole("link", {
-      name: /choisir un canapé pour simuler chez toi/i,
+      name: /choisir un autre canapé/i,
     });
 
     expect(cta).toHaveAttribute("href", "/catalog");
+    expect(screen.queryByRole("link", { name: /voir un exemple/i })).not.toBeInTheDocument();
 
-    const video = container.querySelector("video");
+    const video = container.querySelector('video[data-direction="forward"]');
 
     expect(video).toBeInTheDocument();
     expect(video).toHaveAttribute(
       "aria-label",
-      "Démonstration vidéo de simulation de canapé à domicile",
+      "Transformation du canapé entre le tissu vert et le tissu blanc",
     );
-    expect(video).toHaveAttribute("autoplay");
-    expect(video).toHaveAttribute("loop");
+    expect(video).not.toHaveAttribute("loop");
     expect(video).toHaveAttribute("muted");
     expect(video).toHaveAttribute("playsinline");
-    expect(video).toHaveAttribute("poster", "/videos/home-hero-poster.jpg");
-    expect(video?.closest(".home-phone-frame")).toHaveAttribute(
-      "data-orientation",
-      "landscape",
+    expect(video).toHaveAttribute("preload", "auto");
+    expect(video).toHaveAttribute("data-active", "true");
+    expect(video).toHaveAttribute(
+      "poster",
+      "/videos/home-sofa-transform-forward-poster.jpg",
     );
     expect(video?.querySelector('source[type="video/webm"]')).toHaveAttribute(
       "src",
-      "/videos/home-hero-pingpong.webm",
+      "/videos/home-sofa-transform-forward.webm",
     );
     expect(video?.querySelector('source[type="video/mp4"]')).toHaveAttribute(
       "src",
-      "/videos/home-hero-pingpong.mp4",
+      "/videos/home-sofa-transform-forward.mp4",
     );
     expect(
       video?.compareDocumentPosition(cta) ?? 0,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const colorButton = screen.getByRole("button", {
+      name: "Changer la couleur du canapé",
+    });
+
+    fireEvent.ended(video as HTMLVideoElement);
+    fireEvent.click(colorButton);
+
+    const reverseVideo = container.querySelector('video[data-direction="reverse"]');
+
+    expect(video).toHaveAttribute("data-active", "true");
+    expect(reverseVideo).toHaveAttribute("data-active", "false");
+    expect(reverseVideo).toHaveAttribute("preload", "auto");
+    expect(reverseVideo).toHaveAttribute(
+      "poster",
+      "/videos/home-sofa-transform-reverse-poster.jpg",
+    );
+
+    fireEvent.playing(reverseVideo as HTMLVideoElement);
+
+    expect(reverseVideo).toHaveAttribute("data-active", "true");
+    expect(reverseVideo?.querySelector('source[type="video/webm"]')).toHaveAttribute(
+      "src",
+      "/videos/home-sofa-transform-reverse.webm",
+    );
+    expect(reverseVideo?.querySelector('source[type="video/mp4"]')).toHaveAttribute(
+      "src",
+      "/videos/home-sofa-transform-reverse.mp4",
+    );
+  });
+
+  it("does not autoplay the transformation for reduced motion users", async () => {
+    const originalMatchMedia = window.matchMedia;
+
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        addEventListener: vi.fn(),
+        addListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        matches: true,
+        media: query,
+        onchange: null,
+        removeEventListener: vi.fn(),
+        removeListener: vi.fn(),
+      })),
+      writable: true,
+    });
+
+    try {
+      const { container } = render(<Home />);
+      const colorButton = screen.getByRole("button", {
+        name: "Changer la couleur du canapé",
+      });
+
+      await waitFor(() => expect(colorButton).toBeEnabled());
+
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+
+      fireEvent.click(colorButton);
+
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      expect(
+        container.querySelector('video[data-direction="reverse"]'),
+      ).toHaveAttribute("data-active", "true");
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+        writable: true,
+      });
+    }
   });
 
   it("does not expose foundation debug, admin, or ecommerce surfaces", () => {
