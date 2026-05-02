@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import {
   deriveSimulationSessionTokenHash,
   issueSimulationAccessToken,
+  parseSimulationAccessTokenFromHeaders,
   validateSimulationAccessToken,
   type SimulationEnvironment
 } from "./simulation-access-token";
@@ -19,6 +20,14 @@ import {
   validateBackWallSubmittedDimensions,
   validateCornerSubmittedDimensions
 } from "./simulation-dimensions";
+import {
+  hashSimulationIdempotencyKey,
+  type SimulationIdempotencyStore
+} from "./simulation-idempotency";
+import {
+  checkSimulationRateLimits,
+  type SimulationRateLimitStore
+} from "./simulation-rate-limit";
 import type {
   BackWallSuppliedDimensions,
   CornerSuppliedDimensions,
@@ -112,6 +121,83 @@ export interface SimulationPublicRegenerationHandlerDeps {
   queueName: string;
   now?: () => Date;
 }
+
+export interface SimulationCatalogStore {
+  resolveRoomGeometryMode(input: {
+    sofaSlug: string;
+    cornerTagSlug: string;
+  }): Promise<RoomGeometryMode | null>;
+}
+
+export interface SimulationStorageUploader {
+  uploadRoomPhoto(input: {
+    storagePath: string;
+    bytes: Uint8Array;
+    contentType: string;
+  }): Promise<void>;
+  deleteUploadedRoomPhoto(input: { storagePath: string }): Promise<void>;
+}
+
+export interface SimulationCreateJobStore {
+  create(input: {
+    verificationRequestId: string;
+    sofaSlug: string;
+    fabricId: string;
+    visualPositionId: string;
+    customerRoomOriginalPath: string;
+    roomGeometryMode: RoomGeometryMode;
+    jobIdOverride: string;
+    retentionHours: number;
+  }): Promise<
+    | {
+        ok: true;
+        jobId: string;
+        status: SimulationJobStatus;
+        createdAt: Date;
+        retentionDeadline: Date;
+        storagePrefix: string;
+      }
+    | { ok: false; reason: "triple_not_publishable" }
+  >;
+}
+
+export interface SimulationQueueEnqueuer {
+  enqueueRoomPrep(input: {
+    jobId: string;
+    queueName: string;
+  }): Promise<{ msgId: number }>;
+}
+
+export interface SimulationPublicCreateHandlerDeps {
+  accessTokenSecret: string;
+  rateLimitSalt: string;
+  rateLimitIpPerDay: number;
+  rateLimitEmailPerDay: number;
+  cornerTagSlug: string;
+  queueName: string;
+  retentionHours: number;
+  rateLimitStore: SimulationRateLimitStore;
+  idempotencyStore: SimulationIdempotencyStore;
+  catalogStore: SimulationCatalogStore;
+  storageUploader: SimulationStorageUploader;
+  createJobStore: SimulationCreateJobStore;
+  queueEnqueuer: SimulationQueueEnqueuer;
+  jobReader: SimulationJobReader;
+  generateJobId?: () => string;
+  now?: () => Date;
+}
+
+export const SIMULATION_CREATE_MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+export const SIMULATION_ALLOWED_PHOTO_CONTENT_TYPES: Readonly<
+  Record<string, string>
+> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif"
+};
 
 export async function handleCreateEmailVerificationRequest(input: {
   body: unknown;
@@ -322,6 +408,287 @@ export async function handleRequestRegenerationRequest(input: {
     },
     200
   );
+}
+
+export async function handleCreateSimulationRequest(input: {
+  formData: FormData;
+  headers: Headers;
+  clientIp: string;
+  deps: SimulationPublicCreateHandlerDeps;
+}): Promise<Response> {
+  const token = parseSimulationAccessTokenFromHeaders(input.headers);
+  const validation = validateSimulationAccessToken({
+    token,
+    secret: input.deps.accessTokenSecret,
+    now: input.deps.now
+  });
+  if (!validation.valid) {
+    if (validation.reason === "missing") {
+      return errorResponse(
+        "AUTH_REQUIRED",
+        "Authentication is required.",
+        401
+      );
+    }
+    return errorResponse("AUTH_INVALID", "Authentication is invalid.", 401);
+  }
+
+  const idempotencyKey =
+    input.headers.get("idempotency-key") ?? input.headers.get("Idempotency-Key");
+  if (!idempotencyKey || idempotencyKey.trim().length === 0) {
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "Idempotency-Key header is required.",
+      400
+    );
+  }
+
+  const parsed = await parseCreateSimulationFormData(input.formData);
+  if (!parsed.ok) {
+    return errorResponse("VALIDATION_FAILED", parsed.message, 400);
+  }
+
+  const rateCheck = await checkSimulationRateLimits({
+    ip: input.clientIp,
+    email: validation.verificationRequestId,
+    ipCap: input.deps.rateLimitIpPerDay,
+    emailCap: input.deps.rateLimitEmailPerDay,
+    salt: input.deps.rateLimitSalt,
+    store: input.deps.rateLimitStore,
+    now: input.deps.now
+  });
+  if (!rateCheck.allowed) {
+    return errorResponse(
+      "RATE_LIMITED",
+      `Daily simulation cap reached for ${rateCheck.tripped}.`,
+      429
+    );
+  }
+
+  const keyHash = hashSimulationIdempotencyKey(idempotencyKey);
+  const acquireResult = await input.deps.idempotencyStore.acquire(keyHash);
+
+  if (!acquireResult.acquired) {
+    if (!acquireResult.simulationJobId) {
+      return errorResponse(
+        "IDEMPOTENCY_IN_PROGRESS",
+        "A simulation creation is already in progress for this key.",
+        409
+      );
+    }
+    const accessTokenHash = deriveSimulationSessionTokenHash(
+      validation.verificationRequestId
+    );
+    const existing = await input.deps.jobReader.findOwnedJob({
+      jobId: acquireResult.simulationJobId,
+      accessTokenHash
+    });
+    if (!existing) {
+      return errorResponse(
+        "IDEMPOTENCY_IN_PROGRESS",
+        "Idempotency key collides with another visitor.",
+        409
+      );
+    }
+    return jsonResponse(
+      {
+        data: {
+          simulation_job_id: existing.jobId,
+          status: existing.status,
+          created_at: existing.createdAt.toISOString(),
+          retention_deadline: existing.retentionDeadline.toISOString()
+        }
+      },
+      200
+    );
+  }
+
+  const mode = await input.deps.catalogStore.resolveRoomGeometryMode({
+    sofaSlug: parsed.body.sofaSlug,
+    cornerTagSlug: input.deps.cornerTagSlug
+  });
+  if (!mode) {
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "Selected sofa is not available.",
+      400
+    );
+  }
+
+  const jobId = (input.deps.generateJobId ?? randomUUID)();
+  const storagePath = `simulations/${jobId}/inputs/room.${parsed.body.fileExtension}`;
+
+  try {
+    await input.deps.storageUploader.uploadRoomPhoto({
+      storagePath,
+      bytes: parsed.body.fileBytes,
+      contentType: parsed.body.fileContentType
+    });
+  } catch {
+    return errorResponse(
+      "INTERNAL_ERROR",
+      "Could not upload the room photo.",
+      500
+    );
+  }
+
+  let createResult;
+  try {
+    createResult = await input.deps.createJobStore.create({
+      verificationRequestId: validation.verificationRequestId,
+      sofaSlug: parsed.body.sofaSlug,
+      fabricId: parsed.body.fabricId,
+      visualPositionId: parsed.body.visualPositionId,
+      customerRoomOriginalPath: storagePath,
+      roomGeometryMode: mode,
+      jobIdOverride: jobId,
+      retentionHours: input.deps.retentionHours
+    });
+  } catch {
+    await safeDeleteUploadedPhoto(input.deps.storageUploader, storagePath);
+    return errorResponse(
+      "INTERNAL_ERROR",
+      "Could not create the simulation.",
+      500
+    );
+  }
+
+  if (!createResult.ok) {
+    await safeDeleteUploadedPhoto(input.deps.storageUploader, storagePath);
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "Selected sofa configuration is not available.",
+      400
+    );
+  }
+
+  try {
+    await input.deps.queueEnqueuer.enqueueRoomPrep({
+      jobId: createResult.jobId,
+      queueName: input.deps.queueName
+    });
+  } catch {
+    return errorResponse(
+      "INTERNAL_ERROR",
+      "Simulation queued partially; please refresh.",
+      500
+    );
+  }
+
+  try {
+    await input.deps.idempotencyStore.finalize(keyHash, createResult.jobId);
+  } catch {
+    // Non-fatal: subsequent duplicate retries will see acquired=false with
+    // null simulation_job_id and surface IDEMPOTENCY_IN_PROGRESS until the
+    // row is finalized by a later request or cleaned up by retention.
+  }
+
+  return jsonResponse(
+    {
+      data: {
+        simulation_job_id: createResult.jobId,
+        status: createResult.status,
+        created_at: createResult.createdAt.toISOString(),
+        retention_deadline: createResult.retentionDeadline.toISOString()
+      }
+    },
+    201
+  );
+}
+
+async function safeDeleteUploadedPhoto(
+  uploader: SimulationStorageUploader,
+  storagePath: string
+): Promise<void> {
+  try {
+    await uploader.deleteUploadedRoomPhoto({ storagePath });
+  } catch {
+    // Orphan cleanup will pick it up later.
+  }
+}
+
+async function parseCreateSimulationFormData(
+  formData: FormData
+): Promise<
+  | {
+      ok: true;
+      body: {
+        sofaSlug: string;
+        fabricId: string;
+        visualPositionId: string;
+        fileBytes: Uint8Array;
+        fileContentType: string;
+        fileExtension: string;
+      };
+    }
+  | { ok: false; message: string }
+> {
+  const sofaSlug = formData.get("sofa_slug");
+  const fabricId = formData.get("fabric_id");
+  const visualPositionId = formData.get("visual_position_id");
+  const file = formData.get("room_photo");
+
+  if (typeof sofaSlug !== "string" || sofaSlug.trim().length === 0) {
+    return { ok: false, message: "sofa_slug is required" };
+  }
+  if (typeof fabricId !== "string" || !UUID_REGEX.test(fabricId)) {
+    return { ok: false, message: "fabric_id must be a UUID" };
+  }
+  if (
+    typeof visualPositionId !== "string" ||
+    !UUID_REGEX.test(visualPositionId)
+  ) {
+    return { ok: false, message: "visual_position_id must be a UUID" };
+  }
+  if (!isBlobLike(file)) {
+    return { ok: false, message: "room_photo file is required" };
+  }
+  const blob = file;
+  if (blob.size === 0) {
+    return { ok: false, message: "room_photo is empty" };
+  }
+  if (blob.size > SIMULATION_CREATE_MAX_PHOTO_BYTES) {
+    return {
+      ok: false,
+      message: `room_photo exceeds ${SIMULATION_CREATE_MAX_PHOTO_BYTES} bytes`
+    };
+  }
+  const contentType = blob.type.toLowerCase();
+  const extension = SIMULATION_ALLOWED_PHOTO_CONTENT_TYPES[contentType];
+  if (!extension) {
+    return {
+      ok: false,
+      message: `room_photo content-type ${contentType || "<unknown>"} is not supported`
+    };
+  }
+  const bytes = new Uint8Array(await readBlobBytes(blob));
+  return {
+    ok: true,
+    body: {
+      sofaSlug: sofaSlug.trim(),
+      fabricId,
+      visualPositionId,
+      fileBytes: bytes,
+      fileContentType: contentType,
+      fileExtension: extension
+    }
+  };
+}
+
+function isBlobLike(value: unknown): value is Blob {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { size?: unknown }).size === "number" &&
+    typeof (value as { type?: unknown }).type === "string"
+  );
+}
+
+async function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
+  if (typeof (blob as { arrayBuffer?: unknown }).arrayBuffer === "function") {
+    return blob.arrayBuffer();
+  }
+  return new Response(blob).arrayBuffer();
 }
 
 interface AuthorizedJobResolver {
