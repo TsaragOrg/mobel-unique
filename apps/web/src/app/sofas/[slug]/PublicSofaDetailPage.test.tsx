@@ -145,7 +145,7 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(screen.getByRole("link", { name: "Lancer ma simulation" })).toHaveAttribute(
       "href",
-      "/sofas/canape-rivoli/simulate",
+      "/sofas/canape-rivoli/simulate/start",
     );
     expect(screen.getByRole("link", { name: "Commander sur Shopify" })).toHaveAttribute(
       "href",
