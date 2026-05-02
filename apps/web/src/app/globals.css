@@ -1081,6 +1081,11 @@ button:disabled {
   gap: 8px;
 }
 
+.admin-sofa-edit-workflow {
+  display: grid;
+  gap: 16px;
+}
+
 .admin-sofa-edit-header {
   align-items: flex-start;
   background: #f6f4ef;
@@ -1101,7 +1106,7 @@ button:disabled {
 .admin-sofa-edit-header-meta,
 .admin-sofa-edit-readiness {
   align-items: center;
-  color: #5f5a51;
+  color: var(--admin-muted, #5b5b5b);
   display: flex;
   flex-wrap: wrap;
   font-size: 0.875rem;

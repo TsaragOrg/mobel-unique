@@ -792,6 +792,11 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     expect(
+      screen.getByText(
+        "Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness.",
+      ),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByText("00000000-0000-4000-8000-000000000701"),
     ).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Public description"), {

@@ -1869,43 +1869,42 @@ function SofaEditContent({
     );
   }
 
-  // RU: Эта метка коротко говорит, готова ли вся страница к публикации.
-  // FR: Cette marque dit vite si toute la page est prete pour la publication.
   const aggregateReadiness = tabReadiness
     ? getSofaEditAggregateReadiness(tabReadiness)
     : null;
 
   return (
-    <section aria-labelledby="edit-sofa-title" className="admin-section">
+    <section
+      aria-labelledby="edit-sofa-title"
+      className="admin-section admin-sofa-edit-workflow"
+    >
       {sofa ? (
         <>
-          {/* RU: Эта верхняя область показывает короткие данные дивана и общий итог. */}
-          {/* FR: Cette zone du haut montre les infos courtes du canape et le bilan. */}
-          <header className="admin-sofa-edit-header">
-            <div>
-              <p className="eyebrow">Catalog</p>
-              <h1 id="edit-sofa-title">{sofa.internal_name}</h1>
-              <div className="admin-sofa-edit-header-meta">
-                <span className="admin-lifecycle-badge">
-                  {formatLifecycleState(sofa.lifecycle_state)}
-                </span>
-                <span>{sofa.public_name ?? "No public name"}</span>
-              </div>
-            </div>
-            {aggregateReadiness ? (
-              <div className="admin-sofa-edit-readiness">
-                <span>Workflow</span>
-                <span
-                  className={`admin-readiness-chip admin-readiness-chip-${aggregateReadiness}`}
-                >
-                  {formatReadinessKind(aggregateReadiness)}
-                </span>
-              </div>
-            ) : null}
-          </header>
+          <AdminPageHeader
+            actions={
+              aggregateReadiness ? (
+                <div className="admin-sofa-edit-readiness">
+                  <span>Workflow</span>
+                  <span
+                    className={`admin-readiness-chip admin-readiness-chip-${aggregateReadiness}`}
+                  >
+                    {formatReadinessKind(aggregateReadiness)}
+                  </span>
+                </div>
+              ) : undefined
+            }
+            description="Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness."
+            eyebrow="Catalog"
+            title={sofa.internal_name}
+            titleId="edit-sofa-title"
+          />
+          <div className="admin-sofa-edit-header-meta">
+            <span className="admin-lifecycle-badge">
+              {formatLifecycleState(sofa.lifecycle_state)}
+            </span>
+            <span>{sofa.public_name ?? "No public name"}</span>
+          </div>
 
-          {/* RU: Эти кнопки открывают только один шаг за раз. */}
-          {/* FR: Ces boutons ouvrent une seule etape a la fois. */}
           <div
             aria-label="Sofa edit workflow"
             className="admin-sofa-edit-tabs"

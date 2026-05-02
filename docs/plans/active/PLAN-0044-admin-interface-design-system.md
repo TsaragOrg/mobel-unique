@@ -101,7 +101,7 @@ Existing tests to preserve and extend:
 
 ### Phase 5: Sofa Edit Shared Workflow
 
-- [ ] Apply shared shell, header, navigation, and action hierarchy to `/admin/sofas/[sofa_id]`.
+- [x] Apply shared shell, header, navigation, and action hierarchy to `/admin/sofas/[sofa_id]`.
 - [ ] Preserve `SPEC-0014` workflow tabs: Basics, Fabrics, Visual matrix, Renders, Publish.
 - [ ] Standardize tab status signals and section headers.
 - [ ] Harmonize Basics, Fabrics, Visual matrix, Renders, and Publish panels without changing data behavior.
