@@ -32,6 +32,7 @@ import {
   type SofaEditReadinessKind,
   type SofaEditTabKey,
 } from "./admin-sofa-edit-model";
+import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
 
@@ -254,13 +255,7 @@ type AdminLargeImagePreview = {
   title: string;
 };
 
-type SofaTestChecklistItem = {
-  completeText: string;
-  id: string;
-  isComplete: boolean;
-  label: string;
-  missingText: string;
-};
+type AdminBadgeTone = "danger" | "muted" | "neutral" | "ready" | "warning";
 
 export interface SofaMutationInput {
   depth_cm?: number;
@@ -1159,29 +1154,38 @@ function ProtectedAdminCatalogPage({
 
   if (pageState === "checking") {
     return (
-      <main className="admin-workspace" aria-live="polite">
-        <p role="status">Checking admin session.</p>
-      </main>
+      <AdminShell showNavigation={false} variant="auth">
+        <section className="admin-auth-card" aria-live="polite">
+          <p className="admin-status-text" role="status">
+            Checking admin session.
+          </p>
+        </section>
+      </AdminShell>
     );
   }
 
   if (pageState === "forbidden") {
     return (
-      <main className="admin-workspace">
-        <section aria-labelledby="admin-denied-title">
-          <p className="eyebrow">Mobel Unique</p>
-          <h1 id="admin-denied-title">Admin access unavailable</h1>
-          <p>This account is not authorized for the admin area.</p>
+      <AdminShell showNavigation={false} variant="auth">
+        <section
+          className="admin-auth-card"
+          aria-labelledby="admin-denied-title"
+        >
+          <AdminPageHeader
+            description="This account is not authorized for the admin area."
+            eyebrow="Secure workspace"
+            title="Admin access unavailable"
+            titleId="admin-denied-title"
+          />
         </section>
-      </main>
+      </AdminShell>
     );
   }
 
   return (
-    <main className="admin-workspace">
-      <AdminNavigation />
+    <AdminShell>
       {accessToken ? render(accessToken, activeDependencies) : null}
-    </main>
+    </AdminShell>
   );
 }
 
@@ -1226,26 +1230,37 @@ function SofaListContent({
   }, [accessToken, dependencies]);
 
   return (
-    <section aria-labelledby="sofas-title" className="admin-section">
-      <div className="admin-heading-row">
-        <div>
-          <p className="eyebrow">Catalog</p>
-          <h1 id="sofas-title">Sofas</h1>
-        </div>
-        <Link className="button-link" href="/admin/sofas/new">
-          New sofa
-        </Link>
-      </div>
+    <section
+      aria-labelledby="sofas-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        actions={
+          <Link className="admin-primary-link" href="/admin/sofas/new">
+            New sofa
+          </Link>
+        }
+        description="Review sofa records, publishing state, storefront links, and recent catalog updates."
+        eyebrow="Catalog"
+        title="Sofas"
+        titleId="sofas-title"
+      />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {isLoading ? <p role="status">Loading sofas.</p> : null}
-      {!isLoading && sofas.length === 0 ? <p>No sofas.</p> : null}
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading sofas.
+        </p>
+      ) : null}
+      {!isLoading && sofas.length === 0 ? (
+        <p className="admin-list-feedback">No sofa records yet.</p>
+      ) : null}
       {sofas.length > 0 ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-catalog-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -1259,13 +1274,45 @@ function SofaListContent({
             <tbody>
               {sofas.map((sofa) => (
                 <tr key={sofa.id}>
-                  <td>{sofa.internal_name || sofa.public_name}</td>
-                  <td>{sofa.lifecycle_state}</td>
-                  <td>{sofa.public_slug ?? "None"}</td>
-                  <td>{sofa.shopify_order_url ? "Set" : "Missing"}</td>
-                  <td>{formatTimestamp(sofa.updated_at)}</td>
-                  <td>
-                    <Link href={`/admin/sofas/${sofa.id}`}>Open</Link>
+                  <td className="admin-table-primary-cell" data-label="Name">
+                    <div className="admin-table-main">
+                      <strong>{sofa.internal_name || sofa.public_name}</strong>
+                      {sofa.public_name ? (
+                        <span>{sofa.public_name}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td data-label="State">
+                    <AdminStateBadge
+                      tone={getLifecycleBadgeTone(sofa.lifecycle_state)}
+                    >
+                      {formatLifecycleState(sofa.lifecycle_state)}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Slug">
+                    <span className="admin-table-code">
+                      {sofa.public_slug ?? "None"}
+                    </span>
+                  </td>
+                  <td data-label="Shopify">
+                    <AdminStateBadge
+                      tone={getReadinessBadgeTone(
+                        Boolean(sofa.shopify_order_url),
+                      )}
+                    >
+                      {sofa.shopify_order_url ? "Set" : "Missing"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Updated">
+                    {formatTimestamp(sofa.updated_at)}
+                  </td>
+                  <td data-label="Action">
+                    <Link
+                      className="admin-table-link"
+                      href={`/admin/sofas/${sofa.id}`}
+                    >
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -1318,33 +1365,43 @@ function FabricListContent({
   }, [accessToken, dependencies]);
 
   return (
-    <section aria-labelledby="fabrics-title" className="admin-section">
-      <div className="admin-heading-row">
-        <div>
-          <p className="eyebrow">Catalog</p>
-          <h1 id="fabrics-title">Fabrics</h1>
-        </div>
-        <Link className="button-link" href="/admin/fabrics/new">
-          New fabric
-        </Link>
-      </div>
+    <section
+      aria-labelledby="fabrics-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        actions={
+          <Link className="admin-primary-link" href="/admin/fabrics/new">
+            New fabric
+          </Link>
+        }
+        description="Track fabric records, premium flags, swatch readiness, and AI reference assets."
+        eyebrow="Catalog"
+        title="Fabrics"
+        titleId="fabrics-title"
+      />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {isLoading ? <p role="status">Loading fabrics.</p> : null}
-      {!isLoading && fabrics.length === 0 ? <p>No fabrics.</p> : null}
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading fabrics.
+        </p>
+      ) : null}
+      {!isLoading && fabrics.length === 0 ? (
+        <p className="admin-list-feedback">No fabric records yet.</p>
+      ) : null}
       {fabrics.length > 0 ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-catalog-table">
             <thead>
               <tr>
-                <th>Internal name</th>
-                <th>Public name</th>
+                <th>Swatch</th>
+                <th>Fabric</th>
                 <th>State</th>
                 <th>Premium</th>
-                <th>Swatch</th>
                 <th>AI reference</th>
                 <th>Updated</th>
                 <th>Action</th>
@@ -1353,15 +1410,58 @@ function FabricListContent({
             <tbody>
               {fabrics.map((fabric) => (
                 <tr key={fabric.id}>
-                  <td>{fabric.internal_name}</td>
-                  <td>{fabric.public_name}</td>
-                  <td>{fabric.lifecycle_state}</td>
-                  <td>{fabric.is_premium ? "Premium" : "Standard"}</td>
-                  <td>{fabric.swatch_asset ? "Ready" : "Missing"}</td>
-                  <td>{fabric.ai_reference_asset ? "Ready" : "Missing"}</td>
-                  <td>{formatTimestamp(fabric.updated_at)}</td>
-                  <td>
-                    <Link href={`/admin/fabrics/${fabric.id}`}>Open</Link>
+                  <td data-label="Swatch">
+                    {fabric.swatch_preview_url ? (
+                      <img
+                        alt={`${fabric.public_name} swatch`}
+                        className="admin-swatch-thumb"
+                        src={fabric.swatch_preview_url}
+                      />
+                    ) : (
+                      <span className="admin-swatch-thumb admin-swatch-thumb-empty">
+                        No swatch
+                      </span>
+                    )}
+                  </td>
+                  <td className="admin-table-primary-cell" data-label="Fabric">
+                    <div className="admin-table-main">
+                      <strong>{fabric.internal_name}</strong>
+                      <span>{fabric.public_name}</span>
+                    </div>
+                  </td>
+                  <td data-label="State">
+                    <AdminStateBadge
+                      tone={getLifecycleBadgeTone(fabric.lifecycle_state)}
+                    >
+                      {formatLifecycleState(fabric.lifecycle_state)}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Premium">
+                    <AdminStateBadge
+                      tone={fabric.is_premium ? "neutral" : "muted"}
+                    >
+                      {fabric.is_premium ? "Premium" : "Standard"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="AI reference">
+                    <AdminStateBadge
+                      tone={getReadinessBadgeTone(
+                        Boolean(fabric.ai_reference_asset),
+                      )}
+                    >
+                      {fabric.ai_reference_asset ? "Ready" : "Missing"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Updated">
+                    {formatTimestamp(fabric.updated_at)}
+                  </td>
+                  <td data-label="Action">
+                    <Link
+                      className="admin-table-link"
+                      href={`/admin/fabrics/${fabric.id}`}
+                    >
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -1414,9 +1514,16 @@ function FabricCreateContent({
   }
 
   return (
-    <section aria-labelledby="create-fabric-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="create-fabric-title">Create fabric</h1>
+    <section
+      aria-labelledby="create-fabric-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Create a fabric record with required swatch and AI reference assets."
+        eyebrow="Catalog"
+        title="Create fabric"
+        titleId="create-fabric-title"
+      />
       <FabricForm
         buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
         errorMessage={errorMessage}
@@ -1533,9 +1640,16 @@ function FabricEditContent({
   }
 
   return (
-    <section aria-labelledby="edit-fabric-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="edit-fabric-title">{fabric?.internal_name ?? "Fabric"}</h1>
+    <section
+      aria-labelledby="edit-fabric-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Update fabric naming, readiness assets, and archive state."
+        eyebrow="Catalog"
+        title={fabric?.internal_name ?? "Fabric"}
+        titleId="edit-fabric-title"
+      />
       {fabric ? (
         <div className="admin-grid">
           <FabricForm
@@ -1615,9 +1729,16 @@ function SofaCreateContent({
   }
 
   return (
-    <section aria-labelledby="create-sofa-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="create-sofa-title">Create sofa</h1>
+    <section
+      aria-labelledby="create-sofa-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Create a draft sofa record before assigning fabrics and render coverage."
+        eyebrow="Catalog"
+        title="Create sofa"
+        titleId="create-sofa-title"
+      />
       <SofaForm
         buttonLabel={isSubmitting ? "Creating" : "Create draft"}
         errorMessage={errorMessage}
@@ -1828,43 +1949,42 @@ function SofaEditContent({
     );
   }
 
-  // RU: Эта метка коротко говорит, готова ли вся страница к публикации.
-  // FR: Cette marque dit vite si toute la page est prete pour la publication.
   const aggregateReadiness = tabReadiness
     ? getSofaEditAggregateReadiness(tabReadiness)
     : null;
 
   return (
-    <section aria-labelledby="edit-sofa-title" className="admin-section">
+    <section
+      aria-labelledby="edit-sofa-title"
+      className="admin-section admin-sofa-edit-workflow"
+    >
       {sofa ? (
         <>
-          {/* RU: Эта верхняя область показывает короткие данные дивана и общий итог. */}
-          {/* FR: Cette zone du haut montre les infos courtes du canape et le bilan. */}
-          <header className="admin-sofa-edit-header">
-            <div>
-              <p className="eyebrow">Catalog</p>
-              <h1 id="edit-sofa-title">{sofa.internal_name}</h1>
-              <div className="admin-sofa-edit-header-meta">
-                <span className="admin-lifecycle-badge">
-                  {formatLifecycleState(sofa.lifecycle_state)}
-                </span>
-                <span>{sofa.public_name ?? "No public name"}</span>
-              </div>
-            </div>
-            {aggregateReadiness ? (
-              <div className="admin-sofa-edit-readiness">
-                <span>Workflow</span>
-                <span
-                  className={`admin-readiness-chip admin-readiness-chip-${aggregateReadiness}`}
-                >
-                  {formatReadinessKind(aggregateReadiness)}
-                </span>
-              </div>
-            ) : null}
-          </header>
+          <AdminPageHeader
+            actions={
+              aggregateReadiness ? (
+                <div className="admin-sofa-edit-readiness">
+                  <span>Workflow</span>
+                  <span
+                    className={`admin-readiness-chip admin-readiness-chip-${aggregateReadiness}`}
+                  >
+                    {formatReadinessKind(aggregateReadiness)}
+                  </span>
+                </div>
+              ) : undefined
+            }
+            description="Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness."
+            eyebrow="Catalog"
+            title={sofa.internal_name}
+            titleId="edit-sofa-title"
+          />
+          <div className="admin-sofa-edit-header-meta">
+            <span className="admin-lifecycle-badge">
+              {formatLifecycleState(sofa.lifecycle_state)}
+            </span>
+            <span>{sofa.public_name ?? "No public name"}</span>
+          </div>
 
-          {/* RU: Эти кнопки открывают только один шаг за раз. */}
-          {/* FR: Ces boutons ouvrent une seule etape a la fois. */}
           <div
             aria-label="Sofa edit workflow"
             className="admin-sofa-edit-tabs"
@@ -1985,6 +2105,38 @@ function formatLifecycleState(lifecycleState: string) {
     .join(" ");
 }
 
+function AdminStateBadge({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: AdminBadgeTone;
+}) {
+  return (
+    <span className={`admin-state-badge admin-state-badge-${tone}`}>
+      {children}
+    </span>
+  );
+}
+
+function getLifecycleBadgeTone(lifecycleState: string): AdminBadgeTone {
+  switch (lifecycleState) {
+    case "active":
+    case "published":
+      return "ready";
+    case "archived":
+      return "muted";
+    case "draft":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function getReadinessBadgeTone(isReady: boolean): AdminBadgeTone {
+  return isReady ? "ready" : "warning";
+}
+
 function formatReadinessKind(kind: SofaEditReadinessKind) {
   switch (kind) {
     case "blocked":
@@ -2016,62 +2168,6 @@ function getSofaEditAggregateReadiness(
   }
 
   return "ready";
-}
-
-function SofaTestNavigation() {
-  const links = [
-    { href: "#sofa-basics", label: "Sofa basics", number: "1" },
-    { href: "#fabric-assignments", label: "Fabric assignments", number: "2" },
-    { href: "#visual-matrix", label: "Visual matrix", number: "3" },
-    { href: "#render-coverage", label: "Render coverage", number: "4" },
-    {
-      href: "#publication-readiness",
-      label: "Publication readiness",
-      number: "5",
-    },
-  ];
-
-  return (
-    <nav aria-label="Sofa test sections" className="admin-test-nav">
-      {links.map((link) => (
-        <a aria-label={link.label} href={link.href} key={link.href}>
-          <span aria-hidden="true">{link.number}</span>
-          {link.label}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
-function SofaTestChecklist({ items }: { items: SofaTestChecklistItem[] }) {
-  return (
-    <section
-      aria-labelledby="sofa-test-checklist-title"
-      className="admin-test-checklist"
-    >
-      <h2 id="sofa-test-checklist-title">Manual test checklist</h2>
-      <ul aria-label="Manual sofa test checklist">
-        {items.map((item) => (
-          <li
-            aria-label={`${item.label}: ${item.isComplete ? "Done" : "Missing"}`}
-            className="admin-checklist-item"
-            key={item.id}
-          >
-            <span className="admin-checklist-label">{item.label}</span>
-            <span
-              className={
-                item.isComplete
-                  ? "admin-checklist-state admin-checklist-state-ready"
-                  : "admin-checklist-state"
-              }
-            >
-              {item.isComplete ? item.completeText : item.missingText}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
 }
 
 function PublicationReadinessSection({
@@ -2233,68 +2329,6 @@ function SectionStepHeading({
   );
 }
 
-function buildSofaTestChecklist({
-  readiness,
-  renderCoverage,
-  sofaFabrics,
-  visualMatrixColumns,
-}: {
-  readiness: AdminCatalogReadiness | null;
-  renderCoverage: AdminCatalogRenderCoverage | null;
-  sofaFabrics: AdminCatalogSofaFabric[];
-  visualMatrixColumns: AdminCatalogVisualMatrixColumn[];
-}): SofaTestChecklistItem[] {
-  const renderCells = renderCoverage?.render_cells ?? [];
-  const hasSourcePhoto = visualMatrixColumns.some((column) =>
-    Boolean(column.current_source_photo_id),
-  );
-
-  return [
-    {
-      completeText: `${sofaFabrics.length} assigned`,
-      id: "fabric-assignment",
-      isComplete: sofaFabrics.length > 0,
-      label: "Fabric assigned",
-      missingText: "Missing",
-    },
-    {
-      completeText: `${visualMatrixColumns.length} columns`,
-      id: "visual-matrix-column",
-      isComplete: visualMatrixColumns.length > 0,
-      label: "Visual column",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Ready",
-      id: "source-photo",
-      isComplete: hasSourcePhoto,
-      label: "Source photo",
-      missingText: "Missing",
-    },
-    {
-      completeText: `${renderCells.reduce((total, cell) => total + cell.candidate_count, 0)} candidates`,
-      id: "generated-candidate",
-      isComplete: renderCells.some((cell) => cell.candidate_count > 0),
-      label: "Generated candidate",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Selected",
-      id: "private-render",
-      isComplete: renderCells.some((cell) => cell.has_private_render),
-      label: "Private render",
-      missingText: "Missing",
-    },
-    {
-      completeText: "Ready",
-      id: "publication-readiness",
-      isComplete: Boolean(readiness?.ready),
-      label: "Publication readiness",
-      missingText: "Blocked",
-    },
-  ];
-}
-
 function TagManagerContent({
   accessToken,
   dependencies,
@@ -2303,6 +2337,7 @@ function TagManagerContent({
   dependencies: AdminCatalogPageDependencies;
 }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingDeleteTagId, setPendingDeleteTagId] = useState<string | null>(
     null,
@@ -2310,8 +2345,14 @@ function TagManagerContent({
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
   async function loadTags() {
-    const nextTags = await dependencies.listTags(accessToken);
-    setTags(nextTags);
+    setIsLoading(true);
+
+    try {
+      const nextTags = await dependencies.listTags(accessToken);
+      setTags(nextTags);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -2367,11 +2408,18 @@ function TagManagerContent({
   }
 
   return (
-    <section aria-labelledby="tags-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="tags-title">Tags</h1>
+    <section
+      aria-labelledby="tags-title"
+      className="admin-section admin-list-page"
+    >
+      <AdminPageHeader
+        description="Create and maintain the public tags used to organize catalog filters."
+        eyebrow="Catalog"
+        title="Tags"
+        titleId="tags-title"
+      />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
@@ -2384,43 +2432,61 @@ function TagManagerContent({
           {isSubmitting ? "Creating" : "Create tag"}
         </button>
       </form>
-      {tags.length === 0 ? <p>No tags.</p> : null}
-      <div className="admin-list">
-        {tags.map((tag) => (
-          <form
-            className="admin-list-row"
-            key={tag.id}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleUpdate(tag, event.currentTarget);
-            }}
-          >
-            <label className="field">
-              <span>Edit {tag.public_label}</span>
-              <input
-                aria-label={`Edit ${tag.public_label}`}
-                defaultValue={tag.public_label}
-                name={`tag-${tag.id}`}
-                required
-              />
-            </label>
-            <span className="admin-muted">{tag.slug}</span>
-            <button type="submit">Save {tag.public_label}</button>
-            {pendingDeleteTagId === tag.id ? (
-              <button onClick={() => void handleDelete(tag)} type="button">
-                Confirm delete {tag.public_label}
-              </button>
-            ) : (
-              <button
-                onClick={() => setPendingDeleteTagId(tag.id)}
-                type="button"
-              >
-                Delete {tag.public_label}
-              </button>
-            )}
-          </form>
-        ))}
-      </div>
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading tags.
+        </p>
+      ) : null}
+      {!isLoading && tags.length === 0 ? (
+        <p className="admin-list-feedback">No tags yet.</p>
+      ) : null}
+      {tags.length > 0 ? (
+        <div className="admin-list admin-tag-list">
+          {tags.map((tag) => (
+            <form
+              className="admin-list-row admin-tag-row"
+              key={tag.id}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleUpdate(tag, event.currentTarget);
+              }}
+            >
+              <label className="field">
+                <span>Edit {tag.public_label}</span>
+                <input
+                  aria-label={`Edit ${tag.public_label}`}
+                  defaultValue={tag.public_label}
+                  name={`tag-${tag.id}`}
+                  required
+                />
+              </label>
+              <span className="admin-table-code">{tag.slug}</span>
+              <div className="admin-row-actions">
+                <button className="admin-quiet-button" type="submit">
+                  Save {tag.public_label}
+                </button>
+                {pendingDeleteTagId === tag.id ? (
+                  <button
+                    className="admin-danger-button"
+                    onClick={() => void handleDelete(tag)}
+                    type="button"
+                  >
+                    Confirm delete {tag.public_label}
+                  </button>
+                ) : (
+                  <button
+                    className="admin-quiet-button"
+                    onClick={() => setPendingDeleteTagId(tag.id)}
+                    type="button"
+                  >
+                    Delete {tag.public_label}
+                  </button>
+                )}
+              </div>
+            </form>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3246,9 +3312,9 @@ function RenderCoverageSection({
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
   const isAliveRef = useRef(true);
-  // RU: Эта ссылка запоминает кнопку, с которой открыли подробности ячейки.
-  // FR: Ce lien garde le bouton qui a ouvert les details de la case.
+  // Return keyboard focus to the cell that opened the sheet after close.
   const renderCellOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const renderCellCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // RU: Этот автоматический блок включает флажок при открытии секции и выключает при уходе.
   // FR: Ce bloc automatique active le repere a l'ouverture et le desactive au depart.
@@ -3259,6 +3325,15 @@ function RenderCoverageSection({
       isAliveRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedCellId) {
+      return;
+    }
+
+    // Move focus into the dialog as soon as the render cell sheet opens.
+    renderCellCloseButtonRef.current?.focus();
+  }, [selectedCellId]);
 
   // RU: Это действие запоминает короткую подсказку для выбранной ячейки.
   // FR: Cette action garde une note courte pour la case choisie.
@@ -3890,6 +3965,7 @@ function RenderCoverageSection({
                   <button
                     aria-label="Close render cell"
                     onClick={handleCloseRenderCell}
+                    ref={renderCellCloseButtonRef}
                     type="button"
                   >
                     Close
@@ -4554,17 +4630,6 @@ function SofaForm({
       </fieldset>
       <button type="submit">{buttonLabel}</button>
     </form>
-  );
-}
-
-function AdminNavigation() {
-  return (
-    <nav className="admin-nav" aria-label="Admin">
-      <Link href="/admin">Dashboard</Link>
-      <Link href="/admin/sofas">Sofas</Link>
-      <Link href="/admin/fabrics">Fabrics</Link>
-      <Link href="/admin/tags">Tags</Link>
-    </nav>
   );
 }
 

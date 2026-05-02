@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
+import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type DashboardState = "checking" | "forbidden" | "ready";
 
@@ -99,56 +100,103 @@ export default function AdminDashboard({
 
   if (dashboardState === "checking") {
     return (
-      <main className="shell admin-shell">
-        <section className="panel admin-panel" aria-live="polite">
-          <p role="status">Checking admin session.</p>
+      <AdminShell showNavigation={false} variant="auth">
+        <section className="admin-auth-card" aria-live="polite">
+          <p className="admin-status-text" role="status">
+            Checking admin session.
+          </p>
         </section>
-      </main>
+      </AdminShell>
     );
   }
 
   if (dashboardState === "forbidden") {
     return (
-      <main className="shell admin-shell">
+      <AdminShell showNavigation={false} variant="auth">
         <section
-          className="panel admin-panel"
+          className="admin-auth-card"
           aria-labelledby="admin-denied-title"
         >
-          <p className="eyebrow">Mobel Unique</p>
-          <h1 id="admin-denied-title">Admin access unavailable</h1>
-          <p>This account is not authorized for the admin area.</p>
-          <button onClick={handleLogout} type="button">
+          <AdminPageHeader
+            description="This account is not authorized for the admin area."
+            eyebrow="Secure workspace"
+            title="Admin access unavailable"
+            titleId="admin-denied-title"
+          />
+          <button
+            className="admin-primary-button"
+            onClick={handleLogout}
+            type="button"
+          >
             Return to sign in
           </button>
         </section>
-      </main>
+      </AdminShell>
     );
   }
 
   return (
-    <main className="shell admin-shell">
-      <section className="panel admin-panel" aria-labelledby="admin-title">
-        <p className="eyebrow">Mobel Unique</p>
-        <h1 id="admin-title">Admin dashboard</h1>
-        <nav className="admin-actions" aria-label="Catalog actions">
-          <Link className="button-link" href="/admin/sofas">
-            Sofas
+    <AdminShell>
+      <section className="admin-dashboard" aria-labelledby="admin-title">
+        <AdminPageHeader
+          actions={
+            <button
+              className="admin-secondary-button"
+              onClick={handleLogout}
+              type="button"
+            >
+              Sign out
+            </button>
+          }
+          description="Manage catalog content, fabrics, tags, and visual readiness from one workspace."
+          eyebrow="Workspace"
+          title="Admin dashboard"
+          titleId="admin-title"
+        />
+        <nav className="admin-action-grid" aria-label="Catalog actions">
+          <Link
+            aria-label="Sofas"
+            className="admin-action-card"
+            href="/admin/sofas"
+          >
+            <span className="admin-action-kicker">Catalog</span>
+            <strong>Sofas</strong>
+            <span aria-hidden="true">
+              Manage sofa entries, dimensions, and publishing state.
+            </span>
           </Link>
-          <Link className="button-link" href="/admin/sofas/new">
-            New sofa
+          <Link
+            aria-label="New sofa"
+            className="admin-action-card"
+            href="/admin/sofas/new"
+          >
+            <span className="admin-action-kicker">Create</span>
+            <strong>New sofa</strong>
+            <span aria-hidden="true">Start a new sofa catalog record.</span>
           </Link>
-          <Link className="button-link" href="/admin/fabrics">
-            Fabrics
+          <Link
+            aria-label="Fabrics"
+            className="admin-action-card"
+            href="/admin/fabrics"
+          >
+            <span className="admin-action-kicker">Materials</span>
+            <strong>Fabrics</strong>
+            <span aria-hidden="true">
+              Maintain swatches, references, and ordering.
+            </span>
           </Link>
-          <Link className="button-link" href="/admin/tags">
-            Tags
+          <Link
+            aria-label="Tags"
+            className="admin-action-card"
+            href="/admin/tags"
+          >
+            <span className="admin-action-kicker">Taxonomy</span>
+            <strong>Tags</strong>
+            <span aria-hidden="true">Organize public catalog filters.</span>
           </Link>
         </nav>
-        <button onClick={handleLogout} type="button">
-          Sign out
-        </button>
       </section>
-    </main>
+    </AdminShell>
   );
 }
 

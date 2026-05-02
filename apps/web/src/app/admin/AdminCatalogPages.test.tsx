@@ -544,8 +544,44 @@ describe("Admin catalog pages", () => {
     render(<AdminSofasPage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Sofas" });
+    expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", {
+        name: "Admin",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New sofa" })).toHaveAttribute(
+      "href",
+      "/admin/sofas/new",
+    );
     expect(await screen.findByText("Manual test sofa")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
+  });
+
+  it("shows sofa list empty and error states", async () => {
+    const emptyDependencies = createDependencies({
+      listSofas: vi.fn(async () => []),
+    });
+
+    render(<AdminSofasPage dependencies={emptyDependencies} />);
+
+    expect(await screen.findByText("No sofa records yet.")).toBeInTheDocument();
+
+    cleanup();
+
+    const errorDependencies = createDependencies({
+      listSofas: vi.fn(async () => {
+        throw new Error("SOFA_LIST_FAILED");
+      }),
+    });
+
+    render(<AdminSofasPage dependencies={errorDependencies} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "SOFA_LIST_FAILED",
+    );
   });
 
   it("creates, edits, and handles assigned-tag delete conflicts", async () => {
@@ -593,8 +629,17 @@ describe("Admin catalog pages", () => {
     render(<AdminFabricsPage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Fabrics" });
+    expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New fabric" })).toHaveAttribute(
+      "href",
+      "/admin/fabrics/new",
+    );
     expect(await screen.findByText("Internal fabric")).toBeInTheDocument();
     expect(screen.getByText("Boucle ivoire")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Boucle ivoire swatch" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getAllByText("Premium").length).toBeGreaterThan(0);
     expect(dependencies.listFabrics).toHaveBeenCalledWith("admin-token");
   });
@@ -623,6 +668,11 @@ describe("Admin catalog pages", () => {
     render(<AdminFabricCreatePage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Create fabric" });
+    expect(
+      screen.getByText(
+        "Create a fabric record with required swatch and AI reference assets.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Internal fabric name"), {
       target: { value: "Internal fabric" },
     });
@@ -695,6 +745,9 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Internal fabric" });
+    expect(
+      screen.getByText("Update fabric naming, readiness assets, and archive state."),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Public fabric name"), {
       target: { value: "Boucle naturel" },
     });
@@ -727,6 +780,11 @@ describe("Admin catalog pages", () => {
     render(<AdminSofaCreatePage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Create sofa" });
+    expect(
+      screen.getByText(
+        "Create a draft sofa record before assigning fabrics and render coverage.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Internal name"), {
       target: { value: "Manual test sofa" },
     });
@@ -763,6 +821,11 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
+    expect(
+      screen.getByText(
+        "Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness.",
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("00000000-0000-4000-8000-000000000701"),
     ).not.toBeInTheDocument();
@@ -812,6 +875,9 @@ describe("Admin catalog pages", () => {
     expect(screen.getByRole("tab", { name: /Publish/i })).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Sofa test sections" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Manual test checklist" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Publish sofa" }),
@@ -1025,18 +1091,20 @@ describe("Admin catalog pages", () => {
     fireEvent.click(cellButton);
 
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+    const closeButton = within(dialog).getByRole("button", {
+      name: "Close render cell",
+    });
+
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
     expect(within(dialog).getByText("Boucle ivoire")).toBeInTheDocument();
     expect(within(dialog).getByText("Front")).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Generate" }),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("button", { name: "Close render cell" }),
-    ).toBeInTheDocument();
+    expect(closeButton).toBeInTheDocument();
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Close render cell" }),
-    );
+    fireEvent.click(closeButton);
 
     expect(cellButton).toHaveFocus();
   });
