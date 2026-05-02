@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PublicShell } from "../../../PublicShell";
 import { Screen1PhotoUpload } from "../../../../components/simulation/Screen1PhotoUpload";
 import { SIMULATION_LOCALE } from "../../../../lib/simulation-client/locale";
+import { stashJobContext } from "../../../../lib/simulation-client/job-context";
 import type { PublicSofaDetailResponse } from "../../../../lib/public-catalog";
 import type { RoomGeometryMode } from "../../../../lib/simulation-public-api";
 
@@ -105,6 +106,15 @@ export function PublicSimulationWizardEntry(
   );
 
   function handleJobCreated(jobId: string) {
+    if (detail && fabric && visualPosition) {
+      stashJobContext(jobId, {
+        slug: props.slug,
+        sofaName: detail.sofa.public_name,
+        fabricName: fabric.public_name,
+        visualPositionLabel:
+          visualPosition.public_label ?? `Vue ${visualPosition.sequence}`
+      });
+    }
     if (props.navigateToJob) {
       props.navigateToJob(jobId);
       return;
