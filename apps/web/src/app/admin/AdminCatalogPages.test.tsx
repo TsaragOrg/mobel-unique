@@ -1830,6 +1830,186 @@ describe("Admin catalog pages", () => {
     expect(dependencies.getFabricRenderJob).not.toHaveBeenCalled();
   });
 
+  it("refreshes publish blockers after manual render upload", async () => {
+    // RU: Эти данные описывают диван, у которого публикацию держит только недостающая картинка.
+    // FR: Ces donnees decrivent un canape bloque seulement par une image manquante.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const fabricId = "00000000-0000-4000-8000-000000000903";
+    const columnId = "00000000-0000-4000-8000-000000000904";
+    const cellId = "00000000-0000-4000-8000-000000000906";
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: {
+          asset_kind: "fabric_ai_reference",
+          byte_size: 2200,
+          content_type: "image/jpeg",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000902",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: fabricId,
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_preview_url: null,
+        swatch_asset: {
+          asset_kind: "fabric_swatch_public",
+          byte_size: 1200,
+          content_type: "image/png",
+          height_px: 256,
+          id: "00000000-0000-4000-8000-000000000901",
+          lifecycle_state: "active",
+          visibility: "public",
+          width_px: 256,
+        },
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: fabricId,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: {
+        asset: null,
+        asset_id: "00000000-0000-4000-8000-000000000905",
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000905",
+        original_fabric_id: fabricId,
+        preview_url: "https://storage.example/source-photo-preview",
+        sofa_id: sofaId,
+        updated_at: "2026-04-28T10:00:00.000Z",
+        visual_matrix_column_id: columnId,
+      },
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: columnId,
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const missingRenderCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 0,
+      current_private_asset_id: null,
+      current_private_preview_url: null,
+      current_public_asset_id: null,
+      fabric_id: fabricId,
+      has_private_render: false,
+      has_public_render: false,
+      id: cellId,
+      latest_job: null,
+      sofa_id: sofaId,
+      source_photo_id: visualColumn.current_source_photo_id,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: columnId,
+    };
+    const readyRenderCell = {
+      ...missingRenderCell,
+      current_private_asset_id: "00000000-0000-4000-8000-000000000907",
+      current_private_preview_url:
+        "https://storage.example/current-render-preview",
+      has_private_render: true,
+      source_type: "manual_upload",
+      updated_at: "2026-04-28T10:40:00.000Z",
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi
+        .fn()
+        .mockResolvedValueOnce({
+          render_cells: [missingRenderCell],
+          sofa_fabrics: [assignedFabric],
+          sofa_id: sofaId,
+          visual_matrix_columns: [visualColumn],
+        })
+        .mockResolvedValue({
+          render_cells: [readyRenderCell],
+          sofa_fabrics: [assignedFabric],
+          sofa_id: sofaId,
+          visual_matrix_columns: [visualColumn],
+        }),
+      getSofaReadiness: vi
+        .fn()
+        .mockResolvedValueOnce({
+          errors: [
+            {
+              code: "INCOMPLETE_PUBLIC_RENDER_COVERAGE",
+              message: "Public render coverage is incomplete.",
+            },
+          ],
+          ready: false,
+        })
+        .mockResolvedValue({
+          errors: [],
+          ready: true,
+        }),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
+    expect(
+      screen.getByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish sofa" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front: Missing/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+
+    // RU: Этот файл заменяет недостающую картинку в проверке.
+    // FR: Ce fichier remplace l'image manquante dans la verification.
+    const manualRenderFile = new File(["manual"], "manual.png", {
+      type: "image/png",
+    });
+
+    fireEvent.change(within(dialog).getByLabelText("Manual render"), {
+      target: {
+        files: [manualRenderFile],
+      },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Upload manual render" }),
+    );
+
+    await waitFor(() => {
+      expect(dependencies.setManualRender).toHaveBeenCalledWith(
+        "admin-token",
+        cellId,
+        {
+          asset_id: "00000000-0000-4000-8000-000000000902",
+        },
+      );
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
+
+    expect(
+      screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Publish sofa" })).toBeEnabled();
+    });
+  });
+
   it("refreshes sofa render coverage from fabric render Realtime updates", async () => {
     let onJobChange:
       | ((job: { status: string; sofa_id: string }) => void)

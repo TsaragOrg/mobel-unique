@@ -25,6 +25,7 @@
 | Done | SPEC-0006 | PLAN-0031 | Sofa edit render coverage observes request-scoped fabric render jobs through Realtime, fails expired claims, and exposes manual resume. |
 | Done | SPEC-0014 | PLAN-0035 | Sofa edit workflow tabs, fabric cards, render coverage matrix, source-photo candidate comparison, on-demand refine controls, large image preview, responsive cell sheet, and Publish-only publication actions. |
 | Done | SPEC-0013 | PLAN-0044 | Protected admin interface visual system harmonizes login, dashboard, catalog lists/forms, sofa edit workflow, drawers, render matrix, responsive states, and authenticated visual QA. |
+| Done | SPEC-0014 | PLAN-0035 | Sofa edit refreshes publication blockers after render and visual matrix changes without a page reload. |
 
 ## Next
 

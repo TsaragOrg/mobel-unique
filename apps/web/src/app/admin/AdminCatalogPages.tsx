@@ -1884,6 +1884,20 @@ function SofaEditContent({
     setRenderCoverage(nextCoverage);
   }, [accessToken, dependencies, sofaId]);
 
+  // RU: Это действие заново получает позиции, готовые картинки и проверку публикации.
+  // FR: Cette action recharge les positions, les images pretes et la verification de publication.
+  const refreshRenderPreparationAndReadiness = useCallback(async () => {
+    const [nextColumns, nextCoverage, nextReadiness] = await Promise.all([
+      dependencies.listVisualMatrixColumns(accessToken, sofaId),
+      dependencies.getRenderCoverage(accessToken, sofaId),
+      dependencies.getSofaReadiness(accessToken, sofaId),
+    ]);
+
+    setVisualMatrixColumns(nextColumns);
+    setRenderCoverage(nextCoverage);
+    setReadiness(nextReadiness);
+  }, [accessToken, dependencies, sofaId]);
+
   useEffect(() => {
     if (!dependencies.subscribeToFabricRenderJobs) {
       return;
@@ -1906,7 +1920,7 @@ function SofaEditContent({
       isRefreshing = true;
 
       try {
-        await refreshRenderPreparation();
+        await refreshRenderPreparationAndReadiness();
       } catch (error) {
         if (isCurrent) {
           setErrorMessage(readErrorMessage(error));
@@ -1939,7 +1953,7 @@ function SofaEditContent({
       isCurrent = false;
       unsubscribe();
     };
-  }, [dependencies, refreshRenderPreparation, sofaId]);
+  }, [dependencies, refreshRenderPreparationAndReadiness, sofaId]);
 
   if (!sofa && !errorMessage) {
     return (
@@ -2062,7 +2076,7 @@ function SofaEditContent({
                 accessToken={accessToken}
                 columns={visualMatrixColumns}
                 dependencies={dependencies}
-                onRefresh={refreshRenderPreparation}
+                onRefresh={refreshRenderPreparationAndReadiness}
                 sofaFabrics={sofaFabrics}
                 sofaId={sofaId}
               />
@@ -2072,7 +2086,7 @@ function SofaEditContent({
                 accessToken={accessToken}
                 coverage={renderCoverage}
                 dependencies={dependencies}
-                onRefresh={refreshRenderPreparation}
+                onRefresh={refreshRenderPreparationAndReadiness}
                 onSelectTab={setActiveTab}
                 sofaFabrics={sofaFabrics}
                 visualMatrixColumns={visualMatrixColumns}
