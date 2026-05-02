@@ -1520,6 +1520,65 @@ button:disabled {
   padding: 0 clamp(22px, 5vw, 70px);
 }
 
+.simulation-terminal-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 0 0 80px;
+}
+
+.simulation-terminal-body {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: clamp(60px, 8vw, 120px) clamp(22px, 5vw, 70px);
+  text-align: center;
+}
+
+.simulation-terminal-body h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 4.6vw, 3rem);
+  font-weight: 200;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.simulation-terminal-body p {
+  color: var(--public-muted);
+  margin: 0;
+  max-width: 480px;
+}
+
+.simulation-terminal-icon {
+  border: 1px solid var(--public-line);
+  border-radius: 50%;
+  display: inline-block;
+  height: 44px;
+  width: 44px;
+}
+
+.simulation-terminal-icon-error {
+  background:
+    linear-gradient(45deg, transparent 46%, var(--public-ink) 46% 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, var(--public-ink) 46% 54%, transparent 54%);
+}
+
+.simulation-terminal-icon-expired {
+  background:
+    radial-gradient(circle at 50% 32%, var(--public-ink) 0 3px, transparent 3px),
+    linear-gradient(to bottom, transparent 44%, var(--public-ink) 44% 56%, transparent 56%);
+}
+
+.simulation-terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
+
 @media (max-width: 1040px) {
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
