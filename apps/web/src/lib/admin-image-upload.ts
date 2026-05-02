@@ -1,4 +1,5 @@
 export const ADMIN_RENDER_INPUT_MAX_EDGE_PX = 2048;
+export const ADMIN_FABRIC_SWATCH_OUTPUT_PX = 512;
 
 export type AdminImageUploadPurpose =
   | "fabric_swatch"
@@ -10,6 +11,17 @@ export interface PreparedAdminImageUpload {
   file: File;
   message: string | null;
   resized: boolean;
+}
+
+export interface FabricSwatchCrop {
+  sourceSize: number;
+  sourceX: number;
+  sourceY: number;
+}
+
+export interface FabricSwatchCropInput {
+  height: number;
+  width: number;
 }
 
 const RESIZABLE_RENDER_INPUT_PURPOSES = new Set<AdminImageUploadPurpose>([
@@ -33,9 +45,39 @@ interface LoadedImage {
 }
 
 export async function prepareAdminImageUploadFile(input: {
+  fabricSwatchCrop?: FabricSwatchCrop;
   file: File;
   purpose: AdminImageUploadPurpose;
 }): Promise<PreparedAdminImageUpload> {
+  if (
+    input.purpose === "fabric_swatch" &&
+    input.fabricSwatchCrop &&
+    SUPPORTED_IMAGE_CONTENT_TYPES.has(input.file.type)
+  ) {
+    const image = await loadImage(input.file);
+
+    try {
+      const crop = normalizeFabricSwatchCrop({
+        crop: input.fabricSwatchCrop,
+        height: image.height,
+        width: image.width,
+      });
+      const preparedFile = await cropFabricSwatchFile({
+        crop,
+        file: input.file,
+        image,
+      });
+
+      return {
+        file: preparedFile,
+        message: "Swatch cropped to a 512x512 square before upload.",
+        resized: true,
+      };
+    } finally {
+      image.close();
+    }
+  }
+
   if (
     !RESIZABLE_RENDER_INPUT_PURPOSES.has(input.purpose) ||
     !SUPPORTED_IMAGE_CONTENT_TYPES.has(input.file.type)
@@ -70,6 +112,18 @@ export async function prepareAdminImageUploadFile(input: {
   } finally {
     image.close();
   }
+}
+
+export function getDefaultFabricSwatchCrop(
+  input: FabricSwatchCropInput,
+): FabricSwatchCrop {
+  const sourceSize = Math.max(1, Math.min(input.width, input.height));
+
+  return {
+    sourceSize,
+    sourceX: Math.round((input.width - sourceSize) / 2),
+    sourceY: Math.round((input.height - sourceSize) / 2),
+  };
 }
 
 function unchanged(file: File): PreparedAdminImageUpload {
@@ -122,6 +176,60 @@ async function loadHtmlImage(file: File): Promise<LoadedImage> {
       reject(new Error("IMAGE_DECODE_FAILED"));
     };
     image.src = objectUrl;
+  });
+}
+
+function normalizeFabricSwatchCrop(input: {
+  crop: FabricSwatchCrop;
+  height: number;
+  width: number;
+}): FabricSwatchCrop {
+  const maxSize = Math.max(1, Math.min(input.width, input.height));
+  const sourceSize = clamp(Math.round(input.crop.sourceSize), 1, maxSize);
+
+  return {
+    sourceSize,
+    sourceX: clamp(Math.round(input.crop.sourceX), 0, input.width - sourceSize),
+    sourceY: clamp(Math.round(input.crop.sourceY), 0, input.height - sourceSize),
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+async function cropFabricSwatchFile(input: {
+  crop: FabricSwatchCrop;
+  file: File;
+  image: LoadedImage;
+}) {
+  const canvas = document.createElement("canvas");
+  canvas.width = ADMIN_FABRIC_SWATCH_OUTPUT_PX;
+  canvas.height = ADMIN_FABRIC_SWATCH_OUTPUT_PX;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("IMAGE_PREPARATION_UNAVAILABLE");
+  }
+
+  context.drawImage(
+    input.image.source,
+    input.crop.sourceX,
+    input.crop.sourceY,
+    input.crop.sourceSize,
+    input.crop.sourceSize,
+    0,
+    0,
+    ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+    ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+  );
+
+  const blob = await createCanvasBlob(canvas, input.file.type);
+
+  return new File([blob], input.file.name, {
+    lastModified: input.file.lastModified,
+    type: input.file.type,
   });
 }
 

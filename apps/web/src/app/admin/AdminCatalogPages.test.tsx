@@ -39,6 +39,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../../lib/admin-image-upload", () => ({
+  getDefaultFabricSwatchCrop: vi.fn(({ width, height }) => {
+    const sourceSize = Math.min(width, height);
+
+    return {
+      sourceSize,
+      sourceX: Math.round((width - sourceSize) / 2),
+      sourceY: Math.round((height - sourceSize) / 2),
+    };
+  }),
   prepareAdminImageUploadFile: vi.fn(async ({ file }) => ({
     file,
     message: null,
@@ -522,6 +531,55 @@ function createDependencies(
   };
 }
 
+// RU: Эта помощь дает выбранной картинке размер в проверках.
+// FR: Cette aide donne une taille a l'image choisie pendant les tests.
+function stubImageDimensions({
+  height,
+  width,
+}: {
+  height: number;
+  width: number;
+}) {
+  const close = vi.fn();
+
+  vi.stubGlobal(
+    "createImageBitmap",
+    vi.fn(async () => ({
+      close,
+      height,
+      width,
+    })),
+  );
+
+  return close;
+}
+
+// RU: Эта помощь отправляет движение пальца с номером, как это делает браузер.
+// FR: Cette aide envoie le mouvement du doigt avec son numero, comme le navigateur.
+function firePointerCropEvent(
+  element: Element,
+  type: "pointerdown" | "pointermove" | "pointerup",
+  input: {
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+    pointerType: string;
+  },
+) {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: true,
+  });
+
+  for (const [key, value] of Object.entries(input)) {
+    Object.defineProperty(event, key, {
+      value,
+    });
+  }
+
+  fireEvent(element, event);
+}
+
 describe("Admin catalog pages", () => {
   it("redirects anonymous visitors away from catalog pages", async () => {
     const dependencies = createDependencies({
@@ -645,6 +703,479 @@ describe("Admin catalog pages", () => {
   });
 
   it("creates a fabric through the signed upload facade flow", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const preparedAiReference = new File(["prepared"], "reference.jpg", {
+      type: "image/jpeg",
+    });
+    const selectedSwatch = new File(["swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    const preparedSwatch = new File(["prepared-swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ fabricSwatchCrop, file, purpose }) =>
+        purpose === "fabric_swatch" && fabricSwatchCrop
+          ? {
+              file: preparedSwatch,
+              message: "Swatch cropped to a 512x512 square before upload.",
+              resized: true,
+            }
+          : purpose === "fabric_ai_reference"
+            ? {
+                file: preparedAiReference,
+                message:
+                  "Image resized from 4000x3000 to 2048x1536 before upload.",
+                resized: true,
+              }
+            : {
+                file,
+                message: null,
+                resized: false,
+              },
+    );
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    expect(
+      screen.getByText(
+        "Create a fabric record with required swatch and AI reference assets.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Internal fabric name"), {
+      target: { value: "Internal fabric" },
+    });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle ivoire" },
+    });
+    fireEvent.click(screen.getByLabelText("Premium fabric"));
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    expect(
+      await screen.findByRole("group", { name: "Swatch crop" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 900,
+          sourceX: 350,
+          sourceY: 0,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+    expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+      file: expect.any(File),
+      purpose: "fabric_ai_reference",
+    });
+    expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+      byte_size: preparedSwatch.size,
+      content_type: "image/png",
+      purpose: "fabric_swatch",
+    });
+    expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+      byte_size: preparedAiReference.size,
+      content_type: "image/jpeg",
+      purpose: "fabric_ai_reference",
+    });
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "swatch-upload",
+      }),
+      preparedSwatch,
+    );
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "ai-reference-upload",
+      }),
+      preparedAiReference,
+    );
+    expect(
+      screen.getByText(
+        "Image resized from 4000x3000 to 2048x1536 before upload.",
+      ),
+    ).toBeInTheDocument();
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledTimes(2);
+    expect(dependencies.completeUpload).toHaveBeenCalledWith(
+      "admin-token",
+      "swatch-upload",
+    );
+    expect(dependencies.createFabric).toHaveBeenCalledWith("admin-token", {
+      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+      internal_name: "Internal fabric",
+      is_premium: true,
+      public_name: "Boucle ivoire",
+      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+    });
+    expect(dependencies.navigate).toHaveBeenCalledWith(
+      "/admin/fabrics/00000000-0000-4000-8000-000000000903",
+    );
+  });
+
+  it("shows crop controls only after a new swatch image is selected", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    expect(
+      screen.queryByRole("group", { name: "Swatch crop" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [new File(["swatch"], "swatch.png", { type: "image/png" })],
+      },
+    });
+
+    expect(
+      await screen.findByRole("group", { name: "Swatch crop" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Swatch zoom")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reset crop" }),
+    ).toBeInTheDocument();
+  });
+
+  it("resets a selected swatch crop to the centered square", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const selectedSwatch = new File(["swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    fireEvent.change(screen.getByLabelText("Internal fabric name"), {
+      target: { value: "Internal fabric" },
+    });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle ivoire" },
+    });
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    await screen.findByRole("group", { name: "Swatch crop" });
+    fireEvent.change(screen.getByLabelText("Swatch zoom"), {
+      target: { value: "160" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reset crop" }));
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 900,
+          sourceX: 350,
+          sourceY: 0,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+  });
+
+  it("zooms the selected swatch crop with the mouse wheel over the preview", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const selectedSwatch = new File(["swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    fireEvent.change(screen.getByLabelText("Internal fabric name"), {
+      target: { value: "Internal fabric" },
+    });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle ivoire" },
+    });
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    const cropPreview = await screen.findByRole("img", {
+      name: "Swatch crop preview",
+    });
+    fireEvent.wheel(cropPreview, {
+      deltaY: -120,
+    });
+    expect(screen.getByLabelText("Swatch zoom")).toHaveValue("110");
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 818,
+          sourceX: 391,
+          sourceY: 41,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+  });
+
+  it("zooms the selected swatch crop with a two-finger pinch gesture", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const selectedSwatch = new File(["swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    fireEvent.change(screen.getByLabelText("Internal fabric name"), {
+      target: { value: "Internal fabric" },
+    });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle ivoire" },
+    });
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    const cropPreview = await screen.findByRole("img", {
+      name: "Swatch crop preview",
+    });
+    firePointerCropEvent(cropPreview, "pointerdown", {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    firePointerCropEvent(cropPreview, "pointerdown", {
+      clientX: 200,
+      clientY: 100,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    firePointerCropEvent(cropPreview, "pointermove", {
+      clientX: 250,
+      clientY: 100,
+      pointerId: 2,
+      pointerType: "touch",
+    });
+    expect(screen.getByLabelText("Swatch zoom")).toHaveValue("150");
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 600,
+          sourceX: 500,
+          sourceY: 150,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+  });
+
+  it("allows swatch crop zoom up to 500 percent", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
+    const selectedSwatch = new File(["swatch"], "swatch.png", {
+      type: "image/png",
+    });
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    fireEvent.change(screen.getByLabelText("Internal fabric name"), {
+      target: { value: "Internal fabric" },
+    });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle ivoire" },
+    });
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    await screen.findByRole("group", { name: "Swatch crop" });
+    expect(screen.getByLabelText("Swatch zoom")).toHaveAttribute("max", "500");
+    fireEvent.change(screen.getByLabelText("Swatch zoom"), {
+      target: { value: "500" },
+    });
+    expect(screen.getByLabelText("Swatch zoom")).toHaveValue("500");
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 180,
+          sourceX: 710,
+          sourceY: 360,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+  });
+
+  it("keeps the existing swatch asset when editing without a new swatch image", async () => {
+    const dependencies = createDependencies();
+
+    render(
+      <AdminFabricEditPage
+        dependencies={dependencies}
+        fabricId="00000000-0000-4000-8000-000000000903"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Internal fabric" });
+    fireEvent.change(screen.getByLabelText("Public fabric name"), {
+      target: { value: "Boucle naturel" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save fabric" }));
+
+    await waitFor(() => {
+      expect(dependencies.updateFabric).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000903",
+        expect.objectContaining({
+          public_name: "Boucle naturel",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      );
+    });
+    expect(prepareAdminImageUploadFile).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: "fabric_swatch",
+      }),
+    );
+    expect(dependencies.createUpload).not.toHaveBeenCalledWith(
+      "admin-token",
+      expect.objectContaining({
+        purpose: "fabric_swatch",
+      }),
+    );
+  });
+
+  it("uploads a generated square swatch when editing with a new swatch image", async () => {
+    stubImageDimensions({ height: 1400, width: 1000 });
+    const selectedSwatch = new File(["new-swatch"], "new-swatch.webp", {
+      type: "image/webp",
+    });
+    const preparedSwatch = new File(
+      ["prepared-edit-swatch"],
+      "new-swatch.webp",
+      {
+        type: "image/webp",
+      },
+    );
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ fabricSwatchCrop, file, purpose }) =>
+        purpose === "fabric_swatch" && fabricSwatchCrop
+          ? {
+              file: preparedSwatch,
+              message: "Swatch cropped to a 512x512 square before upload.",
+              resized: true,
+            }
+          : {
+              file,
+              message: null,
+              resized: false,
+            },
+    );
+    const dependencies = createDependencies();
+
+    render(
+      <AdminFabricEditPage
+        dependencies={dependencies}
+        fabricId="00000000-0000-4000-8000-000000000903"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Internal fabric" });
+    fireEvent.change(screen.getByLabelText("Swatch image"), {
+      target: {
+        files: [selectedSwatch],
+      },
+    });
+    await screen.findByRole("group", { name: "Swatch crop" });
+    fireEvent.click(screen.getByRole("button", { name: "Save fabric" }));
+
+    await waitFor(() => {
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        fabricSwatchCrop: {
+          sourceSize: 1000,
+          sourceX: 0,
+          sourceY: 200,
+        },
+        file: selectedSwatch,
+        purpose: "fabric_swatch",
+      });
+    });
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "swatch-upload",
+      }),
+      preparedSwatch,
+    );
+    expect(dependencies.updateFabric).toHaveBeenCalledWith(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000903",
+      expect.objectContaining({
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+      }),
+    );
+  });
+
+  it("keeps AI reference upload preparation separate from swatch crop data", async () => {
+    stubImageDimensions({ height: 900, width: 1600 });
     const preparedAiReference = new File(["prepared"], "reference.jpg", {
       type: "image/jpeg",
     });
@@ -685,6 +1216,7 @@ describe("Admin catalog pages", () => {
         files: [new File(["swatch"], "swatch.png", { type: "image/png" })],
       },
     });
+    await screen.findByRole("group", { name: "Swatch crop" });
     fireEvent.change(screen.getByLabelText("AI reference image"), {
       target: {
         files: [
@@ -695,15 +1227,14 @@ describe("Admin catalog pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create fabric" }));
 
     await waitFor(() => {
-      expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
-        byte_size: 6,
-        content_type: "image/png",
-        purpose: "fabric_swatch",
+      expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+        file: expect.any(File),
+        purpose: "fabric_ai_reference",
       });
     });
-    expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
-      byte_size: preparedAiReference.size,
-      content_type: "image/jpeg",
+    expect(prepareAdminImageUploadFile).not.toHaveBeenCalledWith({
+      fabricSwatchCrop: expect.anything(),
+      file: expect.any(File),
       purpose: "fabric_ai_reference",
     });
     expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
@@ -711,26 +1242,6 @@ describe("Admin catalog pages", () => {
         upload_id: "ai-reference-upload",
       }),
       preparedAiReference,
-    );
-    expect(
-      screen.getByText(
-        "Image resized from 4000x3000 to 2048x1536 before upload.",
-      ),
-    ).toBeInTheDocument();
-    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledTimes(2);
-    expect(dependencies.completeUpload).toHaveBeenCalledWith(
-      "admin-token",
-      "swatch-upload",
-    );
-    expect(dependencies.createFabric).toHaveBeenCalledWith("admin-token", {
-      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
-      internal_name: "Internal fabric",
-      is_premium: true,
-      public_name: "Boucle ivoire",
-      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
-    });
-    expect(dependencies.navigate).toHaveBeenCalledWith(
-      "/admin/fabrics/00000000-0000-4000-8000-000000000903",
     );
   });
 

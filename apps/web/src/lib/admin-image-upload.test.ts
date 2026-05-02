@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prepareAdminImageUploadFile } from "./admin-image-upload";
+import {
+  ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+  getDefaultFabricSwatchCrop,
+  prepareAdminImageUploadFile,
+} from "./admin-image-upload";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -7,6 +11,22 @@ afterEach(() => {
 });
 
 describe("admin image upload preparation", () => {
+  it("returns the largest centered square crop for wide source images", () => {
+    expect(getDefaultFabricSwatchCrop({ width: 1600, height: 900 })).toEqual({
+      sourceSize: 900,
+      sourceX: 350,
+      sourceY: 0,
+    });
+  });
+
+  it("returns the largest centered square crop for tall source images", () => {
+    expect(getDefaultFabricSwatchCrop({ width: 900, height: 1600 })).toEqual({
+      sourceSize: 900,
+      sourceX: 0,
+      sourceY: 350,
+    });
+  });
+
   it("returns non-render input uploads unchanged", async () => {
     const createImageBitmapMock = vi.fn();
     vi.stubGlobal("createImageBitmap", createImageBitmapMock);
@@ -134,6 +154,73 @@ describe("admin image upload preparation", () => {
     expect(canvas.width).toBe(2048);
     expect(canvas.height).toBe(1536);
     expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 2048, 1536);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("creates a generated square swatch file from a normalized crop", async () => {
+    const close = vi.fn();
+    const bitmap = {
+      close,
+      height: 900,
+      width: 1200,
+    };
+    const createImageBitmapMock = vi.fn(async () => bitmap);
+    const drawImage = vi.fn();
+    const toBlob = vi.fn(
+      (
+        callback: BlobCallback,
+        type?: string,
+        quality?: number,
+      ) => {
+        expect(type).toBe("image/png");
+        expect(quality).toBe(0.9);
+        callback(new Blob(["cropped"], { type }));
+      },
+    );
+    const canvas = {
+      getContext: vi.fn(() => ({
+        drawImage,
+      })),
+      height: 0,
+      toBlob,
+      width: 0,
+    } as unknown as HTMLCanvasElement;
+    vi.stubGlobal("createImageBitmap", createImageBitmapMock);
+    vi.spyOn(document, "createElement").mockReturnValue(canvas);
+    const file = new File(["raw-swatch"], "swatch.png", {
+      lastModified: 84,
+      type: "image/png",
+    });
+
+    const result = await prepareAdminImageUploadFile({
+      fabricSwatchCrop: {
+        sourceSize: 1000,
+        sourceX: -50,
+        sourceY: 200,
+      },
+      file,
+      purpose: "fabric_swatch",
+    });
+
+    expect(result.file).not.toBe(file);
+    expect(result.file.name).toBe("swatch.png");
+    expect(result.file.type).toBe("image/png");
+    expect(result.file.size).toBe(7);
+    expect(result.resized).toBe(true);
+    expect(result.message).toBe("Swatch cropped to a 512x512 square before upload.");
+    expect(canvas.width).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
+    expect(canvas.height).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
+    expect(drawImage).toHaveBeenCalledWith(
+      bitmap,
+      0,
+      0,
+      900,
+      900,
+      0,
+      0,
+      ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+      ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+    );
     expect(close).toHaveBeenCalledOnce();
   });
 });

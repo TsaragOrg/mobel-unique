@@ -2,7 +2,7 @@
 
 Plan: PLAN-0049
 Spec: SPEC-0016
-Status: active
+Status: done
 Owner area: web
 Depends on: SPEC-0001, SPEC-0003, SPEC-0005, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0013, PLAN-0018, PLAN-0044
 Affected packages:
@@ -55,8 +55,11 @@ const sourceY = Math.round((height - sourceSize) / 2);
 ```
 
 Zoom reduces `sourceSize` while keeping the crop centered and clamped inside the
-image. Dragging moves `sourceX` and `sourceY`, also clamped inside the image.
-The preview frame must stay square at every viewport width.
+image. The admin can zoom with the range control, with a two-finger pinch on
+touch-capable devices, or with the mouse wheel while the pointer is over the
+crop frame. Zoom is capped at `500%`. Dragging moves `sourceX` and `sourceY`,
+also clamped inside the image. The preview frame must stay square at every
+viewport width.
 
 On form submit, the existing `buildFabricPayload` path still decides whether a
 new swatch file exists. When it exists, the upload preparation step creates a
@@ -95,6 +98,8 @@ file keeps using its current preparation path unchanged.
     zoom range control, and reset button.
   - Add pointer dragging inside the square frame for desktop and touch-capable
     browsers.
+  - Add two-finger pinch zoom for touch-capable browsers and mouse wheel zoom
+    over the square frame for desktop browsers.
   - Pass the selected crop to `buildFabricPayload`.
   - Pass the crop only to the `fabric_swatch` upload preparation call.
   - Keep edit behavior unchanged when the admin does not choose a new swatch
@@ -109,6 +114,8 @@ file keeps using its current preparation path unchanged.
   - Cover fabric edit with a new swatch uploading the generated square swatch
     file.
   - Cover reset returning to the centered square crop.
+  - Cover mouse wheel zoom and two-finger pinch zoom updating the submitted
+    swatch crop.
 - Modify `apps/web/src/app/globals.css`
   - Add admin cropper classes for the square frame, draggable image, crop
     overlay, zoom row, reset button placement, and mobile widths.
@@ -123,11 +130,11 @@ file keeps using its current preparation path unchanged.
   pnpm branch:create -- --type feature --area web --work "Admin fabric swatch cropper" --spec SPEC-0016 --plan PLAN-0049
   ```
 
-- [ ] Add failing tests in `apps/web/src/lib/admin-image-upload.test.ts` for
+- [x] Add failing tests in `apps/web/src/lib/admin-image-upload.test.ts` for
       default crop calculation, crop clamping, and generated square swatch file
       creation.
 
-- [ ] Run the focused helper test and confirm it fails for missing crop support:
+- [x] Run the focused helper test and confirm it fails for missing crop support:
 
   ```bash
   pnpm --filter @mobel-unique/web test -- src/lib/admin-image-upload.test.ts
@@ -136,59 +143,61 @@ file keeps using its current preparation path unchanged.
   Expected before implementation: failure because the crop exports and generated
   swatch preparation do not exist yet.
 
-- [ ] Implement the crop helper changes in
+- [x] Implement the crop helper changes in
       `apps/web/src/lib/admin-image-upload.ts`.
 
-- [ ] Run the focused helper test again and confirm it passes:
+- [x] Run the focused helper test again and confirm it passes:
 
   ```bash
   pnpm --filter @mobel-unique/web test -- src/lib/admin-image-upload.test.ts
   ```
 
-- [ ] Add failing UI tests in
+- [x] Add failing UI tests in
       `apps/web/src/app/admin/AdminCatalogPages.test.tsx` for create-page crop
       controls, create upload using the generated swatch file, edit without a
       new swatch keeping the existing asset, edit with a new swatch using the
       generated file, AI reference upload staying unchanged, and crop reset.
 
-- [ ] Run the focused admin page test and confirm it fails for missing cropper
+- [x] Run the focused admin page test and confirm it fails for missing cropper
       UI behavior:
 
   ```bash
   pnpm --filter @mobel-unique/web test -- src/app/admin/AdminCatalogPages.test.tsx
   ```
 
-- [ ] Implement the cropper UI, selected swatch crop values, reset action,
+- [x] Implement the cropper UI, selected swatch crop values, reset action,
       pointer dragging, zoom range, and submit wiring in
       `apps/web/src/app/admin/AdminCatalogPages.tsx`.
 
-- [ ] Add the cropper styles in `apps/web/src/app/globals.css`.
+- [x] Add the cropper styles in `apps/web/src/app/globals.css`.
 
-- [ ] Run the focused admin page test again and confirm it passes:
+- [x] Run the focused admin page test again and confirm it passes:
 
   ```bash
   pnpm --filter @mobel-unique/web test -- src/app/admin/AdminCatalogPages.test.tsx
   ```
 
-- [ ] Run the web typecheck:
+- [x] Run the web typecheck:
 
   ```bash
   pnpm --filter @mobel-unique/web typecheck
   ```
 
-- [ ] Browser-check `/admin/fabrics/new` and `/admin/fabrics/[fabric_id]` with a
+- [x] Browser-check `/admin/fabrics/new` and `/admin/fabrics/[fabric_id]` with a
       seeded local admin session:
   - selecting a swatch image opens crop controls;
   - dragging changes the visible crop;
   - zoom changes the visible crop;
+  - mouse wheel over the crop frame changes the visible crop;
+  - two-finger pinch on the crop frame changes the visible crop;
   - reset returns to the centered square crop;
   - submitting creates or updates the fabric;
   - editing without a new swatch keeps the old swatch.
 
-- [ ] Update `docs/roadmap/web.md` from Active to Done for PLAN-0049 after
+- [x] Update `docs/roadmap/web.md` from Active to Done for PLAN-0049 after
       implementation and verification.
 
-- [ ] Run the workflow checks before closing the plan:
+- [x] Run the workflow checks before closing the plan:
 
   ```bash
   pnpm spec:check
