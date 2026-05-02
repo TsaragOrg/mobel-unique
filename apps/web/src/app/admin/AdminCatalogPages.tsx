@@ -3322,6 +3322,11 @@ function RenderCoverageSection({
   const [initialPromptNotes, setInitialPromptNotes] = useState<
     Record<string, string>
   >({});
+  // RU: Эти отметки показывают, где админ открыл необязательное уточнение для создания картинки.
+  // FR: Ces reperes montrent ou l'admin a ouvert la note facultative pour creer une image.
+  const [openPromptNoteCellIds, setOpenPromptNoteCellIds] = useState<
+    Record<string, boolean>
+  >({});
 
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
@@ -3358,6 +3363,15 @@ function RenderCoverageSection({
     }));
   }
 
+  // RU: Это действие открывает или прячет необязательное уточнение рядом с кнопкой создания.
+  // FR: Cette action ouvre ou cache la note facultative pres du bouton de creation.
+  function handleTogglePromptNote(cellId: string) {
+    setOpenPromptNoteCellIds((current) => ({
+      ...current,
+      [cellId]: !current[cellId],
+    }));
+  }
+
   // RU: Это действие показывает поле улучшения для выбранного варианта.
   // FR: Cette action affiche le champ d'amelioration pour l'option choisie.
   function handleOpenRefineCandidate(candidateId: string) {
@@ -3374,10 +3388,17 @@ function RenderCoverageSection({
 
   // RU: Это действие открывает подробности выбранной ячейки картинки.
   // FR: Cette action ouvre les details de la case image choisie.
+  // RU: Если в ячейке есть готовые варианты, список появляется сразу.
+  // FR: Si la case a des options pretes, la liste apparait tout de suite.
   function handleOpenRenderCell(
     cell: AdminCatalogRenderCell,
     opener: HTMLButtonElement,
   ) {
+    // RU: Этот флажок говорит, надо ли сразу показать список готовых вариантов.
+    // FR: Ce repere dit si la liste des options pretes doit apparaitre tout de suite.
+    const shouldOpenCandidateReview =
+      getRenderCellDisplayStatus(cell) === "candidate";
+
     renderCellOpenerRef.current = opener;
     setSelectedCellId(cell.id);
     setReviewCellId(null);
@@ -3386,6 +3407,10 @@ function RenderCoverageSection({
     setCompareCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
     setLargeImagePreview(null);
+
+    if (shouldOpenCandidateReview) {
+      void handleReviewCandidates(cell);
+    }
   }
 
   // RU: Это действие закрывает подробности ячейки картинки.
@@ -3464,7 +3489,6 @@ function RenderCoverageSection({
     ? reviewCandidates.filter(
         (candidate) =>
           candidate.render_cell_id === selectedCell.id &&
-          !candidate.is_current &&
           Boolean(candidate.preview_url),
       )
     : [];
@@ -3537,7 +3561,9 @@ function RenderCoverageSection({
     setActiveCellId(cell.id);
 
     try {
-      const promptNote = initialPromptNotes[cell.id]?.trim() || null;
+      const promptNote = openPromptNoteCellIds[cell.id]
+        ? initialPromptNotes[cell.id]?.trim() || null
+        : null;
       await dependencies.createFabricRenderJob(accessToken, {
         fabric_id: cell.fabric_id,
         generation_mode: "initial",
@@ -3587,9 +3613,13 @@ function RenderCoverageSection({
     }
   }
 
-  // RU: Это действие открывает отдельное окно сравнения исходного фото и выбранного варианта.
-  // FR: Cette action ouvre une fenetre separee pour comparer la photo source et l'option choisie.
+  // RU: Это действие открывает сравнение исходного фото и варианта после клика по фото.
+  // FR: Cette action ouvre la comparaison entre la photo source et l'option apres un clic sur l'image.
   function handleCompareCandidate(candidate: AdminCatalogRenderCandidate) {
+    if (!selectedSourcePhotoPreviewUrl) {
+      return;
+    }
+
     setOpenRefineCandidateId(null);
     setIsCurrentRenderPreviewOpen(false);
     setLargeImagePreview(null);
@@ -3807,6 +3837,70 @@ function RenderCoverageSection({
       (cell) =>
         cell.fabric_id === fabricId &&
         cell.visual_matrix_column_id === columnId,
+    );
+  }
+
+  // RU: Этот участок показывает главную кнопку создания и прячет дополнительный текст за маленькой ссылкой.
+  // FR: Cette zone montre le bouton principal de creation et cache le texte en plus derriere un petit lien.
+  function buildGenerateAction({
+    busyLabel,
+    cell,
+    label,
+    onGenerate,
+  }: {
+    busyLabel: string;
+    cell: AdminCatalogRenderCell;
+    label: string;
+    onGenerate: () => void;
+  }) {
+    // RU: Эти значения выбирают, видно ли поле уточнения и как оно связано с подписью.
+    // FR: Ces valeurs choisissent si le champ de note est visible et comment il est relie au libelle.
+    const isPromptNoteOpen = Boolean(openPromptNoteCellIds[cell.id]);
+    const promptNoteId = `prompt_note_${cell.id}`;
+
+    return (
+      <div
+        aria-label="Generate action"
+        className="admin-generation-action"
+        role="group"
+      >
+        <button
+          disabled={activeCellId === cell.id}
+          onClick={onGenerate}
+          type="button"
+        >
+          {activeCellId === cell.id ? busyLabel : label}
+        </button>
+        <button
+          aria-controls={isPromptNoteOpen ? promptNoteId : undefined}
+          aria-expanded={isPromptNoteOpen}
+          className="admin-optional-note-toggle"
+          onClick={() => handleTogglePromptNote(cell.id)}
+          type="button"
+        >
+          {isPromptNoteOpen ? "Hide optional note" : "Add optional note"}
+        </button>
+        {isPromptNoteOpen ? (
+          <div className="admin-optional-note-panel">
+            <p className="admin-muted">
+              The standard generation prompt is used automatically. Add this
+              only when you want an extra instruction.
+            </p>
+            <label className="field" htmlFor={promptNoteId}>
+              <span>Optional note</span>
+              <textarea
+                id={promptNoteId}
+                name={promptNoteId}
+                onChange={(event) =>
+                  handlePromptNoteChange(cell.id, event.currentTarget.value)
+                }
+                rows={2}
+                value={initialPromptNotes[cell.id] ?? ""}
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -4051,15 +4145,17 @@ function RenderCoverageSection({
                   ) : null}
                   {canGenerateNewCandidate &&
                   reviewCellId !== selectedCell.id ? (
-                    <button
-                      disabled={activeCellId === selectedCell.id}
-                      onClick={() => void handleGenerateNewCandidate(selectedCell)}
-                      type="button"
-                    >
-                      {activeCellId === selectedCell.id
-                        ? "Queueing"
-                        : "Generate new candidate"}
-                    </button>
+                    <>
+                      {/* RU: Здесь основная кнопка видна сразу, а уточнение открывается отдельно. */}
+                      {/* FR: Ici le bouton principal est visible, et la note s'ouvre a part. */}
+                      {buildGenerateAction({
+                        busyLabel: "Queueing",
+                        cell: selectedCell,
+                        label: "Generate new candidate",
+                        onGenerate: () =>
+                          void handleGenerateNewCandidate(selectedCell),
+                      })}
+                    </>
                   ) : null}
                   {selectedDisplayBlockers.length > 0 ? (
                     <div className="admin-cell-blockers">
@@ -4078,23 +4174,22 @@ function RenderCoverageSection({
                   ) : null}
                   {isSourcePhotoCompleteCell(selectedCell) ? (
                     <span className="admin-muted">Source photo is current</span>
-                  ) : selectedStatus !== "blocked" &&
-                    selectedStatus !== "queued" &&
-                    selectedStatus !== "processing" ? (
-                    <label className="field">
-                      <span>Prompt note</span>
-                      <textarea
-                        name={`prompt_note_${selectedCell.id}`}
-                        onChange={(event) =>
-                          handlePromptNoteChange(
-                            selectedCell.id,
-                            event.currentTarget.value,
-                          )
-                        }
-                        rows={2}
-                        value={initialPromptNotes[selectedCell.id] ?? ""}
-                      />
-                    </label>
+                  ) : null}
+                  {selectedStatus === "missing" && selectedPrimaryAction ? (
+                    <>
+                      {/* RU: Здесь создание запускается сразу, а лишнее уточнение остается свернутым. */}
+                      {/* FR: Ici la creation part directement, et la note en plus reste fermee. */}
+                      {buildGenerateAction({
+                        busyLabel: "Working",
+                        cell: selectedCell,
+                        label: selectedPrimaryAction.label,
+                        onGenerate: () =>
+                          handleRenderCellPrimaryAction(
+                            selectedCell,
+                            selectedStatus,
+                          ),
+                      })}
+                    </>
                   ) : null}
                   {/* RU: Этот список показывает готовые варианты для выбранной ячейки. */}
                   {/* FR: Cette liste montre les options pretes pour la case choisie. */}
@@ -4106,24 +4201,26 @@ function RenderCoverageSection({
                       {reviewCandidates.map((candidate) => (
                         <div className="admin-candidate-row" key={candidate.id}>
                           {candidate.preview_url ? (
-                            <button
-                              aria-label={`Open candidate preview ${candidate.id} larger`}
-                              className="admin-image-preview-button"
-                              onClick={() =>
-                                handleOpenLargeImagePreview({
-                                  alt: `Candidate preview ${candidate.id}`,
-                                  src: candidate.preview_url ?? "",
-                                  title: "Candidate",
-                                })
-                              }
-                              type="button"
-                            >
+                            selectedSourcePhotoPreviewUrl ? (
+                              <button
+                                aria-label={`Open candidate preview ${candidate.id} in comparison`}
+                                className="admin-image-preview-button admin-candidate-compare-button"
+                                onClick={() => handleCompareCandidate(candidate)}
+                                type="button"
+                              >
+                                <img
+                                  alt={`Candidate preview ${candidate.id}`}
+                                  className="admin-preview-image"
+                                  src={candidate.preview_url}
+                                />
+                              </button>
+                            ) : (
                               <img
                                 alt={`Candidate preview ${candidate.id}`}
                                 className="admin-preview-image"
                                 src={candidate.preview_url}
                               />
-                            </button>
+                            )
                           ) : null}
                           <span>
                             {candidate.generation_mode} -{" "}
@@ -4132,16 +4229,6 @@ function RenderCoverageSection({
                           <span className="admin-muted">
                             {candidate.is_current ? "Current" : "Candidate"}
                           </span>
-                          {!candidate.is_current && candidate.preview_url ? (
-                            <button
-                              aria-label={`Compare candidate ${candidate.id}`}
-                              disabled={!selectedSourcePhotoPreviewUrl}
-                              onClick={() => handleCompareCandidate(candidate)}
-                              type="button"
-                            >
-                              Compare
-                            </button>
-                          ) : null}
                           <button
                             disabled={
                               candidate.is_current ||
@@ -4204,17 +4291,17 @@ function RenderCoverageSection({
                         </div>
                       ))}
                       {canGenerateNewCandidate ? (
-                        <button
-                          disabled={activeCellId === selectedCell.id}
-                          onClick={() =>
-                            void handleGenerateNewCandidate(selectedCell)
-                          }
-                          type="button"
-                        >
-                          {activeCellId === selectedCell.id
-                            ? "Queueing"
-                            : "Generate new candidate"}
-                        </button>
+                        <>
+                          {/* RU: Здесь можно попросить еще один вариант и при желании добавить уточнение. */}
+                          {/* FR: Ici on peut demander une autre option et ajouter une note si besoin. */}
+                          {buildGenerateAction({
+                            busyLabel: "Queueing",
+                            cell: selectedCell,
+                            label: "Generate new candidate",
+                            onGenerate: () =>
+                              void handleGenerateNewCandidate(selectedCell),
+                          })}
+                        </>
                       ) : null}
                     </div>
                   ) : null}
@@ -4249,7 +4336,7 @@ function RenderCoverageSection({
                     </form>
                   ) : null}
                 </div>
-                {selectedPrimaryAction ? (
+                {selectedPrimaryAction && selectedStatus !== "missing" ? (
                   <footer className="admin-render-cell-sheet-footer">
                     <button
                       disabled={
@@ -4450,7 +4537,10 @@ function RenderCoverageSection({
                       Next candidate
                     </button>
                     <button
-                      disabled={activeCellId === selectedCell.id}
+                      disabled={
+                        compareCandidate.is_current ||
+                        activeCellId === selectedCell.id
+                      }
                       onClick={() => void handleUseCandidate(compareCandidate)}
                       type="button"
                     >

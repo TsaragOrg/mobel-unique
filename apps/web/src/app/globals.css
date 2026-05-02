@@ -1855,6 +1855,67 @@ button:disabled {
   width: fit-content;
 }
 
+.admin-candidate-compare-button {
+  cursor: pointer;
+}
+
+.admin-generation-action {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.admin-optional-note-toggle {
+  align-self: start;
+  background: transparent;
+  border: 0;
+  color: var(--admin-soft, #8a8a8a);
+  cursor: pointer;
+  display: inline;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.2;
+  min-height: 0;
+  padding: 1px 0;
+  text-align: left;
+  text-decoration: none;
+}
+
+.admin-optional-note-toggle:hover {
+  color: var(--admin-ink, #171717);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-optional-note-panel {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+}
+
+.admin-optional-note-panel .admin-muted {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.admin-optional-note-panel .field {
+  gap: 5px;
+}
+
+.admin-optional-note-panel .field span {
+  color: var(--admin-soft, #8a8a8a);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.admin-optional-note-panel .field textarea {
+  font-size: 0.875rem;
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
 .admin-image-preview-button:focus-visible {
   border-radius: 6px;
   outline: 2px solid var(--admin-focus, #0e5f50);

@@ -1193,10 +1193,24 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Boucle ivoire, Front: Missing/i }),
     );
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
-    const generateButton = within(dialog).getByRole("button", {
+    const generationGroup = within(dialog).getByRole("group", {
+      name: "Generate action",
+    });
+    const generateButton = within(generationGroup).getByRole("button", {
       name: "Generate",
     });
 
+    expect(
+      within(dialog).queryByLabelText("Prompt note"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(generationGroup).queryByLabelText("Optional note"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(generationGroup).getByRole("button", {
+        name: "Add optional note",
+      }),
+    ).toBeInTheDocument();
     expect(generateButton).toBeEnabled();
     fireEvent.click(generateButton);
 
@@ -1808,12 +1822,30 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Boucle ivoire, Front: Missing/i }),
     );
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
-    fireEvent.change(within(dialog).getByLabelText("Prompt note"), {
-      target: {
-        value: "Keep seams visible",
-      },
+    const generationGroup = within(dialog).getByRole("group", {
+      name: "Generate action",
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    fireEvent.click(
+      within(generationGroup).getByRole("button", {
+        name: "Add optional note",
+      }),
+    );
+    expect(
+      within(generationGroup).getByText(
+        "The standard generation prompt is used automatically. Add this only when you want an extra instruction.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(
+      within(generationGroup).getByLabelText("Optional note"),
+      {
+        target: {
+          value: "Keep seams visible",
+        },
+      },
+    );
+    fireEvent.click(
+      within(generationGroup).getByRole("button", { name: "Generate" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.createFabricRenderJob).toHaveBeenCalledWith(
@@ -2221,7 +2253,7 @@ describe("Admin catalog pages", () => {
     });
   });
 
-  it("reviews generated candidates and attaches a manual render from coverage", async () => {
+  it("opens generated candidate review directly and attaches a manual render from coverage", async () => {
     const assignedFabric = {
       assigned_at: "2026-04-28T10:15:00.000Z",
       fabric: {
@@ -2335,10 +2367,13 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Boucle ivoire, Front: Candidate/i }),
     );
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Review candidates" }),
-    );
 
+    await waitFor(() => {
+      expect(dependencies.listRenderCellCandidates).toHaveBeenCalledWith(
+        "admin-token",
+        renderCell.id,
+      );
+    });
     await within(dialog).findByAltText(
       "Candidate preview 00000000-0000-4000-8000-000000000908",
     );
@@ -2616,8 +2651,27 @@ describe("Admin catalog pages", () => {
         "Candidate preview 00000000-0000-4000-8000-000000000909",
       ),
     ).toBeInTheDocument();
+    const candidateGenerationGroup = within(cellDialog).getByRole("group", {
+      name: "Generate action",
+    });
+    expect(
+      within(candidateGenerationGroup).queryByLabelText("Optional note"),
+    ).not.toBeInTheDocument();
     fireEvent.click(
-      within(cellDialog).getByRole("button", {
+      within(candidateGenerationGroup).getByRole("button", {
+        name: "Add optional note",
+      }),
+    );
+    fireEvent.change(
+      within(candidateGenerationGroup).getByLabelText("Optional note"),
+      {
+        target: {
+          value: "Make the fabric a little smoother",
+        },
+      },
+    );
+    fireEvent.click(
+      within(candidateGenerationGroup).getByRole("button", {
         name: "Generate new candidate",
       }),
     );
@@ -2629,39 +2683,47 @@ describe("Admin catalog pages", () => {
         expect.objectContaining({
           fabric_id: fabricId,
           generation_mode: "initial",
-          prompt_note: null,
+          prompt_note: "Make the fabric a little smoother",
           sofa_id: sofaId,
           visual_matrix_column_id: visualColumn.id,
         }),
       );
     });
 
-    // RU: Эта картинка нужна, чтобы проверить большой просмотр варианта по клику.
-    // FR: Cette image sert a verifier le grand apercu de l'option au clic.
+    // RU: Эта картинка нужна, чтобы проверить сравнение текущего варианта по клику.
+    // FR: Cette image sert a verifier la comparaison de l'option actuelle au clic.
+    const currentCandidatePreview = within(cellDialog).getByRole("img", {
+      name: "Candidate preview 00000000-0000-4000-8000-000000000908",
+    });
+
+    fireEvent.click(currentCandidatePreview);
+    const currentCandidateCompareDialog = screen.getByRole("dialog", {
+      name: /Compare render candidate 00000000-0000-4000-8000-000000000908/i,
+    });
+    expect(
+      within(currentCandidateCompareDialog).getByRole("button", {
+        name: "Use candidate",
+      }),
+    ).toBeDisabled();
+    fireEvent.click(
+      within(currentCandidateCompareDialog).getByRole("button", {
+        name: "Close comparison",
+      }),
+    );
+
+    expect(
+      within(cellDialog).queryByRole("button", {
+        name: "Compare candidate 00000000-0000-4000-8000-000000000909",
+      }),
+    ).not.toBeInTheDocument();
+
+    // RU: Эта картинка нужна, чтобы проверить сравнение нового варианта по клику.
+    // FR: Cette image sert a verifier la comparaison de la nouvelle option au clic.
     const candidatePreview = within(cellDialog).getByRole("img", {
       name: "Candidate preview 00000000-0000-4000-8000-000000000909",
     });
 
     fireEvent.click(candidatePreview);
-    const candidateImageDialog = screen.getByRole("dialog", {
-      name: /Large image: Candidate/i,
-    });
-    expect(
-      within(candidateImageDialog).getByRole("img", {
-        name: "Candidate preview 00000000-0000-4000-8000-000000000909",
-      }),
-    ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
-    fireEvent.click(
-      within(candidateImageDialog).getByRole("button", {
-        name: "Close large image",
-      }),
-    );
-
-    fireEvent.click(
-      within(cellDialog).getByRole("button", {
-        name: "Compare candidate 00000000-0000-4000-8000-000000000909",
-      }),
-    );
     const compareDialog = screen.getByRole("dialog", {
       name: /Compare render candidate/i,
     });
@@ -2676,6 +2738,25 @@ describe("Admin catalog pages", () => {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
       }),
     ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
+
+    fireEvent.click(
+      within(compareDialog).getByRole("img", {
+        name: "Candidate preview 00000000-0000-4000-8000-000000000909",
+      }),
+    );
+    const candidateImageDialog = screen.getByRole("dialog", {
+      name: /Large image: Candidate/i,
+    });
+    expect(
+      within(candidateImageDialog).getByRole("img", {
+        name: "Candidate preview 00000000-0000-4000-8000-000000000909",
+      }),
+    ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
+    fireEvent.click(
+      within(candidateImageDialog).getByRole("button", {
+        name: "Close large image",
+      }),
+    );
 
     fireEvent.click(
       within(compareDialog).getByRole("button", { name: "Use candidate" }),
