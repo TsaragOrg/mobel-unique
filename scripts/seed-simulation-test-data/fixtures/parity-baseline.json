@@ -1,0 +1,36 @@
+{
+  "$schema": "./parity-baseline.schema.json",
+  "version": "0",
+  "captured_from": "placeholder",
+  "captured_at": "",
+  "geometry_mode": "back_wall",
+  "tolerance": {
+    "dot_position_px": 24,
+    "line_position_px": 18,
+    "centroid_position_px": 36
+  },
+  "stage_1_corners": {
+    "image_width_px": 1024,
+    "image_height_px": 1024,
+    "expected_dots": [
+      { "label": "AC", "x": 0, "y": 0 },
+      { "label": "BC", "x": 0, "y": 0 },
+      { "label": "AB", "x": 0, "y": 0 },
+      { "label": "BD", "x": 0, "y": 0 }
+    ]
+  },
+  "stage_1_dimension_guide": {
+    "image_width_px": 1024,
+    "image_height_px": 1024,
+    "expected_lines": {
+      "wall_width_red_px_y": 0,
+      "wall_height_blue_px_x": 0,
+      "room_depth_green_px_x": 0
+    }
+  },
+  "stage_2_result": {
+    "image_width_px": 1024,
+    "image_height_px": 1024,
+    "expected_sofa_centroid": { "x": 0, "y": 0 }
+  }
+}

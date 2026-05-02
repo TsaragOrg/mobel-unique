@@ -299,3 +299,48 @@ Trigger another Edge Function invocation per regeneration request.
 `PLAN-0012` adds per-stage retry policy, expired-claim recovery, the
 24-hour retention purge, orphan upload cleanup, and the operational
 observability surface.
+
+## SPEC-0015 Worker Behavior Parity Gate
+
+The public simulation wizard ships with a release-blocker E2E test
+under `apps/web/src/__tests__/parity-gate.e2e.test.ts` that asserts
+the UI flow produces a worker artifact set within tolerance of the
+terminal-harness baseline.
+
+The gate skips automatically unless `RUN_PARITY_GATE=1` is set, so
+regular CI does not consume OpenAI credits or assume a live worker is
+running.
+
+### Capturing or refreshing the baseline
+
+The fixtures live at:
+
+- `scripts/seed-simulation-test-data/fixtures/parity-room.jpg`
+- `scripts/seed-simulation-test-data/fixtures/parity-baseline.json`
+
+To regenerate the baseline against the canonical pipeline:
+
+```bash
+pnpm sim:live:back-wall \
+  --in scripts/seed-simulation-test-data/fixtures/parity-room.jpg \
+  --out scripts/seed-simulation-test-data/fixtures/parity-baseline-capture
+```
+
+This runs the local terminal harness end to end. After it completes,
+extract dot positions from the corners-annotated artifact, line
+positions from the dimension-guide artifact, and the sofa
+bounding-box centroid from the result artifact, and write them into
+`parity-baseline.json` matching the schema in the existing file.
+Bump the `version` field and update `captured_at`.
+
+### Running the gate
+
+```bash
+RUN_PARITY_GATE=1 pnpm --filter @mobel-unique/web exec \
+  vitest run src/__tests__/parity-gate.e2e.test.ts
+```
+
+If a tolerance fails, the prime suspect is the client-side
+compression step. PLAN-0041's notes recommend raising JPEG quality to
+0.95 or skipping compression for files under 5 MB before declaring
+the wizard plan done.
