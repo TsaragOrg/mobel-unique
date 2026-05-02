@@ -29,6 +29,8 @@
 | Done | SPEC-0014 | PLAN-0045 | Candidate render cells open candidate review directly from the Renders matrix. |
 | Done | SPEC-0014 | PLAN-0046 | Candidate photos open source-photo comparison directly without a separate Compare button. |
 | Done | SPEC-0014 | PLAN-0047 | Sofa edit prompt notes sit inside the matching Generate candidate action blocks. |
+| Active | SPEC-0015 | PLAN-0040 | Public simulation API foundation under `apps/web/src/lib`: `simulation-access-token.ts` (stateless HMAC stub token, HttpOnly+SameSite=Lax cookie, 24h TTL, Authorization-vs-cookie parsing), `simulation-rate-limit.ts` (per-IP and per-email caps with HMAC-salted subject hashing and UTC-midnight window alignment), `simulation-idempotency.ts` (acquire/finalize split for duplicate Idempotency-Key handling), and `simulation-public-api.ts` shared types from SPEC-0015. |
+| Active | SPEC-0015 | PLAN-0040 | Public simulation email-verification stub endpoints: `POST /api/public/simulation/email-verifications` and `POST /api/public/simulation/email-verifications/{verification_request_id}/verify` route handlers with the testable `simulation-public-route-handlers.ts` module and the `simulation-public-server.ts` DI factory. Catalog owner replaces the stub bodies later when real verification ships; the SPEC-0010 wire contract (cookie name, response shape, access-token format) stays locked. |
 
 ## Next
 

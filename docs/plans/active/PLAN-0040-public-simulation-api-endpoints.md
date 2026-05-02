@@ -16,9 +16,16 @@ Affected packages:
 - `apps/web/src/lib/simulation-rate-limit.ts` (new)
 - `apps/web/src/lib/simulation-idempotency.ts` (new)
 - `apps/web/src/lib/simulation-public-api.ts` (new — shared types)
+- `apps/web/src/lib/simulation-public-route-handlers.ts` (new)
+- `apps/web/src/lib/simulation-public-server.ts` (new)
+- `supabase/migrations/20260502000900_simulation_rate_limit_increment.sql` (new)
+- `supabase/migrations/20260502001000_simulation_idempotency_key_acquire.sql` (new)
+- `scripts/simulation-public-api-rpc-migration.test.mjs` (new)
 - `apps/web/.env.example`
 - `docs/roadmap/web.md`
 - `docs/roadmap/api.md`
+- `docs/roadmap/supabase.md`
+- `docs/roadmap/workflow.md`
 
 ## Goal
 
@@ -37,34 +44,42 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 ### Auth, rate limit, idempotency helpers
 
-- [ ] Add unit tests for `simulation-access-token.ts` covering issuance
+- [x] Add unit tests for `simulation-access-token.ts` covering issuance
       (deterministic stub token), HttpOnly+SameSite=Lax+Secure cookie
       attributes, hashed validation, and 24-hour TTL.
-- [ ] Implement `simulation-access-token.ts`.
-- [ ] Add unit tests for `simulation-rate-limit.ts` covering the rolling
+- [x] Implement `simulation-access-token.ts`.
+- [x] Add unit tests for `simulation-rate-limit.ts` covering the rolling
       24-hour windows, the `subject_kind in ('ip','email')` split, hashed
       subject values, and the configurable per-IP and per-email caps.
-- [ ] Implement `simulation-rate-limit.ts` reading
+- [x] Implement `simulation-rate-limit.ts` reading
       `SIMULATION_RATE_LIMIT_IP_PER_DAY` (default 3) and
       `SIMULATION_RATE_LIMIT_EMAIL_PER_DAY` (default 2).
-- [ ] Add unit tests for `simulation-idempotency.ts` covering happy-path
+- [x] Add unit tests for `simulation-idempotency.ts` covering happy-path
       (new key), duplicate (returns existing job id), and an expired-key
       record being treated as new.
-- [ ] Implement `simulation-idempotency.ts`.
-- [ ] Add shared types in `simulation-public-api.ts` mirroring the SPEC-0015
+- [x] Implement `simulation-idempotency.ts`.
+- [x] Add shared types in `simulation-public-api.ts` mirroring the SPEC-0015
       payload shapes (request/response for each endpoint, status response
       with optional signed URLs).
+- [x] Add atomic RPC migration `increment_simulation_rate_limit` so the
+      rate-limit increment is race-free at the 24-hour window boundary,
+      plus matching Vitest regression in
+      `scripts/simulation-public-api-rpc-migration.test.mjs`.
+- [x] Add atomic RPC migration `acquire_simulation_idempotency_key` and
+      `finalize_simulation_idempotency_key` so duplicate Idempotency-Key
+      requests return the original `simulation_job_id` without ever
+      double-creating a job, plus matching Vitest regression.
 
 ### Email verification stubs
 
-- [ ] Add route handler test for
+- [x] Add route handler test for
       `POST /api/public/simulation/email-verifications` — accepts
       `email + consent_email_use=true`, returns deterministic
       `verification_request_id` and `expires_at`, persists nothing.
-- [ ] Implement the stub route handler.
-- [ ] Add route handler test for `.../verify` — returns deterministic
+- [x] Implement the stub route handler.
+- [x] Add route handler test for `.../verify` — returns deterministic
       `simulation_access_token` and sets the cookie.
-- [ ] Implement the verify stub.
+- [x] Implement the verify stub.
 
 ### `POST /api/public/simulations` (upload + create job)
 
@@ -141,6 +156,19 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 - `docs/roadmap/web.md`
 - `docs/roadmap/api.md`
+- `docs/roadmap/supabase.md`
+- `docs/roadmap/workflow.md`
+
+## Delivery split
+
+Phase A (helpers + types + RPC migrations) and Phase B (email
+verification stubs) ship in the first PR; Phase C (POST/GET/dimensions/
+regenerations endpoints with the production create-job RPC, multipart
+upload, atomic rollback, and pgmq enqueue) and Phase D (env.example +
+roadmap follow-up + final smoke) ship in a follow-up PR off `dev`.
+Splitting keeps the diff reviewable, lets the foundation merge before
+the heavier DB integration work, and respects the recorded ship
+workflow that prefers atomic per-PR merges.
 
 ## Notes
 
