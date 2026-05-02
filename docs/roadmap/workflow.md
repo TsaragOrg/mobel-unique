@@ -42,6 +42,7 @@
 | Active | SPEC-0015 | PLAN-0038 | Regression test added for the Stage 1 claim migration (`20260502000100`) that asserts `drop function if exists` precedes both `create or replace function` calls and both functions return `room_geometry_mode` coalesced to `back_wall`. |
 | Active | SPEC-0015 | PLAN-0039 | Vitest regression test added for the three SPEC-0015 persistence migrations (`simulation_idempotency_keys`, `simulation_rate_limits`, `simulation_cost_meter`) covering schema shape, primary keys, constraints, indexes, and service-role-only RLS policies. |
 | Active | SPEC-0015 | PLAN-0039 | Vitest regression test added for the cost-meter pause and purge-extension migrations: asserts the `simulation_cost_meter_paused()` helper exists, all three claim RPCs short-circuit on it, the per-job purge deletes idempotency keys, and the two cleanup helpers ship with the right defaults and grants. |
+| Active | SPEC-0015 | PLAN-0039 | Vitest unit tests added for the worker cost-meter helper: `PROVIDER_ROLE_CHARGE_CENTS` shape, `parseDailyCapCents` defaults / valid / invalid handling, `chargeForRole` happy and swallow-and-log paths, and the Supabase RPC client building the right URL, headers, and payload. |
 
 ## Next
 

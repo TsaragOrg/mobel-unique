@@ -36,6 +36,13 @@ import {
   detectYellowDots,
   drawDimensionLines
 } from "./lib/lines.ts";
+import {
+  chargeForRole,
+  makeSupabaseCostMeterClient,
+  parseDailyCapCents,
+  type CostMeterClient,
+  type ProviderRole
+} from "./lib/cost-meter.ts";
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
@@ -425,6 +432,18 @@ async function processClaimedJob(
     (name) => Deno.env.get(name) ?? undefined
   );
 
+  const costMeter = makeSupabaseCostMeterClient({
+    supabaseUrl,
+    serviceRoleKey
+  });
+  const dailyCapCents = parseDailyCapCents(
+    Deno.env.get("SIMULATION_DAILY_COST_CAP_USD")
+  );
+  const chargeMeter = (role: ProviderRole) =>
+    chargeForRole(costMeter, role, dailyCapCents, (message) =>
+      console.warn(message)
+    );
+
   const scratchDir = await createScratchDir(claim.job_id);
   try {
     const sourceBytes = await downloadStorageObject(
@@ -491,6 +510,7 @@ async function processClaimedJob(
     const validationResult = await providers.validation.validateRoom(
       normalizedBytes
     );
+    await chargeMeter("validation");
     if (!validationResult.ok) {
       await failJobNonRetryable(
         supabaseUrl,
@@ -537,6 +557,7 @@ async function processClaimedJob(
     let cleanedRawBytes: Uint8Array;
     try {
       cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
+      await chargeMeter("cleaning");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code = message.toLowerCase().includes("no image data") ||
@@ -598,6 +619,7 @@ async function processClaimedJob(
       cleanedBytes,
       mode
     );
+    await chargeMeter("corners");
     if (!cornersResult.ok) {
       await failJobNonRetryable(
         supabaseUrl,
@@ -768,6 +790,18 @@ async function processPlacementJob(
     (name) => Deno.env.get(name) ?? undefined
   );
 
+  const costMeter = makeSupabaseCostMeterClient({
+    supabaseUrl,
+    serviceRoleKey
+  });
+  const dailyCapCents = parseDailyCapCents(
+    Deno.env.get("SIMULATION_DAILY_COST_CAP_USD")
+  );
+  const chargeMeter = (role: ProviderRole) =>
+    chargeForRole(costMeter, role, dailyCapCents, (message) =>
+      console.warn(message)
+    );
+
   const scratchDir = await createScratchDir(claim.job_id);
   try {
     const cleanedRawBytes = await downloadStorageObject(
@@ -854,6 +888,7 @@ async function processPlacementJob(
       suppliedDimensions,
       position
     });
+    await chargeMeter("placement");
 
     if (!placementResult.ok) {
       await callRpc<string>(

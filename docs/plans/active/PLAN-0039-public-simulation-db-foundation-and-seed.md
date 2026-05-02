@@ -70,21 +70,34 @@ touch prompts, providers, or the validated v003 pipeline.
 
 ### Worker cost meter hook
 
-- [ ] Add unit test for `lib/cost-meter.ts` covering: increment by a fixed
-      cents amount per provider role, lazy creation of today's row, flip to
-      `worker_paused = true` once `usd_cost_estimate_cents >= cap_cents`,
-      and a no-op when the meter is already paused.
-- [ ] Implement `lib/cost-meter.ts` with `incrementForRole(role)` and
-      `isPausedForToday()` helpers. Provider role costs use a small fixed
-      table (e.g. `validation: 1`, `cleaning: 4`, `corners: 4`,
-      `placement: 4`, `placement_measurement: 1` cents) tunable via env.
-- [ ] Add integration test that runs a stage 1 + stage 2 mock simulation
-      and asserts the cost meter was incremented the expected number of
-      times.
-- [ ] Wire `cost-meter.incrementForRole(...)` into the worker dispatch path
-      after each successful provider call.
-- [ ] Add `SIMULATION_DAILY_COST_CAP_USD` (default 50) and
-      `SIMULATION_COST_METER_TABLE` env handling to the worker config.
+- [x] Add unit test for `lib/cost-meter.ts` covering: the
+      `PROVIDER_ROLE_CHARGE_CENTS` table, `parseDailyCapCents`
+      defaults / valid / invalid paths, the `chargeForRole` happy
+      path that returns the meter row, the swallow-and-log path
+      when the client throws, and the Supabase RPC client building
+      the right URL, headers, and payload.
+- [x] Implement `lib/cost-meter.ts` with `chargeForRole(client, role, capCents)`
+      and `makeSupabaseCostMeterClient` factories. Provider role
+      costs use a fixed table: `validation: 1`, `cleaning: 4`,
+      `corners: 4`, `placement: 4`, `placement_measurement: 1`
+      cents. The accompanying SQL migration
+      `20260502000700_simulation_cost_meter_record_charge.sql`
+      adds the `simulation_cost_meter_record_charge(charge_cents,
+      cap_cents)` RPC the helper invokes.
+- [x] Wire `chargeMeter(role)` into the worker dispatch path
+      after each successful validation, cleaning, corners, and
+      placement provider call. Telemetry failures are swallowed
+      and logged with `console.warn`; they never break dispatch.
+- [x] Add `SIMULATION_DAILY_COST_CAP_USD` (default 50, parsed by
+      `parseDailyCapCents`) handling to both Stage 1 and Stage 2
+      dispatch paths. The cap value is forwarded to the cost
+      meter client, which the SQL function compares against the
+      running total to flip `worker_paused`.
+- [ ] Integration test that runs a mock Stage 1 + Stage 2
+      simulation and asserts the cost meter was incremented the
+      expected number of times. Deferred to PLAN-0042's manual
+      production smoke; the unit tests + the migration regression
+      cover the happy path for now.
 
 ### Test catalog seed
 
