@@ -31,6 +31,7 @@
   Progress: shared admin shell now covers login, dashboard, and protected catalog pages; sofa, fabric, and tag list headers use the shared page header pattern.
   Form progress: sofa create, fabric create, and fabric edit pages now use the shared header and form spacing pattern while preserving existing mutation and upload behavior.
   Sofa edit progress: the sofa edit workflow now uses the shared admin header while preserving workflow tabs and readiness signals.
+  Panel progress: sofa edit tabs, readiness chips, panel borders, render matrix controls, fabric cards, and drawer/dialog surfaces now use admin design tokens.
 - Build public catalog and sofa detail pages on top of the public catalog read API.
 - Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.

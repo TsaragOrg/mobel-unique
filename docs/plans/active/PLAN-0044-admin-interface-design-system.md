@@ -102,12 +102,12 @@ Existing tests to preserve and extend:
 ### Phase 5: Sofa Edit Shared Workflow
 
 - [x] Apply shared shell, header, navigation, and action hierarchy to `/admin/sofas/[sofa_id]`.
-- [ ] Preserve `SPEC-0014` workflow tabs: Basics, Fabrics, Visual matrix, Renders, Publish.
-- [ ] Standardize tab status signals and section headers.
-- [ ] Harmonize Basics, Fabrics, Visual matrix, Renders, and Publish panels without changing data behavior.
-- [ ] Keep publish/unpublish actions only in the Publish tab.
-- [ ] Keep render generation and candidate selection inside Renders.
-- [ ] Update tests that assert tab structure, readiness, and action boundaries.
+- [x] Preserve `SPEC-0014` workflow tabs: Basics, Fabrics, Visual matrix, Renders, Publish.
+- [x] Standardize tab status signals and section headers.
+- [x] Harmonize Basics, Fabrics, Visual matrix, Renders, and Publish panels without changing data behavior.
+- [x] Keep publish/unpublish actions only in the Publish tab.
+- [x] Keep render generation and candidate selection inside Renders.
+- [x] Update tests that assert tab structure, readiness, and action boundaries.
 
 ### Phase 6: Drawers, Modals, Previews, And Matrix
 
