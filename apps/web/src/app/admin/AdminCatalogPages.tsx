@@ -4072,6 +4072,7 @@ function RenderCoverageSection({
                   </div>
                   <button
                     aria-label="Close render cell"
+                    className="admin-render-cell-close-button"
                     onClick={handleCloseRenderCell}
                     ref={renderCellCloseButtonRef}
                     type="button"
@@ -4194,51 +4195,97 @@ function RenderCoverageSection({
                   {/* RU: Этот список показывает готовые варианты для выбранной ячейки. */}
                   {/* FR: Cette liste montre les options pretes pour la case choisie. */}
                   {reviewCellId === selectedCell.id ? (
-                    <div className="admin-candidate-list">
+                    <div
+                      aria-label="Review candidates"
+                      className="admin-candidate-list"
+                      role="group"
+                    >
+                      <div className="admin-candidate-list-header">
+                        <div>
+                          <h4>Candidates</h4>
+                          <p className="admin-muted">
+                            Choose the image that should become current, or ask
+                            for a focused refinement.
+                          </p>
+                        </div>
+                        <span>{reviewCandidates.length}</span>
+                      </div>
                       {reviewCandidates.length === 0 ? (
                         <span className="admin-muted">No candidates</span>
                       ) : null}
                       {reviewCandidates.map((candidate) => (
-                        <div className="admin-candidate-row" key={candidate.id}>
-                          {candidate.preview_url ? (
-                            selectedSourcePhotoPreviewUrl ? (
-                              <button
-                                aria-label={`Open candidate preview ${candidate.id} in comparison`}
-                                className="admin-image-preview-button admin-candidate-compare-button"
-                                onClick={() => handleCompareCandidate(candidate)}
-                                type="button"
-                              >
+                        <article
+                          aria-label={`Candidate ${candidate.id}`}
+                          className="admin-candidate-row"
+                          key={candidate.id}
+                        >
+                          <div className="admin-candidate-media">
+                            {candidate.preview_url ? (
+                              selectedSourcePhotoPreviewUrl ? (
+                                <button
+                                  aria-label={`Open candidate preview ${candidate.id} in comparison`}
+                                  className="admin-image-preview-button admin-candidate-compare-button"
+                                  onClick={() =>
+                                    handleCompareCandidate(candidate)
+                                  }
+                                  type="button"
+                                >
+                                  <img
+                                    alt={`Candidate preview ${candidate.id}`}
+                                    className="admin-preview-image"
+                                    src={candidate.preview_url}
+                                  />
+                                </button>
+                              ) : (
                                 <img
                                   alt={`Candidate preview ${candidate.id}`}
                                   className="admin-preview-image"
                                   src={candidate.preview_url}
                                 />
-                              </button>
+                              )
                             ) : (
-                              <img
-                                alt={`Candidate preview ${candidate.id}`}
-                                className="admin-preview-image"
-                                src={candidate.preview_url}
-                              />
-                            )
-                          ) : null}
-                          <span>
-                            {candidate.generation_mode} -{" "}
-                            {candidate.prompt_version}
-                          </span>
-                          <span className="admin-muted">
-                            {candidate.is_current ? "Current" : "Candidate"}
-                          </span>
-                          <button
-                            disabled={
-                              candidate.is_current ||
-                              activeCellId === selectedCell.id
-                            }
-                            onClick={() => void handleUseCandidate(candidate)}
-                            type="button"
-                          >
-                            Use candidate
-                          </button>
+                              <span className="admin-preview-image admin-preview-image-empty">
+                                No preview
+                              </span>
+                            )}
+                          </div>
+                          <div className="admin-candidate-body">
+                            <strong>
+                              {candidate.is_current
+                                ? "Current candidate"
+                                : "Candidate"}
+                            </strong>
+                            <span>
+                              {candidate.generation_mode} -{" "}
+                              {candidate.prompt_version}
+                            </span>
+                            <span className="admin-muted">
+                              {candidate.is_current ? "Current" : "Candidate"}
+                            </span>
+                          </div>
+                          <div className="admin-candidate-actions">
+                            <button
+                              disabled={
+                                candidate.is_current ||
+                                activeCellId === selectedCell.id
+                              }
+                              onClick={() => void handleUseCandidate(candidate)}
+                              type="button"
+                            >
+                              Use candidate
+                            </button>
+                            {openRefineCandidateId !== candidate.id ? (
+                              <button
+                                disabled={activeCellId === selectedCell.id}
+                                onClick={() =>
+                                  handleOpenRefineCandidate(candidate.id)
+                                }
+                                type="button"
+                              >
+                                Refine candidate
+                              </button>
+                            ) : null}
+                          </div>
                           {openRefineCandidateId === candidate.id ? (
                             <>
                               {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
@@ -4277,21 +4324,22 @@ function RenderCoverageSection({
                                 </button>
                               </form>
                             </>
-                          ) : (
-                            <button
-                              disabled={activeCellId === selectedCell.id}
-                              onClick={() =>
-                                handleOpenRefineCandidate(candidate.id)
-                              }
-                              type="button"
-                            >
-                              Use refine
-                            </button>
-                          )}
-                        </div>
+                          ) : null}
+                        </article>
                       ))}
                       {canGenerateNewCandidate ? (
-                        <>
+                        <div
+                          aria-label="Candidate follow-up actions"
+                          className="admin-candidate-followup-action"
+                          role="group"
+                        >
+                          <div>
+                            <strong>Need another option?</strong>
+                            <p className="admin-muted">
+                              Queue a new candidate without changing the
+                              current selection.
+                            </p>
+                          </div>
                           {/* RU: Здесь можно попросить еще один вариант и при желании добавить уточнение. */}
                           {/* FR: Ici on peut demander une autre option et ajouter une note si besoin. */}
                           {buildGenerateAction({
@@ -4301,7 +4349,7 @@ function RenderCoverageSection({
                             onGenerate: () =>
                               void handleGenerateNewCandidate(selectedCell),
                           })}
-                        </>
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
@@ -4336,7 +4384,9 @@ function RenderCoverageSection({
                     </form>
                   ) : null}
                 </div>
-                {selectedPrimaryAction && selectedStatus !== "missing" ? (
+                {selectedPrimaryAction &&
+                selectedStatus !== "missing" &&
+                reviewCellId !== selectedCell.id ? (
                   <footer className="admin-render-cell-sheet-footer">
                     <button
                       disabled={
