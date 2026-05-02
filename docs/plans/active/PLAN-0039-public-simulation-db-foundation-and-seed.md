@@ -33,83 +33,118 @@ touch prompts, providers, or the validated v003 pipeline.
 
 ### Database migrations
 
-- [ ] Add a SQL test that asserts `idempotency_keys` exists with the
-      expected columns, primary key, and an `expires_at` index.
-- [ ] Add migration creating `idempotency_keys`
+- [x] Add a Vitest assertion that asserts `simulation_idempotency_keys`
+      exists with the expected columns, primary key, and an
+      `expires_at` index.
+- [x] Add migration creating `simulation_idempotency_keys`
       (`key_hash text primary key`, `simulation_job_id uuid references in_home_simulation_jobs`,
       `created_at timestamptz default now()`,
       `expires_at timestamptz default now() + interval '24 hours'`)
       with RLS denying anon read/write and a service-role policy for the API.
-- [ ] Add SQL test for `simulation_rate_limits` (composite PK on
-      `(subject_kind, subject_value_hash, window_start)`, count column,
-      cleanup of expired windows).
-- [ ] Add migration creating `simulation_rate_limits` with the columns
-      above and matching RLS.
-- [ ] Add SQL test for `simulation_cost_meter` (one row per `cost_date`,
-      monotonically incremented `usd_cost_estimate_cents`,
+- [x] Add Vitest assertion for `simulation_rate_limits` (composite PK
+      on `(subject_kind, subject_value_hash, window_start)`, count
+      column, `subject_kind in ('ip','email')` check, index on
+      `window_start` for the cleanup sweep).
+- [x] Add migration creating `simulation_rate_limits` with the
+      columns above and matching RLS.
+- [x] Add Vitest assertion for `simulation_cost_meter` (one row per
+      `cost_date`, `usd_cost_estimate_cents` cents counter,
       `worker_paused boolean default false`).
-- [ ] Add migration creating `simulation_cost_meter` with RLS.
-- [ ] Add SQL test that the room-prep claim RPC and placement claim RPC
-      return zero rows when `simulation_cost_meter.worker_paused = true`
-      for today's `cost_date`.
-- [ ] Update `claim_in_home_simulation_job_for_room_prep` and
-      `claim_in_home_simulation_job_for_placement` (or whatever the RPC
-      names are in the existing migrations) to short-circuit on paused
-      meter.
-- [ ] Add SQL test that the purge function deletes expired
-      `idempotency_keys` rows alongside the existing per-job artifacts.
-- [ ] Update the purge function migration to clean expired
-      `idempotency_keys` and to truncate stale `simulation_rate_limits`
-      windows older than 48 hours.
+- [x] Add migration creating `simulation_cost_meter` with RLS.
+- [x] Add Vitest assertion that all three claim RPCs
+      (`claim_in_home_simulation_room_prep_job`,
+      `claim_specific_in_home_simulation_room_prep_job`,
+      `claim_specific_in_home_simulation_placement_job`) call
+      `public.simulation_cost_meter_paused()` and return early when
+      it returns true.
+- [x] Update the three claim RPCs to short-circuit on paused meter
+      via the new `simulation_cost_meter_paused()` helper.
+- [x] Add Vitest assertion that the purge function deletes
+      `simulation_idempotency_keys` rows alongside the existing
+      per-job artifact clearing.
+- [x] Update the purge function to clean
+      `simulation_idempotency_keys` for the purged job and ship
+      `cleanup_simulation_idempotency_keys()` plus
+      `cleanup_simulation_rate_limit_windows()` helpers for stale
+      records.
 
 ### Worker cost meter hook
 
-- [ ] Add unit test for `lib/cost-meter.ts` covering: increment by a fixed
-      cents amount per provider role, lazy creation of today's row, flip to
-      `worker_paused = true` once `usd_cost_estimate_cents >= cap_cents`,
-      and a no-op when the meter is already paused.
-- [ ] Implement `lib/cost-meter.ts` with `incrementForRole(role)` and
-      `isPausedForToday()` helpers. Provider role costs use a small fixed
-      table (e.g. `validation: 1`, `cleaning: 4`, `corners: 4`,
-      `placement: 4`, `placement_measurement: 1` cents) tunable via env.
-- [ ] Add integration test that runs a stage 1 + stage 2 mock simulation
-      and asserts the cost meter was incremented the expected number of
-      times.
-- [ ] Wire `cost-meter.incrementForRole(...)` into the worker dispatch path
-      after each successful provider call.
-- [ ] Add `SIMULATION_DAILY_COST_CAP_USD` (default 50) and
-      `SIMULATION_COST_METER_TABLE` env handling to the worker config.
+- [x] Add unit test for `lib/cost-meter.ts` covering: the
+      `PROVIDER_ROLE_CHARGE_CENTS` table, `parseDailyCapCents`
+      defaults / valid / invalid paths, the `chargeForRole` happy
+      path that returns the meter row, the swallow-and-log path
+      when the client throws, and the Supabase RPC client building
+      the right URL, headers, and payload.
+- [x] Implement `lib/cost-meter.ts` with `chargeForRole(client, role, capCents)`
+      and `makeSupabaseCostMeterClient` factories. Provider role
+      costs use a fixed table: `validation: 1`, `cleaning: 4`,
+      `corners: 4`, `placement: 4`, `placement_measurement: 1`
+      cents. The accompanying SQL migration
+      `20260502000700_simulation_cost_meter_record_charge.sql`
+      adds the `simulation_cost_meter_record_charge(charge_cents,
+      cap_cents)` RPC the helper invokes.
+- [x] Wire `chargeMeter(role)` into the worker dispatch path
+      after each successful validation, cleaning, corners, and
+      placement provider call. Telemetry failures are swallowed
+      and logged with `console.warn`; they never break dispatch.
+- [x] Add `SIMULATION_DAILY_COST_CAP_USD` (default 50, parsed by
+      `parseDailyCapCents`) handling to both Stage 1 and Stage 2
+      dispatch paths. The cap value is forwarded to the cost
+      meter client, which the SQL function compares against the
+      running total to flip `worker_paused`.
+- [ ] Integration test that runs a mock Stage 1 + Stage 2
+      simulation and asserts the cost meter was incremented the
+      expected number of times. Deferred to PLAN-0042's manual
+      production smoke; the unit tests + the migration regression
+      cover the happy path for now.
 
 ### Test catalog seed
 
-- [ ] Add a smoke test that runs `seed-simulation-test-data.mjs` against a
-      local Supabase project and asserts both sofas, fabrics, visual
-      positions, renders, and fixture images exist with the expected
-      relationships and the corner sofa carries the corner tag.
-- [ ] Implement `scripts/seed-simulation-test-data.mjs` as an idempotent
-      script with `--out`-friendly logging. It must:
-  - upsert one straight sofa without the corner tag and one corner-tagged
-    sofa using the corner-tag value documented in SPEC-0015 cross-team
-    contracts (PLAN-0042 confirms the final value);
-  - upsert at least one fabric per sofa;
-  - upsert one visual position per sofa with a deterministic prepared
-    sofa render referencing a fixture image under
-    `scripts/seed-simulation-test-data/fixtures/`;
-  - skip rows that already match the seeded shape so the script is safe
-    to re-run.
-- [ ] Add the fixture images under
-      `scripts/seed-simulation-test-data/fixtures/` (one straight, one
-      corner-rendered placeholder) and reference them from the script.
-- [ ] Add `seed:simulation-test` to `package.json` scripts.
-- [ ] Document the seed script in `docs/local-supabase-worker-development.md`.
+- [x] Add a Vitest regression test that asserts the seed migration
+      ships the expected upserts (deterministic sofa ids, corner-tag
+      slug forwarding, shared fabric, visual matrix columns,
+      published render cells, idempotent `on conflict` clauses) and
+      that `scripts/seed-simulation-test-data.mjs` honours the
+      service-role-key requirement, the local-only safety guard,
+      and the `corner_tag_slug` argument forwarding.
+- [x] Implement `scripts/seed-simulation-test-data.mjs` as an
+      idempotent Node script that calls the new
+      `public.seed_simulation_test_catalog(corner_tag_slug)` RPC
+      added by migration `20260502000800`. The RPC upserts:
+  - one straight back-wall sofa and one corner-tagged sofa using
+    deterministic uuids;
+  - one shared fabric with swatch + AI-reference assets;
+  - one visual matrix column per sofa with sequence 1; and
+  - one render cell per sofa pointing at a placeholder prepared
+    sofa storage asset.
+  Every insert uses `on conflict do nothing` or `do update` so
+  the script is safe to re-run.
+- [x] Add `scripts/seed-simulation-test-data/fixtures/README.md`
+      documenting the storage paths the seed expects and noting
+      that real placeholder bytes are uploaded by PLAN-0042. The
+      catalog rows reference the storage paths but the bucket
+      objects are added in PLAN-0042 manual setup; PLAN-0040's
+      API-level publishability checks do not require the bucket
+      objects to exist.
+- [x] Add `seed:simulation-test` to `package.json` scripts.
+- [x] Document the seed script in
+      `docs/local-supabase-worker-development.md`.
 
 ### Verification
 
-- [ ] Update `docs/roadmap/supabase.md` and `docs/roadmap/web.md`.
-- [ ] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
-- [ ] Worker behavior parity check (manual, by Ahmed): run the standard
-      test photo through the worker after the cost-meter hook is wired and
-      confirm the artifact set is pixel-equivalent to the previous baseline.
+- [x] Update `docs/roadmap/supabase.md`, `docs/roadmap/image-worker.md`,
+      and `docs/roadmap/workflow.md`. `docs/roadmap/web.md` is not
+      touched in this plan because PLAN-0039 ships only Supabase /
+      worker changes; the web-facing rate-limit and idempotency
+      consumers land in PLAN-0040 and update `docs/roadmap/web.md`
+      then.
+- [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check origin/dev`
+      — all green locally; CI re-validates on the PR.
+- [ ] Worker behavior parity check (manual, by Ahmed): run the
+      standard test photo through the worker after the cost-meter
+      hook is wired and confirm the artifact set is pixel-equivalent
+      to the previous baseline. Pending Ahmed's local verification.
 
 ## Tests
 

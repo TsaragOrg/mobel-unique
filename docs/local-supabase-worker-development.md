@@ -162,6 +162,24 @@ OPENAI_API_KEY=
 
 Do not commit provider keys or any other real secrets.
 
+## SPEC-0015 Test Catalog Seed
+
+Once the local Supabase stack is running, seed the deterministic
+two-sofa test catalog (one straight back-wall sofa, one
+corner-tagged sofa) the public simulation wizard exercises:
+
+```bash
+pnpm seed:simulation-test
+# pass --corner-tag <slug> to override the default 'corner'
+```
+
+The script calls the `seed_simulation_test_catalog` SQL function
+added by migration `20260502000800` and is idempotent — safe to
+re-run. Real placeholder bytes for the prepared sofa renders
+referenced by the seeded catalog rows are uploaded by PLAN-0042's
+manual production-launch preparation (see
+`scripts/seed-simulation-test-data/fixtures/README.md`).
+
 ## In-Home Simulation Stage 1 Local Loop
 
 After the local Supabase stack is running, you can drive the in-home
