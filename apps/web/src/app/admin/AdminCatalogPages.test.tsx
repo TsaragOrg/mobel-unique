@@ -2378,9 +2378,34 @@ describe("Admin catalog pages", () => {
       "Candidate preview 00000000-0000-4000-8000-000000000908",
     );
     expect(
+      within(dialog).queryByRole("button", { name: "Review candidates" }),
+    ).not.toBeInTheDocument();
+    const candidateCard = within(dialog).getByRole("article", {
+      name: /Candidate 00000000-0000-4000-8000-000000000908/i,
+    });
+    expect(
+      within(candidateCard).getByText("initial - v007"),
+    ).toBeInTheDocument();
+    expect(
+      within(candidateCard).getAllByText("Candidate").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(candidateCard).getByRole("button", { name: "Use candidate" }),
+    ).toBeInTheDocument();
+    expect(
+      within(candidateCard).getByRole("button", { name: "Refine candidate" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("group", {
+        name: "Candidate follow-up actions",
+      }),
+    ).toBeInTheDocument();
+    expect(
       within(dialog).queryByLabelText("Refine prompt"),
     ).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Use refine" }));
+    fireEvent.click(
+      within(candidateCard).getByRole("button", { name: "Refine candidate" }),
+    );
     expect(within(dialog).getByLabelText("Refine prompt")).toBeInTheDocument();
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Cancel refine" }),
@@ -2390,7 +2415,9 @@ describe("Admin catalog pages", () => {
     ).not.toBeInTheDocument();
     expect(dependencies.createFabricRenderJob).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Use refine" }));
+    fireEvent.click(
+      within(candidateCard).getByRole("button", { name: "Refine candidate" }),
+    );
     fireEvent.change(within(dialog).getByLabelText("Refine prompt"), {
       target: {
         value: "Reduce wrinkles on the left arm",
