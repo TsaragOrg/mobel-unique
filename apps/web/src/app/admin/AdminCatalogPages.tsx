@@ -3312,9 +3312,9 @@ function RenderCoverageSection({
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
   const isAliveRef = useRef(true);
-  // RU: Эта ссылка запоминает кнопку, с которой открыли подробности ячейки.
-  // FR: Ce lien garde le bouton qui a ouvert les details de la case.
+  // Return keyboard focus to the cell that opened the sheet after close.
   const renderCellOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const renderCellCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // RU: Этот автоматический блок включает флажок при открытии секции и выключает при уходе.
   // FR: Ce bloc automatique active le repere a l'ouverture et le desactive au depart.
@@ -3325,6 +3325,15 @@ function RenderCoverageSection({
       isAliveRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedCellId) {
+      return;
+    }
+
+    // Move focus into the dialog as soon as the render cell sheet opens.
+    renderCellCloseButtonRef.current?.focus();
+  }, [selectedCellId]);
 
   // RU: Это действие запоминает короткую подсказку для выбранной ячейки.
   // FR: Cette action garde une note courte pour la case choisie.
@@ -3956,6 +3965,7 @@ function RenderCoverageSection({
                   <button
                     aria-label="Close render cell"
                     onClick={handleCloseRenderCell}
+                    ref={renderCellCloseButtonRef}
                     type="button"
                   >
                     Close

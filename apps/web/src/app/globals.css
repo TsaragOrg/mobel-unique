@@ -1333,6 +1333,10 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.admin-visual-matrix-row .admin-actions {
+  margin: 0;
+}
+
 .admin-render-matrix-wrap {
   overflow-x: auto;
 }
@@ -1513,10 +1517,20 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.admin-list li.admin-publish-blocker {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .admin-publish-blocker > div {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.admin-publish-blocker strong,
+.admin-publish-blocker span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .admin-dialog-scrim {
@@ -2095,6 +2109,38 @@ button:disabled {
 
   .admin-row-actions {
     justify-content: flex-start;
+  }
+
+  .admin-visual-matrix-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-visual-matrix-toolbar button {
+    align-self: flex-start;
+  }
+
+  .admin-visual-matrix-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-visual-matrix-row .admin-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-visual-matrix-row .admin-actions button {
+    width: 100%;
+  }
+
+  .admin-list li.admin-publish-blocker {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-publish-blocker button {
+    justify-self: flex-start;
   }
 
   .admin-render-matrix-wrap {

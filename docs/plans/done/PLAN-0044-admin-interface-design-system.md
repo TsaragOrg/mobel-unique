@@ -2,7 +2,7 @@
 
 Plan: PLAN-0044
 Spec: SPEC-0013
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -68,7 +68,7 @@ Existing tests to preserve and extend:
 - [x] Create or consolidate shared admin shell structure for protected admin pages.
 - [x] Standardize admin navigation across dashboard and catalog pages.
 - [x] Define page header pattern with title, description/context, and primary action area.
-- [ ] Standardize base action variants: primary, secondary, quiet, danger, and inline link.
+- [x] Standardize base action variants: primary, secondary, quiet, danger, and inline link.
 - [x] Add tests for dashboard shell/navigation and protected state preservation.
 
 ### Phase 2: Login And Dashboard
@@ -87,7 +87,7 @@ Existing tests to preserve and extend:
 - [x] Harmonize `/admin/tags` create/list/delete-confirm patterns.
 - [x] Standardize loading, empty, error, and unauthorized states for list pages.
 - [x] Add or update tests for list page headings, action availability, and empty/error states.
-- [ ] Browser-verify desktop and mobile list views.
+- [x] Browser-verify desktop and mobile list views.
 
 ### Phase 4: Form Pages
 
@@ -97,7 +97,7 @@ Existing tests to preserve and extend:
 - [x] Standardize field labels, helper text, validation errors, file input states, and disabled/loading controls.
 - [x] Preserve existing signed upload behavior and client-side resize behavior.
 - [x] Add or update tests for form submission, validation errors, and upload call paths when markup changes.
-- [ ] Browser-verify desktop and mobile form flows.
+- [x] Browser-verify desktop and mobile form flows.
 
 ### Phase 5: Sofa Edit Shared Workflow
 
@@ -118,13 +118,13 @@ Existing tests to preserve and extend:
 - [x] Harmonize mobile render fabric groups and render cell sheet.
 - [x] Preserve source-photo lifecycle behavior, candidate review, manual upload, refine prompts, Realtime job status, and manual resume.
 - [x] Add or update tests for key modal/drawer open/close flows and render cell actions.
-- [ ] Browser-verify matrix-heavy pages at desktop, tablet, and mobile widths.
+- [x] Browser-verify matrix-heavy pages at desktop, tablet, and mobile widths.
 
 ### Phase 7: Final QA And Cleanup
 
 - [x] Remove stale admin CSS selectors after pages are migrated.
 - [x] Ensure public homepage styles and admin styles do not collide.
-- [ ] Verify focus states and keyboard reachability for navigation, forms, drawers, dialogs, and matrix actions.
+- [x] Verify focus states and keyboard reachability for navigation, forms, drawers, dialogs, and matrix actions.
 - [x] Verify that admin routes still emit `noindex, nofollow`.
 - [x] Run the quality gate listed below.
 - [x] Update `docs/roadmap/web.md`.
@@ -167,7 +167,10 @@ Roadmap should track the plan as active while work is in progress, then move it 
 - Do not enable or redesign the public homepage upload behavior in this plan.
 - Do not change API contracts unless a later spec or change request explicitly requires it.
 - Do not introduce a reusable Codex skill until the visual system is implemented and proven in this repo.
-- Local visual QA on May 2, 2026 covered the public home page and admin login at desktop and mobile widths with no console errors; protected list views still need an authenticated browser pass.
+- Local visual QA on May 2, 2026 covered the public home page and admin login at desktop and mobile widths with no console errors.
+- Authenticated local visual QA on May 2, 2026 used the seeded admin fixtures and covered sofa, fabric, and tag lists; sofa and fabric create/edit forms; sofa edit Visual matrix, Renders, and Publish panels; render cell drawer/sheet behavior; and desktop, tablet, and mobile widths for matrix-heavy views.
+- The authenticated QA pass found and fixed mobile Visual matrix text compression, mobile Publish blocker code wrapping, and render cell sheet focus entry/return behavior. Upload controls remain visually verified only for their existing admin behavior; this plan does not enable public homepage upload behavior.
+- A transient Next.js dev chunk 404 appeared after Fast Refresh and cleared after restarting the local dev server. The final authenticated browser pass had no runtime console errors; only the expected Fast Refresh reload warning remained during development.
 - Prefer incremental PRs if the full plan becomes too large:
   - PR 1: shell, tokens, login, dashboard;
   - PR 2: list pages and form pages;

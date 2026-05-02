@@ -1091,18 +1091,20 @@ describe("Admin catalog pages", () => {
     fireEvent.click(cellButton);
 
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+    const closeButton = within(dialog).getByRole("button", {
+      name: "Close render cell",
+    });
+
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
     expect(within(dialog).getByText("Boucle ivoire")).toBeInTheDocument();
     expect(within(dialog).getByText("Front")).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Generate" }),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("button", { name: "Close render cell" }),
-    ).toBeInTheDocument();
+    expect(closeButton).toBeInTheDocument();
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Close render cell" }),
-    );
+    fireEvent.click(closeButton);
 
     expect(cellButton).toHaveFocus();
   });

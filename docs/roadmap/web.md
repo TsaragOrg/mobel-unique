@@ -24,17 +24,10 @@
 | Done | SPEC-0012 | PLAN-0043 | Public home page redesigned with a product-first optimized transformation hero, mobile-first layout, upload cue, and benefit strip. |
 | Done | SPEC-0006 | PLAN-0031 | Sofa edit render coverage observes request-scoped fabric render jobs through Realtime, fails expired claims, and exposes manual resume. |
 | Done | SPEC-0014 | PLAN-0035 | Sofa edit workflow tabs, fabric cards, render coverage matrix, source-photo candidate comparison, on-demand refine controls, large image preview, responsive cell sheet, and Publish-only publication actions. |
+| Done | SPEC-0013 | PLAN-0044 | Protected admin interface visual system harmonizes login, dashboard, catalog lists/forms, sofa edit workflow, drawers, render matrix, responsive states, and authenticated visual QA. |
 
 ## Next
 
-- Implement PLAN-0044 admin interface visual system and harmonize protected admin pages in phases: shell, login/dashboard, lists, forms, sofa edit workflow, drawers, and render matrix.
-  Progress: shared admin shell now covers login, dashboard, and protected catalog pages; sofa, fabric, and tag list headers use the shared page header pattern.
-  Form progress: sofa create, fabric create, and fabric edit pages now use the shared header and form spacing pattern while preserving existing mutation and upload behavior.
-  List progress: sofa, fabric, and tag lists now use shared badges, responsive table/card treatment, consistent empty/loading/error states, and subdued row actions.
-  Sofa edit progress: the sofa edit workflow now uses the shared admin header while preserving workflow tabs and readiness signals.
-  Panel progress: sofa edit tabs, readiness chips, panel borders, render matrix controls, fabric cards, and drawer/dialog surfaces now use admin design tokens.
-  Overlay progress: admin drawers, confirmation dialogs, image previews, lightboxes, compare dialogs, desktop render matrix, and mobile render sheets now share the same neutral token system.
-  Cleanup progress: stale manual-test navigation/checklist helpers and obsolete admin selectors were removed after the shared workflow migration.
 - Build public catalog and sofa detail pages on top of the public catalog read API.
 - Build admin export workflows on top of the authenticated admin boundary.
 - Build the public simulation wizard after the storefront read path.
