@@ -25,38 +25,38 @@ to the terminal-harness baseline after this plan ships.
 
 ## Tasks
 
-- [ ] Add unit test asserting `lib/providers.ts` no longer references the
+- [x] Add unit test asserting `lib/providers.ts` no longer references the
       Gemini placement provider and that `IN_HOME_SIMULATION_FALLBACK_PROVIDER=gemini`
       is no longer wired through.
-- [ ] Delete `supabase/functions/in-home-simulation-worker/lib/providers/gemini-placement.ts`
+- [x] Delete `supabase/functions/in-home-simulation-worker/lib/providers/gemini-placement.ts`
       and remove `IN_HOME_SIMULATION_FALLBACK_PROVIDER` / `GEMINI_API_KEY`
       handling from `lib/providers.ts`.
-- [ ] Remove `GEMINI_API_KEY` and `IN_HOME_SIMULATION_FALLBACK_PROVIDER` from
+- [x] Remove `GEMINI_API_KEY` and `IN_HOME_SIMULATION_FALLBACK_PROVIDER` from
       the worker's `.env.example` and any local development docs that still
       mention them.
-- [ ] Add unit tests for `lib/dimensions.ts` rejecting `back_wall` payloads
+- [x] Add unit tests for `lib/dimensions.ts` rejecting `back_wall` payloads
       that omit `room_depth` and `corner` payloads that omit `room_depth`,
       plus a happy-path test that includes `room_depth` in both modes.
-- [ ] Update `lib/dimensions.ts` so the validator treats `room_depth` as a
+- [x] Update `lib/dimensions.ts` so the validator treats `room_depth` as a
       required positive number in both `back_wall` and `corner` modes.
-- [ ] Add unit test confirming the Stage 1 dispatch path no longer calls a
+- [x] Add unit test confirming the Stage 1 dispatch path no longer calls a
       scene classifier and instead reads `room_geometry_mode` from the
       reloaded job row.
-- [ ] Delete `lib/providers/openai-scene-classifier.ts`.
-- [ ] Remove the scene-classifier role from `lib/providers.ts` and the
+- [x] Delete `lib/providers/openai-scene-classifier.ts`.
+- [x] Remove the scene-classifier role from `lib/providers.ts` and the
       `IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE` env handling.
-- [ ] Update Stage 1 dispatch (`index.ts` / dispatch helper) to read
+- [x] Update Stage 1 dispatch (`index.ts` / dispatch helper) to read
       `room_geometry_mode` directly from the job row and pass it into the
       corners step.
-- [ ] Remove or rewrite the existing scene-classifier tests under
+- [x] Remove or rewrite the existing scene-classifier tests under
       `scripts/in-home-simulation-*` so the suite stays green.
-- [ ] Update `docs/roadmap/supabase.md` and `docs/roadmap/image-worker.md`
+- [x] Update `docs/roadmap/supabase.md` and `docs/roadmap/image-worker.md`
       with the cleanup outcome and the SPEC-0015 reference.
-- [ ] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
+- [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
 - [ ] Worker behavior parity check (executed manually by Ahmed, not by
       Claude): run `pnpm sim:live:*` against the standard test photo and
       confirm dots/lines/sofa output is pixel-equivalent to the previous
-      baseline.
+      baseline. Pending Ahmed's local verification.
 
 ## Tests
 

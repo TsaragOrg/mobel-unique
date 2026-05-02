@@ -20,7 +20,7 @@ import { classifyDots } from "../lines-classify.ts";
 import { detectYellowDots } from "../lines.ts";
 import { validateClassifiedCorners } from "../corners-validate.ts";
 
-import type { SceneMode } from "./openai-scene-classifier.ts";
+import type { SceneMode } from "../providers.ts";
 
 export const OPENAI_CORNERS_DEFAULT_MODEL = "gpt-image-2";
 export const OPENAI_CORNERS_DEFAULT_SIZE = "auto";

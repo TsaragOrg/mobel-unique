@@ -1,28 +1,26 @@
-// SPEC-0007 in-home simulation provider abstraction (v002).
+// SPEC-0007 in-home simulation provider abstraction (v003).
 //
-// Stage 1 pipeline (canonical, validated 2026-04-29):
-//   validation → cleaning → scene classification → corners (yellow
-//   dot placement) → lines (pure local code, no AI).
+// Stage 1 pipeline (canonical, validated 2026-04-29; SPEC-0015 drop
+// of the scene classifier sub-step):
+//   validation → cleaning → corners (yellow dot placement) → lines
+//   (pure local code, no AI). The room geometry mode comes from the
+//   job row at job creation time (set by the public API based on
+//   sofa tags) and is read off the claim row, not classified by an
+//   AI call inside Stage 1.
 //
 // Stage 2 pipeline:
 //   placement (back_wall or corner mode).
 //
-// `selectStage1Providers` reads `IN_HOME_SIMULATION_PROVIDER_MODE` and
-// returns the matching providers. Default is `mock` so the local smoke
-// gate runs without any real provider key per `SPEC-0008`. `live`
-// wires OpenAI for everything except the lines step (which is pure
-// local code and does not need a provider).
+// `selectStage1Providers` reads `IN_HOME_SIMULATION_PROVIDER_MODE`
+// and returns the matching providers. Default is `mock` so the local
+// smoke gate runs without any real provider key per `SPEC-0008`.
+// `live` wires OpenAI for everything except the lines step (which
+// is pure local code and does not need a provider).
 
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 import { OpenAIValidationProvider } from "./providers/openai-vision.ts";
 import { OpenAICleaningProvider } from "./providers/openai-cleaning.ts";
-import {
-  OpenAISceneClassifierProvider,
-  type SceneClassifierProvider,
-  type SceneClassifierResult,
-  type SceneMode
-} from "./providers/openai-scene-classifier.ts";
 import {
   OpenAICornersProvider,
   type CornersProvider,
@@ -30,10 +28,8 @@ import {
 } from "./providers/openai-corners.ts";
 import { OpenAIPlacementProvider } from "./providers/openai-placement.ts";
 import { OpenAIPlacementMeasurementProvider } from "./providers/openai-placement-measurement.ts";
-import {
-  FallbackPlacementProvider,
-  GeminiPlacementProvider
-} from "./providers/gemini-placement.ts";
+
+export type SceneMode = "back_wall" | "corner";
 
 export type ValidationOk = {
   ok: true;
@@ -60,12 +56,6 @@ export interface CleaningProvider {
   readonly promptVersion: string;
   cleanRoom(imageBytes: Uint8Array): Promise<Uint8Array>;
 }
-
-export type {
-  SceneClassifierProvider,
-  SceneClassifierResult,
-  SceneMode
-} from "./providers/openai-scene-classifier.ts";
 
 export type {
   CornersProvider,
@@ -106,7 +96,6 @@ export interface PlacementProvider {
 export type Stage1Providers = {
   validation: ValidationProvider;
   cleaning: CleaningProvider;
-  sceneClassifier: SceneClassifierProvider;
   corners: CornersProvider;
 };
 
@@ -132,26 +121,6 @@ export class MockCleaningProvider implements CleaningProvider {
   cleanRoom(imageBytes: Uint8Array): Promise<Uint8Array> {
     // Mock cleaning is the identity transform.
     return Promise.resolve(imageBytes);
-  }
-}
-
-export class MockSceneClassifierProvider implements SceneClassifierProvider {
-  readonly name = "mock";
-  readonly modelId = "mock-scene-v002";
-  readonly promptVersion = "room_prep_v002";
-  private readonly mode: SceneMode;
-
-  constructor(options: { mode?: SceneMode } = {}) {
-    this.mode = options.mode ?? "back_wall";
-  }
-
-  classifyScene(_imageBytes: Uint8Array): Promise<SceneClassifierResult> {
-    return Promise.resolve({
-      ok: true,
-      mode: this.mode,
-      confidence: 1,
-      reason: "mock"
-    });
   }
 }
 
@@ -241,14 +210,9 @@ export function selectStage1Providers(
   envGetter: (name: string) => string | undefined = () => undefined
 ): Stage1Providers {
   if (isProviderModeMock(providerMode)) {
-    const mockMode: SceneMode =
-      envGetter("IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE") === "corner"
-        ? "corner"
-        : "back_wall";
     return {
       validation: new MockValidationProvider(),
       cleaning: new MockCleaningProvider(),
-      sceneClassifier: new MockSceneClassifierProvider({ mode: mockMode }),
       corners: new MockCornersProvider()
     };
   }
@@ -256,15 +220,12 @@ export function selectStage1Providers(
     const openaiKey = envGetter("OPENAI_API_KEY");
     if (!openaiKey) {
       throw new Error(
-        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation, cleaning, scene-classifier, and corners adapters"
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation, cleaning, and corners adapters"
       );
     }
     return {
       validation: new OpenAIValidationProvider({ apiKey: openaiKey }),
       cleaning: new OpenAICleaningProvider({ apiKey: openaiKey }),
-      sceneClassifier: new OpenAISceneClassifierProvider({
-        apiKey: openaiKey
-      }),
       corners: new OpenAICornersProvider({ apiKey: openaiKey })
     };
   }
@@ -282,38 +243,19 @@ export function selectStage2Providers(
   }
   if (isProviderModeLive(providerMode)) {
     const openaiKey = envGetter("OPENAI_API_KEY");
-    const geminiKey = envGetter("GEMINI_API_KEY");
-    if (!openaiKey && !geminiKey) {
+    if (!openaiKey) {
       throw new Error(
-        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY or GEMINI_API_KEY for the placement adapter"
+        "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the placement adapter"
       );
     }
-    const fallbackEnabled =
-      envGetter("IN_HOME_SIMULATION_FALLBACK_PROVIDER") === "gemini";
-    const measurementProvider = openaiKey
-      ? new OpenAIPlacementMeasurementProvider({ apiKey: openaiKey })
-      : null;
-    if (openaiKey && fallbackEnabled && geminiKey) {
-      return {
-        placement: new FallbackPlacementProvider(
-          new OpenAIPlacementProvider({
-            apiKey: openaiKey,
-            measurementProvider
-          }),
-          new GeminiPlacementProvider({ apiKey: geminiKey })
-        )
-      };
-    }
-    if (openaiKey) {
-      return {
-        placement: new OpenAIPlacementProvider({
-          apiKey: openaiKey,
-          measurementProvider
-        })
-      };
-    }
+    const measurementProvider = new OpenAIPlacementMeasurementProvider({
+      apiKey: openaiKey
+    });
     return {
-      placement: new GeminiPlacementProvider({ apiKey: geminiKey! })
+      placement: new OpenAIPlacementProvider({
+        apiKey: openaiKey,
+        measurementProvider
+      })
     };
   }
   throw new Error(

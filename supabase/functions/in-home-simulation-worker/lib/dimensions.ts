@@ -4,6 +4,11 @@
 // per-mode key presence. These pure helpers add the worker-side
 // numeric range checks and the optional sofa-vs-wall sanity rules
 // from `SPEC-0007 Stage 2: Sofa Placement`.
+//
+// SPEC-0015 / CR-SPEC-0012 promotes `room_depth` from optional to
+// required for both `back_wall` and `corner` modes; the placement
+// prompt path always receives a calibrated camera-to-back-wall
+// distance instead of "unspecified".
 
 export type DimensionsValidationOk = { ok: true };
 export type DimensionsValidationFailure = {
@@ -37,11 +42,18 @@ export function validateSuppliedBackWallDimensions(
 ): DimensionsValidationResult {
   const wallWidth = supplied.wall_width;
   const wallHeight = supplied.wall_height;
+  const roomDepth = supplied.room_depth;
 
   if (wallWidth === undefined || wallHeight === undefined) {
     return {
       ok: false,
       failureReason: "back_wall mode requires wall_width and wall_height"
+    };
+  }
+  if (roomDepth === undefined) {
+    return {
+      ok: false,
+      failureReason: "back_wall mode requires room_depth"
     };
   }
   if (!isPositiveNumberInRange(wallWidth)) {
@@ -56,6 +68,13 @@ export function validateSuppliedBackWallDimensions(
       ok: false,
       failureReason:
         `wall_height must be a number between ${ABSOLUTE_MIN_DIMENSION_M} and ${ABSOLUTE_MAX_DIMENSION_M} metres`
+    };
+  }
+  if (!isPositiveNumberInRange(roomDepth)) {
+    return {
+      ok: false,
+      failureReason:
+        `room_depth must be a number between ${ABSOLUTE_MIN_DIMENSION_M} and ${ABSOLUTE_MAX_DIMENSION_M} metres`
     };
   }
 
@@ -91,6 +110,7 @@ export function validateSuppliedCornerDimensions(
   const left = supplied.left_wall_width;
   const right = supplied.right_wall_width;
   const height = supplied.room_height;
+  const roomDepth = supplied.room_depth;
 
   if (left === undefined || right === undefined || height === undefined) {
     return {
@@ -99,10 +119,17 @@ export function validateSuppliedCornerDimensions(
         "corner mode requires left_wall_width, right_wall_width, and room_height"
     };
   }
+  if (roomDepth === undefined) {
+    return {
+      ok: false,
+      failureReason: "corner mode requires room_depth"
+    };
+  }
   for (const [name, value] of [
     ["left_wall_width", left],
     ["right_wall_width", right],
-    ["room_height", height]
+    ["room_height", height],
+    ["room_depth", roomDepth]
   ] as const) {
     if (!isPositiveNumberInRange(value)) {
       return {

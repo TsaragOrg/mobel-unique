@@ -38,6 +38,7 @@
 | Done   | SPEC-0007 | PLAN-0034 | `scripts/supabase-migrations-unique.test.mjs` added to the root test gate to fail the build whenever two `supabase/migrations/` files share a timestamp prefix.                              |
 | Done   | SPEC-0014 | PLAN-0035 | Workflow guard accepts completed plan moves from `active` to `done`. |
 | Done   | SPEC-0007 | PLAN-0037 | Root test workflow isolates the in-home simulation psql smoke harness tests from file-level Vitest parallelism and makes psql timeouts fail clearly. |
+| Active | SPEC-0015 | PLAN-0038 | In-home simulation worker test suite updated for the SPEC-0015 cleanups: scene classifier and Gemini placement adapter tests removed, Stage 1 providers test asserts the three-provider mock+live shape (no scene classifier), Stage 2 dimensions test requires `room_depth` for both modes. |
 
 ## Next
 

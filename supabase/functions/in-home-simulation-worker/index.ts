@@ -58,6 +58,7 @@ type RoomPrepClaimRow = {
   job_id: string;
   storage_prefix: string;
   customer_room_original_path: string | null;
+  room_geometry_mode: "back_wall" | "corner";
   retention_deadline: string;
   room_prep_attempt_count: number;
   max_attempts_per_stage: number;
@@ -583,40 +584,14 @@ async function processClaimedJob(
     const cleanedBytes = await cleanedImage.encode(0);
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
-    // Scene classification: GPT-5 vision JSON decides back_wall vs
-    // corner. This is the dedicated classifier step — gpt-image-2 alone
-    // is not reliable at the 4-vs-6 dot decision.
-    const sceneResult = await providers.sceneClassifier.classifyScene(
-      cleanedBytes
-    );
-    if (!sceneResult.ok) {
-      await failJobNonRetryable(
-        supabaseUrl,
-        serviceRoleKey,
-        claim.job_id,
-        "scene_classification_failed",
-        `Scene classifier failed: ${sceneResult.failureReason}`,
-        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
-      );
-      throw new Error(
-        `scene_classification_failed: ${sceneResult.failureReason}`
-      );
-    }
-    if (sceneResult.mode === "reshoot") {
-      const reason = sceneResult.reason ??
-        "scene classifier could not understand the room";
-      await failJobNonRetryable(
-        supabaseUrl,
-        serviceRoleKey,
-        claim.job_id,
-        "reshoot_required",
-        `Пожалуйста, переснимите фото: ${reason}`,
-        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
-      );
-      throw new Error(`reshoot_required: ${reason}`);
-    }
-    const mode: "back_wall" | "corner" = sceneResult.mode;
-    const sceneConfidence = sceneResult.confidence;
+    // SPEC-0015: room geometry mode is set on the job row at job
+    // creation by the public API based on the selected sofa's tags
+    // (back_wall by default, corner when the sofa carries the agreed
+    // corner tag). The worker no longer classifies the scene with a
+    // GPT-5 vision call; it reads the authoritative value off the
+    // claim row and proceeds straight to the corners step.
+    const mode: "back_wall" | "corner" = claim.room_geometry_mode;
+    const sceneConfidence: number | null = null;
 
     // Corners: gpt-image-2 places yellow dots on the cleaned room.
     const cornersResult = await providers.corners.placeCornerDots(
