@@ -27,7 +27,7 @@ export interface UploadInput {
   photoBlob: Blob;
   photoFilename: string;
   idempotencyKey: string;
-  accessToken: string;
+  accessToken?: string;
   onProgress?: (percent: number) => void;
 }
 
@@ -130,7 +130,9 @@ function runOneAttempt(
     xhr.open("POST", input.endpoint);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Idempotency-Key", input.idempotencyKey);
-    xhr.setRequestHeader("Authorization", `Bearer ${input.accessToken}`);
+    if (input.accessToken) {
+      xhr.setRequestHeader("Authorization", `Bearer ${input.accessToken}`);
+    }
 
     if (xhr.upload && input.onProgress) {
       xhr.upload.onprogress = (event: ProgressEvent) => {

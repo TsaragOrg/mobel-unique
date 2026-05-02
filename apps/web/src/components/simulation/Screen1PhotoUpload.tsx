@@ -25,7 +25,7 @@ export interface Screen1PhotoUploadProps {
   visualPositionId: string;
   visualPositionLabel: string;
   geometryMode: RoomGeometryMode;
-  accessToken: string;
+  accessToken?: string;
   backToSofaHref: string;
   onJobCreated: (jobId: string) => void;
   compress?: (file: File) => Promise<CompressedPhoto>;
