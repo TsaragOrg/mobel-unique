@@ -9,10 +9,14 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import type { SimulationEnvironment } from "./simulation-access-token";
 import type {
+  SimulationDimensionsStore,
+  SimulationPublicDimensionsHandlerDeps,
   SimulationPublicEmailHandlerDeps,
+  SimulationPublicRegenerationHandlerDeps,
   SimulationPublicStatusHandlerDeps,
   SimulationJobReader,
   SimulationJobView,
+  SimulationRegenerationStore,
   SimulationStorageSigner
 } from "./simulation-public-route-handlers";
 import type {
@@ -21,6 +25,7 @@ import type {
 } from "./simulation-public-api";
 
 const SIMULATION_PRIVATE_BUCKET = "simulation-private-artifacts";
+const DEFAULT_SIMULATION_QUEUE_NAME = "local_in_home_simulation_jobs";
 
 export function createDefaultSimulationPublicEmailHandlerDeps(): SimulationPublicEmailHandlerDeps {
   return {
@@ -36,6 +41,88 @@ export function createDefaultSimulationStatusHandlerDeps(): SimulationPublicStat
     jobReader: createSupabaseSimulationJobReader(client),
     storageSigner: createSupabaseSimulationStorageSigner(client)
   };
+}
+
+export function createDefaultSimulationDimensionsHandlerDeps(): SimulationPublicDimensionsHandlerDeps {
+  const client = createServiceRoleClient();
+  return {
+    accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
+    jobReader: createSupabaseSimulationJobReader(client),
+    dimensionsStore: createSupabaseSimulationDimensionsStore(client),
+    queueName: readSimulationQueueName()
+  };
+}
+
+export function createDefaultSimulationRegenerationHandlerDeps(): SimulationPublicRegenerationHandlerDeps {
+  const client = createServiceRoleClient();
+  return {
+    accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
+    jobReader: createSupabaseSimulationJobReader(client),
+    regenerationStore: createSupabaseSimulationRegenerationStore(client),
+    queueName: readSimulationQueueName()
+  };
+}
+
+export function createSupabaseSimulationDimensionsStore(
+  client: SupabaseClient
+): SimulationDimensionsStore {
+  return {
+    async submit({ jobId, suppliedDimensions, queueName }) {
+      const { data, error } = await client.rpc(
+        "submit_in_home_simulation_dimensions",
+        {
+          job_id: jobId,
+          supplied_dimensions: suppliedDimensions,
+          queue_name: queueName
+        }
+      );
+      if (error) {
+        throw error;
+      }
+      const msgId = typeof data === "number" ? data : Number(data);
+      if (!Number.isFinite(msgId)) {
+        throw new Error(
+          "submit_in_home_simulation_dimensions returned a non-numeric msg_id"
+        );
+      }
+      return { msgId };
+    }
+  };
+}
+
+export function createSupabaseSimulationRegenerationStore(
+  client: SupabaseClient
+): SimulationRegenerationStore {
+  return {
+    async request({ jobId, queueName }) {
+      const { data, error } = await client.rpc(
+        "request_in_home_simulation_regeneration",
+        {
+          job_id: jobId,
+          supplied_dimensions: null,
+          queue_name: queueName
+        }
+      );
+      if (error) {
+        throw error;
+      }
+      const msgId = typeof data === "number" ? data : Number(data);
+      if (!Number.isFinite(msgId)) {
+        throw new Error(
+          "request_in_home_simulation_regeneration returned a non-numeric msg_id"
+        );
+      }
+      return { msgId };
+    }
+  };
+}
+
+function readSimulationQueueName(): string {
+  return (
+    process.env.SIMULATION_QUEUE_NAME ??
+    process.env.IN_HOME_SIMULATION_QUEUE_NAME ??
+    DEFAULT_SIMULATION_QUEUE_NAME
+  );
 }
 
 export function createSupabaseSimulationJobReader(

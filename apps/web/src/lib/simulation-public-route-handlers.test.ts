@@ -9,9 +9,13 @@ import {
   VERIFICATION_REQUEST_TTL_SECONDS,
   handleCreateEmailVerificationRequest,
   handleGetSimulationStatusRequest,
+  handleRequestRegenerationRequest,
+  handleSubmitDimensionsRequest,
   handleVerifyEmailVerificationRequest,
+  type SimulationDimensionsStore,
   type SimulationJobReader,
   type SimulationJobView,
+  type SimulationRegenerationStore,
   type SimulationStorageSigner
 } from "./simulation-public-route-handlers";
 import type { SimulationStatusResponse } from "./simulation-public-api";
@@ -556,5 +560,347 @@ describe("handleGetSimulationStatusRequest", () => {
       deps
     });
     expect(response.headers.get("set-cookie")).toBe(null);
+  });
+});
+
+describe("handleSubmitDimensionsRequest", () => {
+  const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
+  const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
+  const QUEUE = "local_in_home_simulation_jobs";
+  const NOW = fixedNow("2026-05-02T10:00:00Z");
+
+  function makeValidToken() {
+    return issueSimulationAccessToken({
+      verificationRequestId: VERIFICATION_REQUEST_ID,
+      secret: SECRET,
+      environment: "local",
+      now: NOW
+    }).token;
+  }
+
+  function makeJobView(
+    overrides: Partial<SimulationJobView> = {}
+  ): SimulationJobView {
+    return {
+      jobId: JOB_ID,
+      status: "awaiting_dimensions",
+      roomGeometryMode: "back_wall",
+      createdAt: new Date("2026-05-02T10:00:00Z"),
+      retentionDeadline: new Date("2026-05-03T10:00:00Z"),
+      storagePrefix: `simulations/${JOB_ID}`,
+      dimensionGuideOverlayPath: `simulations/${JOB_ID}/room_dimensions.png`,
+      generatedOutputCount: 0,
+      latestGeneratedOutputIndex: null,
+      lastErrorMessage: null,
+      lastRegenerationErrorMessage: null,
+      ...overrides
+    };
+  }
+
+  function createDeps(job: SimulationJobView | null) {
+    const jobReader: SimulationJobReader = {
+      findOwnedJob: vi.fn().mockResolvedValue(job)
+    };
+    const dimensionsStore: SimulationDimensionsStore = {
+      submit: vi.fn().mockResolvedValue({ msgId: 42 })
+    };
+    return {
+      deps: {
+        accessTokenSecret: SECRET,
+        jobReader,
+        dimensionsStore,
+        queueName: QUEUE,
+        now: NOW
+      },
+      jobReader,
+      dimensionsStore
+    };
+  }
+
+  it("returns 200 + placement_queued on a valid back_wall payload", async () => {
+    const { deps, dimensionsStore } = createDeps(makeJobView());
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: 4.2, wall_height: 2.7, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { simulation_job_id: string; status: string };
+    };
+    expect(body.data.simulation_job_id).toBe(JOB_ID);
+    expect(body.data.status).toBe("placement_queued");
+    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      suppliedDimensions: {
+        wall_width: 4.2,
+        wall_height: 2.7,
+        room_depth: 5
+      },
+      queueName: QUEUE
+    });
+  });
+
+  it("returns 200 + placement_queued on a valid corner payload", async () => {
+    const { deps, dimensionsStore } = createDeps(
+      makeJobView({ roomGeometryMode: "corner" })
+    );
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: {
+        left_wall_width: 3.4,
+        right_wall_width: 4.0,
+        room_height: 2.7,
+        room_depth: 5
+      },
+      deps
+    });
+    expect(response.status).toBe(200);
+    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      suppliedDimensions: {
+        left_wall_width: 3.4,
+        right_wall_width: 4.0,
+        room_height: 2.7,
+        room_depth: 5
+      },
+      queueName: QUEUE
+    });
+  });
+
+  it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
+    const { deps } = createDeps(makeJobView());
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: null,
+      body: { wall_width: 4, wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 404 JOB_NOT_FOUND for a malformed jobId", async () => {
+    const { deps } = createDeps(makeJobView());
+    const response = await handleSubmitDimensionsRequest({
+      jobId: "not-a-uuid",
+      token: makeValidToken(),
+      body: { wall_width: 4, wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 JOB_NOT_FOUND when the job is not owned", async () => {
+    const { deps, dimensionsStore } = createDeps(null);
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: 4, wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(404);
+    expect(dimensionsStore.submit).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 VALIDATION_FAILED when room_depth is missing", async () => {
+    const { deps, dimensionsStore } = createDeps(makeJobView());
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: 4, wall_height: 2.5 },
+      deps
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("VALIDATION_FAILED");
+    expect(dimensionsStore.submit).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 VALIDATION_FAILED when a dimension is non-numeric", async () => {
+    const { deps } = createDeps(makeJobView());
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: "x", wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 VALIDATION_FAILED when a corner request lacks left_wall_width", async () => {
+    const { deps } = createDeps(makeJobView({ roomGeometryMode: "corner" }));
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { right_wall_width: 4, room_height: 2.7, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 409 JOB_STATE_CONFLICT when status is not awaiting_dimensions", async () => {
+    const { deps, dimensionsStore } = createDeps(
+      makeJobView({ status: "queued" })
+    );
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: 4, wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("JOB_STATE_CONFLICT");
+    expect(dimensionsStore.submit).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke the store when the body is invalid", async () => {
+    const { deps, dimensionsStore } = createDeps(makeJobView());
+    await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: -1, wall_height: 2.5, room_depth: 5 },
+      deps
+    });
+    expect(dimensionsStore.submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleRequestRegenerationRequest", () => {
+  const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
+  const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
+  const QUEUE = "local_in_home_simulation_jobs";
+  const NOW = fixedNow("2026-05-02T10:00:00Z");
+
+  function makeValidToken() {
+    return issueSimulationAccessToken({
+      verificationRequestId: VERIFICATION_REQUEST_ID,
+      secret: SECRET,
+      environment: "local",
+      now: NOW
+    }).token;
+  }
+
+  function makeJobView(
+    overrides: Partial<SimulationJobView> = {}
+  ): SimulationJobView {
+    return {
+      jobId: JOB_ID,
+      status: "succeeded",
+      roomGeometryMode: "back_wall",
+      createdAt: new Date("2026-05-02T10:00:00Z"),
+      retentionDeadline: new Date("2026-05-03T10:00:00Z"),
+      storagePrefix: `simulations/${JOB_ID}`,
+      dimensionGuideOverlayPath: `simulations/${JOB_ID}/room_dimensions.png`,
+      generatedOutputCount: 1,
+      latestGeneratedOutputIndex: 0,
+      lastErrorMessage: null,
+      lastRegenerationErrorMessage: null,
+      ...overrides
+    };
+  }
+
+  function createDeps(job: SimulationJobView | null) {
+    const jobReader: SimulationJobReader = {
+      findOwnedJob: vi.fn().mockResolvedValue(job)
+    };
+    const regenerationStore: SimulationRegenerationStore = {
+      request: vi.fn().mockResolvedValue({ msgId: 99 })
+    };
+    return {
+      deps: {
+        accessTokenSecret: SECRET,
+        jobReader,
+        regenerationStore,
+        queueName: QUEUE,
+        now: NOW
+      },
+      jobReader,
+      regenerationStore
+    };
+  }
+
+  it("returns 200 + placement_queued for a succeeded job under the cap", async () => {
+    const { deps, regenerationStore } = createDeps(
+      makeJobView({ generatedOutputCount: 1 })
+    );
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { simulation_job_id: string; status: string };
+    };
+    expect(body.data.simulation_job_id).toBe(JOB_ID);
+    expect(body.data.status).toBe("placement_queued");
+    expect(regenerationStore.request).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      queueName: QUEUE
+    });
+  });
+
+  it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
+    const { deps } = createDeps(makeJobView());
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: null,
+      deps
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 404 JOB_NOT_FOUND when the job is not owned", async () => {
+    const { deps, regenerationStore } = createDeps(null);
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps
+    });
+    expect(response.status).toBe(404);
+    expect(regenerationStore.request).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 JOB_STATE_CONFLICT when status is not succeeded", async () => {
+    const { deps, regenerationStore } = createDeps(
+      makeJobView({ status: "placement_processing" })
+    );
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("JOB_STATE_CONFLICT");
+    expect(regenerationStore.request).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 REGENERATION_LIMIT_REACHED at the three-result cap", async () => {
+    const { deps, regenerationStore } = createDeps(
+      makeJobView({ generatedOutputCount: 3, latestGeneratedOutputIndex: 2 })
+    );
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("REGENERATION_LIMIT_REACHED");
+    expect(regenerationStore.request).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 JOB_NOT_FOUND for a malformed jobId", async () => {
+    const { deps } = createDeps(makeJobView());
+    const response = await handleRequestRegenerationRequest({
+      jobId: "not-a-uuid",
+      token: makeValidToken(),
+      deps
+    });
+    expect(response.status).toBe(404);
   });
 });

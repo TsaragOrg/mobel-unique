@@ -126,26 +126,36 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 ### `POST /api/public/simulations/{id}/dimensions`
 
-- [ ] Route handler tests for happy path (valid `back_wall` payload with
+- [x] Port the worker's `lib/dimensions.ts` validator into a web-side
+      pure helper `simulation-dimensions.ts` (same range bounds,
+      same per-mode key requirements, `room_depth` required in both
+      modes per CR-SPEC-0012). Vitest covers happy paths, missing
+      keys, non-numeric values, and the boundary values.
+- [x] Route handler tests for happy path (valid `back_wall` payload with
       `room_depth`, valid `corner` payload with `room_depth`), validation
       failures (missing key, non-positive value, value above the
       configured upper bound), and ownership rejection.
-- [ ] Implement the route handler. The accepted shape must match the
+- [x] Implement the route handler. The accepted shape matches the
       worker's `lib/dimensions.ts` validator after PLAN-0038 (i.e.
       `room_depth` is required in both modes).
-- [ ] On success, persist `supplied_dimensions`, transition to
+- [x] On success, persist `supplied_dimensions`, transition to
       `placement_queued`, and enqueue the placement message using the
-      existing payload shape.
+      existing payload shape (delegates to the existing
+      `submit_in_home_simulation_dimensions` SQL RPC, which already
+      enforces atomic state transition + pgmq enqueue).
 
 ### `POST /api/public/simulations/{id}/regenerations`
 
-- [ ] Route handler tests for happy path (job is `succeeded` and below
+- [x] Route handler tests for happy path (job is `succeeded` and below
       the three-result limit), rejection when the job is not in
       `succeeded`, rejection when the limit is reached, and ownership.
-- [ ] Implement the route handler. It must reserve the next
-      `reserved_generation_index`, transition the job to
-      `placement_queued`, and enqueue a placement message with the
-      regeneration intent.
+- [x] Implement the route handler. It reserves the next
+      `reserved_generation_index`, transitions the job to
+      `placement_queued`, and enqueues a placement message with the
+      regeneration intent (delegates to the existing
+      `request_in_home_simulation_regeneration` SQL RPC, which already
+      enforces the three-result cap, reserves the index, and enqueues
+      `{job_id, type, generation_index}`).
 
 ### Cross-cutting
 

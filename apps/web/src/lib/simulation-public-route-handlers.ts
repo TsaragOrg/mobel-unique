@@ -15,7 +15,13 @@ import {
   validateSimulationAccessToken,
   type SimulationEnvironment
 } from "./simulation-access-token";
+import {
+  validateBackWallSubmittedDimensions,
+  validateCornerSubmittedDimensions
+} from "./simulation-dimensions";
 import type {
+  BackWallSuppliedDimensions,
+  CornerSuppliedDimensions,
   CreateEmailVerificationResponse,
   RoomGeometryMode,
   SimulationJobStatus,
@@ -73,6 +79,37 @@ export interface SimulationPublicStatusHandlerDeps {
   jobReader: SimulationJobReader;
   storageSigner: SimulationStorageSigner;
   signedUrlTtlSeconds?: number;
+  now?: () => Date;
+}
+
+export interface SimulationDimensionsStore {
+  submit(input: {
+    jobId: string;
+    suppliedDimensions: BackWallSuppliedDimensions | CornerSuppliedDimensions;
+    queueName: string;
+  }): Promise<{ msgId: number }>;
+}
+
+export interface SimulationRegenerationStore {
+  request(input: {
+    jobId: string;
+    queueName: string;
+  }): Promise<{ msgId: number }>;
+}
+
+export interface SimulationPublicDimensionsHandlerDeps {
+  accessTokenSecret: string;
+  jobReader: SimulationJobReader;
+  dimensionsStore: SimulationDimensionsStore;
+  queueName: string;
+  now?: () => Date;
+}
+
+export interface SimulationPublicRegenerationHandlerDeps {
+  accessTokenSecret: string;
+  jobReader: SimulationJobReader;
+  regenerationStore: SimulationRegenerationStore;
+  queueName: string;
   now?: () => Date;
 }
 
@@ -184,6 +221,165 @@ export async function handleGetSimulationStatusRequest(input: {
   });
 
   return jsonResponse({ data: responseBody }, 200);
+}
+
+export async function handleSubmitDimensionsRequest(input: {
+  jobId: string;
+  token: string | null;
+  body: unknown;
+  deps: SimulationPublicDimensionsHandlerDeps;
+}): Promise<Response> {
+  const auth = authorizeAndResolveJob({
+    jobId: input.jobId,
+    token: input.token,
+    deps: input.deps
+  });
+  if ("response" in auth) {
+    return auth.response;
+  }
+  const job = await auth.findJob();
+  if (!job) {
+    return notFoundResponse();
+  }
+
+  const dimensionsResult =
+    job.roomGeometryMode === "back_wall"
+      ? validateBackWallSubmittedDimensions(input.body)
+      : validateCornerSubmittedDimensions(input.body);
+  if (!dimensionsResult.ok) {
+    return errorResponse("VALIDATION_FAILED", dimensionsResult.message, 400);
+  }
+
+  if (job.status !== "awaiting_dimensions") {
+    return errorResponse(
+      "JOB_STATE_CONFLICT",
+      `Simulation is in status ${job.status} and cannot accept dimensions.`,
+      409
+    );
+  }
+
+  await input.deps.dimensionsStore.submit({
+    jobId: job.jobId,
+    suppliedDimensions: dimensionsResult.dimensions,
+    queueName: input.deps.queueName
+  });
+
+  return jsonResponse(
+    {
+      data: {
+        simulation_job_id: job.jobId,
+        status: "placement_queued" as SimulationJobStatus
+      }
+    },
+    200
+  );
+}
+
+export async function handleRequestRegenerationRequest(input: {
+  jobId: string;
+  token: string | null;
+  deps: SimulationPublicRegenerationHandlerDeps;
+}): Promise<Response> {
+  const auth = authorizeAndResolveJob({
+    jobId: input.jobId,
+    token: input.token,
+    deps: input.deps
+  });
+  if ("response" in auth) {
+    return auth.response;
+  }
+  const job = await auth.findJob();
+  if (!job) {
+    return notFoundResponse();
+  }
+
+  if (job.status !== "succeeded") {
+    return errorResponse(
+      "JOB_STATE_CONFLICT",
+      `Simulation is in status ${job.status} and cannot regenerate.`,
+      409
+    );
+  }
+  if (job.generatedOutputCount >= REGENERATION_LIMIT) {
+    return errorResponse(
+      "REGENERATION_LIMIT_REACHED",
+      "Simulation already has the maximum of three generated results.",
+      409
+    );
+  }
+
+  await input.deps.regenerationStore.request({
+    jobId: job.jobId,
+    queueName: input.deps.queueName
+  });
+
+  return jsonResponse(
+    {
+      data: {
+        simulation_job_id: job.jobId,
+        status: "placement_queued" as SimulationJobStatus
+      }
+    },
+    200
+  );
+}
+
+interface AuthorizedJobResolver {
+  findJob: () => Promise<SimulationJobView | null>;
+}
+
+interface AuthorizeAndResolveDeps {
+  accessTokenSecret: string;
+  jobReader: SimulationJobReader;
+  now?: () => Date;
+}
+
+function authorizeAndResolveJob(input: {
+  jobId: string;
+  token: string | null;
+  deps: AuthorizeAndResolveDeps;
+}):
+  | { response: Response }
+  | AuthorizedJobResolver {
+  if (!input.jobId || !UUID_REGEX.test(input.jobId)) {
+    return { response: notFoundResponse() };
+  }
+
+  const validation = validateSimulationAccessToken({
+    token: input.token,
+    secret: input.deps.accessTokenSecret,
+    now: input.deps.now
+  });
+  if (!validation.valid) {
+    if (validation.reason === "missing") {
+      return {
+        response: errorResponse(
+          "AUTH_REQUIRED",
+          "Authentication is required.",
+          401
+        )
+      };
+    }
+    return {
+      response: errorResponse(
+        "AUTH_INVALID",
+        "Authentication is invalid.",
+        401
+      )
+    };
+  }
+
+  const accessTokenHash = deriveSimulationSessionTokenHash(
+    validation.verificationRequestId
+  );
+
+  return {
+    findJob: () =>
+      input.deps.jobReader.findOwnedJob({
+        jobId: input.jobId,
+        accessTokenHash
+      })
+  };
 }
 
 export function defaultVerificationRequestIdGenerator(): string {
