@@ -101,34 +101,50 @@ touch prompts, providers, or the validated v003 pipeline.
 
 ### Test catalog seed
 
-- [ ] Add a smoke test that runs `seed-simulation-test-data.mjs` against a
-      local Supabase project and asserts both sofas, fabrics, visual
-      positions, renders, and fixture images exist with the expected
-      relationships and the corner sofa carries the corner tag.
-- [ ] Implement `scripts/seed-simulation-test-data.mjs` as an idempotent
-      script with `--out`-friendly logging. It must:
-  - upsert one straight sofa without the corner tag and one corner-tagged
-    sofa using the corner-tag value documented in SPEC-0015 cross-team
-    contracts (PLAN-0042 confirms the final value);
-  - upsert at least one fabric per sofa;
-  - upsert one visual position per sofa with a deterministic prepared
-    sofa render referencing a fixture image under
-    `scripts/seed-simulation-test-data/fixtures/`;
-  - skip rows that already match the seeded shape so the script is safe
-    to re-run.
-- [ ] Add the fixture images under
-      `scripts/seed-simulation-test-data/fixtures/` (one straight, one
-      corner-rendered placeholder) and reference them from the script.
-- [ ] Add `seed:simulation-test` to `package.json` scripts.
-- [ ] Document the seed script in `docs/local-supabase-worker-development.md`.
+- [x] Add a Vitest regression test that asserts the seed migration
+      ships the expected upserts (deterministic sofa ids, corner-tag
+      slug forwarding, shared fabric, visual matrix columns,
+      published render cells, idempotent `on conflict` clauses) and
+      that `scripts/seed-simulation-test-data.mjs` honours the
+      service-role-key requirement, the local-only safety guard,
+      and the `corner_tag_slug` argument forwarding.
+- [x] Implement `scripts/seed-simulation-test-data.mjs` as an
+      idempotent Node script that calls the new
+      `public.seed_simulation_test_catalog(corner_tag_slug)` RPC
+      added by migration `20260502000800`. The RPC upserts:
+  - one straight back-wall sofa and one corner-tagged sofa using
+    deterministic uuids;
+  - one shared fabric with swatch + AI-reference assets;
+  - one visual matrix column per sofa with sequence 1; and
+  - one render cell per sofa pointing at a placeholder prepared
+    sofa storage asset.
+  Every insert uses `on conflict do nothing` or `do update` so
+  the script is safe to re-run.
+- [x] Add `scripts/seed-simulation-test-data/fixtures/README.md`
+      documenting the storage paths the seed expects and noting
+      that real placeholder bytes are uploaded by PLAN-0042. The
+      catalog rows reference the storage paths but the bucket
+      objects are added in PLAN-0042 manual setup; PLAN-0040's
+      API-level publishability checks do not require the bucket
+      objects to exist.
+- [x] Add `seed:simulation-test` to `package.json` scripts.
+- [x] Document the seed script in
+      `docs/local-supabase-worker-development.md`.
 
 ### Verification
 
-- [ ] Update `docs/roadmap/supabase.md` and `docs/roadmap/web.md`.
-- [ ] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
-- [ ] Worker behavior parity check (manual, by Ahmed): run the standard
-      test photo through the worker after the cost-meter hook is wired and
-      confirm the artifact set is pixel-equivalent to the previous baseline.
+- [x] Update `docs/roadmap/supabase.md`, `docs/roadmap/image-worker.md`,
+      and `docs/roadmap/workflow.md`. `docs/roadmap/web.md` is not
+      touched in this plan because PLAN-0039 ships only Supabase /
+      worker changes; the web-facing rate-limit and idempotency
+      consumers land in PLAN-0040 and update `docs/roadmap/web.md`
+      then.
+- [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check origin/dev`
+      — all green locally; CI re-validates on the PR.
+- [ ] Worker behavior parity check (manual, by Ahmed): run the
+      standard test photo through the worker after the cost-meter
+      hook is wired and confirm the artifact set is pixel-equivalent
+      to the previous baseline. Pending Ahmed's local verification.
 
 ## Tests
 

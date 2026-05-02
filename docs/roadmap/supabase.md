@@ -32,6 +32,7 @@
 | Active | SPEC-0015 | PLAN-0039 | Cost-meter pause wired into all three in-home simulation claim RPCs (`claim_in_home_simulation_room_prep_job`, `claim_specific_in_home_simulation_room_prep_job`, `claim_specific_in_home_simulation_placement_job`) via the new `simulation_cost_meter_paused()` helper. When today's `simulation_cost_meter` row has `worker_paused = true`, every claim RPC returns zero rows so the worker dequeues nothing for the rest of the UTC day. |
 | Active | SPEC-0015 | PLAN-0039 | Purge extension: `mark_in_home_simulation_job_purged` deletes the matching `simulation_idempotency_keys` rows alongside its existing artifact clearing; new `cleanup_simulation_idempotency_keys()` and `cleanup_simulation_rate_limit_windows(older_than_hours)` helpers prune stale records. |
 | Active | SPEC-0015 | PLAN-0039 | New `simulation_cost_meter_record_charge(charge_cents, cap_cents)` RPC atomically upserts today's `simulation_cost_meter` row, accumulates cents, and flips `worker_paused = true` when the running total crosses the cap. Used by the worker after each successful paid provider call. |
+| Active | SPEC-0015 | PLAN-0039 | Deterministic test catalog seed: new `seed_simulation_test_catalog(corner_tag_slug)` SQL function and `pnpm seed:simulation-test` CLI upsert a straight back-wall sofa, a corner-tagged sofa (slug forwarded by the caller), a shared fabric, visual matrix columns, and published render cells with placeholder storage paths. Real placeholder bytes are uploaded by PLAN-0042. |
 
 ## Next
 
