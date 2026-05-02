@@ -264,7 +264,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
               <a
                 aria-disabled={canLaunchSimulation ? undefined : "true"}
                 className="public-primary-link"
-                href={`/sofas/${slug}/simulate`}
+                href={`/sofas/${slug}/simulate/start`}
                 onClick={rememberSimulationContext}
               >
                 Lancer ma simulation
