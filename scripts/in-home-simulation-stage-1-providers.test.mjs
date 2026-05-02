@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   MockCleaningProvider,
   MockCornersProvider,
-  MockSceneClassifierProvider,
   MockValidationProvider,
   isProviderModeLive,
   isProviderModeMock,
@@ -25,36 +24,12 @@ describe("isProviderModeMock / isProviderModeLive", () => {
 });
 
 describe("selectStage1Providers (mock)", () => {
-  it("returns the four mock providers", () => {
+  it("returns the three mock providers (no scene classifier; mode comes from job row)", () => {
     const providers = selectStage1Providers("mock");
     expect(providers.validation).toBeInstanceOf(MockValidationProvider);
     expect(providers.cleaning).toBeInstanceOf(MockCleaningProvider);
-    expect(providers.sceneClassifier).toBeInstanceOf(
-      MockSceneClassifierProvider
-    );
     expect(providers.corners).toBeInstanceOf(MockCornersProvider);
-  });
-
-  it("respects IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE=corner", async () => {
-    const providers = selectStage1Providers("mock", (name) =>
-      name === "IN_HOME_SIMULATION_MOCK_GEOMETRY_MODE" ? "corner" : undefined
-    );
-    const result = await providers.sceneClassifier.classifyScene(
-      new Uint8Array()
-    );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.mode).toBe("corner");
-  });
-
-  it("defaults the mock scene mode to back_wall", async () => {
-    const providers = selectStage1Providers("mock");
-    const result = await providers.sceneClassifier.classifyScene(
-      new Uint8Array()
-    );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.mode).toBe("back_wall");
+    expect("sceneClassifier" in providers).toBe(false);
   });
 });
 
@@ -65,14 +40,14 @@ describe("selectStage1Providers (live)", () => {
     ).toThrow(/OPENAI_API_KEY/);
   });
 
-  it("returns OpenAI providers when OPENAI_API_KEY is set", () => {
+  it("returns OpenAI providers when OPENAI_API_KEY is set (no scene classifier)", () => {
     const providers = selectStage1Providers("live", (name) =>
       name === "OPENAI_API_KEY" ? "sk-test" : undefined
     );
     expect(providers.validation.name).toBe("openai");
     expect(providers.cleaning.name).toBe("openai");
-    expect(providers.sceneClassifier.name).toBe("openai");
     expect(providers.corners.name).toBe("openai");
+    expect("sceneClassifier" in providers).toBe(false);
   });
 });
 

@@ -19,9 +19,9 @@
 import type {
   PlacementInputs,
   PlacementProvider,
-  PlacementResult
+  PlacementResult,
+  SceneMode
 } from "../providers.ts";
-import type { SceneMode } from "./openai-scene-classifier.ts";
 import type {
   MeasurementResult,
   MeasurementSuccess,
