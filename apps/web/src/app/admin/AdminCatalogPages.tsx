@@ -14,13 +14,18 @@ import { useRouter } from "next/navigation";
 import {
   FormEvent,
   ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { prepareAdminImageUploadFile } from "../../lib/admin-image-upload";
+import {
+  getDefaultFabricSwatchCrop,
+  prepareAdminImageUploadFile,
+  type FabricSwatchCrop,
+} from "../../lib/admin-image-upload";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
 import {
   buildSofaEditTabReadiness,
@@ -35,6 +40,10 @@ import {
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
+
+// RU: Это число задает самый большой зум для выбора образца ткани.
+// FR: Ce nombre fixe le plus grand zoom pour choisir l'echantillon de tissu.
+const FABRIC_SWATCH_ZOOM_MAX_PERCENT = 500;
 
 export interface AdminCatalogTag {
   id: string;
@@ -282,6 +291,20 @@ export interface FabricMutationInput {
 }
 
 export type FabricPatchInput = Partial<FabricMutationInput>;
+
+interface FabricSwatchCropSelection {
+  crop: FabricSwatchCrop;
+  fileName: string;
+  imageHeight: number;
+  imageWidth: number;
+  previewUrl: string;
+  zoomPercent: number;
+}
+
+interface FabricSwatchPointerPoint {
+  clientX: number;
+  clientY: number;
+}
 
 export interface UploadCreateInput {
   byte_size: number;
@@ -1487,6 +1510,22 @@ function FabricCreateContent({
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // RU: Эти данные хранят выбранный квадрат для нового образца ткани.
+  // FR: Ces donnees gardent le carre choisi pour le nouvel echantillon de tissu.
+  const [selectedSwatchCrop, setSelectedSwatchCrop] =
+    useState<FabricSwatchCropSelection | null>(null);
+
+  // RU: Этот автоматический блок убирает временную ссылку на выбранную картинку.
+  // FR: Ce bloc automatique supprime le lien temporaire vers l'image choisie.
+  useEffect(() => {
+    const previewUrl = selectedSwatchCrop?.previewUrl;
+
+    return () => {
+      if (previewUrl && globalThis.URL?.revokeObjectURL) {
+        globalThis.URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [selectedSwatchCrop?.previewUrl]);
 
   // RU: Это действие сохраняет новую ткань и может уменьшить большое фото перед отправкой.
   // FR: Cette action enregistre un tissu et peut reduire une grande image avant l'envoi.
@@ -1503,6 +1542,7 @@ function FabricCreateContent({
         form: event.currentTarget,
         onUploadInfo: setUploadInfoMessage,
         requireFiles: true,
+        swatchCrop: selectedSwatchCrop?.crop,
       });
       const fabric = await dependencies.createFabric(accessToken, payload);
       dependencies.navigate(`/admin/fabrics/${fabric.id}`);
@@ -1528,6 +1568,8 @@ function FabricCreateContent({
         buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
         errorMessage={errorMessage}
         onSubmit={handleSubmit}
+        selectedSwatchCrop={selectedSwatchCrop}
+        onSelectedSwatchCropChange={setSelectedSwatchCrop}
         uploadInfoMessage={uploadInfoMessage}
       />
     </section>
@@ -1553,6 +1595,22 @@ function FabricEditContent({
   const [isArchiving, setIsArchiving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(false);
+  // RU: Эти данные хранят выбранный квадрат, если админ выбрал новую картинку ткани.
+  // FR: Ces donnees gardent le carre choisi si l'admin a choisi une nouvelle image de tissu.
+  const [selectedSwatchCrop, setSelectedSwatchCrop] =
+    useState<FabricSwatchCropSelection | null>(null);
+
+  // RU: Этот автоматический блок убирает временную ссылку на новую картинку ткани.
+  // FR: Ce bloc automatique supprime le lien temporaire vers la nouvelle image de tissu.
+  useEffect(() => {
+    const previewUrl = selectedSwatchCrop?.previewUrl;
+
+    return () => {
+      if (previewUrl && globalThis.URL?.revokeObjectURL) {
+        globalThis.URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [selectedSwatchCrop?.previewUrl]);
 
   // RU: Этот автоматический блок загружает ткань при открытии страницы.
   // FR: Ce bloc automatique charge le tissu a l'ouverture de la page.
@@ -1599,6 +1657,7 @@ function FabricEditContent({
         form: event.currentTarget,
         onUploadInfo: setUploadInfoMessage,
         requireFiles: false,
+        swatchCrop: selectedSwatchCrop?.crop,
       });
       const nextFabric = await dependencies.updateFabric(
         accessToken,
@@ -1657,6 +1716,8 @@ function FabricEditContent({
             errorMessage={errorMessage}
             fabric={fabric}
             onSubmit={handleSubmit}
+            selectedSwatchCrop={selectedSwatchCrop}
+            onSelectedSwatchCropChange={setSelectedSwatchCrop}
             uploadInfoMessage={uploadInfoMessage}
           />
           <aside className="admin-aside" aria-labelledby="fabric-state-title">
@@ -4610,15 +4671,282 @@ function FabricForm({
   buttonLabel,
   errorMessage,
   fabric,
+  onSelectedSwatchCropChange,
   onSubmit,
+  selectedSwatchCrop,
   uploadInfoMessage,
 }: {
   buttonLabel: string;
   errorMessage: string | null;
   fabric?: AdminCatalogFabric;
+  onSelectedSwatchCropChange(crop: FabricSwatchCropSelection | null): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
+  selectedSwatchCrop: FabricSwatchCropSelection | null;
   uploadInfoMessage: string | null;
 }) {
+  // RU: Эти данные запоминают место пальца или мыши при движении картинки.
+  // FR: Ces donnees gardent la place du doigt ou de la souris quand l'image bouge.
+  const swatchDragStartRef = useRef<{
+    crop: FabricSwatchCrop;
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  // RU: Эти данные хранят пальцы на рамке, чтобы менять размер двумя пальцами.
+  // FR: Ces donnees gardent les doigts sur le cadre pour changer la taille avec deux doigts.
+  const swatchActivePointersRef = useRef<Map<number, FabricSwatchPointerPoint>>(
+    new Map(),
+  );
+  // RU: Эти данные запоминают начало жеста двумя пальцами.
+  // FR: Ces donnees gardent le debut du geste avec deux doigts.
+  const swatchPinchStartRef = useRef<{
+    distance: number;
+    zoomPercent: number;
+  } | null>(null);
+  // RU: Эти данные дают прямой доступ к квадратной рамке для колесика мыши.
+  // FR: Ces donnees donnent un acces direct au cadre carre pour la molette de la souris.
+  const swatchCropFrameRef = useRef<HTMLDivElement | null>(null);
+
+  // RU: Эти данные ставят картинку так, чтобы в рамке был виден выбранный квадрат.
+  // FR: Ces donnees placent l'image pour voir le carre choisi dans le cadre.
+  const swatchPreviewImageStyle = selectedSwatchCrop
+    ? {
+        height: `${(selectedSwatchCrop.imageHeight / selectedSwatchCrop.crop.sourceSize) * 100}%`,
+        left: `${(-selectedSwatchCrop.crop.sourceX / selectedSwatchCrop.crop.sourceSize) * 100}%`,
+        top: `${(-selectedSwatchCrop.crop.sourceY / selectedSwatchCrop.crop.sourceSize) * 100}%`,
+        width: `${(selectedSwatchCrop.imageWidth / selectedSwatchCrop.crop.sourceSize) * 100}%`,
+      }
+    : undefined;
+
+  // RU: Этот автоматический блок включает колесико мыши над квадратной рамкой.
+  // FR: Ce bloc automatique active la molette de la souris au-dessus du cadre carre.
+  useEffect(() => {
+    const cropFrame = swatchCropFrameRef.current;
+
+    if (!cropFrame || !selectedSwatchCrop) {
+      return;
+    }
+
+    const activeSwatchCrop = selectedSwatchCrop;
+
+    function handleWheel(event: WheelEvent) {
+      if (event.deltaY === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      const zoomStep = event.deltaY < 0 ? 10 : -10;
+
+      onSelectedSwatchCropChange(
+        updateFabricSwatchSelectionZoom(
+          activeSwatchCrop,
+          activeSwatchCrop.zoomPercent + zoomStep,
+        ),
+      );
+    }
+
+    cropFrame.addEventListener("wheel", handleWheel, {
+      passive: false,
+    });
+
+    return () => {
+      cropFrame.removeEventListener("wheel", handleWheel);
+    };
+  }, [onSelectedSwatchCropChange, selectedSwatchCrop]);
+
+  // RU: Это действие читает новую картинку ткани и готовит квадрат для выбора.
+  // FR: Cette action lit la nouvelle image de tissu et prepare le carre a choisir.
+  async function handleSwatchFileChange(
+    event: FormEvent<HTMLInputElement>,
+  ) {
+    const input = event.currentTarget;
+    const file = input.files?.[0] ?? null;
+
+    if (!file) {
+      onSelectedSwatchCropChange(null);
+      return;
+    }
+
+    try {
+      const dimensions = await readFabricSwatchImageDimensions(file);
+      const previewUrl = globalThis.URL?.createObjectURL
+        ? globalThis.URL.createObjectURL(file)
+        : "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+      onSelectedSwatchCropChange(
+        buildFabricSwatchCropSelection({
+          file,
+          imageHeight: dimensions.height,
+          imageWidth: dimensions.width,
+          previewUrl,
+        }),
+      );
+    } catch {
+      onSelectedSwatchCropChange(null);
+    }
+  }
+
+  // RU: Это действие меняет приближение картинки в квадратной рамке.
+  // FR: Cette action change le niveau de vue de l'image dans le cadre carre.
+  function handleSwatchZoomChange(event: FormEvent<HTMLInputElement>) {
+    if (!selectedSwatchCrop) {
+      return;
+    }
+
+    const zoomPercent = Number(event.currentTarget.value);
+
+    onSelectedSwatchCropChange(
+      updateFabricSwatchSelectionZoom(selectedSwatchCrop, zoomPercent),
+    );
+  }
+
+  // RU: Это действие возвращает выбор к центральному квадрату.
+  // FR: Cette action remet le choix au carre central.
+  function handleResetSwatchCrop() {
+    if (!selectedSwatchCrop) {
+      return;
+    }
+
+    onSelectedSwatchCropChange(
+      buildFabricSwatchCropSelection({
+        fileName: selectedSwatchCrop.fileName,
+        imageHeight: selectedSwatchCrop.imageHeight,
+        imageWidth: selectedSwatchCrop.imageWidth,
+        previewUrl: selectedSwatchCrop.previewUrl,
+      }),
+    );
+  }
+
+  // RU: Это действие начинает движение картинки внутри квадратной рамки.
+  // FR: Cette action commence le mouvement de l'image dans le cadre carre.
+  function handleSwatchCropPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (!selectedSwatchCrop) {
+      return;
+    }
+
+    event.preventDefault();
+    swatchActivePointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // RU: Захват указателя может не сработать для искусственного движения.
+        // FR: La capture du pointeur peut echouer pour un mouvement artificiel.
+      }
+    }
+
+    const pinchDistance = getFabricSwatchPointerDistance(
+      swatchActivePointersRef.current,
+    );
+
+    if (pinchDistance !== null) {
+      swatchDragStartRef.current = null;
+      swatchPinchStartRef.current = {
+        distance: pinchDistance,
+        zoomPercent: selectedSwatchCrop.zoomPercent,
+      };
+      return;
+    }
+
+    swatchDragStartRef.current = {
+      crop: selectedSwatchCrop.crop,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }
+
+  // RU: Это действие двигает выбранный квадрат, пока админ тянет картинку.
+  // FR: Cette action deplace le carre choisi pendant que l'admin tire l'image.
+  function handleSwatchCropPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (swatchActivePointersRef.current.has(event.pointerId)) {
+      swatchActivePointersRef.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    }
+
+    if (selectedSwatchCrop && swatchPinchStartRef.current) {
+      const pinchDistance = getFabricSwatchPointerDistance(
+        swatchActivePointersRef.current,
+      );
+
+      if (pinchDistance !== null && swatchPinchStartRef.current.distance > 0) {
+        event.preventDefault();
+        const zoomPercent = Math.round(
+          (swatchPinchStartRef.current.zoomPercent * pinchDistance) /
+            swatchPinchStartRef.current.distance,
+        );
+
+        onSelectedSwatchCropChange(
+          updateFabricSwatchSelectionZoom(selectedSwatchCrop, zoomPercent),
+        );
+        return;
+      }
+    }
+
+    const dragStart = swatchDragStartRef.current;
+
+    if (
+      !selectedSwatchCrop ||
+      !dragStart ||
+      dragStart.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    const frameWidth = event.currentTarget.getBoundingClientRect().width;
+
+    if (frameWidth <= 0) {
+      return;
+    }
+
+    const imagePixelsPerFramePixel = dragStart.crop.sourceSize / frameWidth;
+    const nextCrop = clampFabricSwatchCrop({
+      crop: {
+        sourceSize: dragStart.crop.sourceSize,
+        sourceX: Math.round(
+          dragStart.crop.sourceX -
+            (event.clientX - dragStart.startX) * imagePixelsPerFramePixel,
+        ),
+        sourceY: Math.round(
+          dragStart.crop.sourceY -
+            (event.clientY - dragStart.startY) * imagePixelsPerFramePixel,
+        ),
+      },
+      imageHeight: selectedSwatchCrop.imageHeight,
+      imageWidth: selectedSwatchCrop.imageWidth,
+    });
+
+    onSelectedSwatchCropChange({
+      ...selectedSwatchCrop,
+      crop: nextCrop,
+    });
+  }
+
+  // RU: Это действие заканчивает движение картинки.
+  // FR: Cette action termine le mouvement de l'image.
+  function handleSwatchCropPointerEnd(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    swatchActivePointersRef.current.delete(event.pointerId);
+
+    if (swatchActivePointersRef.current.size < 2) {
+      swatchPinchStartRef.current = null;
+    }
+
+    if (swatchDragStartRef.current?.pointerId === event.pointerId) {
+      swatchDragStartRef.current = null;
+    }
+  }
+
   return (
     <form className="admin-form admin-form-wide" onSubmit={onSubmit}>
       {errorMessage ? (
@@ -4660,9 +4988,58 @@ function FabricForm({
         <input
           accept="image/png,image/jpeg,image/webp"
           name="swatch_file"
+          onChange={handleSwatchFileChange}
           type="file"
         />
       </label>
+      {/* RU: Этот большой блок показывает квадратный выбор для нового образца ткани. */}
+      {/* FR: Ce grand bloc montre le choix carre pour le nouvel echantillon de tissu. */}
+      {selectedSwatchCrop ? (
+        <fieldset className="admin-fieldset admin-swatch-cropper">
+          <legend>Swatch crop</legend>
+          <div className="admin-swatch-cropper-grid">
+            <div
+              aria-label="Swatch crop preview"
+              className="admin-swatch-crop-frame"
+              onPointerCancel={handleSwatchCropPointerEnd}
+              onPointerDown={handleSwatchCropPointerDown}
+              onPointerMove={handleSwatchCropPointerMove}
+              onPointerUp={handleSwatchCropPointerEnd}
+              ref={swatchCropFrameRef}
+              role="img"
+            >
+              <img
+                alt=""
+                className="admin-swatch-crop-image"
+                draggable={false}
+                src={selectedSwatchCrop.previewUrl}
+                style={swatchPreviewImageStyle}
+              />
+              <div className="admin-swatch-crop-overlay" aria-hidden="true" />
+            </div>
+            <div className="admin-swatch-crop-controls">
+              <label className="field admin-swatch-zoom-field">
+                <span>Swatch zoom</span>
+                <input
+                  max={FABRIC_SWATCH_ZOOM_MAX_PERCENT}
+                  min="100"
+                  onChange={handleSwatchZoomChange}
+                  step="1"
+                  type="range"
+                  value={selectedSwatchCrop.zoomPercent}
+                />
+              </label>
+              <button
+                className="admin-secondary-button admin-swatch-reset-button"
+                onClick={handleResetSwatchCrop}
+                type="button"
+              >
+                Reset crop
+              </button>
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
       <label className="field">
         <span>AI reference image</span>
         <input
@@ -4673,6 +5050,163 @@ function FabricForm({
       </label>
       <button type="submit">{buttonLabel}</button>
     </form>
+  );
+}
+
+function buildFabricSwatchCropSelection(input: {
+  file?: File;
+  fileName?: string;
+  imageHeight: number;
+  imageWidth: number;
+  previewUrl: string;
+}): FabricSwatchCropSelection {
+  const crop = getDefaultFabricSwatchCrop({
+    height: input.imageHeight,
+    width: input.imageWidth,
+  });
+
+  return {
+    crop,
+    fileName: input.fileName ?? input.file?.name ?? "swatch",
+    imageHeight: input.imageHeight,
+    imageWidth: input.imageWidth,
+    previewUrl: input.previewUrl,
+    zoomPercent: 100,
+  };
+}
+
+function updateFabricSwatchSelectionZoom(
+  selection: FabricSwatchCropSelection,
+  zoomPercent: number,
+): FabricSwatchCropSelection {
+  const safeZoomPercent = clampNumber(
+    Math.round(zoomPercent),
+    100,
+    FABRIC_SWATCH_ZOOM_MAX_PERCENT,
+  );
+
+  return {
+    ...selection,
+    crop: zoomFabricSwatchCrop(selection, safeZoomPercent),
+    zoomPercent: safeZoomPercent,
+  };
+}
+
+async function readFabricSwatchImageDimensions(file: File) {
+  if (typeof globalThis.createImageBitmap === "function") {
+    const bitmap = await globalThis.createImageBitmap(file);
+
+    try {
+      return {
+        height: bitmap.height,
+        width: bitmap.width,
+      };
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  return readFabricSwatchHtmlImageDimensions(file);
+}
+
+async function readFabricSwatchHtmlImageDimensions(file: File) {
+  return new Promise<{ height: number; width: number }>((resolve, reject) => {
+    if (!globalThis.URL?.createObjectURL) {
+      reject(new Error("IMAGE_PREPARATION_UNAVAILABLE"));
+      return;
+    }
+
+    const objectUrl = globalThis.URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      globalThis.URL.revokeObjectURL(objectUrl);
+      resolve({
+        height: image.naturalHeight || image.height,
+        width: image.naturalWidth || image.width,
+      });
+    };
+    image.onerror = () => {
+      globalThis.URL.revokeObjectURL(objectUrl);
+      reject(new Error("IMAGE_DECODE_FAILED"));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function zoomFabricSwatchCrop(
+  selection: FabricSwatchCropSelection,
+  zoomPercent: number,
+): FabricSwatchCrop {
+  const defaultCrop = getDefaultFabricSwatchCrop({
+    height: selection.imageHeight,
+    width: selection.imageWidth,
+  });
+  const safeZoomPercent = clampNumber(
+    Math.round(zoomPercent),
+    100,
+    FABRIC_SWATCH_ZOOM_MAX_PERCENT,
+  );
+  const sourceSize = Math.max(
+    1,
+    Math.round(defaultCrop.sourceSize / (safeZoomPercent / 100)),
+  );
+  const centerX = selection.crop.sourceX + selection.crop.sourceSize / 2;
+  const centerY = selection.crop.sourceY + selection.crop.sourceSize / 2;
+
+  return clampFabricSwatchCrop({
+    crop: {
+      sourceSize,
+      sourceX: Math.round(centerX - sourceSize / 2),
+      sourceY: Math.round(centerY - sourceSize / 2),
+    },
+    imageHeight: selection.imageHeight,
+    imageWidth: selection.imageWidth,
+  });
+}
+
+function clampFabricSwatchCrop(input: {
+  crop: FabricSwatchCrop;
+  imageHeight: number;
+  imageWidth: number;
+}): FabricSwatchCrop {
+  const sourceSize = clampNumber(
+    Math.round(input.crop.sourceSize),
+    1,
+    Math.max(1, Math.min(input.imageWidth, input.imageHeight)),
+  );
+
+  return {
+    sourceSize,
+    sourceX: clampNumber(
+      Math.round(input.crop.sourceX),
+      0,
+      input.imageWidth - sourceSize,
+    ),
+    sourceY: clampNumber(
+      Math.round(input.crop.sourceY),
+      0,
+      input.imageHeight - sourceSize,
+    ),
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getFabricSwatchPointerDistance(
+  pointers: Map<number, FabricSwatchPointerPoint>,
+) {
+  const [firstPoint, secondPoint] = Array.from(pointers.values());
+
+  if (!firstPoint || !secondPoint) {
+    return null;
+  }
+
+  return Math.hypot(
+    secondPoint.clientX - firstPoint.clientX,
+    secondPoint.clientY - firstPoint.clientY,
   );
 }
 
@@ -4794,6 +5328,7 @@ async function buildFabricPayload({
   form,
   onUploadInfo,
   requireFiles,
+  swatchCrop,
 }: {
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
@@ -4801,6 +5336,7 @@ async function buildFabricPayload({
   form: HTMLFormElement;
   onUploadInfo(message: string): void;
   requireFiles: boolean;
+  swatchCrop?: FabricSwatchCrop;
 }): Promise<FabricMutationInput> {
   const formData = new FormData(form);
   const internalName = String(formData.get("internal_name") ?? "").trim();
@@ -4820,6 +5356,7 @@ async function buildFabricPayload({
           file: swatchFile,
           onUploadInfo,
           purpose: "fabric_swatch",
+          swatchCrop,
         })
       : Promise.resolve(existingFabric?.swatch_asset ?? null),
     aiReferenceFile
@@ -4852,17 +5389,26 @@ async function uploadFabricAsset({
   file,
   onUploadInfo,
   purpose,
+  swatchCrop,
 }: {
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
   file: File;
   onUploadInfo(message: string): void;
   purpose: UploadCreateInput["purpose"];
+  swatchCrop?: FabricSwatchCrop;
 }) {
-  const preparedUpload = await prepareAdminImageUploadFile({
-    file,
-    purpose,
-  });
+  const preparedUpload =
+    purpose === "fabric_swatch" && swatchCrop
+      ? await prepareAdminImageUploadFile({
+          fabricSwatchCrop: swatchCrop,
+          file,
+          purpose,
+        })
+      : await prepareAdminImageUploadFile({
+          file,
+          purpose,
+        });
   const uploadFile = preparedUpload.file;
 
   if (preparedUpload.message) {
