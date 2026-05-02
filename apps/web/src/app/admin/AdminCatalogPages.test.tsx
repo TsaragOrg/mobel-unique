@@ -555,7 +555,33 @@ describe("Admin catalog pages", () => {
       "/admin/sofas/new",
     );
     expect(await screen.findByText("Manual test sofa")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
+  });
+
+  it("shows sofa list empty and error states", async () => {
+    const emptyDependencies = createDependencies({
+      listSofas: vi.fn(async () => []),
+    });
+
+    render(<AdminSofasPage dependencies={emptyDependencies} />);
+
+    expect(await screen.findByText("No sofa records yet.")).toBeInTheDocument();
+
+    cleanup();
+
+    const errorDependencies = createDependencies({
+      listSofas: vi.fn(async () => {
+        throw new Error("SOFA_LIST_FAILED");
+      }),
+    });
+
+    render(<AdminSofasPage dependencies={errorDependencies} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "SOFA_LIST_FAILED",
+    );
   });
 
   it("creates, edits, and handles assigned-tag delete conflicts", async () => {
@@ -610,6 +636,10 @@ describe("Admin catalog pages", () => {
     );
     expect(await screen.findByText("Internal fabric")).toBeInTheDocument();
     expect(screen.getByText("Boucle ivoire")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Boucle ivoire swatch" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getAllByText("Premium").length).toBeGreaterThan(0);
     expect(dependencies.listFabrics).toHaveBeenCalledWith("admin-token");
   });

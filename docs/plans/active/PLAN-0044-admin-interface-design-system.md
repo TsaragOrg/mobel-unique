@@ -82,11 +82,11 @@ Existing tests to preserve and extend:
 
 ### Phase 3: List Pages
 
-- [ ] Harmonize `/admin/sofas` list layout, row/card hierarchy, statuses, metadata, and actions.
-- [ ] Harmonize `/admin/fabrics` list layout, fabric asset readiness, archive state, and actions.
-- [ ] Harmonize `/admin/tags` create/list/delete-confirm patterns.
-- [ ] Standardize loading, empty, error, and unauthorized states for list pages.
-- [ ] Add or update tests for list page headings, action availability, and empty/error states.
+- [x] Harmonize `/admin/sofas` list layout, row/card hierarchy, statuses, metadata, and actions.
+- [x] Harmonize `/admin/fabrics` list layout, fabric asset readiness, archive state, and actions.
+- [x] Harmonize `/admin/tags` create/list/delete-confirm patterns.
+- [x] Standardize loading, empty, error, and unauthorized states for list pages.
+- [x] Add or update tests for list page headings, action availability, and empty/error states.
 - [ ] Browser-verify desktop and mobile list views.
 
 ### Phase 4: Form Pages

@@ -724,6 +724,7 @@ button:disabled {
 .admin-action-card:focus-visible,
 .admin-primary-link:focus-visible,
 .admin-secondary-link:focus-visible,
+.admin-table-link:focus-visible,
 .admin-app button:focus-visible {
   outline: 2px solid var(--admin-focus);
   outline-offset: 3px;
@@ -898,6 +899,34 @@ button:disabled {
   border-color: var(--admin-ink);
 }
 
+.admin-quiet-button,
+.admin-danger-button,
+.admin-table-link {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--admin-line);
+  border-radius: 999px;
+  color: var(--admin-ink);
+  display: inline-flex;
+  font-size: 0.875rem;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-quiet-button:hover,
+.admin-table-link:hover {
+  border-color: var(--admin-ink);
+}
+
+.admin-danger-button {
+  background: #fff0ea;
+  border-color: #dc9b86;
+  color: #7d2c18;
+}
+
 .admin-form {
   display: grid;
   gap: 16px;
@@ -971,6 +1000,14 @@ button:disabled {
 
 .admin-list-page .admin-inline-form {
   margin: 0;
+}
+
+.admin-list-feedback {
+  background: #ffffff;
+  border-top: 1px solid var(--admin-line);
+  color: var(--admin-muted);
+  margin: 0;
+  padding: 18px 0 0;
 }
 
 .admin-form-page {
@@ -1676,6 +1713,21 @@ button:disabled {
   grid-template-columns: minmax(160px, max-content) 1fr;
 }
 
+.admin-tag-list {
+  gap: 0;
+}
+
+.admin-tag-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, max-content) max-content;
+}
+
+.admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .admin-muted {
   color: var(--admin-muted, #5b5b5b);
 }
@@ -1882,6 +1934,93 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.admin-catalog-table td {
+  vertical-align: middle;
+}
+
+.admin-table-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-table-main strong {
+  color: var(--admin-ink, #0b0b0b);
+  font-weight: 600;
+}
+
+.admin-table-main span,
+.admin-table-code {
+  color: var(--admin-muted, #5b5b5b);
+  font-size: 0.875rem;
+}
+
+.admin-table-code {
+  overflow-wrap: anywhere;
+}
+
+.admin-state-badge {
+  align-items: center;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 28px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.admin-state-badge-ready {
+  background: #e9f6ef;
+  border-color: #99c9ad;
+  color: #155c38;
+}
+
+.admin-state-badge-warning {
+  background: #fff7df;
+  border-color: #d9bf6a;
+  color: #624a08;
+}
+
+.admin-state-badge-danger {
+  background: #fff0ea;
+  border-color: #dc9b86;
+  color: #7d2c18;
+}
+
+.admin-state-badge-muted {
+  background: #f6f6f6;
+  color: var(--admin-muted, #5b5b5b);
+}
+
+.admin-state-badge-neutral {
+  background: #ffffff;
+  color: var(--admin-ink, #0b0b0b);
+}
+
+.admin-swatch-thumb {
+  aspect-ratio: 1;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  border-radius: 6px;
+  display: inline-flex;
+  height: 44px;
+  object-fit: cover;
+  overflow: hidden;
+  width: 44px;
+}
+
+.admin-swatch-thumb-empty {
+  align-items: center;
+  background: #f7f7f7;
+  color: var(--admin-muted, #5b5b5b);
+  font-size: 0.68rem;
+  justify-content: center;
+  line-height: 1.2;
+  padding: 4px;
+  text-align: center;
+}
+
 @media (max-width: 760px) {
   .admin-grid,
   .admin-inline-form,
@@ -1904,6 +2043,58 @@ button:disabled {
   .admin-list-row {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .admin-catalog-table,
+  .admin-catalog-table tbody,
+  .admin-catalog-table tr,
+  .admin-catalog-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-catalog-table thead {
+    display: none;
+  }
+
+  .admin-catalog-table tr {
+    border-top: 1px solid var(--admin-line, #dfdfdf);
+    padding: 14px 0;
+  }
+
+  .admin-catalog-table td {
+    border-bottom: 0;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(94px, 0.35fr) minmax(0, 1fr);
+    padding: 7px 0;
+    white-space: normal;
+  }
+
+  .admin-catalog-table td::before {
+    color: var(--admin-soft, #8a8a8a);
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .admin-catalog-table .admin-table-primary-cell {
+    display: block;
+    padding-top: 0;
+  }
+
+  .admin-catalog-table .admin-table-primary-cell::before {
+    display: none;
+  }
+
+  .admin-tag-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-row-actions {
+    justify-content: flex-start;
   }
 
   .admin-render-matrix-wrap {

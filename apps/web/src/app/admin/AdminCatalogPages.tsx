@@ -255,6 +255,8 @@ type AdminLargeImagePreview = {
   title: string;
 };
 
+type AdminBadgeTone = "danger" | "muted" | "neutral" | "ready" | "warning";
+
 export interface SofaMutationInput {
   depth_cm?: number;
   height_cm?: number;
@@ -1244,15 +1246,21 @@ function SofaListContent({
         titleId="sofas-title"
       />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {isLoading ? <p role="status">Loading sofas.</p> : null}
-      {!isLoading && sofas.length === 0 ? <p>No sofas.</p> : null}
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading sofas.
+        </p>
+      ) : null}
+      {!isLoading && sofas.length === 0 ? (
+        <p className="admin-list-feedback">No sofa records yet.</p>
+      ) : null}
       {sofas.length > 0 ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-catalog-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -1266,13 +1274,45 @@ function SofaListContent({
             <tbody>
               {sofas.map((sofa) => (
                 <tr key={sofa.id}>
-                  <td>{sofa.internal_name || sofa.public_name}</td>
-                  <td>{sofa.lifecycle_state}</td>
-                  <td>{sofa.public_slug ?? "None"}</td>
-                  <td>{sofa.shopify_order_url ? "Set" : "Missing"}</td>
-                  <td>{formatTimestamp(sofa.updated_at)}</td>
-                  <td>
-                    <Link href={`/admin/sofas/${sofa.id}`}>Open</Link>
+                  <td className="admin-table-primary-cell" data-label="Name">
+                    <div className="admin-table-main">
+                      <strong>{sofa.internal_name || sofa.public_name}</strong>
+                      {sofa.public_name ? (
+                        <span>{sofa.public_name}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td data-label="State">
+                    <AdminStateBadge
+                      tone={getLifecycleBadgeTone(sofa.lifecycle_state)}
+                    >
+                      {formatLifecycleState(sofa.lifecycle_state)}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Slug">
+                    <span className="admin-table-code">
+                      {sofa.public_slug ?? "None"}
+                    </span>
+                  </td>
+                  <td data-label="Shopify">
+                    <AdminStateBadge
+                      tone={getReadinessBadgeTone(
+                        Boolean(sofa.shopify_order_url),
+                      )}
+                    >
+                      {sofa.shopify_order_url ? "Set" : "Missing"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Updated">
+                    {formatTimestamp(sofa.updated_at)}
+                  </td>
+                  <td data-label="Action">
+                    <Link
+                      className="admin-table-link"
+                      href={`/admin/sofas/${sofa.id}`}
+                    >
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -1341,22 +1381,27 @@ function FabricListContent({
         titleId="fabrics-title"
       />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {isLoading ? <p role="status">Loading fabrics.</p> : null}
-      {!isLoading && fabrics.length === 0 ? <p>No fabrics.</p> : null}
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading fabrics.
+        </p>
+      ) : null}
+      {!isLoading && fabrics.length === 0 ? (
+        <p className="admin-list-feedback">No fabric records yet.</p>
+      ) : null}
       {fabrics.length > 0 ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-catalog-table">
             <thead>
               <tr>
-                <th>Internal name</th>
-                <th>Public name</th>
+                <th>Swatch</th>
+                <th>Fabric</th>
                 <th>State</th>
                 <th>Premium</th>
-                <th>Swatch</th>
                 <th>AI reference</th>
                 <th>Updated</th>
                 <th>Action</th>
@@ -1365,15 +1410,58 @@ function FabricListContent({
             <tbody>
               {fabrics.map((fabric) => (
                 <tr key={fabric.id}>
-                  <td>{fabric.internal_name}</td>
-                  <td>{fabric.public_name}</td>
-                  <td>{fabric.lifecycle_state}</td>
-                  <td>{fabric.is_premium ? "Premium" : "Standard"}</td>
-                  <td>{fabric.swatch_asset ? "Ready" : "Missing"}</td>
-                  <td>{fabric.ai_reference_asset ? "Ready" : "Missing"}</td>
-                  <td>{formatTimestamp(fabric.updated_at)}</td>
-                  <td>
-                    <Link href={`/admin/fabrics/${fabric.id}`}>Open</Link>
+                  <td data-label="Swatch">
+                    {fabric.swatch_preview_url ? (
+                      <img
+                        alt={`${fabric.public_name} swatch`}
+                        className="admin-swatch-thumb"
+                        src={fabric.swatch_preview_url}
+                      />
+                    ) : (
+                      <span className="admin-swatch-thumb admin-swatch-thumb-empty">
+                        No swatch
+                      </span>
+                    )}
+                  </td>
+                  <td className="admin-table-primary-cell" data-label="Fabric">
+                    <div className="admin-table-main">
+                      <strong>{fabric.internal_name}</strong>
+                      <span>{fabric.public_name}</span>
+                    </div>
+                  </td>
+                  <td data-label="State">
+                    <AdminStateBadge
+                      tone={getLifecycleBadgeTone(fabric.lifecycle_state)}
+                    >
+                      {formatLifecycleState(fabric.lifecycle_state)}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Premium">
+                    <AdminStateBadge
+                      tone={fabric.is_premium ? "neutral" : "muted"}
+                    >
+                      {fabric.is_premium ? "Premium" : "Standard"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="AI reference">
+                    <AdminStateBadge
+                      tone={getReadinessBadgeTone(
+                        Boolean(fabric.ai_reference_asset),
+                      )}
+                    >
+                      {fabric.ai_reference_asset ? "Ready" : "Missing"}
+                    </AdminStateBadge>
+                  </td>
+                  <td data-label="Updated">
+                    {formatTimestamp(fabric.updated_at)}
+                  </td>
+                  <td data-label="Action">
+                    <Link
+                      className="admin-table-link"
+                      href={`/admin/fabrics/${fabric.id}`}
+                    >
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -2017,6 +2105,38 @@ function formatLifecycleState(lifecycleState: string) {
     .join(" ");
 }
 
+function AdminStateBadge({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: AdminBadgeTone;
+}) {
+  return (
+    <span className={`admin-state-badge admin-state-badge-${tone}`}>
+      {children}
+    </span>
+  );
+}
+
+function getLifecycleBadgeTone(lifecycleState: string): AdminBadgeTone {
+  switch (lifecycleState) {
+    case "active":
+    case "published":
+      return "ready";
+    case "archived":
+      return "muted";
+    case "draft":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function getReadinessBadgeTone(isReady: boolean): AdminBadgeTone {
+  return isReady ? "ready" : "warning";
+}
+
 function formatReadinessKind(kind: SofaEditReadinessKind) {
   switch (kind) {
     case "blocked":
@@ -2217,6 +2337,7 @@ function TagManagerContent({
   dependencies: AdminCatalogPageDependencies;
 }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingDeleteTagId, setPendingDeleteTagId] = useState<string | null>(
     null,
@@ -2224,8 +2345,14 @@ function TagManagerContent({
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
   async function loadTags() {
-    const nextTags = await dependencies.listTags(accessToken);
-    setTags(nextTags);
+    setIsLoading(true);
+
+    try {
+      const nextTags = await dependencies.listTags(accessToken);
+      setTags(nextTags);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -2292,7 +2419,7 @@ function TagManagerContent({
         titleId="tags-title"
       />
       {errorMessage ? (
-        <p className="form-error" role="alert">
+        <p className="form-error admin-list-feedback" role="alert">
           {errorMessage}
         </p>
       ) : null}
@@ -2305,43 +2432,61 @@ function TagManagerContent({
           {isSubmitting ? "Creating" : "Create tag"}
         </button>
       </form>
-      {tags.length === 0 ? <p>No tags.</p> : null}
-      <div className="admin-list">
-        {tags.map((tag) => (
-          <form
-            className="admin-list-row"
-            key={tag.id}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleUpdate(tag, event.currentTarget);
-            }}
-          >
-            <label className="field">
-              <span>Edit {tag.public_label}</span>
-              <input
-                aria-label={`Edit ${tag.public_label}`}
-                defaultValue={tag.public_label}
-                name={`tag-${tag.id}`}
-                required
-              />
-            </label>
-            <span className="admin-muted">{tag.slug}</span>
-            <button type="submit">Save {tag.public_label}</button>
-            {pendingDeleteTagId === tag.id ? (
-              <button onClick={() => void handleDelete(tag)} type="button">
-                Confirm delete {tag.public_label}
-              </button>
-            ) : (
-              <button
-                onClick={() => setPendingDeleteTagId(tag.id)}
-                type="button"
-              >
-                Delete {tag.public_label}
-              </button>
-            )}
-          </form>
-        ))}
-      </div>
+      {isLoading ? (
+        <p className="admin-list-feedback" role="status">
+          Loading tags.
+        </p>
+      ) : null}
+      {!isLoading && tags.length === 0 ? (
+        <p className="admin-list-feedback">No tags yet.</p>
+      ) : null}
+      {tags.length > 0 ? (
+        <div className="admin-list admin-tag-list">
+          {tags.map((tag) => (
+            <form
+              className="admin-list-row admin-tag-row"
+              key={tag.id}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleUpdate(tag, event.currentTarget);
+              }}
+            >
+              <label className="field">
+                <span>Edit {tag.public_label}</span>
+                <input
+                  aria-label={`Edit ${tag.public_label}`}
+                  defaultValue={tag.public_label}
+                  name={`tag-${tag.id}`}
+                  required
+                />
+              </label>
+              <span className="admin-table-code">{tag.slug}</span>
+              <div className="admin-row-actions">
+                <button className="admin-quiet-button" type="submit">
+                  Save {tag.public_label}
+                </button>
+                {pendingDeleteTagId === tag.id ? (
+                  <button
+                    className="admin-danger-button"
+                    onClick={() => void handleDelete(tag)}
+                    type="button"
+                  >
+                    Confirm delete {tag.public_label}
+                  </button>
+                ) : (
+                  <button
+                    className="admin-quiet-button"
+                    onClick={() => setPendingDeleteTagId(tag.id)}
+                    type="button"
+                  >
+                    Delete {tag.public_label}
+                  </button>
+                )}
+              </div>
+            </form>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
