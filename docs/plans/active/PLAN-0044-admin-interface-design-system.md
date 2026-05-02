@@ -111,13 +111,13 @@ Existing tests to preserve and extend:
 
 ### Phase 6: Drawers, Modals, Previews, And Matrix
 
-- [ ] Harmonize drawer and sheet presentation.
-- [ ] Harmonize confirmation dialogs and destructive actions.
-- [ ] Harmonize image preview buttons, lightbox, and compare dialogs.
-- [ ] Harmonize render matrix desktop table.
-- [ ] Harmonize mobile render fabric groups and render cell sheet.
-- [ ] Preserve source-photo lifecycle behavior, candidate review, manual upload, refine prompts, Realtime job status, and manual resume.
-- [ ] Add or update tests for key modal/drawer open/close flows and render cell actions.
+- [x] Harmonize drawer and sheet presentation.
+- [x] Harmonize confirmation dialogs and destructive actions.
+- [x] Harmonize image preview buttons, lightbox, and compare dialogs.
+- [x] Harmonize render matrix desktop table.
+- [x] Harmonize mobile render fabric groups and render cell sheet.
+- [x] Preserve source-photo lifecycle behavior, candidate review, manual upload, refine prompts, Realtime job status, and manual resume.
+- [x] Add or update tests for key modal/drawer open/close flows and render cell actions.
 - [ ] Browser-verify matrix-heavy pages at desktop, tablet, and mobile widths.
 
 ### Phase 7: Final QA And Cleanup
