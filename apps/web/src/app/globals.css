@@ -1463,6 +1463,63 @@ button:disabled {
   transform: translateX(-50%);
 }
 
+.simulation-result-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0 0 80px;
+}
+
+.simulation-result-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px clamp(22px, 5vw, 70px) 0;
+}
+
+.simulation-result-heading h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 4.6vw, 3.2rem);
+  font-weight: 200;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.simulation-result-image {
+  padding: 0 clamp(22px, 5vw, 70px);
+}
+
+.simulation-result-image img {
+  background: #f4f4f4;
+  border: 1px solid var(--public-line);
+  display: block;
+  max-width: 100%;
+}
+
+.simulation-result-error {
+  color: #b34141;
+  font-size: 0.96rem;
+  margin: 0;
+  padding: 0 clamp(22px, 5vw, 70px);
+}
+
+.simulation-result-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 0 clamp(22px, 5vw, 70px);
+}
+
+.simulation-result-retention {
+  color: var(--public-soft);
+  font-size: 0.86rem;
+  margin: 0;
+  padding: 0 clamp(22px, 5vw, 70px);
+}
+
 @media (max-width: 1040px) {
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
