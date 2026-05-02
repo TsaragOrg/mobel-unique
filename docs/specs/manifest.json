@@ -202,6 +202,25 @@
       "implementationPlans": ["PLAN-0035"],
       "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
       "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0015",
+      "title": "Public Simulation Wizard",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0012",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0012"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
+      "areas": ["web", "supabase"]
     }
   ]
 }

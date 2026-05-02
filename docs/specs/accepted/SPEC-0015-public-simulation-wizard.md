@@ -1,7 +1,7 @@
 # Public Simulation Wizard
 
 Spec: SPEC-0015
-Status: draft
+Status: accepted
 Layer: technical
 Parent Spec: SPEC-0012
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012
