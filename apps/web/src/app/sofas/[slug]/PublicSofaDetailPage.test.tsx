@@ -1,0 +1,248 @@
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PublicSofaDetailPage } from "./PublicSofaDetailPage";
+
+const detail = {
+  defaults: {
+    fabric_id: "fabric-boucle",
+    visual_position_id: "front",
+  },
+  fabrics: [
+    {
+      id: "fabric-boucle",
+      is_premium: false,
+      public_name: "Bouclé ivoire",
+      public_order: 1,
+      swatch_url: "https://assets.example/fabrics/boucle.png",
+    },
+    {
+      id: "fabric-sauge",
+      is_premium: true,
+      public_name: "Velours sauge",
+      public_order: 2,
+      swatch_url: "https://assets.example/fabrics/sauge.png",
+    },
+  ],
+  renders: [
+    {
+      fabric_id: "fabric-boucle",
+      height_px: 1200,
+      render_url: "https://assets.example/rivoli/boucle-face.png",
+      visual_position_id: "front",
+      width_px: 1600,
+    },
+    {
+      fabric_id: "fabric-boucle",
+      height_px: 1200,
+      render_url: "https://assets.example/rivoli/boucle-profil.png",
+      visual_position_id: "profile",
+      width_px: 1600,
+    },
+    {
+      fabric_id: "fabric-sauge",
+      height_px: 1200,
+      render_url: "https://assets.example/rivoli/sauge-face.png",
+      visual_position_id: "front",
+      width_px: 1600,
+    },
+    {
+      fabric_id: "fabric-sauge",
+      height_px: 1200,
+      render_url: "https://assets.example/rivoli/sauge-profil.png",
+      visual_position_id: "profile",
+      width_px: 1600,
+    },
+  ],
+  sofa: {
+    dimensions: {
+      depth_cm: 96,
+      footprint_measurements: null,
+      footprint_type: "rectangle",
+      height_cm: 82,
+      length_cm: 240,
+    },
+    id: "sofa-rivoli",
+    public_description: "Un canapé modulable pour le salon.",
+    public_name: "Canapé Rivoli",
+    public_slug: "canape-rivoli",
+    shopify_order_url: "https://shopify.example/products/canape-rivoli",
+    tags: [
+      {
+        public_label: "Angle",
+        slug: "angle",
+      },
+      {
+        public_label: "Convertible",
+        slug: "convertible",
+      },
+    ],
+  },
+  visual_positions: [
+    {
+      id: "front",
+      public_label: "Face",
+      sequence: 1,
+    },
+    {
+      id: "profile",
+      public_label: "Profil",
+      sequence: 2,
+    },
+  ],
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    status,
+  });
+}
+
+function mockDetailResponse(body: unknown = { data: detail, meta: {} }, status = 200) {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(body, status)));
+}
+
+describe("PublicSofaDetailPage", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    window.sessionStorage.clear();
+  });
+
+  it("loads default fabric and visual position from direct entry", async () => {
+    mockDetailResponse();
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
+    expect(screen.getByText("Un canapé modulable pour le salon.")).toBeInTheDocument();
+    expect(screen.getByText("Longueur 240 cm")).toBeInTheDocument();
+    expect(screen.getByText("Profondeur 96 cm")).toBeInTheDocument();
+    expect(screen.getByText("Hauteur 82 cm")).toBeInTheDocument();
+    expect(screen.getByText("Angle")).toBeInTheDocument();
+    expect(screen.getByText("Convertible")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bouclé ivoire" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Face" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Face"]')).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/boucle-face.png",
+    );
+    expect(screen.getByRole("link", { name: "Lancer ma simulation" })).toHaveAttribute(
+      "href",
+      "/sofas/canape-rivoli/simulate",
+    );
+    expect(screen.getByRole("link", { name: "Commander sur Shopify" })).toHaveAttribute(
+      "href",
+      "https://shopify.example/products/canape-rivoli",
+    );
+    expect(screen.getByText(/Le rendu IA reste une estimation visuelle/i)).toBeInTheDocument();
+  });
+
+  it("restores a valid internal catalog preview fabric from session storage", async () => {
+    window.sessionStorage.setItem(
+      "mobel-unique:catalog-selection:canape-rivoli",
+      JSON.stringify({ fabric_id: "fabric-sauge" }),
+    );
+    mockDetailResponse();
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    expect(await screen.findByRole("button", { name: "Velours sauge" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Face"]')).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/sauge-face.png",
+    );
+    expect(
+      window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli"),
+    ).toBeNull();
+  });
+
+  it("keeps fabric and visual position selections independent", async () => {
+    mockDetailResponse();
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    await screen.findByRole("heading", { name: "Canapé Rivoli" });
+    fireEvent.click(screen.getByRole("button", { name: "Profil" }));
+    expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Profil"]')).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/boucle-profil.png",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+
+    expect(screen.getByRole("button", { name: "Profil" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Profil"]')).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/sauge-profil.png",
+    );
+  });
+
+  it("blocks simulation when session-scoped selection state is stale", async () => {
+    window.sessionStorage.setItem(
+      "mobel-unique:catalog-selection:canape-rivoli",
+      JSON.stringify({ fabric_id: "fabric-missing", visual_position_id: "profile" }),
+    );
+    mockDetailResponse();
+    render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    expect(
+      await screen.findByText("Votre sélection précédente n'est plus disponible."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lancer ma simulation" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Utiliser la première sélection disponible" }));
+
+    expect(screen.getByRole("link", { name: "Lancer ma simulation" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("shows safe unavailable copy for missing or removed sofas", async () => {
+    mockDetailResponse(
+      {
+        error: {
+          code: "SOFA_UNAVAILABLE",
+          details: {
+            lifecycle_state: "archived",
+          },
+          message: "Ce canapé n'est plus disponible.",
+        },
+      },
+      410,
+    );
+
+    render(<PublicSofaDetailPage slug="ancien-canape" />);
+
+    expect(await screen.findByText("Ce canapé n'est pas disponible.")).toBeInTheDocument();
+    expect(screen.queryByText(/archived|draft|unpublished|storage/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
+      "href",
+      "/catalog",
+    );
+  });
+});
