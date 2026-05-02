@@ -638,6 +638,11 @@ describe("Admin catalog pages", () => {
     render(<AdminFabricCreatePage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Create fabric" });
+    expect(
+      screen.getByText(
+        "Create a fabric record with required swatch and AI reference assets.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Internal fabric name"), {
       target: { value: "Internal fabric" },
     });
@@ -710,6 +715,9 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Internal fabric" });
+    expect(
+      screen.getByText("Update fabric naming, readiness assets, and archive state."),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Public fabric name"), {
       target: { value: "Boucle naturel" },
     });
@@ -742,6 +750,11 @@ describe("Admin catalog pages", () => {
     render(<AdminSofaCreatePage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Create sofa" });
+    expect(
+      screen.getByText(
+        "Create a draft sofa record before assigning fabrics and render coverage.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Internal name"), {
       target: { value: "Manual test sofa" },
     });

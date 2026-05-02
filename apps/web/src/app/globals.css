@@ -973,6 +973,16 @@ button:disabled {
   margin: 0;
 }
 
+.admin-form-page {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-form-page .admin-form,
+.admin-form-page .admin-grid {
+  margin-top: 0;
+}
+
 @media (max-width: 1040px) {
   .admin-action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -91,12 +91,12 @@ Existing tests to preserve and extend:
 
 ### Phase 4: Form Pages
 
-- [ ] Harmonize `/admin/sofas/new` form layout and action footer.
-- [ ] Harmonize `/admin/fabrics/new` upload + form layout.
-- [ ] Harmonize `/admin/fabrics/[fabric_id]` edit/archive layout.
-- [ ] Standardize field labels, helper text, validation errors, file input states, and disabled/loading controls.
-- [ ] Preserve existing signed upload behavior and client-side resize behavior.
-- [ ] Add or update tests for form submission, validation errors, and upload call paths when markup changes.
+- [x] Harmonize `/admin/sofas/new` form layout and action footer.
+- [x] Harmonize `/admin/fabrics/new` upload + form layout.
+- [x] Harmonize `/admin/fabrics/[fabric_id]` edit/archive layout.
+- [x] Standardize field labels, helper text, validation errors, file input states, and disabled/loading controls.
+- [x] Preserve existing signed upload behavior and client-side resize behavior.
+- [x] Add or update tests for form submission, validation errors, and upload call paths when markup changes.
 - [ ] Browser-verify desktop and mobile form flows.
 
 ### Phase 5: Sofa Edit Shared Workflow

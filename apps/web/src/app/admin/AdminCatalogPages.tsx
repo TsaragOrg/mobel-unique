@@ -1434,9 +1434,16 @@ function FabricCreateContent({
   }
 
   return (
-    <section aria-labelledby="create-fabric-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="create-fabric-title">Create fabric</h1>
+    <section
+      aria-labelledby="create-fabric-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Create a fabric record with required swatch and AI reference assets."
+        eyebrow="Catalog"
+        title="Create fabric"
+        titleId="create-fabric-title"
+      />
       <FabricForm
         buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
         errorMessage={errorMessage}
@@ -1553,9 +1560,16 @@ function FabricEditContent({
   }
 
   return (
-    <section aria-labelledby="edit-fabric-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="edit-fabric-title">{fabric?.internal_name ?? "Fabric"}</h1>
+    <section
+      aria-labelledby="edit-fabric-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Update fabric naming, readiness assets, and archive state."
+        eyebrow="Catalog"
+        title={fabric?.internal_name ?? "Fabric"}
+        titleId="edit-fabric-title"
+      />
       {fabric ? (
         <div className="admin-grid">
           <FabricForm
@@ -1635,9 +1649,16 @@ function SofaCreateContent({
   }
 
   return (
-    <section aria-labelledby="create-sofa-title" className="admin-section">
-      <p className="eyebrow">Catalog</p>
-      <h1 id="create-sofa-title">Create sofa</h1>
+    <section
+      aria-labelledby="create-sofa-title"
+      className="admin-section admin-form-page"
+    >
+      <AdminPageHeader
+        description="Create a draft sofa record before assigning fabrics and render coverage."
+        eyebrow="Catalog"
+        title="Create sofa"
+        titleId="create-sofa-title"
+      />
       <SofaForm
         buttonLabel={isSubmitting ? "Creating" : "Create draft"}
         errorMessage={errorMessage}
