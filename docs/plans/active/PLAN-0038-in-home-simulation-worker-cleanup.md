@@ -90,3 +90,12 @@ to the terminal-harness baseline after this plan ships.
 - Production worker behavior must equal the terminal-harness baseline after
   this plan ships. If the parity check fails, revert this plan before the
   remainder of the SPEC-0015 work continues.
+- Hotfix `d4cb6ea` added `drop function if exists` before both
+  `create or replace function` blocks in
+  `supabase/migrations/20260502000100_in_home_simulation_stage_1_claim_returns_geometry_mode.sql`
+  after the original migration deploy failed on `dev` with
+  "cannot change return type of existing function". The fix is a
+  pure deploy-side correction — no production behavior change, no
+  unit-testable surface (the prior migrations already cover the
+  Stage 1 claim semantics). Quality-gate spec guard exempts this
+  case via the `## Notes` explanation.
