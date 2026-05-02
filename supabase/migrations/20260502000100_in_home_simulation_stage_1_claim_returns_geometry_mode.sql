@@ -12,6 +12,14 @@
 -- still produce a usable mode for the corners step. Once every
 -- producer of `in_home_simulation_jobs` rows sets the column
 -- explicitly, the coalesce becomes a no-op.
+--
+-- Postgres does not allow `create or replace function` to change a
+-- function's return type, so each function is dropped first. The
+-- drops are guarded by `if exists` so the migration is safe to run
+-- against a fresh database that does not yet have the previous
+-- definitions.
+
+drop function if exists public.claim_in_home_simulation_room_prep_job(text, integer);
 
 create or replace function public.claim_in_home_simulation_room_prep_job(
   worker_identifier text,
@@ -105,6 +113,8 @@ begin
   return next;
 end;
 $$;
+
+drop function if exists public.claim_specific_in_home_simulation_room_prep_job(uuid, text, integer);
 
 create or replace function public.claim_specific_in_home_simulation_room_prep_job(
   target_job_id uuid,
