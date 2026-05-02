@@ -2,6 +2,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Screen3Dimensions } from "../Screen3Dimensions";
+import type { SuppliedDimensionsBody } from "../../../lib/simulation-public-api";
+
+type SubmitFn = (
+  jobId: string,
+  body: SuppliedDimensionsBody
+) => Promise<{ ok: true } | { ok: false; code?: string; message?: string }>;
 
 afterEach(cleanup);
 
@@ -16,7 +22,7 @@ const baseProps = {
 };
 
 function makeOkSubmit() {
-  return vi.fn(async () => ({ ok: true as const }));
+  return vi.fn<SubmitFn>(async () => ({ ok: true }));
 }
 
 describe("Screen3Dimensions", () => {
