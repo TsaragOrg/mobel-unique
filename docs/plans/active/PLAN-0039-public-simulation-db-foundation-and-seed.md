@@ -51,18 +51,22 @@ touch prompts, providers, or the validated v003 pipeline.
       `cost_date`, `usd_cost_estimate_cents` cents counter,
       `worker_paused boolean default false`).
 - [x] Add migration creating `simulation_cost_meter` with RLS.
-- [ ] Add SQL test that the room-prep claim RPC and placement claim RPC
-      return zero rows when `simulation_cost_meter.worker_paused = true`
-      for today's `cost_date`.
-- [ ] Update `claim_in_home_simulation_job_for_room_prep` and
-      `claim_in_home_simulation_job_for_placement` (or whatever the RPC
-      names are in the existing migrations) to short-circuit on paused
-      meter.
-- [ ] Add SQL test that the purge function deletes expired
-      `idempotency_keys` rows alongside the existing per-job artifacts.
-- [ ] Update the purge function migration to clean expired
-      `idempotency_keys` and to truncate stale `simulation_rate_limits`
-      windows older than 48 hours.
+- [x] Add Vitest assertion that all three claim RPCs
+      (`claim_in_home_simulation_room_prep_job`,
+      `claim_specific_in_home_simulation_room_prep_job`,
+      `claim_specific_in_home_simulation_placement_job`) call
+      `public.simulation_cost_meter_paused()` and return early when
+      it returns true.
+- [x] Update the three claim RPCs to short-circuit on paused meter
+      via the new `simulation_cost_meter_paused()` helper.
+- [x] Add Vitest assertion that the purge function deletes
+      `simulation_idempotency_keys` rows alongside the existing
+      per-job artifact clearing.
+- [x] Update the purge function to clean
+      `simulation_idempotency_keys` for the purged job and ship
+      `cleanup_simulation_idempotency_keys()` plus
+      `cleanup_simulation_rate_limit_windows()` helpers for stale
+      records.
 
 ### Worker cost meter hook
 
