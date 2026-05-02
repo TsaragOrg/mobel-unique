@@ -6,18 +6,26 @@ import {
   issueSimulationAccessToken
 } from "./simulation-access-token";
 import {
+  SIMULATION_CREATE_MAX_PHOTO_BYTES,
   VERIFICATION_REQUEST_TTL_SECONDS,
   handleCreateEmailVerificationRequest,
+  handleCreateSimulationRequest,
   handleGetSimulationStatusRequest,
   handleRequestRegenerationRequest,
   handleSubmitDimensionsRequest,
   handleVerifyEmailVerificationRequest,
+  type SimulationCatalogStore,
+  type SimulationCreateJobStore,
   type SimulationDimensionsStore,
   type SimulationJobReader,
   type SimulationJobView,
+  type SimulationQueueEnqueuer,
   type SimulationRegenerationStore,
-  type SimulationStorageSigner
+  type SimulationStorageSigner,
+  type SimulationStorageUploader
 } from "./simulation-public-route-handlers";
+import type { SimulationIdempotencyStore } from "./simulation-idempotency";
+import type { SimulationRateLimitStore } from "./simulation-rate-limit";
 import type { SimulationStatusResponse } from "./simulation-public-api";
 
 const SECRET = "test-secret";
@@ -902,5 +910,518 @@ describe("handleRequestRegenerationRequest", () => {
       deps
     });
     expect(response.status).toBe(404);
+  });
+});
+
+describe("handleCreateSimulationRequest", () => {
+  const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
+  const FABRIC_ID = "00000000-0000-4000-8000-000000000fab";
+  const VISUAL_POSITION_ID = "00000000-0000-4000-8000-000000000bcd";
+  const SOFA_SLUG = "test-sofa";
+  const CORNER_TAG_SLUG = "corner";
+  const QUEUE = "local_in_home_simulation_jobs";
+  const NEW_JOB_ID = "00000000-0000-4000-8000-000000000a01";
+  const NOW = fixedNow("2026-05-02T10:00:00Z");
+  const RATE_LIMIT_SALT = "salt";
+
+  function makeValidToken() {
+    return issueSimulationAccessToken({
+      verificationRequestId: VERIFICATION_REQUEST_ID,
+      secret: SECRET,
+      environment: "local",
+      now: NOW
+    }).token;
+  }
+
+  function makeHeaders(options: {
+    cookie?: string | null;
+    idempotencyKey?: string | null;
+  } = {}) {
+    const headers = new Headers();
+    if (options.cookie === undefined) {
+      headers.set("cookie", `simulation_access_token=${makeValidToken()}`);
+    } else if (options.cookie !== null) {
+      headers.set("cookie", options.cookie);
+    }
+    if (options.idempotencyKey === undefined) {
+      headers.set("idempotency-key", "test-key-1");
+    } else if (options.idempotencyKey !== null) {
+      headers.set("idempotency-key", options.idempotencyKey);
+    }
+    return headers;
+  }
+
+  function makeFormData(overrides: {
+    sofaSlug?: string | null;
+    fabricId?: string | null;
+    visualPositionId?: string | null;
+    photoBytes?: Uint8Array | null;
+    photoContentType?: string;
+    photoFilename?: string;
+  } = {}) {
+    const formData = new FormData();
+    if (overrides.sofaSlug !== null) {
+      formData.append("sofa_slug", overrides.sofaSlug ?? SOFA_SLUG);
+    }
+    if (overrides.fabricId !== null) {
+      formData.append("fabric_id", overrides.fabricId ?? FABRIC_ID);
+    }
+    if (overrides.visualPositionId !== null) {
+      formData.append(
+        "visual_position_id",
+        overrides.visualPositionId ?? VISUAL_POSITION_ID
+      );
+    }
+    if (overrides.photoBytes !== null) {
+      const photoBytes =
+        overrides.photoBytes ?? new Uint8Array([1, 2, 3, 4, 5]);
+      const blob = new Blob([photoBytes as BlobPart], {
+        type: overrides.photoContentType ?? "image/jpeg"
+      });
+      formData.append("room_photo", blob, overrides.photoFilename ?? "room.jpg");
+    }
+    return formData;
+  }
+
+  function createDeps(options: {
+    rateAllowed?: boolean;
+    rateTripped?: "ip" | "email";
+    idempotencyAcquired?: boolean;
+    idempotencyExistingJobId?: string | null;
+    catalogMode?: "back_wall" | "corner" | null;
+    createOk?: boolean;
+    createThrows?: boolean;
+    uploadThrows?: boolean;
+    enqueueThrows?: boolean;
+    finalizeThrows?: boolean;
+    existingJob?: SimulationJobView | null;
+  } = {}) {
+    const rateLimitStore: SimulationRateLimitStore = {
+      increment: vi.fn().mockResolvedValue({
+        count: 1,
+        allowed: options.rateAllowed ?? true
+      })
+    };
+    if (options.rateTripped === "ip") {
+      rateLimitStore.increment = vi.fn().mockResolvedValue({
+        count: 4,
+        allowed: false
+      });
+    } else if (options.rateTripped === "email") {
+      const incFn = vi.fn();
+      incFn.mockResolvedValueOnce({ count: 1, allowed: true });
+      incFn.mockResolvedValueOnce({ count: 3, allowed: false });
+      rateLimitStore.increment = incFn;
+    }
+
+    const idempotencyStore: SimulationIdempotencyStore = {
+      acquire: vi.fn().mockResolvedValue({
+        acquired: options.idempotencyAcquired ?? true,
+        simulationJobId: options.idempotencyExistingJobId ?? null
+      }),
+      finalize: options.finalizeThrows
+        ? vi.fn().mockRejectedValue(new Error("finalize boom"))
+        : vi.fn().mockResolvedValue(undefined)
+    };
+
+    const catalogStore: SimulationCatalogStore = {
+      resolveRoomGeometryMode: vi
+        .fn()
+        .mockResolvedValue(
+          options.catalogMode === undefined ? "back_wall" : options.catalogMode
+        )
+    };
+
+    const storageUploader: SimulationStorageUploader = {
+      uploadRoomPhoto: options.uploadThrows
+        ? vi.fn().mockRejectedValue(new Error("upload boom"))
+        : vi.fn().mockResolvedValue(undefined),
+      deleteUploadedRoomPhoto: vi.fn().mockResolvedValue(undefined)
+    };
+
+    const createJobStore: SimulationCreateJobStore = {
+      create: options.createThrows
+        ? vi.fn().mockRejectedValue(new Error("create boom"))
+        : vi.fn().mockResolvedValue(
+            options.createOk === false
+              ? { ok: false, reason: "triple_not_publishable" as const }
+              : {
+                  ok: true,
+                  jobId: NEW_JOB_ID,
+                  status: "queued" as const,
+                  createdAt: new Date("2026-05-02T10:00:00Z"),
+                  retentionDeadline: new Date("2026-05-03T10:00:00Z"),
+                  storagePrefix: `simulations/${NEW_JOB_ID}`
+                }
+          )
+    };
+
+    const queueEnqueuer: SimulationQueueEnqueuer = {
+      enqueueRoomPrep: options.enqueueThrows
+        ? vi.fn().mockRejectedValue(new Error("enqueue boom"))
+        : vi.fn().mockResolvedValue({ msgId: 42 })
+    };
+
+    const jobReader: SimulationJobReader = {
+      findOwnedJob: vi.fn().mockResolvedValue(options.existingJob ?? null)
+    };
+
+    return {
+      deps: {
+        accessTokenSecret: SECRET,
+        rateLimitSalt: RATE_LIMIT_SALT,
+        rateLimitIpPerDay: 3,
+        rateLimitEmailPerDay: 2,
+        cornerTagSlug: CORNER_TAG_SLUG,
+        queueName: QUEUE,
+        retentionHours: 24,
+        rateLimitStore,
+        idempotencyStore,
+        catalogStore,
+        storageUploader,
+        createJobStore,
+        queueEnqueuer,
+        jobReader,
+        generateJobId: () => NEW_JOB_ID,
+        now: NOW
+      },
+      rateLimitStore,
+      idempotencyStore,
+      catalogStore,
+      storageUploader,
+      createJobStore,
+      queueEnqueuer,
+      jobReader
+    };
+  }
+
+  it("returns 201 with the new job metadata on a back_wall happy path", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      data: {
+        simulation_job_id: string;
+        status: string;
+        created_at: string;
+        retention_deadline: string;
+      };
+    };
+    expect(body.data.simulation_job_id).toBe(NEW_JOB_ID);
+    expect(body.data.status).toBe("queued");
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`,
+        contentType: "image/jpeg"
+      })
+    );
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verificationRequestId: VERIFICATION_REQUEST_ID,
+        sofaSlug: SOFA_SLUG,
+        fabricId: FABRIC_ID,
+        visualPositionId: VISUAL_POSITION_ID,
+        customerRoomOriginalPath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`,
+        roomGeometryMode: "back_wall",
+        jobIdOverride: NEW_JOB_ID,
+        retentionHours: 24
+      })
+    );
+    expect(ctx.queueEnqueuer.enqueueRoomPrep).toHaveBeenCalledWith({
+      jobId: NEW_JOB_ID,
+      queueName: QUEUE
+    });
+    expect(ctx.idempotencyStore.finalize).toHaveBeenCalledWith(
+      expect.any(String),
+      NEW_JOB_ID
+    );
+  });
+
+  it("derives roomGeometryMode='corner' for a corner-tagged sofa", async () => {
+    const ctx = createDeps({ catalogMode: "corner" });
+    await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({ roomGeometryMode: "corner" })
+    );
+  });
+
+  it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders({ cookie: null }),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 400 VALIDATION_FAILED when Idempotency-Key header is missing", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders({ idempotencyKey: null }),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.rateLimitStore.increment).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when sofa_slug is missing", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({ sofaSlug: null }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when fabric_id is not a UUID", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({ fabricId: "not-a-uuid" }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when room_photo content-type is not allowed", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoContentType: "application/pdf"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when room_photo is empty", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({ photoBytes: new Uint8Array() }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when room_photo exceeds the size cap", async () => {
+    const ctx = createDeps();
+    const oversize = new Uint8Array(SIMULATION_CREATE_MAX_PHOTO_BYTES + 1);
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({ photoBytes: oversize }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 429 RATE_LIMITED when the per-IP cap is reached", async () => {
+    const ctx = createDeps({ rateTripped: "ip" });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(429);
+    expect(ctx.idempotencyStore.acquire).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 RATE_LIMITED when the per-email cap is reached", async () => {
+    const ctx = createDeps({ rateTripped: "email" });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(429);
+  });
+
+  it("returns the existing job for a duplicate Idempotency-Key", async () => {
+    const existingJob: SimulationJobView = {
+      jobId: "00000000-0000-4000-8000-000000000abc",
+      status: "queued",
+      roomGeometryMode: "back_wall",
+      createdAt: new Date("2026-05-02T09:00:00Z"),
+      retentionDeadline: new Date("2026-05-03T09:00:00Z"),
+      storagePrefix: "simulations/00000000-0000-4000-8000-000000000abc",
+      dimensionGuideOverlayPath: null,
+      generatedOutputCount: 0,
+      latestGeneratedOutputIndex: null,
+      lastErrorMessage: null,
+      lastRegenerationErrorMessage: null
+    };
+    const ctx = createDeps({
+      idempotencyAcquired: false,
+      idempotencyExistingJobId: existingJob.jobId,
+      existingJob
+    });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { simulation_job_id: string };
+    };
+    expect(body.data.simulation_job_id).toBe(existingJob.jobId);
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
+    expect(ctx.createJobStore.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 IDEMPOTENCY_IN_PROGRESS when the original is in flight", async () => {
+    const ctx = createDeps({
+      idempotencyAcquired: false,
+      idempotencyExistingJobId: null
+    });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it("returns 409 IDEMPOTENCY_IN_PROGRESS when the existing job belongs to another visitor", async () => {
+    const ctx = createDeps({
+      idempotencyAcquired: false,
+      idempotencyExistingJobId: "00000000-0000-4000-8000-000000000abc",
+      existingJob: null
+    });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it("returns 400 when the catalog cannot resolve the sofa", async () => {
+    const ctx = createDeps({ catalogMode: null });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the upload when create-job returns triple_not_publishable", async () => {
+    const ctx = createDeps({ createOk: false });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.storageUploader.deleteUploadedRoomPhoto).toHaveBeenCalledWith({
+      storagePath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`
+    });
+  });
+
+  it("rolls back the upload when create-job throws", async () => {
+    const ctx = createDeps({ createThrows: true });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(500);
+    expect(ctx.storageUploader.deleteUploadedRoomPhoto).toHaveBeenCalled();
+  });
+
+  it("returns 500 without rolling back when only the upload fails", async () => {
+    const ctx = createDeps({ uploadThrows: true });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(500);
+    expect(ctx.createJobStore.create).not.toHaveBeenCalled();
+    expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 without rollback when only the enqueue throws (job already exists)", async () => {
+    const ctx = createDeps({ enqueueThrows: true });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(500);
+    expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
+  });
+
+  it("still returns 201 even if the idempotency finalize step throws", async () => {
+    const ctx = createDeps({ finalizeThrows: true });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+  });
+
+  it("reads the Idempotency-Key header case-insensitively", async () => {
+    const ctx = createDeps();
+    const headers = new Headers();
+    headers.set("cookie", `simulation_access_token=${makeValidToken()}`);
+    headers.set("Idempotency-Key", "case-test");
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers,
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+  });
+
+  it("uses the configured corner-tag slug when calling the catalog", async () => {
+    const ctx = createDeps();
+    await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: { ...ctx.deps, cornerTagSlug: "l-shape" }
+    });
+    expect(ctx.catalogStore.resolveRoomGeometryMode).toHaveBeenCalledWith({
+      sofaSlug: SOFA_SLUG,
+      cornerTagSlug: "l-shape"
+    });
   });
 });

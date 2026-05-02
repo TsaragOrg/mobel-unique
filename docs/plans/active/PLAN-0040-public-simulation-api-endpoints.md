@@ -83,21 +83,33 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 ### `POST /api/public/simulations` (upload + create job)
 
-- [ ] Route handler tests covering: happy path with a small JPEG fixture,
-      missing token (401-equivalent), expired token, invalid sofa/fabric/
-      visual-position triple (rejected), rate limit tripped (per IP and
-      per email), duplicate `Idempotency-Key` returning the existing job
-      id without reuploading, atomic rollback when DB job creation fails
-      after storage upload succeeds (orphan path under
-      `simulations/orphans/{key_hash}/...`), and a corner-tagged sofa
-      producing `room_geometry_mode = 'corner'` on the job row.
-- [ ] Implement the route handler. Storage upload path must be
-      `simulations/{job_id}/inputs/room.{ext}`. The queue message must use
-      `IN_HOME_SIMULATION_QUEUE_NAME` and the existing payload shape so
-      the worker behaves identically to terminal-harness inputs.
-- [ ] Add a corner-tag detection helper that reads the sofa row's tags
-      and sets `room_geometry_mode` accordingly. Default to `back_wall`
-      when no corner tag is present.
+- [x] Add SQL helper RPC
+      `resolve_simulation_room_geometry_mode(p_sofa_slug, p_corner_tag_slug)`
+      so the API can derive the mode from sofa tags before uploading.
+      Returns null when the sofa is not publishable. Vitest regression
+      in `scripts/simulation-resolve-geometry-mode-migration.test.mjs`.
+- [x] Route handler tests covering: happy path back_wall, happy path
+      corner (mode='corner' on job row), missing token, missing
+      `Idempotency-Key`, missing/invalid form fields, unsupported
+      content-type, empty file, oversize file, rate limit tripped (per
+      IP and per email), duplicate `Idempotency-Key` returning the
+      existing job, idempotency in-flight 409, idempotency cross-visitor
+      collision 409, catalog cannot resolve sofa, atomic rollback when
+      create-job returns triple_not_publishable or throws, no rollback
+      when only the upload throws or only the enqueue throws,
+      finalize-throws is non-fatal, header case-insensitive parsing,
+      configurable corner-tag slug.
+- [x] Implement the route handler. Storage upload path is
+      `simulations/{job_id}/inputs/room.{ext}`. The queue message uses
+      `SIMULATION_QUEUE_NAME` (env-driven; aliases
+      `IN_HOME_SIMULATION_QUEUE_NAME`) and the existing payload shape
+      so the worker behaves identically to terminal-harness inputs.
+- [x] Add a corner-tag detection helper that reads the sofa row's tags
+      and sets `room_geometry_mode` accordingly. The helper is the
+      `resolve_simulation_room_geometry_mode` SQL RPC; the API calls it
+      before upload and passes the resolved mode into the create-job
+      RPC. Default `corner` tag slug is `corner` and is configurable
+      via `SIMULATION_CORNER_TAG_SLUG`.
 
 ### `GET /api/public/simulations/{id}`
 
@@ -159,12 +171,19 @@ existing `IN_HOME_SIMULATION_QUEUE_NAME` payload shape.
 
 ### Cross-cutting
 
-- [ ] Add `apps/web/.env.example` entries for
+- [x] Add `apps/web/.env.example` entries for
+      `SUPABASE_SERVICE_ROLE_KEY`, `SIMULATION_ACCESS_TOKEN_SECRET`,
+      `SIMULATION_RATE_LIMIT_SUBJECT_SALT`,
       `SIMULATION_RATE_LIMIT_IP_PER_DAY`,
       `SIMULATION_RATE_LIMIT_EMAIL_PER_DAY`,
-      `SIMULATION_QUEUE_NAME`, `NEXT_PUBLIC_SITE_URL`.
-- [ ] Update `docs/roadmap/web.md` and `docs/roadmap/api.md`.
-- [ ] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
+      `SIMULATION_QUEUE_NAME`, `SIMULATION_CORNER_TAG_SLUG`,
+      `SIMULATION_RETENTION_HOURS`, `NEXT_PUBLIC_SITE_URL`.
+- [x] Update `env-example.test.ts` so the SPEC-0015 server-side env
+      contract is asserted (no `NEXT_PUBLIC_*` prefix on the
+      service-role key, all the simulation env names documented).
+- [x] Update `docs/roadmap/web.md`, `docs/roadmap/supabase.md`, and
+      `docs/roadmap/workflow.md`.
+- [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check`.
 
 ## Tests
 
