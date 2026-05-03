@@ -87,6 +87,18 @@ the stub bodies with real verification later; this UI stays.
 - Component tests for `EmailGateForm`.
 - Wizard route tests already exist (PLAN-0041) and remain untouched.
 
+## Follow-up fixes
+
+- 2026-05-03 — `auth.ts` was parsing the verification responses as if
+  `verification_request_id` and `simulation_access_token` sat at the
+  top level, but every public simulation route handler wraps success
+  payloads in a `{ data: ... }` envelope. The mismatch made both
+  helpers return `INTERNAL_ERROR` even when the server returned 200,
+  surfacing in the EmailGateForm as the generic
+  "La vérification n'a pas abouti" wording. Helpers now read
+  `envelope.data.<field>`; unit tests were updated to pass the
+  wrapped payload so the fix cannot regress.
+
 ## Roadmap
 
 - `docs/roadmap/web.md`
