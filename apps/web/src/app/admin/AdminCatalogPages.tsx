@@ -2774,19 +2774,88 @@ function SofaFabricAssignmentSection({
     });
 
     try {
+      // RU: Эти данные помогают понять, какие ткани меняют порядок.
+      // FR: Ces donnees aident a savoir quels tissus changent de rang.
+      const changedFabricIds = new Set(
+        changedAssignments.map((assignment) => assignment.fabric_id),
+      );
+
+      // RU: Эти данные показывают будущий порядок перед отправкой.
+      // FR: Ces donnees montrent le futur rang avant l'envoi.
+      const desiredOrders = sofaFabrics.map((assignment) => {
+        return {
+          fabricId: assignment.fabric_id,
+          publicOrder: changedFabricIds.has(assignment.fabric_id)
+            ? readSofaFabricOrderValue(orderValues[assignment.fabric_id])
+            : assignment.public_order,
+        };
+      });
+      const duplicateOrder = findDuplicateSofaFabricPublicOrder(desiredOrders);
+
+      if (duplicateOrder !== null) {
+        setErrorMessage("Another fabric already uses this public order.");
+
+        return;
+      }
+
+      // RU: Эти данные помогают временно освободить занятые номера.
+      // FR: Ces donnees aident a liberer les numeros deja pris.
+      const changedCurrentOrders = new Set(
+        changedAssignments
+          .map((assignment) => assignment.public_order)
+          .filter((order): order is number => order !== null),
+      );
+      const needsTemporaryClear = changedAssignments.some((assignment) => {
+        const nextOrder = readSofaFabricOrderValue(
+          orderValues[assignment.fabric_id],
+        );
+
+        return (
+          nextOrder !== null &&
+          nextOrder !== assignment.public_order &&
+          changedCurrentOrders.has(nextOrder)
+        );
+      });
+      const clearAssignments = needsTemporaryClear
+        ? changedAssignments.filter(
+            (assignment) => assignment.public_order !== null,
+          )
+        : [];
+      const finalAssignments = needsTemporaryClear
+        ? changedAssignments.filter(
+            (assignment) =>
+              readSofaFabricOrderValue(orderValues[assignment.fabric_id]) !==
+              null,
+          )
+        : changedAssignments;
+
       await Promise.all(
-        changedAssignments.map((assignment) =>
+        clearAssignments.map((assignment) =>
           dependencies.updateSofaFabric(
             accessToken,
             sofaId,
             assignment.fabric_id,
             {
-              public_order: orderValues[assignment.fabric_id]?.trim()
-                ? Number(orderValues[assignment.fabric_id])
-                : null,
+              public_order: null,
             },
           ),
         ),
+      );
+      await Promise.all(
+        finalAssignments.map((assignment) => {
+          const publicOrder = readSofaFabricOrderValue(
+            orderValues[assignment.fabric_id],
+          );
+
+          return dependencies.updateSofaFabric(
+            accessToken,
+            sofaId,
+            assignment.fabric_id,
+            {
+              public_order: publicOrder,
+            },
+          );
+        }),
       );
       if (changedAssignments.length > 0) {
         await refreshAssignmentsAndReadiness();
@@ -2856,7 +2925,8 @@ function SofaFabricAssignmentSection({
               Reset order
             </button>
           </div>
-          {/* This list shows sofa fabrics and their public order. */}
+          {/* RU: Этот список показывает ткани дивана и их порядок.
+              FR: Cette liste montre les tissus du canape et leur rang. */}
           <div className="admin-list admin-fabric-card-list">
             {sofaFabrics.map((assignment) => {
               const fabricLabel =
@@ -2945,6 +3015,39 @@ function buildSofaFabricOrderValues(sofaFabrics: AdminCatalogSofaFabric[]) {
       assignment.public_order === null ? "" : String(assignment.public_order),
     ]),
   );
+}
+
+// RU: Эта проверка превращает пустое поле в отсутствие номера.
+// FR: Cette verification transforme un champ vide en absence de numero.
+function readSofaFabricOrderValue(value: string | undefined) {
+  const trimmedValue = value?.trim() ?? "";
+
+  return trimmedValue ? Number(trimmedValue) : null;
+}
+
+// RU: Эта проверка находит повтор номера перед отправкой.
+// FR: Cette verification trouve un numero repete avant l'envoi.
+function findDuplicateSofaFabricPublicOrder(
+  orders: Array<{
+    fabricId: string;
+    publicOrder: number | null;
+  }>,
+) {
+  const seenOrders = new Map<number, string>();
+
+  for (const order of orders) {
+    if (order.publicOrder === null) {
+      continue;
+    }
+
+    if (seenOrders.has(order.publicOrder)) {
+      return order.publicOrder;
+    }
+
+    seenOrders.set(order.publicOrder, order.fabricId);
+  }
+
+  return null;
 }
 
 function AdminFabricCard({ fabric }: { fabric: AdminCatalogFabric }) {

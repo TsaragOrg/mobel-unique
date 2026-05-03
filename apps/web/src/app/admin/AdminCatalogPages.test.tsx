@@ -29,6 +29,7 @@ import {
   AdminTagsPage,
   createDefaultAdminCatalogDependencies,
   type AdminCatalogPageDependencies,
+  type AdminCatalogSofaFabric,
 } from "./AdminCatalogPages";
 
 vi.mock("next/navigation", () => ({
@@ -2503,6 +2504,133 @@ describe("Admin catalog pages", () => {
         { public_order: 7 },
       );
     });
+  });
+
+  it("saves swapped fabric public order without a temporary conflict", async () => {
+    // RU: Эти данные задают диван и две ткани с порядком 1 и 2.
+    // FR: Ces donnees fixent le canape et deux tissus avec les rangs 1 et 2.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const firstFabric = {
+      ai_reference_asset: {
+        asset_kind: "fabric_ai_reference",
+        byte_size: 2200,
+        content_type: "image/jpeg",
+        height_px: 1200,
+        id: "00000000-0000-4000-8000-000000000902",
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000903",
+      internal_name: "First internal fabric",
+      is_premium: false,
+      lifecycle_state: "active",
+      public_name: "First fabric",
+      swatch_preview_url: null,
+      swatch_asset: null,
+      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const secondFabric = {
+      ...firstFabric,
+      id: "00000000-0000-4000-8000-000000000913",
+      internal_name: "Second internal fabric",
+      public_name: "Second fabric",
+    };
+
+    // RU: Этот список меняется так же, как сервер меняет порядок тканей.
+    // FR: Cette liste change comme le serveur change le rang des tissus.
+    let assignments: AdminCatalogSofaFabric[] = [firstFabric, secondFabric].map(
+      (fabric, index) => ({
+        assigned_at: "2026-04-28T10:15:00.000Z",
+        fabric,
+        fabric_id: fabric.id,
+        public_order: index + 1,
+        sofa_id: sofaId,
+        updated_at: "2026-04-28T10:15:00.000Z",
+      }),
+    );
+
+    // RU: Эта замена ведет себя как сервер и запрещает два одинаковых номера.
+    // FR: Ce remplacement agit comme le serveur et refuse deux numeros egaux.
+    const updateSofaFabric = vi.fn(
+      async (
+        _accessToken: string,
+        targetSofaId: string,
+        fabricId: string,
+        input: { public_order: number | null },
+      ) => {
+        const conflict = assignments.some(
+          (assignment) =>
+            assignment.sofa_id === targetSofaId &&
+            assignment.fabric_id !== fabricId &&
+            assignment.public_order === input.public_order &&
+            input.public_order !== null,
+        );
+
+        if (conflict) {
+          throw new Error("SOFA_FABRIC_ORDER_CONFLICT");
+        }
+
+        const nextAssignment = assignments.find(
+          (assignment) => assignment.fabric_id === fabricId,
+        );
+
+        if (!nextAssignment) {
+          throw new Error("SOFA_FABRIC_NOT_FOUND");
+        }
+
+        const updatedAssignment = {
+          ...nextAssignment,
+          public_order: input.public_order,
+          updated_at: "2026-04-28T10:20:00.000Z",
+        };
+        assignments = assignments.map((assignment) =>
+          assignment.fabric_id === fabricId ? updatedAssignment : assignment,
+        );
+
+        return updatedAssignment;
+      },
+    );
+    const dependencies = createDependencies({
+      listFabrics: vi.fn(async () => [firstFabric, secondFabric]),
+      listSofaFabrics: vi.fn(async () => assignments),
+      updateSofaFabric,
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Fabrics/i }));
+    fireEvent.change(screen.getByLabelText("Public order for First fabric"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByLabelText("Public order for Second fabric"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save order" }));
+
+    await waitFor(() => {
+      expect(updateSofaFabric).toHaveBeenCalledWith(
+        "admin-token",
+        sofaId,
+        firstFabric.id,
+        { public_order: 2 },
+      );
+    });
+    expect(updateSofaFabric.mock.calls.map((call) => call[3])).toEqual([
+      { public_order: null },
+      { public_order: null },
+      { public_order: 2 },
+      { public_order: 1 },
+    ]);
+    expect(assignments.map((assignment) => assignment.public_order)).toEqual([
+      2, 1,
+    ]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows visual matrix list, centered column dialogs, and delete confirmation", async () => {
