@@ -490,19 +490,50 @@ async function fetchInHomeSimulationJobRow(
   return rows[0];
 }
 
-async function persistCleaningCheckpoint(
+async function persistValidateCheckpoint(
   supabaseUrl: string,
   serviceRoleKey: string,
   jobId: string,
   paths: {
     roomNormalizedPath: string;
     roomCompressedPath: string;
-    roomCleanedPath: string;
   }
 ): Promise<void> {
   const patch = {
     room_normalized_path: paths.roomNormalizedPath,
     room_compressed_path: paths.roomCompressedPath,
+    updated_at: new Date().toISOString()
+  };
+  const response = await supabaseFetchWithTimeout(
+    `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify(patch)
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `validate checkpoint persist failed for job ${jobId}: HTTP ${response.status} ${text}`
+    );
+  }
+}
+
+async function persistCleaningCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
+  paths: {
+    roomCleanedPath: string;
+  }
+): Promise<void> {
+  const patch = {
     room_cleaned_path: paths.roomCleanedPath,
     updated_at: new Date().toISOString()
   };
@@ -547,6 +578,7 @@ async function removeScratchDir(jobDir: string): Promise<void> {
 }
 
 type Stage1CheckpointOutcome =
+  | "stage_1_validate_checkpoint_advanced"
   | "stage_1_cleaning_checkpoint_advanced"
   | "stage_1_completed";
 
@@ -563,17 +595,33 @@ async function processClaimedJob(
     );
   }
 
-  // PLAN-0053: Stage 1 is split into two checkpoints to fit under the
-  // Supabase Edge Functions 150-second wall-clock limit. The artifact
-  // paths persisted on the job row are the source of truth for which
-  // checkpoint already ran. The first invocation runs cleaning and
-  // hands the job back to the queue; the second invocation runs the
-  // corners + lines step and transitions to `awaiting_dimensions`.
+  // PLAN-0053 + PLAN-0058: Stage 1 is split into THREE checkpoints to
+  // fit each individual cron-tick under the Supabase Edge Functions
+  // 150-second wall-clock. The artifact paths persisted on the job
+  // row are the source of truth for which checkpoint already ran:
+  //   1. validate: decode + normalize + validate (gpt-5 vision) +
+  //      compress, persists `room_normalized_path` and
+  //      `room_compressed_path`.
+  //   2. cleaning: download compressed + cleanRoom (gpt-image-2),
+  //      persists `room_cleaned_path`.
+  //   3. corners: download cleaned + place dots + draw lines + final
+  //      complete-stage RPC.
   const checkpoint = await fetchInHomeSimulationJobRow(
     supabaseUrl,
     serviceRoleKey,
     claim.job_id
   );
+
+  if (!checkpoint.room_normalized_path || !checkpoint.room_compressed_path) {
+    await runValidateCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      claim,
+      queueName
+    );
+    return "stage_1_validate_checkpoint_advanced";
+  }
 
   if (!checkpoint.room_cleaned_path) {
     await runCleaningCheckpoint(
@@ -581,6 +629,7 @@ async function processClaimedJob(
       serviceRoleKey,
       workerIdentifier,
       claim,
+      checkpoint,
       queueName
     );
     return "stage_1_cleaning_checkpoint_advanced";
@@ -596,7 +645,7 @@ async function processClaimedJob(
   return "stage_1_completed";
 }
 
-async function runCleaningCheckpoint(
+async function runValidateCheckpoint(
   supabaseUrl: string,
   serviceRoleKey: string,
   workerIdentifier: string,
@@ -609,20 +658,15 @@ async function runCleaningCheckpoint(
     );
   }
 
-  // PLAN-0056 observability: emit a checkpoint-started event before
-  // any long-running OpenAI fetch so an operator looking at
-  // `worker_job_events` can always tell whether the cleaning step
-  // entered. Without this, an isolate that dies inside `cleanRoom`
-  // leaves the job timeline blank between claim and failure.
+  // PLAN-0058 observability: emit start event before any provider call.
   await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
     job_type: IN_HOME_SIMULATION_JOB_TYPE,
     in_home_simulation_job_id: claim.job_id,
     fabric_render_job_id: null,
     from_status: null,
     to_status: null,
-    event_type: "stage_1_cleaning_checkpoint_started",
-    message:
-      `worker ${workerIdentifier} entered cleaning checkpoint`,
+    event_type: "stage_1_validate_checkpoint_started",
+    message: `worker ${workerIdentifier} entered validate checkpoint`,
     metadata: {
       worker_identifier: workerIdentifier,
       attempt: claim.room_prep_attempt_count,
@@ -747,6 +791,133 @@ async function runCleaningCheckpoint(
     );
     await Deno.writeFile(`${scratchDir}/room_compressed.jpg`, compressedBytes);
 
+    const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
+    const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
+
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      normalizedPath,
+      normalizedBytes,
+      "image/jpeg"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      compressedPath,
+      compressedBytes,
+      "image/jpeg"
+    );
+
+    await persistValidateCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id,
+      {
+        roomNormalizedPath: normalizedPath,
+        roomCompressedPath: compressedPath
+      }
+    );
+
+    // Hand the job back to the queue so the next cron tick runs the
+    // cleaning checkpoint with a fresh wall-clock budget.
+    await callRpc<void>(
+      supabaseUrl,
+      serviceRoleKey,
+      "release_in_home_simulation_room_prep_claim",
+      {
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier,
+        error_code: null,
+        error_message: null
+      }
+    );
+    await callRpc<number>(
+      supabaseUrl,
+      serviceRoleKey,
+      "enqueue_in_home_simulation_room_prep_message",
+      {
+        job_id: claim.job_id,
+        queue_name: queueName
+      }
+    );
+
+    await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+      job_type: IN_HOME_SIMULATION_JOB_TYPE,
+      in_home_simulation_job_id: claim.job_id,
+      fabric_render_job_id: null,
+      from_status: null,
+      to_status: null,
+      event_type: "stage_1_validate_checkpoint_completed",
+      message: `worker ${workerIdentifier} completed validate checkpoint; cleaning checkpoint enqueued`,
+      metadata: {
+        room_normalized_path: normalizedPath,
+        room_compressed_path: compressedPath
+      }
+    });
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
+}
+
+async function runCleaningCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: RoomPrepClaimRow,
+  checkpoint: InHomeSimulationJobCheckpointRow,
+  queueName: string
+): Promise<void> {
+  if (!checkpoint.room_compressed_path) {
+    throw new Error(
+      "runCleaningCheckpoint called without a persisted room_compressed_path"
+    );
+  }
+
+  // PLAN-0056 observability: emit start event before the long
+  // OpenAI cleaning fetch. Without it the timeline is blank when
+  // the isolate dies inside `cleanRoom`.
+  await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+    job_type: IN_HOME_SIMULATION_JOB_TYPE,
+    in_home_simulation_job_id: claim.job_id,
+    fabric_render_job_id: null,
+    from_status: null,
+    to_status: null,
+    event_type: "stage_1_cleaning_checkpoint_started",
+    message: `worker ${workerIdentifier} entered cleaning checkpoint`,
+    metadata: {
+      worker_identifier: workerIdentifier,
+      attempt: claim.room_prep_attempt_count,
+      room_geometry_mode: claim.room_geometry_mode
+    }
+  });
+
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage1Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+
+  const costMeter = makeSupabaseCostMeterClient({
+    supabaseUrl,
+    serviceRoleKey
+  });
+  const dailyCapCents = parseDailyCapCents(
+    Deno.env.get("SIMULATION_DAILY_COST_CAP_USD")
+  );
+  const chargeMeter = (role: ProviderRole) =>
+    chargeForRole(costMeter, role, dailyCapCents, (message) =>
+      console.warn(message)
+    );
+
+  const scratchDir = await createScratchDir(claim.job_id);
+  try {
+    const compressedBytes = await downloadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      checkpoint.room_compressed_path
+    );
+
     let cleanedRawBytes: Uint8Array;
     try {
       cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
@@ -798,24 +969,8 @@ async function runCleaningCheckpoint(
     const cleanedBytes = await cleanedImage.encode(0);
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
-    const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
-    const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
     const cleanedPath = `${claim.storage_prefix}/room_cleaned.png`;
 
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      normalizedPath,
-      normalizedBytes,
-      "image/jpeg"
-    );
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      compressedPath,
-      compressedBytes,
-      "image/jpeg"
-    );
     await uploadStorageObject(
       supabaseUrl,
       serviceRoleKey,
@@ -824,24 +979,15 @@ async function runCleaningCheckpoint(
       "image/png"
     );
 
-    // Persist the three cleaning-side paths on the job row so the
-    // next invocation knows the cleaning checkpoint already finished.
     await persistCleaningCheckpoint(
       supabaseUrl,
       serviceRoleKey,
       claim.job_id,
-      {
-        roomNormalizedPath: normalizedPath,
-        roomCompressedPath: compressedPath,
-        roomCleanedPath: cleanedPath
-      }
+      { roomCleanedPath: cleanedPath }
     );
 
-    // Hand the job back to the queue so a future cron tick re-claims
-    // it and runs the corners checkpoint. We release the claim
-    // (status returns to `queued`) and enqueue a fresh pgmq message
-    // because the original message is about to be deleted by the
-    // outer `Deno.serve` success path.
+    // Hand the job back to the queue so the next cron tick runs the
+    // corners checkpoint.
     await callRpc<void>(
       supabaseUrl,
       serviceRoleKey,
@@ -870,11 +1016,8 @@ async function runCleaningCheckpoint(
       from_status: null,
       to_status: null,
       event_type: "stage_1_cleaning_checkpoint_completed",
-      message:
-        `worker ${workerIdentifier} completed cleaning checkpoint; corners checkpoint enqueued`,
+      message: `worker ${workerIdentifier} completed cleaning checkpoint; corners checkpoint enqueued`,
       metadata: {
-        room_normalized_path: normalizedPath,
-        room_compressed_path: compressedPath,
         room_cleaned_path: cleanedPath
       }
     });

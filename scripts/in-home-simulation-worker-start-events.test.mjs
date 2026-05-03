@@ -3,7 +3,27 @@ import { describe, expect, it } from "vitest";
 
 const workerPath = "supabase/functions/in-home-simulation-worker/index.ts";
 
-describe("PLAN-0056 worker emits checkpoint-started events", () => {
+describe("PLAN-0056 + PLAN-0058 worker emits checkpoint-started events", () => {
+  it("runValidateCheckpoint emits stage_1_validate_checkpoint_started before validateRoom", async () => {
+    const source = await readFile(workerPath, "utf8");
+
+    const fnIndex = source.indexOf("async function runValidateCheckpoint(");
+    expect(fnIndex).toBeGreaterThan(-1);
+    const nextFnIndex = source.indexOf("\nasync function ", fnIndex + 1);
+    const fnSource = source.slice(
+      fnIndex,
+      nextFnIndex > -1 ? nextFnIndex : source.length
+    );
+
+    const startEventIndex = fnSource.indexOf(
+      "stage_1_validate_checkpoint_started"
+    );
+    const validateRoomIndex = fnSource.indexOf("validateRoom");
+    expect(startEventIndex).toBeGreaterThan(-1);
+    expect(validateRoomIndex).toBeGreaterThan(-1);
+    expect(startEventIndex).toBeLessThan(validateRoomIndex);
+  });
+
   it("runCleaningCheckpoint emits stage_1_cleaning_checkpoint_started", async () => {
     const source = await readFile(workerPath, "utf8");
 

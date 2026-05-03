@@ -28,6 +28,11 @@ import {
 
 export const OPENAI_CORNERS_DEFAULT_MODEL = "gpt-image-2";
 export const OPENAI_CORNERS_DEFAULT_SIZE = "auto";
+// SPEC-0015 PLAN-0058: corners output is a utility-grade dot map
+// consumed by the worker's local lines.ts step, never shown to the
+// user. `low` quality cuts gpt-image-2 generation time roughly in
+// half versus the model default.
+export const OPENAI_CORNERS_DEFAULT_QUALITY = "low";
 export const MAX_CORNER_PLACEMENT_ATTEMPTS = 3;
 
 export const PROMPT_BACK_WALL = [
@@ -154,6 +159,7 @@ export type CornersFormDataInput = {
   imageBytes: Uint8Array;
   imageMimeType: string;
   size: string;
+  quality: string;
 };
 
 function requireNonEmpty(value: unknown, name: string): string {
@@ -168,6 +174,7 @@ export function buildCornersFormData(input: CornersFormDataInput): FormData {
   requireNonEmpty(input.promptText, "promptText");
   requireNonEmpty(input.imageMimeType, "imageMimeType");
   requireNonEmpty(input.size, "size");
+  requireNonEmpty(input.quality, "quality");
   if (!input.imageBytes || input.imageBytes.length === 0) {
     throw new Error("imageBytes must be a non-empty Uint8Array");
   }
@@ -175,6 +182,7 @@ export function buildCornersFormData(input: CornersFormDataInput): FormData {
   form.set("model", input.model);
   form.set("prompt", input.promptText);
   form.set("size", input.size);
+  form.set("quality", input.quality);
   const blob = new Blob([input.imageBytes], { type: input.imageMimeType });
   form.set("image", blob, "room_cleaned.png");
   return form;
@@ -260,6 +268,7 @@ export class OpenAICornersProvider implements CornersProvider {
   readonly promptVersion = "room_prep_v003";
   private readonly apiKey: string;
   private readonly size: string;
+  private readonly quality: string;
   private readonly backWallPrompt: string;
   private readonly cornerPrompt: string;
   private readonly fetchTimeoutMs: number | undefined;
@@ -268,6 +277,7 @@ export class OpenAICornersProvider implements CornersProvider {
     apiKey: string;
     model?: string;
     size?: string;
+    quality?: string;
     backWallPrompt?: string;
     cornerPrompt?: string;
     fetchTimeoutMs?: number;
@@ -278,6 +288,7 @@ export class OpenAICornersProvider implements CornersProvider {
     this.apiKey = options.apiKey;
     this.modelId = options.model ?? OPENAI_CORNERS_DEFAULT_MODEL;
     this.size = options.size ?? OPENAI_CORNERS_DEFAULT_SIZE;
+    this.quality = options.quality ?? OPENAI_CORNERS_DEFAULT_QUALITY;
     this.backWallPrompt = options.backWallPrompt ?? PROMPT_BACK_WALL;
     this.cornerPrompt = options.cornerPrompt ?? PROMPT_CORNER;
     this.fetchTimeoutMs = options.fetchTimeoutMs;
@@ -323,7 +334,8 @@ export class OpenAICornersProvider implements CornersProvider {
       promptText,
       imageBytes,
       imageMimeType: detectMimeType(imageBytes),
-      size: this.size
+      size: this.size,
+      quality: this.quality
     });
     let response: Response;
     try {

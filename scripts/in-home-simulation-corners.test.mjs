@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   OPENAI_CORNERS_DEFAULT_MODEL,
+  OPENAI_CORNERS_DEFAULT_QUALITY,
   OPENAI_CORNERS_DEFAULT_SIZE,
   PROMPT_BACK_WALL,
   PROMPT_CORNER,
@@ -53,19 +54,38 @@ describe("PROMPT_CORNER", () => {
 });
 
 describe("buildCornersFormData", () => {
-  it("returns FormData with prompt, model, size, and image", () => {
+  it("returns FormData with prompt, model, size, quality, and image", () => {
     const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
     const form = buildCornersFormData({
       model: OPENAI_CORNERS_DEFAULT_MODEL,
       promptText: PROMPT_BACK_WALL,
       imageBytes,
       imageMimeType: "image/png",
-      size: OPENAI_CORNERS_DEFAULT_SIZE
+      size: OPENAI_CORNERS_DEFAULT_SIZE,
+      quality: OPENAI_CORNERS_DEFAULT_QUALITY
     });
     expect(form.get("model")).toBe(OPENAI_CORNERS_DEFAULT_MODEL);
     expect(form.get("prompt")).toBe(PROMPT_BACK_WALL);
     expect(form.get("size")).toBe(OPENAI_CORNERS_DEFAULT_SIZE);
+    expect(form.get("quality")).toBe(OPENAI_CORNERS_DEFAULT_QUALITY);
     expect(form.get("image")).toBeInstanceOf(Blob);
+  });
+
+  it("defaults to low quality so gpt-image-2 corners fits the wall-clock", () => {
+    expect(OPENAI_CORNERS_DEFAULT_QUALITY).toBe("low");
+  });
+
+  it("requires the quality field", () => {
+    expect(() =>
+      buildCornersFormData({
+        model: OPENAI_CORNERS_DEFAULT_MODEL,
+        promptText: "x",
+        imageBytes: new Uint8Array([1, 2, 3]),
+        imageMimeType: "image/png",
+        size: "auto",
+        quality: ""
+      })
+    ).toThrow(/quality/);
   });
 
   it("requires non-empty image bytes", () => {
@@ -75,7 +95,8 @@ describe("buildCornersFormData", () => {
         promptText: "x",
         imageBytes: new Uint8Array(),
         imageMimeType: "image/png",
-        size: "auto"
+        size: "auto",
+        quality: OPENAI_CORNERS_DEFAULT_QUALITY
       })
     ).toThrow(/imageBytes/);
   });

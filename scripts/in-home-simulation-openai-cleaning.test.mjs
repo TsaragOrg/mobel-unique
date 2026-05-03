@@ -2,27 +2,34 @@ import { describe, expect, it } from "vitest";
 
 import {
   OPENAI_CLEANING_DEFAULT_MODEL,
+  OPENAI_CLEANING_DEFAULT_QUALITY,
   OPENAI_CLEANING_DEFAULT_SIZE,
   buildCleaningFormData,
   parseCleaningResponse
 } from "../supabase/functions/in-home-simulation-worker/lib/providers/openai-cleaning.ts";
 
 describe("buildCleaningFormData", () => {
-  it("returns a FormData with the prompt, model, size, and the image as a Blob", () => {
+  it("returns a FormData with the prompt, model, size, quality, and the image as a Blob", () => {
     const imageBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00]);
     const form = buildCleaningFormData({
       model: OPENAI_CLEANING_DEFAULT_MODEL,
       promptText: "remove furniture",
       imageBytes,
       imageMimeType: "image/png",
-      size: OPENAI_CLEANING_DEFAULT_SIZE
+      size: OPENAI_CLEANING_DEFAULT_SIZE,
+      quality: OPENAI_CLEANING_DEFAULT_QUALITY
     });
 
     expect(form.get("model")).toBe(OPENAI_CLEANING_DEFAULT_MODEL);
     expect(form.get("prompt")).toBe("remove furniture");
     expect(form.get("size")).toBe(OPENAI_CLEANING_DEFAULT_SIZE);
+    expect(form.get("quality")).toBe(OPENAI_CLEANING_DEFAULT_QUALITY);
     const image = form.get("image");
     expect(image).toBeInstanceOf(Blob);
+  });
+
+  it("defaults to low quality so gpt-image-2 cleaning fits the wall-clock", () => {
+    expect(OPENAI_CLEANING_DEFAULT_QUALITY).toBe("low");
   });
 
   it("requires the prompt text", () => {
@@ -32,9 +39,23 @@ describe("buildCleaningFormData", () => {
         promptText: "",
         imageBytes: new Uint8Array([0xff, 0xd8]),
         imageMimeType: "image/png",
-        size: OPENAI_CLEANING_DEFAULT_SIZE
+        size: OPENAI_CLEANING_DEFAULT_SIZE,
+        quality: OPENAI_CLEANING_DEFAULT_QUALITY
       })
     ).toThrow(/promptText/);
+  });
+
+  it("requires the quality field", () => {
+    expect(() =>
+      buildCleaningFormData({
+        model: OPENAI_CLEANING_DEFAULT_MODEL,
+        promptText: "remove furniture",
+        imageBytes: new Uint8Array([0xff, 0xd8]),
+        imageMimeType: "image/png",
+        size: OPENAI_CLEANING_DEFAULT_SIZE,
+        quality: ""
+      })
+    ).toThrow(/quality/);
   });
 
   it("requires non-empty image bytes", () => {
@@ -44,7 +65,8 @@ describe("buildCleaningFormData", () => {
         promptText: "remove furniture",
         imageBytes: new Uint8Array(0),
         imageMimeType: "image/png",
-        size: OPENAI_CLEANING_DEFAULT_SIZE
+        size: OPENAI_CLEANING_DEFAULT_SIZE,
+        quality: OPENAI_CLEANING_DEFAULT_QUALITY
       })
     ).toThrow(/imageBytes/);
   });
