@@ -203,14 +203,20 @@ function buildFormData(input: UploadInput): FormData {
 
 function safeParseSuccess(text: string): CreateSimulationResponse | null {
   try {
-    const parsed = JSON.parse(text) as Partial<CreateSimulationResponse>;
+    const parsed = JSON.parse(text) as
+      | Partial<CreateSimulationResponse>
+      | { data?: Partial<CreateSimulationResponse> };
+    const inner: Partial<CreateSimulationResponse> =
+      "data" in parsed && parsed.data && typeof parsed.data === "object"
+        ? parsed.data
+        : (parsed as Partial<CreateSimulationResponse>);
     if (
-      typeof parsed.simulation_job_id === "string" &&
-      typeof parsed.status === "string" &&
-      typeof parsed.created_at === "string" &&
-      typeof parsed.retention_deadline === "string"
+      typeof inner.simulation_job_id === "string" &&
+      typeof inner.status === "string" &&
+      typeof inner.created_at === "string" &&
+      typeof inner.retention_deadline === "string"
     ) {
-      return parsed as CreateSimulationResponse;
+      return inner as CreateSimulationResponse;
     }
     return null;
   } catch {

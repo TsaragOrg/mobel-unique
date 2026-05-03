@@ -130,6 +130,31 @@ describe("uploadRoomPhotoWithDeps", () => {
     if (!result.ok) return;
     expect(result.jobId).toBe("sim-1");
     expect(result.status).toBe("queued");
+  });
+
+  it("parses the {data} envelope returned by the route handler", async () => {
+    const xhr = makeFakeXhr();
+    const deps = depsForTest([xhr], []);
+
+    const promise = uploadRoomPhotoWithDeps(inputForTest(), deps);
+    xhr.status = 201;
+    xhr.responseText = JSON.stringify({
+      data: {
+        simulation_job_id: "sim-envelope",
+        status: "queued",
+        created_at: "2026-05-03T13:38:48.139Z",
+        retention_deadline: "2026-05-04T13:38:48.139Z"
+      }
+    });
+    xhr.onload?.();
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.jobId).toBe("sim-envelope");
+    expect(result.status).toBe("queued");
+    expect(result.createdAt).toBe("2026-05-03T13:38:48.139Z");
+    expect(result.retentionDeadline).toBe("2026-05-04T13:38:48.139Z");
 
     expect(xhr.capturedMethod).toBe("POST");
     expect(xhr.capturedUrl).toBe("/api/public/simulations");

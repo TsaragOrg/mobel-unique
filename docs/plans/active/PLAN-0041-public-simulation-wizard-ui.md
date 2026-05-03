@@ -150,3 +150,18 @@ the prime suspect and must be loosened before the plan ships.
 - This plan does not change worker code. Any divergence between UI flow
   and terminal flow must be solved on the UI side or by adjusting upload
   parameters; the worker remains a black box.
+
+## Follow-up fix: simulation upload {data} envelope parsing (2026-05-03)
+
+`apps/web/src/lib/simulation-client/upload.ts` `safeParseSuccess` was
+written for a flat response shape (`{simulation_job_id, status,
+created_at, retention_deadline}`), but the route handler in PLAN-0040
+returns `{data: {...}}`. On a successful 201 the parser silently
+returned `null`, the upload helper reported `INVALID_RESPONSE`, and
+the wizard surfaced the generic "L'envoi n'a pas pu aboutir" error
+even though the API succeeded and the job was queued. The parser now
+unwraps `data` when present and falls back to the flat shape so the
+existing tests and any non-enveloped callers continue to work. A new
+test asserts the enveloped 201 path returns `ok: true` with the
+correct `jobId`. This mirrors the PLAN-0050 envelope fix on the
+email-gate `auth.ts` helpers.
