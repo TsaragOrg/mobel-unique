@@ -21,6 +21,11 @@ export const OPENAI_CLEANING_DEFAULT_MODEL = "gpt-image-2";
 // and avoids upscaling small input photos that already pass the worker
 // max-edge check.
 export const OPENAI_CLEANING_DEFAULT_SIZE = "auto";
+// SPEC-0015 PLAN-0058: cleaning output is an internal artifact never
+// shown to the user — `low` quality cuts gpt-image-2 generation time
+// roughly in half versus the model default, which is required to fit
+// the cleaning fetch under the Edge Functions 150-second wall-clock.
+export const OPENAI_CLEANING_DEFAULT_QUALITY = "low";
 
 export type CleaningFormDataInput = {
   model: string;
@@ -28,6 +33,7 @@ export type CleaningFormDataInput = {
   imageBytes: Uint8Array;
   imageMimeType: string;
   size: string;
+  quality: string;
 };
 
 function requireNonEmpty(value: unknown, name: string): string {
@@ -42,6 +48,7 @@ export function buildCleaningFormData(input: CleaningFormDataInput): FormData {
   requireNonEmpty(input.promptText, "promptText");
   requireNonEmpty(input.imageMimeType, "imageMimeType");
   requireNonEmpty(input.size, "size");
+  requireNonEmpty(input.quality, "quality");
   if (!input.imageBytes || input.imageBytes.length === 0) {
     throw new Error("imageBytes must be a non-empty Uint8Array");
   }
@@ -50,6 +57,7 @@ export function buildCleaningFormData(input: CleaningFormDataInput): FormData {
   form.set("model", input.model);
   form.set("prompt", input.promptText);
   form.set("size", input.size);
+  form.set("quality", input.quality);
   const blob = new Blob([input.imageBytes], { type: input.imageMimeType });
   form.set("image", blob, "room.png");
   return form;
@@ -147,6 +155,7 @@ export class OpenAICleaningProvider implements CleaningProvider {
   private readonly apiKey: string;
   private readonly promptText: string;
   private readonly size: string;
+  private readonly quality: string;
   private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
@@ -154,6 +163,7 @@ export class OpenAICleaningProvider implements CleaningProvider {
     model?: string;
     promptText?: string;
     size?: string;
+    quality?: string;
     fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
@@ -165,6 +175,7 @@ export class OpenAICleaningProvider implements CleaningProvider {
     this.promptText = options.promptText ??
       "You are editing a residential room photograph with two strict rules. Rule 1 — REMOVE all movable items from the photo: sofas, chairs, tables, ottomans, shelving, lamps, beds, mattresses, rugs, plants, screens, decorations, and any other moveable items. Rule 2 — DO NOT ADD anything that is not already visible in the input. This is critical: if the input has no radiator, the output must have no radiator; if the input has no door on a wall, do not add a door; if the input has no window on a wall, do not add a window; do not invent furniture, fixtures, decoration, text, or any architectural element. Keep everything that already exists in the photo exactly as-is: the same walls, floor, ceiling, openings, fixtures, lighting, color cast, perspective, and focal length. Return only the edited photograph, with no captions, watermarks, or annotations.";
     this.size = options.size ?? OPENAI_CLEANING_DEFAULT_SIZE;
+    this.quality = options.quality ?? OPENAI_CLEANING_DEFAULT_QUALITY;
   }
 
   async cleanRoom(imageBytes: Uint8Array): Promise<Uint8Array> {
@@ -173,7 +184,8 @@ export class OpenAICleaningProvider implements CleaningProvider {
       promptText: this.promptText,
       imageBytes,
       imageMimeType: detectMimeType(imageBytes),
-      size: this.size
+      size: this.size,
+      quality: this.quality
     });
     let response: Response;
     try {
