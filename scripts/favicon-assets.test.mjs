@@ -5,7 +5,7 @@ import {
   createFaviconImage,
   encodeIco,
   findVisibleBounds,
-  resizeImageBilinear
+  resizeImageBilinear,
 } from "./favicon-assets.mjs";
 
 describe("favicon asset generation", () => {
@@ -17,7 +17,7 @@ describe("favicon asset generation", () => {
       height: 2,
       width: 4,
       x: 2,
-      y: 1
+      y: 1,
     });
   });
 
@@ -29,10 +29,10 @@ describe("favicon asset generation", () => {
 
     expect(icon.width).toBe(32);
     expect(icon.height).toBe(32);
-    expect(Array.from(icon.getRGBAAt(1, 1))).toEqual([244, 239, 230, 255]);
-    expect(Array.from(icon.getRGBAAt(32, 32))).toEqual([244, 239, 230, 255]);
+    expect(Array.from(icon.getRGBAAt(1, 1))).toEqual([255, 255, 255, 255]);
+    expect(Array.from(icon.getRGBAAt(32, 32))).toEqual([255, 255, 255, 255]);
     expect(hasDarkPixel(icon)).toBe(true);
-    expect(FAVICON_BACKGROUND_COLOR).toBe("#f4efe6");
+    expect(FAVICON_BACKGROUND_COLOR).toBe("#ffffff");
   });
 
   it("smooths scaled alpha edges instead of duplicating pixels", () => {
@@ -40,32 +40,37 @@ describe("favicon asset generation", () => {
     source.setPixelAt(2, 1, Image.rgbaToColor(0, 0, 0, 255));
 
     const resized = resizeImageBilinear(source, 6, 1);
-    const alphaValues = Array.from({ length: resized.width }, (_, index) =>
-      resized.getRGBAAt(index + 1, 1)[3]
+    const alphaValues = Array.from(
+      { length: resized.width },
+      (_, index) => resized.getRGBAAt(index + 1, 1)[3],
     );
 
     expect(alphaValues.some((alpha) => alpha > 0 && alpha < 255)).toBe(true);
   });
 
   it("encodes a multi-size ICO with PNG image entries", async () => {
-    const icon16 = new Image(16, 16).fill(Image.rgbaToColor(244, 239, 230, 255));
-    const icon32 = new Image(32, 32).fill(Image.rgbaToColor(244, 239, 230, 255));
-    const icon48 = new Image(48, 48).fill(Image.rgbaToColor(244, 239, 230, 255));
+    const icon16 = new Image(16, 16).fill(
+      Image.rgbaToColor(255, 255, 255, 255),
+    );
+    const icon32 = new Image(32, 32).fill(
+      Image.rgbaToColor(255, 255, 255, 255),
+    );
+    const icon48 = new Image(48, 48).fill(
+      Image.rgbaToColor(255, 255, 255, 255),
+    );
 
     const ico = await encodeIco([icon16, icon32, icon48]);
 
     expect(ico.readUInt16LE(0)).toBe(0);
     expect(ico.readUInt16LE(2)).toBe(1);
     expect(ico.readUInt16LE(4)).toBe(3);
-    expect([...ico.subarray(6, 6 + 16 * 3)].filter((_, index) => index % 16 === 0)).toEqual([
-      16,
-      32,
-      48
-    ]);
+    expect(
+      [...ico.subarray(6, 6 + 16 * 3)].filter((_, index) => index % 16 === 0),
+    ).toEqual([16, 32, 48]);
 
     const firstImageOffset = ico.readUInt32LE(18);
     expect(ico.subarray(firstImageOffset, firstImageOffset + 8)).toEqual(
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
   });
 });
