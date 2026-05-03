@@ -136,6 +136,45 @@ function buildWorkerIdentifier(): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function isLocalWorkerEnvironment(): boolean {
+  const appEnv = Deno.env.get("APP_ENV");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+
+  return (
+    appEnv === "local" ||
+    supabaseUrl.includes("127.0.0.1") ||
+    supabaseUrl.includes("localhost")
+  );
+}
+
+function validateWorkerInvocation(request: Request): Response | null {
+  const expectedSecret = Deno.env.get(
+    "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET"
+  );
+
+  if (!expectedSecret) {
+    if (isLocalWorkerEnvironment()) {
+      return null;
+    }
+
+    return failedEnvelope(
+      "Missing required environment variable: IN_HOME_SIMULATION_WORKER_INVOKE_SECRET",
+      500
+    );
+  }
+
+  if (
+    request.headers.get("x-in-home-simulation-worker-secret") !== expectedSecret
+  ) {
+    return failedEnvelope(
+      "In-home simulation worker invocation is unauthorized",
+      401
+    );
+  }
+
+  return null;
+}
+
 async function callRpc<T>(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -1000,6 +1039,11 @@ Deno.serve(async (request) => {
       },
       405
     );
+  }
+
+  const authError = validateWorkerInvocation(request);
+  if (authError) {
+    return authError;
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
