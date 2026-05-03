@@ -11,6 +11,10 @@
 // fetch and lives only in the Deno runtime.
 
 import type { CleaningProvider } from "../providers.ts";
+import {
+  OpenAIFetchTimeoutError,
+  openaiFetchWithTimeout
+} from "./openai-fetch.ts";
 
 export const OPENAI_CLEANING_DEFAULT_MODEL = "gpt-image-2";
 // `auto` lets the model match the input image dimensions where supported
@@ -143,18 +147,21 @@ export class OpenAICleaningProvider implements CleaningProvider {
   private readonly apiKey: string;
   private readonly promptText: string;
   private readonly size: string;
+  private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
     apiKey: string;
     model?: string;
     promptText?: string;
     size?: string;
+    fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
       throw new Error("OpenAICleaningProvider requires an apiKey");
     }
     this.apiKey = options.apiKey;
     this.modelId = options.model ?? OPENAI_CLEANING_DEFAULT_MODEL;
+    this.fetchTimeoutMs = options.fetchTimeoutMs;
     this.promptText = options.promptText ??
       "You are editing a residential room photograph with two strict rules. Rule 1 — REMOVE all movable items from the photo: sofas, chairs, tables, ottomans, shelving, lamps, beds, mattresses, rugs, plants, screens, decorations, and any other moveable items. Rule 2 — DO NOT ADD anything that is not already visible in the input. This is critical: if the input has no radiator, the output must have no radiator; if the input has no door on a wall, do not add a door; if the input has no window on a wall, do not add a window; do not invent furniture, fixtures, decoration, text, or any architectural element. Keep everything that already exists in the photo exactly as-is: the same walls, floor, ceiling, openings, fixtures, lighting, color cast, perspective, and focal length. Return only the edited photograph, with no captions, watermarks, or annotations.";
     this.size = options.size ?? OPENAI_CLEANING_DEFAULT_SIZE;
@@ -170,14 +177,21 @@ export class OpenAICleaningProvider implements CleaningProvider {
     });
     let response: Response;
     try {
-      response = await fetch(`${OPENAI_API_BASE}/images/edits`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`
+      response = await openaiFetchWithTimeout(
+        `${OPENAI_API_BASE}/images/edits`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.apiKey}`
+          },
+          body: form
         },
-        body: form
-      });
+        { timeoutMs: this.fetchTimeoutMs }
+      );
     } catch (error) {
+      if (error instanceof OpenAIFetchTimeoutError) {
+        throw new Error(`openai cleaning timeout: ${error.message}`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`openai cleaning network error: ${message}`);
     }
