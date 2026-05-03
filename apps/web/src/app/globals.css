@@ -2820,21 +2820,23 @@ button:disabled {
 .admin-fabric-row {
   align-items: end;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 148px auto;
+  grid-template-columns: minmax(0, 1fr) 88px 96px;
 }
 
 .admin-fabric-row .admin-order-field {
   align-self: end;
-  max-width: 148px;
+  max-width: 88px;
   width: 100%;
 }
 
 .admin-fabric-row .admin-order-field input {
   min-height: 48px;
+  text-align: center;
 }
 
 .admin-fabric-row .admin-danger-button {
   align-self: end;
+  justify-self: end;
   min-height: 48px;
   white-space: nowrap;
 }
