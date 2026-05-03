@@ -219,3 +219,7 @@ The implementation must preserve the accepted boundary from `SPEC-0006` and
 `SPEC-0009`: the worker creates private candidates, and the admin explicitly
 decides whether a candidate becomes the current private render. Publication is a
 later separate transaction.
+
+2026-05-03 follow-up: manual render uploads now immediately replace
+source-photo-current cells in the open render cell sheet, and upload failures
+are shown inside that same sheet.

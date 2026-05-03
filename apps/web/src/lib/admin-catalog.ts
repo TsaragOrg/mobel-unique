@@ -2380,7 +2380,23 @@ export function createSupabaseAdminCatalogStore(
         throw mapSupabaseError(error);
       }
 
-      return data as AdminRenderCellRecord;
+      const [decoratedCell] = await attachCurrentPrivatePreviewUrlsToRenderCells(
+        client,
+        [
+          {
+            ...(data as AdminRenderCellRecord),
+            blockers: [],
+            can_generate_initial: false,
+            candidate_count: 0,
+            has_private_render: Boolean(data.current_private_asset_id),
+            has_public_render: Boolean(data.current_public_asset_id),
+            latest_job: null,
+          },
+        ],
+        env,
+      );
+
+      return decoratedCell;
     },
     async updateFabric(fabricId, input) {
       const existing = await fetchFabricWithAssets(client, fabricId);

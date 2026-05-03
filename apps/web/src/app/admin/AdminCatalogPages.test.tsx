@@ -1965,6 +1965,205 @@ describe("Admin catalog pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("replaces a source-photo current render after manual upload", async () => {
+    // RU: Эти данные описывают готовую ячейку, где исходное фото сейчас является текущей картинкой.
+    // FR: Ces donnees decrivent une case prete ou la photo source est l'image actuelle.
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Grey fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Grey fabric",
+        swatch_preview_url: null,
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: {
+        asset: null,
+        asset_id: "00000000-0000-4000-8000-000000000907",
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000905",
+        original_fabric_id: assignedFabric.fabric_id,
+        sofa_id: assignedFabric.sofa_id,
+        updated_at: "2026-04-28T10:00:00.000Z",
+        visual_matrix_column_id: "00000000-0000-4000-8000-000000000904",
+      },
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: assignedFabric.sofa_id,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const sourcePhotoCell = {
+      blockers: ["SOURCE_PHOTO_RENDER_COMPLETE"],
+      can_generate_initial: false,
+      candidate_count: 0,
+      current_private_asset_id: visualColumn.current_source_photo.asset_id,
+      current_private_preview_url: "https://storage.example/source-photo-preview",
+      current_public_asset_id: null,
+      fabric_id: assignedFabric.fabric_id,
+      has_private_render: true,
+      has_public_render: false,
+      id: "00000000-0000-4000-8000-000000000906",
+      latest_job: null,
+      sofa_id: assignedFabric.sofa_id,
+      source_photo_id: visualColumn.current_source_photo.id,
+      source_type: "source_photo",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [sourcePhotoCell],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: assignedFabric.sofa_id,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      setManualRender: vi.fn(async (_accessToken, renderCellId, input) => ({
+        ...sourcePhotoCell,
+        blockers: [],
+        can_generate_initial: false,
+        current_private_asset_id: input.asset_id,
+        current_private_preview_url:
+          "https://storage.example/manual-render-preview",
+        id: renderCellId,
+        source_photo_id: null,
+        source_type: "manual_upload",
+        updated_at: "2026-04-28T10:40:00.000Z",
+      })),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Grey fabric, Front: Ready/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+
+    fireEvent.change(within(dialog).getByLabelText("Manual render"), {
+      target: {
+        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Upload manual render" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole("img", { name: "Current render preview" }),
+      ).toHaveAttribute("src", "https://storage.example/manual-render-preview");
+    });
+    expect(within(dialog).queryByText("Source photo is current")).toBeNull();
+    expect(within(dialog).getByText("Manual upload")).toBeInTheDocument();
+  });
+
+  it("shows manual upload failures in the render cell sheet", async () => {
+    // RU: Эти данные описывают одну ячейку, где ручная картинка не смогла отправиться.
+    // FR: Ces donnees decrivent une case ou l'image manuelle ne part pas.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const fabricId = "00000000-0000-4000-8000-000000000903";
+    const columnId = "00000000-0000-4000-8000-000000000904";
+    const cellId = "00000000-0000-4000-8000-000000000905";
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: null,
+      fabric_id: fabricId,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: null,
+      deleted_at: null,
+      id: columnId,
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const renderCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 0,
+      current_private_asset_id: null,
+      current_private_preview_url: null,
+      current_public_asset_id: null,
+      fabric_id: fabricId,
+      has_private_render: false,
+      has_public_render: false,
+      id: cellId,
+      latest_job: null,
+      sofa_id: sofaId,
+      source_photo_id: null,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: columnId,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [renderCell],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      uploadToSignedUrl: vi.fn(async () => {
+        throw new Error("UPLOAD_FAILED");
+      }),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Front: Missing/i }));
+
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+    fireEvent.change(within(dialog).getByLabelText("Manual render"), {
+      target: {
+        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Upload manual render" }),
+    );
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "UPLOAD_FAILED",
+    );
+  });
+
   it("assigns a fabric to a sofa and refreshes readiness", async () => {
     const dependencies = createDependencies({
       getSofaReadiness: vi
