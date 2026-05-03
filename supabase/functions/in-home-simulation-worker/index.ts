@@ -28,6 +28,7 @@ import {
 import {
   buildStageTransitionEvent,
   buildSubStepEvent,
+  IN_HOME_SIMULATION_JOB_TYPE,
   type WorkerJobEventRow
 } from "./lib/events.ts";
 import { runWithConcurrency } from "./lib/concurrency.ts";
@@ -434,6 +435,87 @@ async function failJobNonRetryable(
   }
 }
 
+type InHomeSimulationJobCheckpointRow = {
+  room_normalized_path: string | null;
+  room_compressed_path: string | null;
+  room_cleaned_path: string | null;
+  room_geometry_points: unknown | null;
+};
+
+async function fetchInHomeSimulationJobRow(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string
+): Promise<InHomeSimulationJobCheckpointRow> {
+  const select = [
+    "room_normalized_path",
+    "room_compressed_path",
+    "room_cleaned_path",
+    "room_geometry_points"
+  ].join(",");
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}&select=${select}`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
+        "Accept": "application/json"
+      }
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `fetch in_home_simulation_jobs row ${jobId} failed: HTTP ${response.status} ${text}`
+    );
+  }
+  const rows = (await response.json()) as InHomeSimulationJobCheckpointRow[];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(
+      `in_home_simulation_jobs row ${jobId} not found while resolving checkpoint state`
+    );
+  }
+  return rows[0];
+}
+
+async function persistCleaningCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  jobId: string,
+  paths: {
+    roomNormalizedPath: string;
+    roomCompressedPath: string;
+    roomCleanedPath: string;
+  }
+): Promise<void> {
+  const patch = {
+    room_normalized_path: paths.roomNormalizedPath,
+    room_compressed_path: paths.roomCompressedPath,
+    room_cleaned_path: paths.roomCleanedPath,
+    updated_at: new Date().toISOString()
+  };
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify(patch)
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `cleaning checkpoint persist failed for job ${jobId}: HTTP ${response.status} ${text}`
+    );
+  }
+}
+
 async function createScratchDir(jobId: string): Promise<string> {
   const envRoot = Deno.env.get("IN_HOME_SIMULATION_TMP_DIR");
   const root = envRoot && envRoot.length > 0
@@ -453,11 +535,62 @@ async function removeScratchDir(jobDir: string): Promise<void> {
   }
 }
 
+type Stage1CheckpointOutcome =
+  | "stage_1_cleaning_checkpoint_advanced"
+  | "stage_1_completed";
+
 async function processClaimedJob(
   supabaseUrl: string,
   serviceRoleKey: string,
   workerIdentifier: string,
-  claim: RoomPrepClaimRow
+  claim: RoomPrepClaimRow,
+  queueName: string
+): Promise<Stage1CheckpointOutcome> {
+  if (!claim.customer_room_original_path) {
+    throw new Error(
+      "customer_room_original_path is null on the claimed job; refusing to process"
+    );
+  }
+
+  // PLAN-0053: Stage 1 is split into two checkpoints to fit under the
+  // Supabase Edge Functions 150-second wall-clock limit. The artifact
+  // paths persisted on the job row are the source of truth for which
+  // checkpoint already ran. The first invocation runs cleaning and
+  // hands the job back to the queue; the second invocation runs the
+  // corners + lines step and transitions to `awaiting_dimensions`.
+  const checkpoint = await fetchInHomeSimulationJobRow(
+    supabaseUrl,
+    serviceRoleKey,
+    claim.job_id
+  );
+
+  if (!checkpoint.room_cleaned_path) {
+    await runCleaningCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      claim,
+      queueName
+    );
+    return "stage_1_cleaning_checkpoint_advanced";
+  }
+
+  await runCornersCheckpoint(
+    supabaseUrl,
+    serviceRoleKey,
+    workerIdentifier,
+    claim,
+    checkpoint
+  );
+  return "stage_1_completed";
+}
+
+async function runCleaningCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: RoomPrepClaimRow,
+  queueName: string
 ): Promise<void> {
   if (!claim.customer_room_original_path) {
     throw new Error(
@@ -537,15 +670,9 @@ async function processClaimedJob(
       throw new Error(`decode failed: ${message}`);
     }
 
-    // Normalization: re-encode as JPEG so the persisted artifact has a
-    // consistent format and stripped EXIF metadata. imagescript already
-    // applies EXIF orientation during decode.
     const normalizedBytes = await decoded.encodeJPEG(NORMALIZED_JPEG_QUALITY);
     await Deno.writeFile(`${scratchDir}/room_normalized.jpg`, normalizedBytes);
 
-    // Validation via the configured provider. The mock always passes;
-    // a live provider may reject obviously unusable photos with a
-    // readable failure code.
     const validationResult = await providers.validation.validateRoom(
       normalizedBytes
     );
@@ -564,9 +691,6 @@ async function processClaimedJob(
       );
     }
 
-    // Compression: cap the longest edge at the worker max
-    // (IN_HOME_SIMULATION_MAX_EDGE_PX, default 720) so OpenAI input
-    // tokens stay small.
     const maxEdge = parseMaxEdge(
       Deno.env.get("IN_HOME_SIMULATION_MAX_EDGE_PX")
     );
@@ -591,8 +715,6 @@ async function processClaimedJob(
     );
     await Deno.writeFile(`${scratchDir}/room_compressed.jpg`, compressedBytes);
 
-    // Cleaning via the configured provider. The cleaned artifact is
-    // whatever PNG bytes the cleaning provider produces.
     let cleanedRawBytes: Uint8Array;
     try {
       cleanedRawBytes = await providers.cleaning.cleanRoom(compressedBytes);
@@ -644,16 +766,153 @@ async function processClaimedJob(
     const cleanedBytes = await cleanedImage.encode(0);
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
-    // SPEC-0015: room geometry mode is set on the job row at job
-    // creation by the public API based on the selected sofa's tags
-    // (back_wall by default, corner when the sofa carries the agreed
-    // corner tag). The worker no longer classifies the scene with a
-    // GPT-5 vision call; it reads the authoritative value off the
-    // claim row and proceeds straight to the corners step.
+    const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
+    const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
+    const cleanedPath = `${claim.storage_prefix}/room_cleaned.png`;
+
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      normalizedPath,
+      normalizedBytes,
+      "image/jpeg"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      compressedPath,
+      compressedBytes,
+      "image/jpeg"
+    );
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      cleanedPath,
+      cleanedBytes,
+      "image/png"
+    );
+
+    // Persist the three cleaning-side paths on the job row so the
+    // next invocation knows the cleaning checkpoint already finished.
+    await persistCleaningCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id,
+      {
+        roomNormalizedPath: normalizedPath,
+        roomCompressedPath: compressedPath,
+        roomCleanedPath: cleanedPath
+      }
+    );
+
+    // Hand the job back to the queue so a future cron tick re-claims
+    // it and runs the corners checkpoint. We release the claim
+    // (status returns to `queued`) and enqueue a fresh pgmq message
+    // because the original message is about to be deleted by the
+    // outer `Deno.serve` success path.
+    await callRpc<void>(
+      supabaseUrl,
+      serviceRoleKey,
+      "release_in_home_simulation_room_prep_claim",
+      {
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier,
+        error_code: null,
+        error_message: null
+      }
+    );
+    await callRpc<number>(
+      supabaseUrl,
+      serviceRoleKey,
+      "enqueue_in_home_simulation_room_prep_message",
+      {
+        job_id: claim.job_id,
+        queue_name: queueName
+      }
+    );
+
+    await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+      job_type: IN_HOME_SIMULATION_JOB_TYPE,
+      in_home_simulation_job_id: claim.job_id,
+      fabric_render_job_id: null,
+      from_status: null,
+      to_status: null,
+      event_type: "stage_1_cleaning_checkpoint_completed",
+      message:
+        `worker ${workerIdentifier} completed cleaning checkpoint; corners checkpoint enqueued`,
+      metadata: {
+        room_normalized_path: normalizedPath,
+        room_compressed_path: compressedPath,
+        room_cleaned_path: cleanedPath
+      }
+    });
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
+}
+
+async function runCornersCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: RoomPrepClaimRow,
+  checkpoint: InHomeSimulationJobCheckpointRow
+): Promise<void> {
+  if (!checkpoint.room_cleaned_path) {
+    throw new Error(
+      "runCornersCheckpoint called without a persisted room_cleaned_path"
+    );
+  }
+  if (!checkpoint.room_normalized_path || !checkpoint.room_compressed_path) {
+    throw new Error(
+      "runCornersCheckpoint requires room_normalized_path and room_compressed_path on the job row"
+    );
+  }
+
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage1Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+
+  const costMeter = makeSupabaseCostMeterClient({
+    supabaseUrl,
+    serviceRoleKey
+  });
+  const dailyCapCents = parseDailyCapCents(
+    Deno.env.get("SIMULATION_DAILY_COST_CAP_USD")
+  );
+  const chargeMeter = (role: ProviderRole) =>
+    chargeForRole(costMeter, role, dailyCapCents, (message) =>
+      console.warn(message)
+    );
+
+  const scratchDir = await createScratchDir(claim.job_id);
+  try {
+    let cleanedBytes: Uint8Array;
+    try {
+      cleanedBytes = await downloadStorageObject(
+        supabaseUrl,
+        serviceRoleKey,
+        checkpoint.room_cleaned_path
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "cleaning_artifact_missing",
+        `Cleaning checkpoint artifact missing in storage: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(`cleaning_artifact_missing: ${message}`);
+    }
+    await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
+
     const mode: "back_wall" | "corner" = claim.room_geometry_mode;
     const sceneConfidence: number | null = null;
 
-    // Corners: gpt-image-2 places yellow dots on the cleaned room.
     const cornersResult = await providers.corners.placeCornerDots(
       cleanedBytes,
       mode
@@ -675,9 +934,6 @@ async function processClaimedJob(
     const annotatedBytes = cornersResult.pngBytes;
     await Deno.writeFile(`${scratchDir}/room_corners.png`, annotatedBytes);
 
-    // Lines: pure local code finds the yellow dots, classifies them as
-    // back_wall (4) or corner (6), and renders the dimension overlay
-    // with Russian labels.
     let annotatedImage: Image;
     try {
       annotatedImage = (await decode(annotatedBytes)) as Image;
@@ -721,33 +977,9 @@ async function processClaimedJob(
       detected_dots: detectedDots
     };
 
-    const normalizedPath = `${claim.storage_prefix}/room_normalized.jpg`;
-    const compressedPath = `${claim.storage_prefix}/room_compressed.jpg`;
-    const cleanedPath = `${claim.storage_prefix}/room_cleaned.png`;
     const cornersPath = `${claim.storage_prefix}/room_corners.png`;
     const dimensionsPath = `${claim.storage_prefix}/room_dimensions.png`;
 
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      normalizedPath,
-      normalizedBytes,
-      "image/jpeg"
-    );
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      compressedPath,
-      compressedBytes,
-      "image/jpeg"
-    );
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      cleanedPath,
-      cleanedBytes,
-      "image/png"
-    );
     await uploadStorageObject(
       supabaseUrl,
       serviceRoleKey,
@@ -770,9 +1002,9 @@ async function processClaimedJob(
       {
         job_id: claim.job_id,
         worker_identifier: workerIdentifier,
-        room_normalized_path: normalizedPath,
-        room_compressed_path: compressedPath,
-        room_cleaned_path: cleanedPath,
+        room_normalized_path: checkpoint.room_normalized_path,
+        room_compressed_path: checkpoint.room_compressed_path,
+        room_cleaned_path: checkpoint.room_cleaned_path,
         dimension_guide_overlay_path: dimensionsPath,
         room_geometry_mode: mode,
         room_geometry_points: geometryForPersist,
@@ -1275,20 +1507,23 @@ Deno.serve(async (request) => {
     }
 
     try {
-      await processClaimedJob(
+      const checkpointOutcome = await processClaimedJob(
         supabaseUrl,
         serviceRoleKey,
         workerIdentifier,
-        claim
+        claim,
+        queueName
       );
-      await recordWorkerEvent(supabaseUrl, serviceRoleKey,
-        buildStageTransitionEvent({
-          jobId,
-          fromStatus: "room_prep_processing",
-          toStatus: "awaiting_dimensions",
-          message: `worker ${workerIdentifier} completed Stage 1`
-        })
-      );
+      if (checkpointOutcome === "stage_1_completed") {
+        await recordWorkerEvent(supabaseUrl, serviceRoleKey,
+          buildStageTransitionEvent({
+            jobId,
+            fromStatus: "room_prep_processing",
+            toStatus: "awaiting_dimensions",
+            message: `worker ${workerIdentifier} completed Stage 1`
+          })
+        );
+      }
       try {
         await deleteRoomPrepMessage(
           supabaseUrl,
@@ -1301,7 +1536,10 @@ Deno.serve(async (request) => {
         job_id: jobId,
         msg_id: msg.msg_id,
         outcome: "completed",
-        job_status: "awaiting_dimensions"
+        job_status:
+          checkpointOutcome === "stage_1_completed"
+            ? "awaiting_dimensions"
+            : "queued"
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
