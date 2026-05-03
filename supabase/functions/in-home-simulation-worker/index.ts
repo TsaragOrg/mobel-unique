@@ -44,6 +44,7 @@ import {
   type CostMeterClient,
   type ProviderRole
 } from "./lib/cost-meter.ts";
+import { supabaseFetchWithTimeout } from "./lib/supabase-fetch.ts";
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
@@ -100,7 +101,11 @@ type PlacementClaimRow = {
 
 const FUNCTION_NAME = "in-home-simulation-worker";
 const STORAGE_BUCKET = "simulation-private-artifacts";
-const DEFAULT_CLAIM_TTL_SECONDS = 600;
+// PLAN-0057: 180s claim TTL gives the watchdog cron enough margin
+// after the Edge Functions 150s wall-clock to recover stuck claims
+// inside ~3-4 minutes. Was 600s in PLAN-0010, which left jobs
+// stranded for up to 11 minutes when the isolate died mid-fetch.
+const DEFAULT_CLAIM_TTL_SECONDS = 180;
 const DEFAULT_QUEUE_NAME = "local_in_home_simulation_jobs";
 const DEFAULT_BATCH_SIZE = 1;
 
@@ -182,15 +187,18 @@ async function callRpc<T>(
   name: string,
   body: Record<string, unknown>
 ): Promise<T> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
-    body: JSON.stringify(body),
-    headers: {
-      "Authorization": `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-      "apikey": serviceRoleKey
-    },
-    method: "POST"
-  });
+  const response = await supabaseFetchWithTimeout(
+    `${supabaseUrl}/rest/v1/rpc/${name}`,
+    {
+      body: JSON.stringify(body),
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey
+      },
+      method: "POST"
+    }
+  );
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`${name} rpc failed: HTTP ${response.status} ${text}`);
@@ -281,7 +289,7 @@ async function downloadStorageObject(
   serviceRoleKey: string,
   storagePath: string
 ): Promise<Uint8Array> {
-  const response = await fetch(
+  const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`,
     {
       headers: {
@@ -307,7 +315,7 @@ async function uploadStorageObject(
   bytes: Uint8Array,
   contentType: string
 ): Promise<void> {
-  const response = await fetch(
+  const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`,
     {
       method: "POST",
@@ -367,16 +375,19 @@ async function recordWorkerEvent(
   // Best-effort observability write. A failed event insert must not
   // mask the real success or failure on the job row.
   try {
-    await fetch(`${supabaseUrl}/rest/v1/worker_job_events`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${serviceRoleKey}`,
-        "apikey": serviceRoleKey,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-      },
-      body: JSON.stringify(event)
-    });
+    await supabaseFetchWithTimeout(
+      `${supabaseUrl}/rest/v1/worker_job_events`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "apikey": serviceRoleKey,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal"
+        },
+        body: JSON.stringify(event)
+      }
+    );
   } catch (_error) {
     /* swallow */
   }
@@ -414,7 +425,7 @@ async function failJobNonRetryable(
     patch.worker_error_path = workerErrorPath;
   }
 
-  const response = await fetch(
+  const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
     {
       method: "PATCH",
@@ -453,7 +464,7 @@ async function fetchInHomeSimulationJobRow(
     "room_cleaned_path",
     "room_geometry_points"
   ].join(",");
-  const response = await fetch(
+  const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}&select=${select}`,
     {
       method: "GET",
@@ -495,7 +506,7 @@ async function persistCleaningCheckpoint(
     room_cleaned_path: paths.roomCleanedPath,
     updated_at: new Date().toISOString()
   };
-  const response = await fetch(
+  const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/rest/v1/in_home_simulation_jobs?id=eq.${jobId}`,
     {
       method: "PATCH",
