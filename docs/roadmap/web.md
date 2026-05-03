@@ -47,6 +47,7 @@
 | Active | SPEC-0014 | PLAN-0052 | Sofa edit operational redesign: sober workflow tabs, non-nested page structure, refined forms and checkboxes, compact aligned fabric order controls, calmer fabric and visual matrix actions with centered edit/source workbenches, aligned desktop form actions, and compact mobile row action bars, richer render cells, larger cell detail workspace, ZIP export relocation, and source-image sofa list cards. |
 | Done | SPEC-0014 | PLAN-0053 | Sofa edit render cell sheets show desktop and compact mobile placeholders for Missing and Blocked cells, and their Source detail says no source exists yet. |
 | Done | SPEC-0013 | PLAN-0054 | Sofa edit Renders private image previews now use an authenticated admin preview endpoint plus browser-local object URLs instead of short-lived Supabase signed URLs, keeping `catalog-private-assets` private while preventing open-tab preview expiry. |
+| Done | SPEC-0012 | PLAN-0055 | Public site icons now provide a light-tile `favicon.ico`, `icon.png`, and `apple-icon.png` generated from the transparent Mobel Unique logo. |
 
 ## Next
 
