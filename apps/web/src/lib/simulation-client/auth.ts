@@ -80,9 +80,10 @@ export async function requestSimulationVerification(
   }
 
   if (response.ok) {
-    const payload = (await safeReadJson(response)) as
-      | { verification_request_id?: string; expires_at?: string }
+    const envelope = (await safeReadJson(response)) as
+      | { data?: { verification_request_id?: string; expires_at?: string } }
       | null;
+    const payload = envelope?.data;
     if (
       payload &&
       typeof payload.verification_request_id === "string" &&
@@ -121,9 +122,10 @@ export async function verifySimulationCode(
   }
 
   if (response.ok) {
-    const payload = (await safeReadJson(response)) as
-      | { simulation_access_token?: string; expires_at?: string }
+    const envelope = (await safeReadJson(response)) as
+      | { data?: { simulation_access_token?: string; expires_at?: string } }
       | null;
+    const payload = envelope?.data;
     if (
       payload &&
       typeof payload.simulation_access_token === "string" &&

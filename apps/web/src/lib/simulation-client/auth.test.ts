@@ -34,8 +34,10 @@ function mockFetchNetworkFailure(): FetchFn {
 describe("requestSimulationVerification", () => {
   it("posts the email and consent payload to the verifications endpoint", async () => {
     const fetchFn = mockFetchOk({
-      verification_request_id: "vr-1",
-      expires_at: "2026-05-03T10:00:00.000Z"
+      data: {
+        verification_request_id: "vr-1",
+        expires_at: "2026-05-03T10:00:00.000Z"
+      }
     });
 
     const result = await requestSimulationVerification(
@@ -104,8 +106,10 @@ describe("requestSimulationVerification", () => {
 describe("verifySimulationCode", () => {
   it("posts the code to the verify endpoint scoped by verification id", async () => {
     const fetchFn = mockFetchOk({
-      simulation_access_token: "dev-token-vr-1",
-      expires_at: "2026-05-03T10:00:00.000Z"
+      data: {
+        simulation_access_token: "dev-token-vr-1",
+        expires_at: "2026-05-03T10:00:00.000Z"
+      }
     });
 
     const result = await verifySimulationCode(
@@ -129,8 +133,10 @@ describe("verifySimulationCode", () => {
 
   it("encodes the verification request id when it contains special characters", async () => {
     const fetchFn = mockFetchOk({
-      simulation_access_token: "x",
-      expires_at: "y"
+      data: {
+        simulation_access_token: "x",
+        expires_at: "y"
+      }
     });
 
     await verifySimulationCode(
