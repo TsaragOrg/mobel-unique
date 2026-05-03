@@ -1386,6 +1386,54 @@ describe("handleCreateSimulationRequest", () => {
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
   });
 
+  it("logs the underlying error when uploadRoomPhoto throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = createDeps({ uploadThrows: true });
+    await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[simulations] uploadRoomPhoto failed:",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("logs the underlying error when createJobStore.create throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = createDeps({ createThrows: true });
+    await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[simulations] createJobStore.create failed:",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("logs the underlying error when queueEnqueuer.enqueueRoomPrep throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = createDeps({ enqueueThrows: true });
+    await handleCreateSimulationRequest({
+      formData: makeFormData(),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[simulations] queueEnqueuer.enqueueRoomPrep failed:",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
+  });
+
   it("still returns 201 even if the idempotency finalize step throws", async () => {
     const ctx = createDeps({ finalizeThrows: true });
     const response = await handleCreateSimulationRequest({

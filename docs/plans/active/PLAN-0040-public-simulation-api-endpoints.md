@@ -230,3 +230,16 @@ workflow that prefers atomic per-PR merges.
   private after this plan ships.
 - Rate-limit subject hashes use a per-environment salt to avoid leaking
   raw IPs/emails into the database.
+
+## Follow-up fix: silent catch blocks blocked dev diagnosis (2026-05-03)
+
+`POST /api/public/simulations` returned 500 from one of the catch
+blocks during PLAN-0042 launch testing on dev, but the catches were
+empty `catch {}` so Vercel logs surfaced nothing. The route handler
+catches around `uploadRoomPhoto`, `createJobStore.create`, and
+`queueEnqueuer.enqueueRoomPrep` now log the underlying error via
+`console.error("[simulations] <step> failed:", error)` before they
+return the 500 envelope. The user-facing JSON envelope is unchanged;
+only operator visibility improves. No new tests because no behavior
+changed for clients of the API. This unblocks diagnosing the dev
+500 so PLAN-0042 manual launch testing can continue.
