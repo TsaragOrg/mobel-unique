@@ -228,7 +228,8 @@
         "PLAN-0051",
         "PLAN-0053",
         "PLAN-0056",
-        "PLAN-0057"
+        "PLAN-0057",
+        "PLAN-0058"
       ],
       "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
       "areas": ["web", "supabase"]
