@@ -169,9 +169,10 @@ workbench structure proves correct in browser QA.
 
 - [ ] Redesign visual position rows with source-photo state and original fabric context.
 - [x] Replace row button clusters with row-open/detail behavior plus secondary or overflow actions.
-- [ ] Improve source-photo drawer or sheet layout.
+- [x] Align mobile Visual Matrix row actions into one compact action bar so Edit, source, and Delete stay visually ordered.
+- [x] Improve source-photo drawer or sheet layout by opening Visual Matrix add, edit, and source-photo flows in the same centered workbench pattern as Renders, with the same top-right Close action instead of form-level Cancel buttons and desktop action buttons aligned with the input row.
 - [x] Fix mobile spacing around add position and row actions.
-- [ ] Update Visual Matrix tests.
+- [x] Update Visual Matrix tests.
 
 ### 6. Renders
 

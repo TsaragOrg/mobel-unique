@@ -1353,8 +1353,12 @@ function SofaListContent({
                   <span className="admin-sofa-list-body">
                     <span className="admin-sofa-list-title-row">
                       <span className="admin-sofa-list-title">
-                        <strong>{sofa.internal_name || sofa.public_name}</strong>
-                        {sofa.public_name ? <span>{sofa.public_name}</span> : null}
+                        <strong>
+                          {sofa.internal_name || sofa.public_name}
+                        </strong>
+                        {sofa.public_name ? (
+                          <span>{sofa.public_name}</span>
+                        ) : null}
                       </span>
                     </span>
                     <span className="admin-sofa-list-details">
@@ -1464,7 +1468,8 @@ function FabricListContent({
       {fabrics.length > 0 ? (
         <div className="admin-fabric-list" role="list">
           {fabrics.map((fabric) => {
-            const fabricDisplayName = fabric.public_name || fabric.internal_name;
+            const fabricDisplayName =
+              fabric.public_name || fabric.internal_name;
 
             return (
               <article
@@ -1505,7 +1510,9 @@ function FabricListContent({
                         <small>AI reference</small>
                         <span
                           className={`admin-fabric-list-readiness ${
-                            fabric.ai_reference_asset ? "is-ready" : "is-missing"
+                            fabric.ai_reference_asset
+                              ? "is-ready"
+                              : "is-missing"
                           }`}
                         >
                           {fabric.ai_reference_asset ? "Ready" : "Missing"}
@@ -1513,7 +1520,9 @@ function FabricListContent({
                       </span>
                       <span>
                         <small>Type</small>
-                        <span>{fabric.is_premium ? "Premium" : "Standard"}</span>
+                        <span>
+                          {fabric.is_premium ? "Premium" : "Standard"}
+                        </span>
                       </span>
                     </span>
                   </span>
@@ -2998,8 +3007,8 @@ function VisualMatrixSection({
     ? columns.find((column) => column.id === pendingDeleteColumnId)
     : null;
 
-  // RU: Это действие открывает окно для колонки.
-  // FR: Cette action ouvre la fenetre pour une colonne.
+  // RU: Это действие открывает центральное окно для колонки.
+  // FR: Cette action ouvre la fenetre centrale pour une colonne.
   function openColumnDrawer(
     mode: "add" | "edit" | "source_photo",
     column?: AdminCatalogVisualMatrixColumn,
@@ -3008,13 +3017,15 @@ function VisualMatrixSection({
     setActiveColumnId(column?.id ?? null);
   }
 
-  // RU: Это действие закрывает окно колонки.
-  // FR: Cette action ferme la fenetre de colonne.
+  // RU: Это действие прячет центральное окно Visual matrix.
+  // FR: Cette action cache la fenetre centrale de Visual matrix.
   function closeColumnDrawer() {
     setActiveColumnDrawerMode(null);
     setActiveColumnId(null);
   }
 
+  // RU: Это действие добавляет новую колонку после заполнения формы.
+  // FR: Cette action ajoute une nouvelle colonne apres le formulaire rempli.
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
@@ -3039,6 +3050,8 @@ function VisualMatrixSection({
     }
   }
 
+  // RU: Это действие сохраняет изменения выбранной колонки.
+  // FR: Cette action garde les changements de la colonne choisie.
   async function handleUpdate(
     column: AdminCatalogVisualMatrixColumn,
     form: HTMLFormElement,
@@ -3059,6 +3072,8 @@ function VisualMatrixSection({
     }
   }
 
+  // RU: Это действие удаляет выбранную колонку после подтверждения.
+  // FR: Cette action supprime la colonne choisie apres confirmation.
   async function handleDelete(column: AdminCatalogVisualMatrixColumn) {
     setErrorMessage(null);
 
@@ -3203,10 +3218,10 @@ function VisualMatrixSection({
                     <strong>{originalFabricName}</strong>
                   </span>
                 </div>
-                <div className="admin-visual-matrix-actions">
+                <div className="admin-visual-matrix-actions admin-visual-matrix-action-bar">
                   <button
                     aria-label={`Edit column ${column.sequence}`}
-                    className="admin-quiet-button"
+                    className="admin-quiet-button admin-visual-matrix-action-button"
                     onClick={() => openColumnDrawer("edit", column)}
                     type="button"
                   >
@@ -3218,7 +3233,7 @@ function VisualMatrixSection({
                         ? `Replace source photo ${column.sequence}`
                         : `Add source photo ${column.sequence}`
                     }
-                    className="admin-secondary-button"
+                    className="admin-secondary-button admin-visual-matrix-action-button"
                     onClick={() => openColumnDrawer("source_photo", column)}
                     type="button"
                   >
@@ -3228,7 +3243,7 @@ function VisualMatrixSection({
                   </button>
                   <button
                     aria-label={`Delete column ${column.sequence}`}
-                    className="admin-danger-button"
+                    className="admin-danger-button admin-visual-matrix-action-button"
                     onClick={() => setPendingDeleteColumnId(column.id)}
                     type="button"
                   >
@@ -3241,16 +3256,29 @@ function VisualMatrixSection({
         </div>
       ) : null}
       {activeColumnDrawerMode === "add" ? (
-        <div className="admin-dialog-scrim">
+        <div className="admin-dialog-scrim admin-render-workbench-scrim">
           <div
             aria-label="Add column"
             aria-modal="true"
-            className="admin-drawer"
+            className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
             role="dialog"
           >
-            <h3>Add column</h3>
+            <header className="admin-render-cell-sheet-header">
+              <div>
+                <p className="eyebrow">Visual matrix</p>
+                <h3>Add column</h3>
+              </div>
+              <button
+                aria-label="Close Visual matrix dialog"
+                className="admin-quiet-button admin-render-cell-close-button"
+                onClick={closeColumnDrawer}
+                type="button"
+              >
+                Close
+              </button>
+            </header>
             <form
-              className="admin-inline-form admin-inline-form-wide"
+              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
               onSubmit={handleCreate}
             >
               <label className="field">
@@ -3273,29 +3301,35 @@ function VisualMatrixSection({
                 >
                   Add column
                 </button>
-                <button
-                  className="admin-secondary-button"
-                  onClick={closeColumnDrawer}
-                  type="button"
-                >
-                  Cancel
-                </button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
       {activeColumnDrawerMode === "edit" && activeColumn ? (
-        <div className="admin-dialog-scrim">
+        <div className="admin-dialog-scrim admin-render-workbench-scrim">
           <div
             aria-label={`Edit column ${activeColumn.sequence}`}
             aria-modal="true"
-            className="admin-drawer"
+            className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
             role="dialog"
           >
-            <h3>Edit column {activeColumn.sequence}</h3>
+            <header className="admin-render-cell-sheet-header">
+              <div>
+                <p className="eyebrow">Visual matrix</p>
+                <h3>Edit column {activeColumn.sequence}</h3>
+              </div>
+              <button
+                aria-label="Close Visual matrix dialog"
+                className="admin-quiet-button admin-render-cell-close-button"
+                onClick={closeColumnDrawer}
+                type="button"
+              >
+                Close
+              </button>
+            </header>
             <form
-              className="admin-inline-form admin-inline-form-wide"
+              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleUpdate(activeColumn, event.currentTarget);
@@ -3328,32 +3362,39 @@ function VisualMatrixSection({
                 <button className="admin-primary-button" type="submit">
                   Save column
                 </button>
-                <button
-                  className="admin-secondary-button"
-                  onClick={closeColumnDrawer}
-                  type="button"
-                >
-                  Cancel
-                </button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
       {activeColumnDrawerMode === "source_photo" && activeColumn ? (
-        <div className="admin-dialog-scrim">
+        <div className="admin-dialog-scrim admin-render-workbench-scrim">
           <div
             aria-label={`Source photo column ${activeColumn.sequence}`}
             aria-modal="true"
-            className="admin-drawer"
+            className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
             role="dialog"
           >
-            <h3>Source photo {activeColumn.sequence}</h3>
-            <p>
-              {activeColumn.public_label ?? `Column ${activeColumn.sequence}`}
-            </p>
+            <header className="admin-render-cell-sheet-header">
+              <div>
+                <p className="eyebrow">Visual matrix</p>
+                <h3>Source photo {activeColumn.sequence}</h3>
+                <p className="admin-muted">
+                  {activeColumn.public_label ??
+                    `Column ${activeColumn.sequence}`}
+                </p>
+              </div>
+              <button
+                aria-label="Close Visual matrix dialog"
+                className="admin-quiet-button admin-render-cell-close-button"
+                onClick={closeColumnDrawer}
+                type="button"
+              >
+                Close
+              </button>
+            </header>
             <form
-              className="admin-inline-form admin-inline-form-wide"
+              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleSourcePhotoUpload(activeColumn, event.currentTarget);
@@ -3384,13 +3425,6 @@ function VisualMatrixSection({
               <div className="admin-actions">
                 <button className="admin-primary-button" type="submit">
                   Upload source {activeColumn.sequence}
-                </button>
-                <button
-                  className="admin-secondary-button"
-                  onClick={closeColumnDrawer}
-                  type="button"
-                >
-                  Cancel
                 </button>
               </div>
             </form>
@@ -3750,12 +3784,12 @@ function RenderCoverageSection({
   // FR: Cette valeur decide si on peut demander une autre option d'image.
   const canGenerateNewCandidate = Boolean(
     selectedCell &&
-      selectedStatus &&
-      selectedCell.can_generate_initial &&
-      selectedStatus !== "missing" &&
-      selectedStatus !== "blocked" &&
-      selectedStatus !== "queued" &&
-      selectedStatus !== "processing",
+    selectedStatus &&
+    selectedCell.can_generate_initial &&
+    selectedStatus !== "missing" &&
+    selectedStatus !== "blocked" &&
+    selectedStatus !== "queued" &&
+    selectedStatus !== "processing",
   );
   // RU: Эти данные находят видимые причины остановки и варианты для сравнения.
   // FR: Ces donnees retrouvent les raisons visibles et les options a comparer.
@@ -4084,9 +4118,13 @@ function RenderCoverageSection({
         accessToken,
         upload.upload_id,
       );
-      const nextCell = await dependencies.setManualRender(accessToken, cell.id, {
-        asset_id: asset.id,
-      });
+      const nextCell = await dependencies.setManualRender(
+        accessToken,
+        cell.id,
+        {
+          asset_id: asset.id,
+        },
+      );
       onRenderCellChange(nextCell);
       form.reset();
       await onRefresh();
@@ -4579,162 +4617,162 @@ function RenderCoverageSection({
                         className="admin-candidate-list"
                         role="group"
                       >
-                      <div className="admin-candidate-list-header">
-                        <div>
-                          <h4>Candidates</h4>
-                          <p className="admin-muted">
-                            Choose the image that should become current, or ask
-                            for a focused refinement.
-                          </p>
+                        <div className="admin-candidate-list-header">
+                          <div>
+                            <h4>Candidates</h4>
+                            <p className="admin-muted">
+                              Choose the image that should become current, or
+                              ask for a focused refinement.
+                            </p>
+                          </div>
+                          <span>{reviewCandidates.length}</span>
                         </div>
-                        <span>{reviewCandidates.length}</span>
-                      </div>
-                      {reviewCandidates.length === 0 ? (
-                        <span className="admin-muted">No candidates</span>
-                      ) : null}
-                      {reviewCandidates.map((candidate) => (
-                        <article
-                          aria-label={`Candidate ${candidate.id}`}
-                          className="admin-candidate-row"
-                          key={candidate.id}
-                        >
-                          <div className="admin-candidate-media">
-                            {candidate.preview_url ? (
-                              selectedSourcePhotoPreviewUrl ? (
-                                <button
-                                  aria-label={`Open candidate preview ${candidate.id} in comparison`}
-                                  className="admin-image-preview-button admin-candidate-compare-button"
-                                  onClick={() =>
-                                    handleCompareCandidate(candidate)
-                                  }
-                                  type="button"
-                                >
+                        {reviewCandidates.length === 0 ? (
+                          <span className="admin-muted">No candidates</span>
+                        ) : null}
+                        {reviewCandidates.map((candidate) => (
+                          <article
+                            aria-label={`Candidate ${candidate.id}`}
+                            className="admin-candidate-row"
+                            key={candidate.id}
+                          >
+                            <div className="admin-candidate-media">
+                              {candidate.preview_url ? (
+                                selectedSourcePhotoPreviewUrl ? (
+                                  <button
+                                    aria-label={`Open candidate preview ${candidate.id} in comparison`}
+                                    className="admin-image-preview-button admin-candidate-compare-button"
+                                    onClick={() =>
+                                      handleCompareCandidate(candidate)
+                                    }
+                                    type="button"
+                                  >
+                                    <img
+                                      alt={`Candidate preview ${candidate.id}`}
+                                      className="admin-preview-image"
+                                      src={candidate.preview_url}
+                                    />
+                                  </button>
+                                ) : (
                                   <img
                                     alt={`Candidate preview ${candidate.id}`}
                                     className="admin-preview-image"
                                     src={candidate.preview_url}
                                   />
-                                </button>
+                                )
                               ) : (
-                                <img
-                                  alt={`Candidate preview ${candidate.id}`}
-                                  className="admin-preview-image"
-                                  src={candidate.preview_url}
-                                />
-                              )
-                            ) : (
-                              <span className="admin-preview-image admin-preview-image-empty">
-                                No preview
+                                <span className="admin-preview-image admin-preview-image-empty">
+                                  No preview
+                                </span>
+                              )}
+                            </div>
+                            <div className="admin-candidate-body">
+                              <strong>
+                                {candidate.is_current
+                                  ? "Current candidate"
+                                  : "Candidate"}
+                              </strong>
+                              <span>
+                                {candidate.generation_mode} -{" "}
+                                {candidate.prompt_version}
                               </span>
-                            )}
-                          </div>
-                          <div className="admin-candidate-body">
-                            <strong>
-                              {candidate.is_current
-                                ? "Current candidate"
-                                : "Candidate"}
-                            </strong>
-                            <span>
-                              {candidate.generation_mode} -{" "}
-                              {candidate.prompt_version}
-                            </span>
-                            <span className="admin-muted">
-                              {candidate.is_current ? "Current" : "Candidate"}
-                            </span>
-                            <div className="admin-candidate-actions">
-                              <button
-                                className="admin-secondary-button"
-                                disabled={
-                                  candidate.is_current ||
-                                  activeCellId === selectedCell.id
-                                }
-                                onClick={() =>
-                                  void handleUseCandidate(candidate)
-                                }
-                                type="button"
-                              >
-                                Use candidate
-                              </button>
-                              {openRefineCandidateId !== candidate.id ? (
+                              <span className="admin-muted">
+                                {candidate.is_current ? "Current" : "Candidate"}
+                              </span>
+                              <div className="admin-candidate-actions">
                                 <button
-                                  className="admin-quiet-button"
-                                  disabled={activeCellId === selectedCell.id}
+                                  className="admin-secondary-button"
+                                  disabled={
+                                    candidate.is_current ||
+                                    activeCellId === selectedCell.id
+                                  }
                                   onClick={() =>
-                                    handleOpenRefineCandidate(candidate.id)
+                                    void handleUseCandidate(candidate)
                                   }
                                   type="button"
                                 >
-                                  Refine candidate
+                                  Use candidate
                                 </button>
-                              ) : null}
+                                {openRefineCandidateId !== candidate.id ? (
+                                  <button
+                                    className="admin-quiet-button"
+                                    disabled={activeCellId === selectedCell.id}
+                                    onClick={() =>
+                                      handleOpenRefineCandidate(candidate.id)
+                                    }
+                                    type="button"
+                                  >
+                                    Refine candidate
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
-                          </div>
-                          {openRefineCandidateId === candidate.id ? (
-                            <>
-                              {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
-                              {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
-                              <form
-                                className="admin-cell-form"
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  void handleRefineCandidate(
-                                    selectedCell,
-                                    candidate,
-                                    event.currentTarget,
-                                  );
-                                }}
-                              >
-                                <label className="field">
-                                  <span>Refine prompt</span>
-                                  <textarea
-                                    name="refine_prompt"
-                                    required
-                                    rows={2}
-                                  />
-                                </label>
-                                <button
-                                  className="admin-primary-button"
-                                  disabled={activeCellId === selectedCell.id}
-                                  type="submit"
+                            {openRefineCandidateId === candidate.id ? (
+                              <>
+                                {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
+                                {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
+                                <form
+                                  className="admin-cell-form"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void handleRefineCandidate(
+                                      selectedCell,
+                                      candidate,
+                                      event.currentTarget,
+                                    );
+                                  }}
                                 >
-                                  Refine
-                                </button>
-                                <button
-                                  className="admin-secondary-button"
-                                  disabled={activeCellId === selectedCell.id}
-                                  onClick={handleCloseRefineCandidate}
-                                  type="button"
-                                >
-                                  Cancel refine
-                                </button>
-                              </form>
-                            </>
-                          ) : null}
-                        </article>
-                      ))}
-                      {canGenerateNewCandidate ? (
-                        <div
-                          aria-label="Candidate follow-up actions"
-                          className="admin-candidate-followup-action"
-                          role="group"
-                        >
-                          <div>
-                            <strong>Need another option?</strong>
-                            <p className="admin-muted">
-                              Queue a new candidate without changing the
-                              current selection.
-                            </p>
+                                  <label className="field">
+                                    <span>Refine prompt</span>
+                                    <textarea
+                                      name="refine_prompt"
+                                      required
+                                      rows={2}
+                                    />
+                                  </label>
+                                  <button
+                                    className="admin-primary-button"
+                                    disabled={activeCellId === selectedCell.id}
+                                    type="submit"
+                                  >
+                                    Refine
+                                  </button>
+                                  <button
+                                    className="admin-secondary-button"
+                                    disabled={activeCellId === selectedCell.id}
+                                    onClick={handleCloseRefineCandidate}
+                                    type="button"
+                                  >
+                                    Cancel refine
+                                  </button>
+                                </form>
+                              </>
+                            ) : null}
+                          </article>
+                        ))}
+                        {canGenerateNewCandidate ? (
+                          <div
+                            aria-label="Candidate follow-up actions"
+                            className="admin-candidate-followup-action"
+                            role="group"
+                          >
+                            <div>
+                              <strong>Need another option?</strong>
+                              <p className="admin-muted">
+                                Queue a new candidate without changing the
+                                current selection.
+                              </p>
+                            </div>
+                            {/* The admin can request another option and optionally add guidance. */}
+                            {buildGenerateAction({
+                              busyLabel: "Queueing",
+                              cell: selectedCell,
+                              label: "Generate new candidate",
+                              onGenerate: () =>
+                                void handleGenerateNewCandidate(selectedCell),
+                            })}
                           </div>
-                          {/* The admin can request another option and optionally add guidance. */}
-                          {buildGenerateAction({
-                            busyLabel: "Queueing",
-                            cell: selectedCell,
-                            label: "Generate new candidate",
-                            onGenerate: () =>
-                              void handleGenerateNewCandidate(selectedCell),
-                          })}
-                        </div>
-                      ) : null}
+                        ) : null}
                       </div>
                     ) : null}
                     {isSourcePhotoCompleteCell(selectedCell) ||
@@ -5132,9 +5170,7 @@ function FabricForm({
 
   // RU: Это действие читает новую картинку ткани и готовит квадрат для выбора.
   // FR: Cette action lit la nouvelle image de tissu et prepare le carre a choisir.
-  async function handleSwatchFileChange(
-    event: FormEvent<HTMLInputElement>,
-  ) {
+  async function handleSwatchFileChange(event: FormEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0] ?? null;
 
