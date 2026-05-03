@@ -19,8 +19,8 @@ surfaces, and Apple home-screen usage.
 
 - Generate the public App Router icon files from the provided transparent PNG
   logo without changing the logo shape.
-- Use a warm light square tile so the black logo remains visible on dark and
-  light browser chrome.
+- Use the public site background color for the square tile so the black logo
+  matches the page surface in browser and home-screen contexts.
 - Keep the icon set limited to `favicon.ico`, `icon.png`, and
   `apple-icon.png`.
 - Do not add a PWA manifest or Android-specific icon set in this pass.
@@ -28,7 +28,8 @@ surfaces, and Apple home-screen usage.
 ## Tasks
 
 - [x] Add a tested favicon asset generator.
-- [x] Preserve transparent-source logo pixels and center them on the light tile.
+- [x] Preserve transparent-source logo pixels and center them on the
+      site-background tile.
 - [x] Generate `apps/web/src/app/favicon.ico` with 16, 32, and 48 px entries.
 - [x] Generate `apps/web/src/app/icon.png` at 512x512.
 - [x] Generate `apps/web/src/app/apple-icon.png` at 180x180.
@@ -38,12 +39,13 @@ surfaces, and Apple home-screen usage.
 ## Tests
 
 - The generator finds visible logo bounds from alpha pixels.
-- The generated square PNG icons have the expected dimensions and opaque warm
-  light corners.
+- The generated square PNG icons have the expected dimensions and opaque
+  site-background corners.
 - The ICO encoder writes 16, 32, and 48 px PNG entries.
 - The resize path smooths alpha edges instead of duplicating source pixels.
 - The web build accepts the App Router metadata icon files.
 
 ## Roadmap
 
-- Update `docs/roadmap/web.md` with the completed public site icon work.
+- Update `docs/roadmap/web.md` and `docs/roadmap/workflow.md` with the
+  completed public site icon work.
