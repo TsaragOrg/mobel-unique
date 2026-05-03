@@ -12,6 +12,7 @@
 | Done   | SPEC-0013 | PLAN-0018 | Protected admin fabric list/create/edit/archive UI and sofa fabric assignment controls.                              |
 | Done   | SPEC-0013 | PLAN-0019 | Sofa edit render preparation UI for visual matrix columns, source photos, coverage review, and initial job queueing. |
 | Done   | SPEC-0013 | PLAN-0021 | Sofa edit render coverage UI for private candidate review, current render selection, and manual render upload.       |
+| Done   | SPEC-0013 | PLAN-0021 | Manual render uploads immediately replace source-photo-current cells and show upload failures in the cell sheet.     |
 | Done   | SPEC-0013 | PLAN-0022 | Temporary sofa edit page cleanup for manual testing clarity before final admin design work.                          |
 | Done   | SPEC-0013 | PLAN-0023 | Sofa edit render coverage shows source-photo-complete cells and avoids redundant initial generation actions.         |
 | Done   | SPEC-0010 | PLAN-0024 | First-party public catalog and sofa detail API routes are available for the public storefront flow.                  |

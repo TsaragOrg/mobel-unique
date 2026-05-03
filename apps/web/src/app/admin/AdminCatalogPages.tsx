@@ -1959,6 +1959,23 @@ function SofaEditContent({
     setReadiness(nextReadiness);
   }, [accessToken, dependencies, sofaId]);
 
+  // RU: Это действие сразу меняет одну ячейку картинки после успешной ручной загрузки.
+  // FR: Cette action change tout de suite une case image apres un envoi manuel reussi.
+  function handleRenderCellChange(nextCell: AdminCatalogRenderCell) {
+    setRenderCoverage((currentCoverage) => {
+      if (!currentCoverage) {
+        return currentCoverage;
+      }
+
+      return {
+        ...currentCoverage,
+        render_cells: currentCoverage.render_cells.map((cell) =>
+          cell.id === nextCell.id ? nextCell : cell,
+        ),
+      };
+    });
+  }
+
   useEffect(() => {
     if (!dependencies.subscribeToFabricRenderJobs) {
       return;
@@ -2147,6 +2164,7 @@ function SofaEditContent({
                 accessToken={accessToken}
                 coverage={renderCoverage}
                 dependencies={dependencies}
+                onRenderCellChange={handleRenderCellChange}
                 onRefresh={refreshRenderPreparationAndReadiness}
                 onSelectTab={setActiveTab}
                 sofaFabrics={sofaFabrics}
@@ -3338,6 +3356,7 @@ function RenderCoverageSection({
   accessToken,
   coverage,
   dependencies,
+  onRenderCellChange,
   onRefresh,
   onSelectTab,
   sofaFabrics,
@@ -3346,6 +3365,7 @@ function RenderCoverageSection({
   accessToken: string;
   coverage: AdminCatalogRenderCoverage | null;
   dependencies: AdminCatalogPageDependencies;
+  onRenderCellChange(cell: AdminCatalogRenderCell): void;
   onRefresh(): Promise<void>;
   onSelectTab?(tab: SofaEditTabKey): void;
   sofaFabrics: AdminCatalogSofaFabric[];
@@ -3843,11 +3863,13 @@ function RenderCoverageSection({
         accessToken,
         upload.upload_id,
       );
-      await dependencies.setManualRender(accessToken, cell.id, {
+      const nextCell = await dependencies.setManualRender(accessToken, cell.id, {
         asset_id: asset.id,
       });
+      onRenderCellChange(nextCell);
       form.reset();
       await onRefresh();
+      onRenderCellChange(nextCell);
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -4194,6 +4216,13 @@ function RenderCoverageSection({
                       <dd>{selectedCell.candidate_count}</dd>
                     </div>
                   </dl>
+                  {/* RU: Это сообщение видно рядом с открытой ячейкой, если действие не удалось. */}
+                  {/* FR: Ce message reste visible pres de la case ouverte si l'action echoue. */}
+                  {errorMessage ? (
+                    <p className="form-error" role="alert">
+                      {errorMessage}
+                    </p>
+                  ) : null}
                   {selectedCell.candidate_count > 0 &&
                   selectedStatus !== "candidate" &&
                   reviewCellId !== selectedCell.id ? (
