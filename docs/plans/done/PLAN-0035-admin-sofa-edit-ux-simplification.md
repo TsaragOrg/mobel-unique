@@ -1196,6 +1196,7 @@ Update these roadmap files:
 - [x] Corrected the candidate comparison dialog so generated render candidates are compared against the source photo for the selected visual position, not against the current render. The admin API now carries a safe signed source photo preview URL for this comparison without exposing storage object paths.
 - [x] Tightened the sofa edit render review UX after manual testing: queued and processing cells are informational only, candidate previews and current renders can open in a large image dialog, refine prompt textareas open only on demand and can be canceled, duplicate close actions were removed from popups, and the technical sofa UUID is no longer shown in the edit header.
 - [x] Fixed stale publish blockers in the sofa edit workflow by refreshing publication readiness after render coverage and visual matrix changes, including manual render uploads and Realtime render job updates.
+- [x] Fixed Fabric order swaps by temporarily clearing changed occupied public order values before saving the final values, preventing transient `SOFA_FABRIC_ORDER_CONFLICT` responses during valid reordering.
 
 ## Self-Review
 
