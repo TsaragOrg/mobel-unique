@@ -598,6 +598,27 @@ async function runCleaningCheckpoint(
     );
   }
 
+  // PLAN-0056 observability: emit a checkpoint-started event before
+  // any long-running OpenAI fetch so an operator looking at
+  // `worker_job_events` can always tell whether the cleaning step
+  // entered. Without this, an isolate that dies inside `cleanRoom`
+  // leaves the job timeline blank between claim and failure.
+  await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+    job_type: IN_HOME_SIMULATION_JOB_TYPE,
+    in_home_simulation_job_id: claim.job_id,
+    fabric_render_job_id: null,
+    from_status: null,
+    to_status: null,
+    event_type: "stage_1_cleaning_checkpoint_started",
+    message:
+      `worker ${workerIdentifier} entered cleaning checkpoint`,
+    metadata: {
+      worker_identifier: workerIdentifier,
+      attempt: claim.room_prep_attempt_count,
+      room_geometry_mode: claim.room_geometry_mode
+    }
+  });
+
   const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
   const providers = selectStage1Providers(
     providerMode,
@@ -869,6 +890,26 @@ async function runCornersCheckpoint(
     );
   }
 
+  // PLAN-0056 observability: same rationale as the cleaning
+  // checkpoint — emit a marker before the corners OpenAI fetch so the
+  // timeline shows the corners step entered even when the isolate
+  // later dies mid-fetch.
+  await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+    job_type: IN_HOME_SIMULATION_JOB_TYPE,
+    in_home_simulation_job_id: claim.job_id,
+    fabric_render_job_id: null,
+    from_status: null,
+    to_status: null,
+    event_type: "stage_1_corners_checkpoint_started",
+    message:
+      `worker ${workerIdentifier} entered corners checkpoint`,
+    metadata: {
+      worker_identifier: workerIdentifier,
+      attempt: claim.room_prep_attempt_count,
+      room_geometry_mode: claim.room_geometry_mode
+    }
+  });
+
   const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
   const providers = selectStage1Providers(
     providerMode,
@@ -1054,6 +1095,25 @@ async function processPlacementJob(
       `job ${claim.job_id} has no room_cleaned_path; refusing Stage 2`
     );
   }
+
+  // PLAN-0056 observability: emit a placement-started marker so the
+  // job timeline shows Stage 2 entered even if the OpenAI fetch
+  // exceeds the Edge Function wall-clock and the isolate dies inside
+  // the placement loop.
+  await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
+    job_type: IN_HOME_SIMULATION_JOB_TYPE,
+    in_home_simulation_job_id: claim.job_id,
+    fabric_render_job_id: null,
+    from_status: null,
+    to_status: null,
+    event_type: "stage_2_placement_started",
+    message: `worker ${workerIdentifier} entered placement`,
+    metadata: {
+      worker_identifier: workerIdentifier,
+      attempt: claim.placement_attempt_count,
+      room_geometry_mode: claim.room_geometry_mode
+    }
+  });
 
   const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
   const providers = selectStage2Providers(
