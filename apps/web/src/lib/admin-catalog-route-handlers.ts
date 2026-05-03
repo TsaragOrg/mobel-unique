@@ -50,6 +50,10 @@ type SofaInput = BaseInput & {
   sofaId: string;
 };
 
+type StorageAssetInput = BaseInput & {
+  assetId: string;
+};
+
 type RenderExportInput = BaseInput & {
   exportId: string;
 };
@@ -324,6 +328,29 @@ export async function handleGetSofaRenderExportRequest(
       },
       200,
     );
+  });
+}
+
+export async function handleGetStorageAssetPreviewRequest(
+  input: StorageAssetInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const preview = await store.getStorageAssetPreview(input.assetId);
+
+    if (!preview) {
+      return notFoundResponse(
+        "STORAGE_ASSET_NOT_FOUND",
+        "Storage asset was not found.",
+      );
+    }
+
+    return new Response(await preview.body.arrayBuffer(), {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": preview.content_type,
+      },
+      status: 200,
+    });
   });
 }
 

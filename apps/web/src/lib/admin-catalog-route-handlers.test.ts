@@ -1,3 +1,4 @@
+import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdminAuth, type AdminAuthUser } from "./admin-auth";
 import {
@@ -21,6 +22,7 @@ import {
   handleGetSofaPublicationReadinessRequest,
   handleGetSofaRenderExportRequest,
   handleGetSofaRequest,
+  handleGetStorageAssetPreviewRequest,
   handleListFabricsRequest,
   handleListRenderCellCandidatesRequest,
   handleListSofaFabricsRequest,
@@ -912,6 +914,25 @@ function createFakeStore(): AdminCatalogStore {
     async getSofa(sofaId) {
       return sofas.get(sofaId) ?? null;
     },
+    async getStorageAssetPreview(assetId) {
+      const asset = assets.get(assetId);
+
+      if (
+        !asset ||
+        asset.visibility !== "private" ||
+        typeof asset.content_type !== "string" ||
+        !asset.content_type.startsWith("image/")
+      ) {
+        return null;
+      }
+
+      return {
+        body: new NodeBlob([`preview:${assetId}`], {
+          type: asset.content_type,
+        }) as unknown as Blob,
+        content_type: asset.content_type,
+      };
+    },
     async getSofaPublicationReadiness(sofaId) {
       if (!sofas.has(sofaId)) {
         return null;
@@ -1281,6 +1302,40 @@ describe("admin catalog route handlers", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "ADMIN_REQUIRED",
+      },
+    });
+  });
+
+  it("returns private image previews through the admin facade", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...input,
+      assetId: "00000000-0000-4000-8000-000000000902",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+    await expect(response.text()).resolves.toBe(
+      "preview:00000000-0000-4000-8000-000000000902",
+    );
+  });
+
+  it("does not serve public or unsupported assets through the private preview endpoint", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...input,
+      assetId: "00000000-0000-4000-8000-000000000901",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "STORAGE_ASSET_NOT_FOUND",
       },
     });
   });
@@ -2302,8 +2357,7 @@ describe("admin catalog route handlers", () => {
     const candidate = candidatesBody.data.render_candidates[0];
     expect(candidate).toMatchObject({
       is_current: false,
-      preview_url:
-        "https://storage.example/signed/private-candidate-preview?token=short",
+      preview_url: null,
       render_cell_id: renderCellId,
     });
     expect(JSON.stringify(candidate)).not.toContain("object_path");
