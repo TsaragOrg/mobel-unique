@@ -3,10 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Image } from "imagescript";
 
-export const FAVICON_BACKGROUND_COLOR = "#f4efe6";
+export const FAVICON_BACKGROUND_COLOR = "#ffffff";
 
-const BACKGROUND_RGBA = [244, 239, 230, 255];
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const BACKGROUND_RGBA = [255, 255, 255, 255];
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 
 export function findVisibleBounds(image, options = {}) {
   const alphaThreshold = options.alphaThreshold ?? 8;
@@ -38,7 +40,7 @@ export function findVisibleBounds(image, options = {}) {
     height: maxY - minY + 1,
     width: maxX - minX + 1,
     x: minX,
-    y: minY
+    y: minY,
   };
 }
 
@@ -49,21 +51,37 @@ export function createFaviconImage(sourceImage, size, options = {}) {
 
   const fillRatio = options.fillRatio ?? 0.78;
   const bounds = findVisibleBounds(sourceImage, options);
-  const croppedLogo = sourceImage.clone().crop(bounds.x, bounds.y, bounds.width, bounds.height);
+  const croppedLogo = sourceImage
+    .clone()
+    .crop(bounds.x, bounds.y, bounds.width, bounds.height);
   const targetMax = Math.max(1, Math.round(size * fillRatio));
-  const scale = Math.min(targetMax / croppedLogo.width, targetMax / croppedLogo.height);
+  const scale = Math.min(
+    targetMax / croppedLogo.width,
+    targetMax / croppedLogo.height,
+  );
   const logoWidth = Math.max(1, Math.round(croppedLogo.width * scale));
   const logoHeight = Math.max(1, Math.round(croppedLogo.height * scale));
   const logo = resizeImageBilinear(croppedLogo, logoWidth, logoHeight);
 
-  const icon = new Image(size, size).fill(Image.rgbaToColor(...BACKGROUND_RGBA));
-  icon.composite(logo, Math.floor((size - logo.width) / 2), Math.floor((size - logo.height) / 2));
+  const icon = new Image(size, size).fill(
+    Image.rgbaToColor(...BACKGROUND_RGBA),
+  );
+  icon.composite(
+    logo,
+    Math.floor((size - logo.width) / 2),
+    Math.floor((size - logo.height) / 2),
+  );
 
   return icon;
 }
 
 export function resizeImageBilinear(sourceImage, width, height) {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
     throw new Error("Resize dimensions must be positive integers.");
   }
 
@@ -85,18 +103,22 @@ export function resizeImageBilinear(sourceImage, width, height) {
       const top = mixPremultipliedPixels(
         readPremultipliedPixel(sourceImage, x0, y0),
         readPremultipliedPixel(sourceImage, x1, y0),
-        xWeight
+        xWeight,
       );
       const bottom = mixPremultipliedPixels(
         readPremultipliedPixel(sourceImage, x0, y1),
         readPremultipliedPixel(sourceImage, x1, y1),
-        xWeight
+        xWeight,
       );
       const [red, green, blue, alpha] = unpremultiplyPixel(
-        mixPremultipliedPixels(top, bottom, yWeight)
+        mixPremultipliedPixels(top, bottom, yWeight),
       );
 
-      resized.setPixelAt(x + 1, y + 1, Image.rgbaToColor(red, green, blue, alpha));
+      resized.setPixelAt(
+        x + 1,
+        y + 1,
+        Image.rgbaToColor(red, green, blue, alpha),
+      );
     }
   }
 
@@ -117,11 +139,14 @@ export async function encodeIco(images) {
       }
 
       return { image, png };
-    })
+    }),
   );
 
   const directorySize = 6 + pngEntries.length * 16;
-  const imageDataSize = pngEntries.reduce((total, entry) => total + entry.png.length, 0);
+  const imageDataSize = pngEntries.reduce(
+    (total, entry) => total + entry.png.length,
+    0,
+  );
   const ico = Buffer.alloc(directorySize + imageDataSize);
   let imageOffset = directorySize;
 
@@ -160,18 +185,27 @@ export async function generateFaviconAssets(options) {
   const icon = createFaviconImage(source, 512, { fillRatio: 0.76 });
   const appleIcon = createFaviconImage(source, 180, { fillRatio: 0.74 });
   const faviconImages = [16, 32, 48].map((size) =>
-    createFaviconImage(source, size, { fillRatio: 0.9 })
+    createFaviconImage(source, size, { fillRatio: 0.9 }),
   );
 
   await fs.mkdir(outDir, { recursive: true });
-  await fs.writeFile(path.join(outDir, "icon.png"), Buffer.from(await icon.encode()));
-  await fs.writeFile(path.join(outDir, "apple-icon.png"), Buffer.from(await appleIcon.encode()));
-  await fs.writeFile(path.join(outDir, "favicon.ico"), await encodeIco(faviconImages));
+  await fs.writeFile(
+    path.join(outDir, "icon.png"),
+    Buffer.from(await icon.encode()),
+  );
+  await fs.writeFile(
+    path.join(outDir, "apple-icon.png"),
+    Buffer.from(await appleIcon.encode()),
+  );
+  await fs.writeFile(
+    path.join(outDir, "favicon.ico"),
+    await encodeIco(faviconImages),
+  );
 
   return {
     appleIconPath: path.join(outDir, "apple-icon.png"),
     faviconPath: path.join(outDir, "favicon.ico"),
-    iconPath: path.join(outDir, "icon.png")
+    iconPath: path.join(outDir, "icon.png"),
   };
 }
 
@@ -188,7 +222,7 @@ function mixPremultipliedPixels(first, second, weight) {
     first[0] * inverse + second[0] * weight,
     first[1] * inverse + second[1] * weight,
     first[2] * inverse + second[2] * weight,
-    first[3] * inverse + second[3] * weight
+    first[3] * inverse + second[3] * weight,
   ];
 }
 
@@ -203,7 +237,7 @@ function unpremultiplyPixel(pixel) {
     clampColorChannel(pixel[0] / alpha),
     clampColorChannel(pixel[1] / alpha),
     clampColorChannel(pixel[2] / alpha),
-    alpha
+    alpha,
   ];
 }
 
@@ -248,7 +282,10 @@ async function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   main().catch((error) => {
     console.error(error.message);
     process.exit(1);
