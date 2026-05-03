@@ -8,6 +8,7 @@ import {
   shapeRenderCoverageResponse,
   shapeSofaResponse,
   shapeSofaFabricResponse,
+  shapeSofaRenderExportResponse,
   shapeStorageAssetResponse,
   shapeTagResponse,
   shapeUploadResponse,
@@ -47,6 +48,10 @@ type RequestInput = BaseInput & {
 
 type SofaInput = BaseInput & {
   sofaId: string;
+};
+
+type RenderExportInput = BaseInput & {
+  exportId: string;
 };
 
 type SofaRequestInput = RequestInput & {
@@ -265,6 +270,55 @@ export async function handleUnpublishSofaRequest(input: SofaInput) {
       {
         data: {
           sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleCreateSofaRenderExportRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.createSofaRenderExport(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_export: shapeSofaRenderExportResponse(result),
+        },
+        meta: {},
+      },
+      201,
+    );
+  });
+}
+
+export async function handleGetSofaRenderExportRequest(
+  input: RenderExportInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const renderExport = await store.getSofaRenderExport(input.exportId);
+
+    if (!renderExport) {
+      return notFoundResponse(
+        "SOFA_RENDER_EXPORT_NOT_FOUND",
+        "Sofa render export was not found.",
+      );
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          render_export: shapeSofaRenderExportResponse(renderExport),
         },
         meta: {},
       },

@@ -65,6 +65,8 @@ export interface AdminCatalogSofa {
   public_name: string | null;
   public_slug: string | null;
   shopify_order_url: string | null;
+  source_photo_count?: number | null;
+  source_photo_preview_url?: string | null;
   tags: AdminCatalogTag[];
   updated_at: string;
   length_cm: number | null;
@@ -258,6 +260,19 @@ export interface AdminCatalogRenderCoverage {
   visual_matrix_columns: AdminCatalogVisualMatrixColumn[];
 }
 
+export interface AdminSofaRenderExport {
+  asset_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  download_url: string | null;
+  expires_at: string | null;
+  id: string;
+  included_render_count: number | null;
+  last_error_message: string | null;
+  sofa_id: string;
+  status: string;
+}
+
 type AdminLargeImagePreview = {
   alt: string;
   src: string;
@@ -403,6 +418,10 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     input: SofaMutationInput,
   ): Promise<AdminCatalogSofa>;
+  createSofaRenderExport(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminSofaRenderExport>;
   createTag(
     accessToken: string,
     input: TagMutationInput,
@@ -448,6 +467,10 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     sofaId: string,
   ): Promise<AdminCatalogReadiness>;
+  getSofaRenderExport(
+    accessToken: string,
+    exportId: string,
+  ): Promise<AdminSofaRenderExport>;
   publishSofa(accessToken: string, sofaId: string): Promise<AdminCatalogSofa>;
   listFabrics(accessToken: string): Promise<AdminCatalogFabric[]>;
   listSofas(accessToken: string): Promise<AdminCatalogSofa[]>;
@@ -718,6 +741,17 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.sofa as AdminCatalogSofa;
     },
+    async createSofaRenderExport(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/render-exports`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.render_export as AdminSofaRenderExport;
+    },
     async createTag(accessToken, input) {
       const data = await requestAdminJson(accessToken, "/api/admin/tags", {
         body: JSON.stringify(input),
@@ -836,6 +870,14 @@ export function createDefaultAdminCatalogDependencies(
       );
 
       return data.readiness as AdminCatalogReadiness;
+    },
+    async getSofaRenderExport(accessToken, exportId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/render-exports/${exportId}`,
+      );
+
+      return data.render_export as AdminSofaRenderExport;
     },
     async publishSofa(accessToken, sofaId) {
       const data = await requestAdminJson(
@@ -1263,7 +1305,7 @@ function SofaListContent({
             New sofa
           </Link>
         }
-        description="Review sofa records, publishing state, storefront links, and recent catalog updates."
+        description="Review sofa records, source imagery, publishing state, and recent catalog updates."
         eyebrow="Catalog"
         title="Sofas"
         titleId="sofas-title"
@@ -1282,65 +1324,68 @@ function SofaListContent({
         <p className="admin-list-feedback">No sofa records yet.</p>
       ) : null}
       {sofas.length > 0 ? (
-        <div className="admin-table-wrap">
-          <table className="admin-table admin-catalog-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>State</th>
-                <th>Slug</th>
-                <th>Shopify</th>
-                <th>Updated</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sofas.map((sofa) => (
-                <tr key={sofa.id}>
-                  <td className="admin-table-primary-cell" data-label="Name">
-                    <div className="admin-table-main">
-                      <strong>{sofa.internal_name || sofa.public_name}</strong>
-                      {sofa.public_name ? (
-                        <span>{sofa.public_name}</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td data-label="State">
-                    <AdminStateBadge
-                      tone={getLifecycleBadgeTone(sofa.lifecycle_state)}
-                    >
-                      {formatLifecycleState(sofa.lifecycle_state)}
-                    </AdminStateBadge>
-                  </td>
-                  <td data-label="Slug">
-                    <span className="admin-table-code">
-                      {sofa.public_slug ?? "None"}
+        <div className="admin-sofa-list" role="list">
+          {sofas.map((sofa) => {
+            const sofaDisplayName = sofa.public_name ?? sofa.internal_name;
+            const sourcePhotoCount = sofa.source_photo_count ?? 0;
+
+            return (
+              <article
+                className="admin-sofa-list-card"
+                key={sofa.id}
+                role="listitem"
+              >
+                <Link
+                  aria-label={`Open ${sofaDisplayName}`}
+                  className="admin-sofa-list-link"
+                  href={`/admin/sofas/${sofa.id}`}
+                >
+                  <span className="admin-sofa-list-preview">
+                    {sofa.source_photo_preview_url ? (
+                      <img
+                        alt={`Source photo for ${sofaDisplayName}`}
+                        src={sofa.source_photo_preview_url}
+                      />
+                    ) : (
+                      <span>No source image</span>
+                    )}
+                  </span>
+                  <span className="admin-sofa-list-body">
+                    <span className="admin-sofa-list-title-row">
+                      <span className="admin-sofa-list-title">
+                        <strong>{sofa.internal_name || sofa.public_name}</strong>
+                        {sofa.public_name ? <span>{sofa.public_name}</span> : null}
+                      </span>
                     </span>
-                  </td>
-                  <td data-label="Shopify">
-                    <AdminStateBadge
-                      tone={getReadinessBadgeTone(
-                        Boolean(sofa.shopify_order_url),
-                      )}
-                    >
-                      {sofa.shopify_order_url ? "Set" : "Missing"}
-                    </AdminStateBadge>
-                  </td>
-                  <td data-label="Updated">
-                    {formatTimestamp(sofa.updated_at)}
-                  </td>
-                  <td data-label="Action">
-                    <Link
-                      className="admin-table-link"
-                      href={`/admin/sofas/${sofa.id}`}
-                    >
-                      Open
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="admin-sofa-list-details">
+                      <span>
+                        <small>Status</small>
+                        <span
+                          className={`admin-sofa-list-lifecycle admin-sofa-list-lifecycle-${sofa.lifecycle_state}`}
+                        >
+                          {formatLifecycleState(sofa.lifecycle_state)}
+                        </span>
+                      </span>
+                      <span>
+                        <small>Sources</small>
+                        <span>
+                          {sourcePhotoCount > 0
+                            ? `${sourcePhotoCount} source ${
+                                sourcePhotoCount === 1 ? "photo" : "photos"
+                              }`
+                            : "No source photo"}
+                        </span>
+                      </span>
+                      <span>
+                        <small>Updated</small>
+                        <span>{formatTimestamp(sofa.updated_at)}</span>
+                      </span>
+                    </span>
+                  </span>
+                </Link>
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>
@@ -1398,7 +1443,7 @@ function FabricListContent({
             New fabric
           </Link>
         }
-        description="Track fabric records, premium flags, swatch readiness, and AI reference assets."
+        description="Review fabric swatches, catalog names, lifecycle state, and AI readiness."
         eyebrow="Catalog"
         title="Fabrics"
         titleId="fabrics-title"
@@ -1417,79 +1462,65 @@ function FabricListContent({
         <p className="admin-list-feedback">No fabric records yet.</p>
       ) : null}
       {fabrics.length > 0 ? (
-        <div className="admin-table-wrap">
-          <table className="admin-table admin-catalog-table">
-            <thead>
-              <tr>
-                <th>Swatch</th>
-                <th>Fabric</th>
-                <th>State</th>
-                <th>Premium</th>
-                <th>AI reference</th>
-                <th>Updated</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fabrics.map((fabric) => (
-                <tr key={fabric.id}>
-                  <td data-label="Swatch">
+        <div className="admin-fabric-list" role="list">
+          {fabrics.map((fabric) => {
+            const fabricDisplayName = fabric.public_name || fabric.internal_name;
+
+            return (
+              <article
+                className="admin-fabric-list-card"
+                key={fabric.id}
+                role="listitem"
+              >
+                <Link
+                  aria-label={`Open ${fabricDisplayName}`}
+                  className="admin-fabric-list-link"
+                  href={`/admin/fabrics/${fabric.id}`}
+                >
+                  <span className="admin-fabric-list-preview">
                     {fabric.swatch_preview_url ? (
                       <img
                         alt={`${fabric.public_name} swatch`}
-                        className="admin-swatch-thumb"
                         src={fabric.swatch_preview_url}
                       />
                     ) : (
-                      <span className="admin-swatch-thumb admin-swatch-thumb-empty">
-                        No swatch
-                      </span>
+                      <span>No swatch</span>
                     )}
-                  </td>
-                  <td className="admin-table-primary-cell" data-label="Fabric">
-                    <div className="admin-table-main">
-                      <strong>{fabric.internal_name}</strong>
-                      <span>{fabric.public_name}</span>
-                    </div>
-                  </td>
-                  <td data-label="State">
-                    <AdminStateBadge
-                      tone={getLifecycleBadgeTone(fabric.lifecycle_state)}
-                    >
-                      {formatLifecycleState(fabric.lifecycle_state)}
-                    </AdminStateBadge>
-                  </td>
-                  <td data-label="Premium">
-                    <AdminStateBadge
-                      tone={fabric.is_premium ? "neutral" : "muted"}
-                    >
-                      {fabric.is_premium ? "Premium" : "Standard"}
-                    </AdminStateBadge>
-                  </td>
-                  <td data-label="AI reference">
-                    <AdminStateBadge
-                      tone={getReadinessBadgeTone(
-                        Boolean(fabric.ai_reference_asset),
-                      )}
-                    >
-                      {fabric.ai_reference_asset ? "Ready" : "Missing"}
-                    </AdminStateBadge>
-                  </td>
-                  <td data-label="Updated">
-                    {formatTimestamp(fabric.updated_at)}
-                  </td>
-                  <td data-label="Action">
-                    <Link
-                      className="admin-table-link"
-                      href={`/admin/fabrics/${fabric.id}`}
-                    >
-                      Open
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                  <span className="admin-fabric-list-body">
+                    <span className="admin-fabric-list-title">
+                      <strong>{fabric.public_name}</strong>
+                      <span>{fabric.internal_name}</span>
+                    </span>
+                    <span className="admin-fabric-list-details">
+                      <span>
+                        <small>Status</small>
+                        <span
+                          className={`admin-sofa-list-lifecycle admin-sofa-list-lifecycle-${fabric.lifecycle_state}`}
+                        >
+                          {formatLifecycleState(fabric.lifecycle_state)}
+                        </span>
+                      </span>
+                      <span>
+                        <small>AI reference</small>
+                        <span
+                          className={`admin-fabric-list-readiness ${
+                            fabric.ai_reference_asset ? "is-ready" : "is-missing"
+                          }`}
+                        >
+                          {fabric.ai_reference_asset ? "Ready" : "Missing"}
+                        </span>
+                      </span>
+                      <span>
+                        <small>Type</small>
+                        <span>{fabric.is_premium ? "Premium" : "Standard"}</span>
+                      </span>
+                    </span>
+                  </span>
+                </Link>
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>
@@ -2082,11 +2113,14 @@ function SofaEditContent({
             className="admin-sofa-edit-tabs"
             role="tablist"
           >
-            {SOFA_EDIT_TABS.map((tab) => {
+            {SOFA_EDIT_TABS.map((tab, index) => {
               const readinessKind = tabReadiness?.[tab.key] ?? "missing";
 
               return (
                 <button
+                  aria-label={`${tab.label} ${formatReadinessKind(
+                    readinessKind,
+                  )}`}
                   aria-controls={`sofa-edit-panel-${tab.key}`}
                   aria-selected={activeTab === tab.key}
                   className="admin-sofa-edit-tab"
@@ -2096,22 +2130,33 @@ function SofaEditContent({
                   role="tab"
                   type="button"
                 >
-                  <span>{tab.label}</span>
                   <span
-                    className={`admin-readiness-chip admin-readiness-chip-${readinessKind}`}
+                    aria-hidden="true"
+                    className="admin-sofa-edit-tab-index"
                   >
-                    {formatReadinessKind(readinessKind)}
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="admin-sofa-edit-tab-copy">
+                    <span className="admin-sofa-edit-tab-label">
+                      {tab.label}
+                    </span>
+                    <span className="admin-sofa-edit-tab-state">
+                      <span
+                        aria-hidden="true"
+                        className={`admin-readiness-dot admin-readiness-dot-${readinessKind}`}
+                      />
+                      <span>{formatReadinessKind(readinessKind)}</span>
+                    </span>
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* RU: Эта область показывает содержимое выбранного шага. */}
-          {/* FR: Cette zone montre le contenu de l'etape choisie. */}
+          {/* This area renders the selected workflow tab. */}
           <div
             aria-labelledby={`sofa-edit-tab-${activeTab}`}
-            className="admin-sofa-edit-panel admin-test-workflow"
+            className="admin-sofa-edit-panel"
             id={`sofa-edit-panel-${activeTab}`}
             role="tabpanel"
           >
@@ -2346,7 +2391,6 @@ function PublicationReadinessSection({
     >
       <SectionStepHeading
         headingId="readiness-title"
-        number="5"
         title="Publication readiness"
       />
       {actionErrorMessage ? (
@@ -2372,7 +2416,11 @@ function PublicationReadinessSection({
                   <strong>{error.code}</strong>
                   <span>{error.message}</span>
                 </div>
-                <button onClick={() => onSelectTab(targetTab)} type="button">
+                <button
+                  className="admin-secondary-button"
+                  onClick={() => onSelectTab(targetTab)}
+                  type="button"
+                >
                   Go to {getSofaEditTabLabel(targetTab)}
                 </button>
               </li>
@@ -2383,6 +2431,7 @@ function PublicationReadinessSection({
       <div className="admin-actions">
         {!isPublished ? (
           <button
+            className="admin-primary-button"
             disabled={isPublicationActionBusy || !readiness?.ready}
             onClick={() => void handlePublish()}
             type="button"
@@ -2391,6 +2440,7 @@ function PublicationReadinessSection({
           </button>
         ) : (
           <button
+            className="admin-danger-button"
             disabled={isPublicationActionBusy}
             onClick={() => void handleUnpublish()}
             type="button"
@@ -2405,18 +2455,14 @@ function PublicationReadinessSection({
 
 function SectionStepHeading({
   headingId,
-  number,
   title,
 }: {
   headingId: string;
-  number: string;
+  number?: string;
   title: string;
 }) {
   return (
-    <div className="admin-step-heading">
-      <span aria-hidden="true" className="admin-step-number">
-        {number}
-      </span>
+    <div className="admin-section-heading">
       <h2 id={headingId}>{title}</h2>
     </div>
   );
@@ -2742,7 +2788,6 @@ function SofaFabricAssignmentSection({
     >
       <SectionStepHeading
         headingId="sofa-fabrics-title"
-        number="2"
         title="Fabric assignments"
       />
       {errorMessage ? (
@@ -2750,46 +2795,27 @@ function SofaFabricAssignmentSection({
           {errorMessage}
         </p>
       ) : null}
-      <form
-        className="admin-inline-form admin-inline-form-wide"
-        onSubmit={handleAssign}
-      >
-        <label className="field">
-          <span>Assign fabric</span>
-          <select name="fabric_id" required>
-            <option value="">Select fabric</option>
-            {assignableFabrics.map((fabric) => (
-              <option key={fabric.id} value={fabric.id}>
-                {fabric.internal_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Public order</span>
-          <input min="0" name="public_order" type="number" />
-        </label>
-        <button disabled={isSubmitting} type="submit">
-          Assign fabric
-        </button>
-      </form>
       {sofaFabrics.length === 0 ? <p>No assigned fabrics.</p> : null}
       {sofaFabrics.length > 0 ? (
         <>
           <div className="admin-fabric-order-row">
             <button
+              className="admin-secondary-button"
               disabled={isSubmitting}
               onClick={() => void handleSaveOrder()}
               type="button"
             >
               Save order
             </button>
-            <button onClick={handleResetOrder} type="button">
+            <button
+              className="admin-quiet-button"
+              onClick={handleResetOrder}
+              type="button"
+            >
               Reset order
             </button>
           </div>
-          {/* RU: Этот список показывает ткани дивана и их порядок для покупателей. */}
-          {/* FR: Cette liste montre les tissus du canape et leur ordre public. */}
+          {/* This list shows sofa fabrics and their public order. */}
           <div className="admin-list admin-fabric-card-list">
             {sofaFabrics.map((assignment) => {
               const fabricLabel =
@@ -2807,10 +2833,11 @@ function SofaFabricAssignmentSection({
                   ) : (
                     <span>{assignment.fabric_id}</span>
                   )}
-                  <label className="field">
-                    <span>Public order for {fabricLabel}</span>
+                  <label className="field admin-order-field">
+                    <span>Order</span>
                     <input
                       aria-label={`Public order for ${fabricLabel}`}
+                      inputMode="numeric"
                       min="0"
                       onChange={(event) =>
                         handleOrderValueChange(
@@ -2818,15 +2845,17 @@ function SofaFabricAssignmentSection({
                           event.currentTarget.value,
                         )
                       }
-                      type="number"
+                      pattern="[0-9]*"
+                      type="text"
                       value={orderValues[assignment.fabric_id] ?? ""}
                     />
                   </label>
                   <button
+                    className="admin-danger-button"
                     onClick={() => void handleRemove(assignment)}
                     type="button"
                   >
-                    Unassign {assignment.fabric?.internal_name ?? "fabric"}
+                    Unassign {assignment.fabric?.public_name ?? "fabric"}
                   </button>
                 </div>
               );
@@ -2834,6 +2863,36 @@ function SofaFabricAssignmentSection({
           </div>
         </>
       ) : null}
+      <form className="admin-add-fabric-form" onSubmit={handleAssign}>
+        <label className="field">
+          <span>Assign fabric</span>
+          <select name="fabric_id" required>
+            <option value="">Select fabric</option>
+            {assignableFabrics.map((fabric) => (
+              <option key={fabric.id} value={fabric.id}>
+                {fabric.internal_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field admin-order-field">
+          <span>Public order</span>
+          <input
+            inputMode="numeric"
+            min="0"
+            name="public_order"
+            pattern="[0-9]*"
+            type="text"
+          />
+        </label>
+        <button
+          className="admin-primary-button"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          Assign fabric
+        </button>
+      </form>
     </section>
   );
 }
@@ -2870,6 +2929,28 @@ function AdminFabricCard({ fabric }: { fabric: AdminCatalogFabric }) {
         {fabric.is_premium ? (
           <span className="admin-fabric-premium">Premium</span>
         ) : null}
+      </div>
+    </article>
+  );
+}
+
+function AdminFabricCompact({ fabric }: { fabric: AdminCatalogFabric }) {
+  return (
+    <article className="admin-fabric-compact">
+      {fabric.swatch_preview_url ? (
+        <img
+          alt={`Swatch for ${fabric.public_name}`}
+          className="admin-fabric-compact-swatch"
+          src={fabric.swatch_preview_url}
+        />
+      ) : (
+        <span className="admin-fabric-compact-swatch admin-fabric-compact-empty">
+          No swatch
+        </span>
+      )}
+      <div>
+        <strong>{fabric.public_name}</strong>
+        <span>{fabric.ai_reference_asset ? "AI ready" : "AI missing"}</span>
       </div>
     </article>
   );
@@ -3057,7 +3138,6 @@ function VisualMatrixSection({
     >
       <SectionStepHeading
         headingId="visual-matrix-title"
-        number="3"
         title="Visual matrix"
       />
       {errorMessage ? (
@@ -3075,50 +3155,89 @@ function VisualMatrixSection({
           <h3>Visual matrix columns</h3>
           <p>Configures positions. Renders shows coverage.</p>
         </div>
-        <button onClick={() => openColumnDrawer("add")} type="button">
+        <button
+          className="admin-secondary-button"
+          onClick={() => openColumnDrawer("add")}
+          type="button"
+        >
           Add column
         </button>
       </div>
       {columns.length === 0 ? <p>No visual columns.</p> : null}
       {columns.length > 0 ? (
         <div className="admin-visual-matrix-list">
-          {columns.map((column) => (
-            <div className="admin-visual-matrix-row" key={column.id}>
-              <div>
-                <strong>
-                  {column.public_label ?? `Column ${column.sequence}`}
-                </strong>
-                <span>{column.admin_label ?? "No admin label"}</span>
-              </div>
-              <span>Sequence {column.sequence}</span>
-              <span>
-                {column.current_source_photo ? "Source ready" : "No source"}
-              </span>
-              <span>{getOriginalFabricName(column)}</span>
-              <div className="admin-actions">
-                <button
-                  onClick={() => openColumnDrawer("edit", column)}
-                  type="button"
-                >
-                  Edit column {column.sequence}
-                </button>
-                <button
-                  onClick={() => openColumnDrawer("source_photo", column)}
-                  type="button"
-                >
-                  {column.current_source_photo
-                    ? `Replace source photo ${column.sequence}`
-                    : `Add source photo ${column.sequence}`}
-                </button>
-                <button
-                  onClick={() => setPendingDeleteColumnId(column.id)}
-                  type="button"
-                >
-                  Delete column {column.sequence}
-                </button>
-              </div>
-            </div>
-          ))}
+          {columns.map((column) => {
+            const originalFabricName = getOriginalFabricName(column);
+            const sourcePhotoPreviewUrl =
+              column.current_source_photo?.preview_url ?? null;
+
+            return (
+              <article className="admin-visual-matrix-row" key={column.id}>
+                <div className="admin-visual-matrix-preview" aria-hidden="true">
+                  {sourcePhotoPreviewUrl ? (
+                    <img alt="" src={sourcePhotoPreviewUrl} />
+                  ) : (
+                    <span>No source</span>
+                  )}
+                </div>
+                <div className="admin-visual-matrix-copy">
+                  <span className="admin-visual-matrix-kicker">
+                    Position {String(column.sequence).padStart(2, "0")}
+                  </span>
+                  <strong>
+                    {column.public_label ?? `Column ${column.sequence}`}
+                  </strong>
+                  <span>{column.admin_label ?? "No admin label"}</span>
+                </div>
+                <div className="admin-visual-matrix-meta">
+                  <span>
+                    <span>Status</span>
+                    <strong>
+                      {column.current_source_photo
+                        ? "Source ready"
+                        : "Source missing"}
+                    </strong>
+                  </span>
+                  <span>
+                    <span>Source fabric</span>
+                    <strong>{originalFabricName}</strong>
+                  </span>
+                </div>
+                <div className="admin-visual-matrix-actions">
+                  <button
+                    aria-label={`Edit column ${column.sequence}`}
+                    className="admin-quiet-button"
+                    onClick={() => openColumnDrawer("edit", column)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    aria-label={
+                      column.current_source_photo
+                        ? `Replace source photo ${column.sequence}`
+                        : `Add source photo ${column.sequence}`
+                    }
+                    className="admin-secondary-button"
+                    onClick={() => openColumnDrawer("source_photo", column)}
+                    type="button"
+                  >
+                    {column.current_source_photo
+                      ? "Replace source"
+                      : "Add source"}
+                  </button>
+                  <button
+                    aria-label={`Delete column ${column.sequence}`}
+                    className="admin-danger-button"
+                    onClick={() => setPendingDeleteColumnId(column.id)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : null}
       {activeColumnDrawerMode === "add" ? (
@@ -3147,10 +3266,18 @@ function VisualMatrixSection({
                 <input name="public_label" />
               </label>
               <div className="admin-actions">
-                <button disabled={isSubmitting} type="submit">
+                <button
+                  className="admin-primary-button"
+                  disabled={isSubmitting}
+                  type="submit"
+                >
                   Add column
                 </button>
-                <button onClick={closeColumnDrawer} type="button">
+                <button
+                  className="admin-secondary-button"
+                  onClick={closeColumnDrawer}
+                  type="button"
+                >
                   Cancel
                 </button>
               </div>
@@ -3198,8 +3325,14 @@ function VisualMatrixSection({
                 />
               </label>
               <div className="admin-actions">
-                <button type="submit">Save column</button>
-                <button onClick={closeColumnDrawer} type="button">
+                <button className="admin-primary-button" type="submit">
+                  Save column
+                </button>
+                <button
+                  className="admin-secondary-button"
+                  onClick={closeColumnDrawer}
+                  type="button"
+                >
                   Cancel
                 </button>
               </div>
@@ -3249,10 +3382,14 @@ function VisualMatrixSection({
                 />
               </label>
               <div className="admin-actions">
-                <button type="submit">
+                <button className="admin-primary-button" type="submit">
                   Upload source {activeColumn.sequence}
                 </button>
-                <button onClick={closeColumnDrawer} type="button">
+                <button
+                  className="admin-secondary-button"
+                  onClick={closeColumnDrawer}
+                  type="button"
+                >
                   Cancel
                 </button>
               </div>
@@ -3272,12 +3409,14 @@ function VisualMatrixSection({
             <p>Deleting this column affects all fabrics for this sofa.</p>
             <div className="admin-actions">
               <button
+                className="admin-danger-button"
                 onClick={() => void handleDelete(pendingDeleteColumn)}
                 type="button"
               >
                 Confirm delete column {pendingDeleteColumn.sequence}
               </button>
               <button
+                className="admin-secondary-button"
                 onClick={() => setPendingDeleteColumnId(null)}
                 type="button"
               >
@@ -3336,6 +3475,44 @@ function RenderStatusChip({ status }: { status: RenderCellDisplayStatus }) {
         {RENDER_CELL_STATUS_MARKERS[status]}
       </span>
       {getRenderCellStatusLabel(status)}
+    </span>
+  );
+}
+
+function RenderCellButtonContent({
+  cell,
+  status,
+}: {
+  cell: AdminCatalogRenderCell;
+  status: RenderCellDisplayStatus;
+}) {
+  const hasPreview = Boolean(cell.current_private_preview_url);
+  const latestJobStatus = cell.latest_job?.status ?? null;
+  const displayBlockers = getRenderCellDisplayBlockers(cell.blockers);
+
+  return (
+    <span className="admin-render-cell-content">
+      <span className="admin-render-cell-media" aria-hidden="true">
+        {hasPreview ? (
+          <img alt="" src={cell.current_private_preview_url ?? ""} />
+        ) : (
+          <span />
+        )}
+      </span>
+      <span className="admin-render-cell-copy">
+        <RenderStatusChip status={status} />
+        <span className="admin-render-cell-meta">
+          {cell.candidate_count > 0
+            ? `${cell.candidate_count} candidates`
+            : latestJobStatus
+              ? `Job ${latestJobStatus}`
+              : displayBlockers.length > 0
+                ? `${displayBlockers.length} blockers`
+                : hasPreview
+                  ? "Current render"
+                  : "Open details"}
+        </span>
+      </span>
     </span>
   );
 }
@@ -3408,6 +3585,9 @@ function RenderCoverageSection({
   const [openPromptNoteCellIds, setOpenPromptNoteCellIds] = useState<
     Record<string, boolean>
   >({});
+  const [isRenderExportBusy, setIsRenderExportBusy] = useState(false);
+  const [renderExport, setRenderExport] =
+    useState<AdminSofaRenderExport | null>(null);
 
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
@@ -3522,6 +3702,19 @@ function RenderCoverageSection({
   const canResumeQueuedJobs = Boolean(
     coverage && hasQueuedJobs && !hasProcessingJobs,
   );
+  const renderStatusCounts = RENDER_CELL_STATUS_ORDER.reduce(
+    (counts, status) => ({
+      ...counts,
+      [status]: 0,
+    }),
+    {} as Record<RenderCellDisplayStatus, number>,
+  );
+
+  for (const cell of renderCells) {
+    renderStatusCounts[getRenderCellDisplayStatus(cell)] += 1;
+  }
+
+  const totalRenderCellCount = renderCells.length;
   // RU: Эти данные находят открытую ячейку, ее ткань, позицию и подпись.
   // FR: Ces donnees retrouvent la case ouverte, son tissu, sa position et son libelle.
   const selectedCell =
@@ -3545,6 +3738,9 @@ function RenderCoverageSection({
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
     : null;
+  const isReviewingSelectedCell = Boolean(
+    selectedCell && reviewCellId === selectedCell.id,
+  );
   // RU: Это значение решает, нужна ли главная кнопка для открытой ячейки.
   // FR: Cette valeur decide si la case ouverte a besoin du bouton principal.
   const selectedPrimaryAction = selectedStatus
@@ -3618,6 +3814,31 @@ function RenderCoverageSection({
       setErrorMessage(readErrorMessage(error));
     } finally {
       setActiveCellId(null);
+    }
+  }
+
+  async function handleCreateRenderExport() {
+    if (!coverage) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsRenderExportBusy(true);
+
+    try {
+      const createdExport = await dependencies.createSofaRenderExport(
+        accessToken,
+        coverage.sofa_id,
+      );
+      const nextExport = await dependencies.getSofaRenderExport(
+        accessToken,
+        createdExport.id,
+      );
+      setRenderExport(nextExport);
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsRenderExportBusy(false);
     }
   }
 
@@ -3948,6 +4169,7 @@ function RenderCoverageSection({
         role="group"
       >
         <button
+          className="admin-primary-button"
           disabled={activeCellId === cell.id}
           onClick={onGenerate}
           type="button"
@@ -3957,7 +4179,7 @@ function RenderCoverageSection({
         <button
           aria-controls={isPromptNoteOpen ? promptNoteId : undefined}
           aria-expanded={isPromptNoteOpen}
-          className="admin-optional-note-toggle"
+          className="admin-quiet-button admin-optional-note-toggle"
           onClick={() => handleTogglePromptNote(cell.id)}
           type="button"
         >
@@ -3995,24 +4217,66 @@ function RenderCoverageSection({
     >
       <SectionStepHeading
         headingId="render-coverage-title"
-        number="4"
         title="Render coverage"
       />
-      <div className="admin-inline-actions">
-        <button
-          disabled={!canGenerateAll || activeCellId === "__generate_all__"}
-          onClick={() => void handleGenerateAll()}
-          type="button"
+      <div className="admin-render-operations">
+        <div
+          aria-label="Render coverage summary"
+          className="admin-render-summary"
         >
-          {activeCellId === "__generate_all__" ? "Queueing" : "Generate all"}
-        </button>
-        <button
-          disabled={!canResumeQueuedJobs || activeCellId === "__resume__"}
-          onClick={() => void handleResumeQueuedJobs()}
-          type="button"
-        >
-          {activeCellId === "__resume__" ? "Resuming" : "Resume queued jobs"}
-        </button>
+          <div>
+            <strong>{renderStatusCounts.ready}</strong>
+            <span>Ready</span>
+          </div>
+          <div>
+            <strong>{renderStatusCounts.candidate}</strong>
+            <span>Candidates</span>
+          </div>
+          <div>
+            <strong>{renderStatusCounts.missing}</strong>
+            <span>Missing</span>
+          </div>
+          <div>
+            <strong>{renderStatusCounts.blocked}</strong>
+            <span>Blocked</span>
+          </div>
+          <div>
+            <strong>
+              {renderStatusCounts.queued + renderStatusCounts.processing}
+            </strong>
+            <span>Active jobs</span>
+          </div>
+          <div>
+            <strong>{totalRenderCellCount}</strong>
+            <span>Total</span>
+          </div>
+        </div>
+        <div className="admin-render-command-bar">
+          {canGenerateAll ? (
+            <button
+              className="admin-primary-button"
+              disabled={activeCellId === "__generate_all__"}
+              onClick={() => void handleGenerateAll()}
+              type="button"
+            >
+              {activeCellId === "__generate_all__"
+                ? "Queueing"
+                : "Generate missing"}
+            </button>
+          ) : null}
+          {canResumeQueuedJobs ? (
+            <button
+              className="admin-secondary-button"
+              disabled={activeCellId === "__resume__"}
+              onClick={() => void handleResumeQueuedJobs()}
+              type="button"
+            >
+              {activeCellId === "__resume__"
+                ? "Resuming"
+                : "Resume queued jobs"}
+            </button>
+          ) : null}
+        </div>
       </div>
       {errorMessage ? (
         <p className="form-error" role="alert">
@@ -4044,7 +4308,7 @@ function RenderCoverageSection({
                   <tr key={assignment.fabric_id}>
                     <td>
                       {assignment.fabric ? (
-                        <AdminFabricCard fabric={assignment.fabric} />
+                        <AdminFabricCompact fabric={assignment.fabric} />
                       ) : (
                         getSofaFabricDisplayName(assignment)
                       )}
@@ -4070,7 +4334,10 @@ function RenderCoverageSection({
                               }
                               type="button"
                             >
-                              <RenderStatusChip status={status} />
+                              <RenderCellButtonContent
+                                cell={cell}
+                                status={status}
+                              />
                             </button>
                           ) : (
                             <RenderStatusChip status="missing" />
@@ -4090,7 +4357,7 @@ function RenderCoverageSection({
                 key={assignment.fabric_id}
               >
                 {assignment.fabric ? (
-                  <AdminFabricCard fabric={assignment.fabric} />
+                  <AdminFabricCompact fabric={assignment.fabric} />
                 ) : (
                   <strong>{getSofaFabricDisplayName(assignment)}</strong>
                 )}
@@ -4118,8 +4385,17 @@ function RenderCoverageSection({
                         }}
                         type="button"
                       >
-                        <span>{getVisualMatrixColumnLabel(column)}</span>
-                        <RenderStatusChip status={status} />
+                        <span className="admin-render-mobile-cell-label">
+                          {getVisualMatrixColumnLabel(column)}
+                        </span>
+                        {cell ? (
+                          <RenderCellButtonContent
+                            cell={cell}
+                            status={status}
+                          />
+                        ) : (
+                          <RenderStatusChip status={status} />
+                        )}
                       </button>
                     );
                   })}
@@ -4127,22 +4403,28 @@ function RenderCoverageSection({
               </article>
             ))}
           </div>
-          <div aria-label="Legend" className="admin-status-legend">
-            <strong>Legend</strong>
-            {RENDER_CELL_STATUS_ORDER.map((status) => (
-              <RenderStatusChip key={status} status={status} />
-            ))}
-          </div>
+          <details className="admin-status-key">
+            <summary>Status key</summary>
+            <div aria-label="Status key details">
+              {RENDER_CELL_STATUS_ORDER.map((status) => (
+                <RenderStatusChip key={status} status={status} />
+              ))}
+            </div>
+          </details>
           {selectedCell &&
           selectedAssignment &&
           selectedColumn &&
           selectedStatus ? (
-            <div className="admin-dialog-scrim">
+            <div className="admin-dialog-scrim admin-render-workbench-scrim">
               <aside
                 aria-label={`Render cell: ${getSofaFabricDisplayName(
                   selectedAssignment,
                 )}, ${getVisualMatrixColumnLabel(selectedColumn)}`}
-                className="admin-drawer admin-render-cell-sheet"
+                className={`admin-drawer admin-render-cell-sheet admin-render-cell-workbench${
+                  isReviewingSelectedCell
+                    ? " admin-render-cell-workbench-review"
+                    : ""
+                }`}
                 role="dialog"
               >
                 <header className="admin-render-cell-sheet-header">
@@ -4155,7 +4437,7 @@ function RenderCoverageSection({
                   </div>
                   <button
                     aria-label="Close render cell"
-                    className="admin-render-cell-close-button"
+                    className="admin-quiet-button admin-render-cell-close-button"
                     onClick={handleCloseRenderCell}
                     ref={renderCellCloseButtonRef}
                     type="button"
@@ -4164,132 +4446,139 @@ function RenderCoverageSection({
                   </button>
                 </header>
                 <div className="admin-render-cell-sheet-body">
-                  {selectedAssignment.fabric ? (
-                    <AdminFabricCard fabric={selectedAssignment.fabric} />
-                  ) : (
-                    <p>{getSofaFabricDisplayName(selectedAssignment)}</p>
-                  )}
-                  {/* RU: Этот блок показывает текущую готовую картинку ячейки. */}
-                  {/* FR: Ce bloc montre l'image actuelle prete de la case. */}
-                  {selectedCell.current_private_preview_url ? (
-                    <figure className="admin-current-render-preview">
-                      <figcaption>Current render</figcaption>
+                  <div className="admin-render-cell-preview-pane">
+                    {/* This block shows the current ready image for the selected cell. */}
+                    {selectedCell.current_private_preview_url ? (
+                      <figure className="admin-current-render-preview">
+                        <figcaption>Current render</figcaption>
+                        <button
+                          aria-label="Open current render preview larger"
+                          className="admin-image-preview-button"
+                          onClick={() =>
+                            handleOpenLargeImagePreview({
+                              alt: "Current render preview",
+                              src:
+                                selectedCell.current_private_preview_url ?? "",
+                              title: "Current render",
+                            })
+                          }
+                          type="button"
+                        >
+                          <img
+                            alt="Current render preview"
+                            className="admin-preview-image"
+                            src={selectedCell.current_private_preview_url}
+                          />
+                        </button>
+                      </figure>
+                    ) : selectedCell.current_private_asset_id ? (
+                      <span className="admin-muted">
+                        Current render preview unavailable
+                      </span>
+                    ) : (
+                      <span className="admin-muted">No current render yet</span>
+                    )}
+                  </div>
+                  <div className="admin-render-cell-controls-pane">
+                    {selectedAssignment.fabric ? (
+                      <AdminFabricCard fabric={selectedAssignment.fabric} />
+                    ) : (
+                      <p>{getSofaFabricDisplayName(selectedAssignment)}</p>
+                    )}
+                    <div className="admin-render-cell-status-row">
+                      <span>{getVisualMatrixColumnLabel(selectedColumn)}</span>
+                      <RenderStatusChip status={selectedStatus} />
+                    </div>
+                    <dl className="admin-cell-details">
+                      <div>
+                        <dt>Source</dt>
+                        <dd>
+                          {renderSourceTypeLabel(selectedCell.source_type)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Job</dt>
+                        <dd>{selectedCell.latest_job?.status ?? "No job"}</dd>
+                      </div>
+                      <div>
+                        <dt>Candidates</dt>
+                        <dd>{selectedCell.candidate_count}</dd>
+                      </div>
+                    </dl>
+                    {selectedCell.candidate_count > 0 &&
+                    selectedStatus !== "candidate" &&
+                    reviewCellId !== selectedCell.id ? (
                       <button
-                        aria-label="Open current render preview larger"
-                        className="admin-image-preview-button"
+                        className="admin-secondary-button"
+                        disabled={activeCellId === selectedCell.id}
                         onClick={() =>
-                          handleOpenLargeImagePreview({
-                            alt: "Current render preview",
-                            src: selectedCell.current_private_preview_url ?? "",
-                            title: "Current render",
-                          })
+                          void handleReviewCandidates(selectedCell)
                         }
                         type="button"
                       >
-                        <img
-                          alt="Current render preview"
-                          className="admin-preview-image"
-                          src={selectedCell.current_private_preview_url}
-                        />
+                        Review candidates
                       </button>
-                    </figure>
-                  ) : selectedCell.current_private_asset_id ? (
-                    <span className="admin-muted">
-                      Current render preview unavailable
-                    </span>
-                  ) : null}
-                  <div className="admin-render-cell-status-row">
-                    <span>{getVisualMatrixColumnLabel(selectedColumn)}</span>
-                    <RenderStatusChip status={selectedStatus} />
-                  </div>
-                  <dl className="admin-cell-details">
-                    <div>
-                      <dt>Source</dt>
-                      <dd>{renderSourceTypeLabel(selectedCell.source_type)}</dd>
-                    </div>
-                    <div>
-                      <dt>Job</dt>
-                      <dd>{selectedCell.latest_job?.status ?? "No job"}</dd>
-                    </div>
-                    <div>
-                      <dt>Candidates</dt>
-                      <dd>{selectedCell.candidate_count}</dd>
-                    </div>
-                  </dl>
-                  {/* RU: Это сообщение видно рядом с открытой ячейкой, если действие не удалось. */}
-                  {/* FR: Ce message reste visible pres de la case ouverte si l'action echoue. */}
-                  {errorMessage ? (
-                    <p className="form-error" role="alert">
-                      {errorMessage}
-                    </p>
-                  ) : null}
-                  {selectedCell.candidate_count > 0 &&
-                  selectedStatus !== "candidate" &&
-                  reviewCellId !== selectedCell.id ? (
-                    <button
-                      disabled={activeCellId === selectedCell.id}
-                      onClick={() => void handleReviewCandidates(selectedCell)}
-                      type="button"
-                    >
-                      Review candidates
-                    </button>
-                  ) : null}
-                  {canGenerateNewCandidate &&
-                  reviewCellId !== selectedCell.id ? (
-                    <>
-                      {/* RU: Здесь основная кнопка видна сразу, а уточнение открывается отдельно. */}
-                      {/* FR: Ici le bouton principal est visible, et la note s'ouvre a part. */}
-                      {buildGenerateAction({
-                        busyLabel: "Queueing",
-                        cell: selectedCell,
-                        label: "Generate new candidate",
-                        onGenerate: () =>
-                          void handleGenerateNewCandidate(selectedCell),
-                      })}
-                    </>
-                  ) : null}
-                  {selectedDisplayBlockers.length > 0 ? (
-                    <div className="admin-cell-blockers">
-                      <strong>Blockers</strong>
-                      <span>{selectedDisplayBlockers.join(", ")}</span>
-                    </div>
-                  ) : null}
-                  {selectedCell.latest_job?.status === "failed" ? (
-                    <div className="admin-cell-blockers">
-                      <strong>Generation failed</strong>
-                      <span>
-                        {selectedCell.latest_job.last_error_message ??
-                          "FABRIC_RENDER_JOB_FAILED"}
+                    ) : null}
+                    {errorMessage ? (
+                      <p className="form-error" role="alert">
+                        {errorMessage}
+                      </p>
+                    ) : null}
+                    {canGenerateNewCandidate &&
+                    reviewCellId !== selectedCell.id ? (
+                      <>
+                        {/* The primary generation action stays visible while optional instructions stay collapsed. */}
+                        {buildGenerateAction({
+                          busyLabel: "Queueing",
+                          cell: selectedCell,
+                          label: "Generate new candidate",
+                          onGenerate: () =>
+                            void handleGenerateNewCandidate(selectedCell),
+                        })}
+                      </>
+                    ) : null}
+                    {selectedDisplayBlockers.length > 0 ? (
+                      <div className="admin-cell-blockers">
+                        <strong>Blockers</strong>
+                        <span>{selectedDisplayBlockers.join(", ")}</span>
+                      </div>
+                    ) : null}
+                    {selectedCell.latest_job?.status === "failed" ? (
+                      <div className="admin-cell-blockers">
+                        <strong>Generation failed</strong>
+                        <span>
+                          {selectedCell.latest_job.last_error_message ??
+                            "FABRIC_RENDER_JOB_FAILED"}
+                        </span>
+                      </div>
+                    ) : null}
+                    {isSourcePhotoCompleteCell(selectedCell) ? (
+                      <span className="admin-muted">
+                        Source photo is current
                       </span>
-                    </div>
-                  ) : null}
-                  {isSourcePhotoCompleteCell(selectedCell) ? (
-                    <span className="admin-muted">Source photo is current</span>
-                  ) : null}
-                  {selectedStatus === "missing" && selectedPrimaryAction ? (
-                    <>
-                      {/* RU: Здесь создание запускается сразу, а лишнее уточнение остается свернутым. */}
-                      {/* FR: Ici la creation part directement, et la note en plus reste fermee. */}
-                      {buildGenerateAction({
-                        busyLabel: "Working",
-                        cell: selectedCell,
-                        label: selectedPrimaryAction.label,
-                        onGenerate: () =>
-                          handleRenderCellPrimaryAction(
-                            selectedCell,
-                            selectedStatus,
-                          ),
-                      })}
-                    </>
-                  ) : null}
-                  {/* RU: Этот список показывает готовые варианты для выбранной ячейки. */}
-                  {/* FR: Cette liste montre les options pretes pour la case choisie. */}
-                  {reviewCellId === selectedCell.id ? (
-                    <div
-                      aria-label="Review candidates"
-                      className="admin-candidate-list"
-                      role="group"
-                    >
+                    ) : null}
+                    {selectedStatus === "missing" && selectedPrimaryAction ? (
+                      <>
+                        {/* Creation starts immediately, while the optional note remains collapsed. */}
+                        {buildGenerateAction({
+                          busyLabel: "Working",
+                          cell: selectedCell,
+                          label: selectedPrimaryAction.label,
+                          onGenerate: () =>
+                            handleRenderCellPrimaryAction(
+                              selectedCell,
+                              selectedStatus,
+                            ),
+                        })}
+                      </>
+                    ) : null}
+                    {/* This list shows ready candidate options for the selected cell. */}
+                    {reviewCellId === selectedCell.id ? (
+                      <div
+                        aria-label="Review candidates"
+                        className="admin-candidate-list"
+                        role="group"
+                      >
                       <div className="admin-candidate-list-header">
                         <div>
                           <h4>Candidates</h4>
@@ -4352,29 +4641,33 @@ function RenderCoverageSection({
                             <span className="admin-muted">
                               {candidate.is_current ? "Current" : "Candidate"}
                             </span>
-                          </div>
-                          <div className="admin-candidate-actions">
-                            <button
-                              disabled={
-                                candidate.is_current ||
-                                activeCellId === selectedCell.id
-                              }
-                              onClick={() => void handleUseCandidate(candidate)}
-                              type="button"
-                            >
-                              Use candidate
-                            </button>
-                            {openRefineCandidateId !== candidate.id ? (
+                            <div className="admin-candidate-actions">
                               <button
-                                disabled={activeCellId === selectedCell.id}
+                                className="admin-secondary-button"
+                                disabled={
+                                  candidate.is_current ||
+                                  activeCellId === selectedCell.id
+                                }
                                 onClick={() =>
-                                  handleOpenRefineCandidate(candidate.id)
+                                  void handleUseCandidate(candidate)
                                 }
                                 type="button"
                               >
-                                Refine candidate
+                                Use candidate
                               </button>
-                            ) : null}
+                              {openRefineCandidateId !== candidate.id ? (
+                                <button
+                                  className="admin-quiet-button"
+                                  disabled={activeCellId === selectedCell.id}
+                                  onClick={() =>
+                                    handleOpenRefineCandidate(candidate.id)
+                                  }
+                                  type="button"
+                                >
+                                  Refine candidate
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
                           {openRefineCandidateId === candidate.id ? (
                             <>
@@ -4400,12 +4693,14 @@ function RenderCoverageSection({
                                   />
                                 </label>
                                 <button
+                                  className="admin-primary-button"
                                   disabled={activeCellId === selectedCell.id}
                                   type="submit"
                                 >
                                   Refine
                                 </button>
                                 <button
+                                  className="admin-secondary-button"
                                   disabled={activeCellId === selectedCell.id}
                                   onClick={handleCloseRefineCandidate}
                                   type="button"
@@ -4430,8 +4725,7 @@ function RenderCoverageSection({
                               current selection.
                             </p>
                           </div>
-                          {/* RU: Здесь можно попросить еще один вариант и при желании добавить уточнение. */}
-                          {/* FR: Ici on peut demander une autre option et ajouter une note si besoin. */}
+                          {/* The admin can request another option and optionally add guidance. */}
                           {buildGenerateAction({
                             busyLabel: "Queueing",
                             cell: selectedCell,
@@ -4441,44 +4735,47 @@ function RenderCoverageSection({
                           })}
                         </div>
                       ) : null}
-                    </div>
-                  ) : null}
-                  {isSourcePhotoCompleteCell(selectedCell) ||
-                  (selectedStatus !== "blocked" &&
-                    selectedStatus !== "queued" &&
-                    selectedStatus !== "processing") ? (
-                    <form
-                      className="admin-cell-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void handleManualRenderUpload(
-                          selectedCell,
-                          event.currentTarget,
-                        );
-                      }}
-                    >
-                      <label className="field">
-                        <span>Manual render</span>
-                        <input
-                          accept="image/png,image/jpeg,image/webp"
-                          name={`manual_render_${selectedCell.id}`}
-                          type="file"
-                        />
-                      </label>
-                      <button
-                        disabled={activeCellId === selectedCell.id}
-                        type="submit"
+                      </div>
+                    ) : null}
+                    {isSourcePhotoCompleteCell(selectedCell) ||
+                    (selectedStatus !== "blocked" &&
+                      selectedStatus !== "queued" &&
+                      selectedStatus !== "processing") ? (
+                      <form
+                        className="admin-cell-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleManualRenderUpload(
+                            selectedCell,
+                            event.currentTarget,
+                          );
+                        }}
                       >
-                        Upload manual render
-                      </button>
-                    </form>
-                  ) : null}
+                        <label className="field">
+                          <span>Manual render</span>
+                          <input
+                            accept="image/png,image/jpeg,image/webp"
+                            name={`manual_render_${selectedCell.id}`}
+                            type="file"
+                          />
+                        </label>
+                        <button
+                          className="admin-secondary-button"
+                          disabled={activeCellId === selectedCell.id}
+                          type="submit"
+                        >
+                          Upload manual render
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
                 </div>
                 {selectedPrimaryAction &&
                 selectedStatus !== "missing" &&
                 reviewCellId !== selectedCell.id ? (
                   <footer className="admin-render-cell-sheet-footer">
                     <button
+                      className="admin-secondary-button"
                       disabled={
                         activeCellId === selectedCell.id ||
                         (selectedStatus === "failed" &&
@@ -4515,6 +4812,7 @@ function RenderCoverageSection({
                       <h3>{largeImagePreview.title}</h3>
                     </div>
                     <button
+                      className="admin-quiet-button"
                       aria-label="Close large image"
                       onClick={handleCloseLargeImagePreview}
                       type="button"
@@ -4550,6 +4848,7 @@ function RenderCoverageSection({
                       </h3>
                     </div>
                     <button
+                      className="admin-quiet-button"
                       aria-label="Close current render"
                       onClick={handleCloseCurrentRenderPreview}
                       type="button"
@@ -4581,6 +4880,7 @@ function RenderCoverageSection({
                   {canGenerateNewCandidate ? (
                     <footer className="admin-render-cell-sheet-footer">
                       <button
+                        className="admin-primary-button"
                         disabled={activeCellId === selectedCell.id}
                         onClick={() =>
                           void handleGenerateNewCandidate(selectedCell)
@@ -4610,6 +4910,7 @@ function RenderCoverageSection({
                       </h3>
                     </div>
                     <button
+                      className="admin-quiet-button"
                       aria-label="Close comparison"
                       onClick={handleCloseCompareCandidate}
                       type="button"
@@ -4663,6 +4964,7 @@ function RenderCoverageSection({
                   </div>
                   <footer className="admin-render-cell-sheet-footer">
                     <button
+                      className="admin-secondary-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(-1)}
                       type="button"
@@ -4670,6 +4972,7 @@ function RenderCoverageSection({
                       Previous candidate
                     </button>
                     <button
+                      className="admin-secondary-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(1)}
                       type="button"
@@ -4677,6 +4980,7 @@ function RenderCoverageSection({
                       Next candidate
                     </button>
                     <button
+                      className="admin-primary-button"
                       disabled={
                         compareCandidate.is_current ||
                         activeCellId === selectedCell.id
@@ -4693,6 +4997,49 @@ function RenderCoverageSection({
           ) : null}
         </>
       )}
+      <div
+        aria-label="Render ZIP export"
+        className="admin-render-export-panel"
+        role="group"
+      >
+        <div className="admin-render-export-copy">
+          <strong>Export ZIP</strong>
+          <span>Current render assets</span>
+        </div>
+        <button
+          className="admin-quiet-button admin-render-export-button"
+          disabled={!coverage || isRenderExportBusy}
+          onClick={() => void handleCreateRenderExport()}
+          type="button"
+        >
+          {isRenderExportBusy ? "Preparing ZIP export" : "Create ZIP export"}
+        </button>
+        {renderExport ? (
+          <div className="admin-export-result">
+            <p>
+              {renderExport.included_render_count ?? 0}{" "}
+              {(renderExport.included_render_count ?? 0) === 1
+                ? "render"
+                : "renders"}{" "}
+              included.
+            </p>
+            {renderExport.download_url ? (
+              <a
+                className="admin-table-link"
+                href={renderExport.download_url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Download ZIP export
+              </a>
+            ) : (
+              <p className="admin-muted">
+                Export status: {renderExport.status}
+              </p>
+            )}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -5266,86 +5613,129 @@ function SofaForm({
   }
 
   return (
-    <form className="admin-form admin-form-wide" onSubmit={onSubmit}>
+    <form className="admin-form admin-sofa-form" onSubmit={onSubmit}>
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      <label className="field">
-        <span>Internal name</span>
-        <input
-          defaultValue={sofa?.internal_name ?? ""}
-          name="internal_name"
-          required
-        />
-      </label>
-      <label className="field">
-        <span>Public name</span>
-        <input defaultValue={sofa?.public_name ?? ""} name="public_name" />
-      </label>
-      <label className="field">
-        <span>Shopify order URL</span>
-        <input
-          defaultValue={sofa?.shopify_order_url ?? ""}
-          name="shopify_order_url"
-          type="url"
-        />
-      </label>
-      <label className="field">
-        <span>Public description</span>
-        <textarea
-          defaultValue={sofa?.public_description ?? ""}
-          name="public_description"
-          rows={4}
-        />
-      </label>
-      <div className="admin-form-grid">
+      <section className="admin-form-section" aria-labelledby="sofa-identity">
+        <div className="admin-form-section-header">
+          <h3 id="sofa-identity">Identity</h3>
+          <p>Internal naming and the public product label.</p>
+        </div>
+        <div className="admin-form-two-column">
+          <label className="field">
+            <span>Internal name</span>
+            <input
+              defaultValue={sofa?.internal_name ?? ""}
+              name="internal_name"
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Public name</span>
+            <input defaultValue={sofa?.public_name ?? ""} name="public_name" />
+          </label>
+        </div>
+      </section>
+      <section className="admin-form-section" aria-labelledby="sofa-public">
+        <div className="admin-form-section-header">
+          <h3 id="sofa-public">Public content</h3>
+          <p>Content reused by the storefront and operational handoff.</p>
+        </div>
         <label className="field">
-          <span>Length cm</span>
+          <span>Shopify order URL</span>
           <input
-            defaultValue={sofa?.length_cm ?? ""}
-            min="1"
-            name="length_cm"
-            type="number"
+            defaultValue={sofa?.shopify_order_url ?? ""}
+            name="shopify_order_url"
+            type="url"
           />
         </label>
         <label className="field">
-          <span>Depth cm</span>
-          <input
-            defaultValue={sofa?.depth_cm ?? ""}
-            min="1"
-            name="depth_cm"
-            type="number"
+          <span>Public description</span>
+          <textarea
+            defaultValue={sofa?.public_description ?? ""}
+            name="public_description"
+            rows={4}
           />
         </label>
-        <label className="field">
-          <span>Height cm</span>
-          <input
-            defaultValue={sofa?.height_cm ?? ""}
-            min="1"
-            name="height_cm"
-            type="number"
-          />
-        </label>
-      </div>
-      <fieldset className="admin-fieldset">
-        <legend>Tags</legend>
+      </section>
+      <section className="admin-form-section" aria-labelledby="sofa-dimensions">
+        <div className="admin-form-section-header">
+          <h3 id="sofa-dimensions">Dimensions</h3>
+          <p>Centimeter values used for catalog checks.</p>
+        </div>
+        <div className="admin-form-grid admin-dimension-grid">
+          <label className="field admin-unit-field">
+            <span>Length</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.length_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="length_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Depth</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.depth_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="depth_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Height</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.height_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="height_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+        </div>
+      </section>
+      <section className="admin-form-section" aria-labelledby="sofa-tags">
+        <div className="admin-form-section-header">
+          <h3 id="sofa-tags">Tags</h3>
+          <p>Public grouping and readiness behavior.</p>
+        </div>
         {tags.length === 0 ? <p>No tags.</p> : null}
-        <div className="admin-checkboxes">
+        <div className="admin-choice-grid">
           {tags.map((tag) => (
-            <label key={tag.id}>
+            <label className="admin-choice" key={tag.id}>
               <input
                 checked={selectedTagIds.includes(tag.id)}
                 onChange={() => handleTagToggle(tag.id)}
                 type="checkbox"
               />
-              <span>{tag.public_label}</span>
+              <span aria-hidden="true" className="admin-choice-box" />
+              <span className="admin-choice-label">{tag.public_label}</span>
             </label>
           ))}
         </div>
-      </fieldset>
-      <button type="submit">{buttonLabel}</button>
+      </section>
+      <footer className="admin-form-footer">
+        <button className="admin-primary-button" type="submit">
+          {buttonLabel}
+        </button>
+      </footer>
     </form>
   );
 }
