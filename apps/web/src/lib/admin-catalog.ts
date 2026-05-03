@@ -20,6 +20,7 @@ export type AdminCatalogErrorCode =
   | "SOFA_FABRIC_ORDER_CONFLICT"
   | "SOFA_CONFLICT"
   | "SOFA_NOT_FOUND"
+  | "STORAGE_ASSET_NOT_FOUND"
   | "TAG_CONFLICT"
   | "TAG_IN_USE"
   | "TAG_NOT_FOUND"
@@ -85,6 +86,11 @@ export interface AdminStorageAssetRecord {
   object_path?: string;
   visibility: string;
   width_px?: number | null;
+}
+
+export interface AdminStorageAssetPreviewRecord {
+  body: Blob;
+  content_type: string;
 }
 
 export interface AdminFabricRecord {
@@ -309,6 +315,9 @@ export interface AdminCatalogStore {
     sofaId: string,
   ): Promise<AdminRenderCoverageRecord | JsonObject | null>;
   getSofa(sofaId: string): Promise<AdminSofaRecord | JsonObject | null>;
+  getStorageAssetPreview(
+    assetId: string,
+  ): Promise<AdminStorageAssetPreviewRecord | null>;
   getSofaPublicationReadiness(
     sofaId: string,
   ): Promise<PublicationReadiness | null>;
@@ -1329,7 +1338,7 @@ export function shapeFabricRenderCandidateResponse(
     id: stringOrNull(record.id),
     is_current: Boolean(record.is_current),
     job_id: stringOrNull(record.job_id),
-    preview_url: stringOrNull(record.preview_url),
+    preview_url: null,
     prompt_version: stringOrNull(record.prompt_version),
     provider_model: stringOrNull(record.provider_model),
     provider_name: stringOrNull(record.provider_name),
@@ -1347,9 +1356,7 @@ export function shapeRenderCellResponse(
     can_generate_initial: Boolean(record.can_generate_initial),
     candidate_count: numberOrNull(record.candidate_count) ?? 0,
     current_private_asset_id: stringOrNull(record.current_private_asset_id),
-    current_private_preview_url: stringOrNull(
-      record.current_private_preview_url,
-    ),
+    current_private_preview_url: null,
     current_public_asset_id: stringOrNull(record.current_public_asset_id),
     fabric_id: stringOrNull(record.fabric_id),
     has_private_render:
@@ -2274,6 +2281,26 @@ export function createSupabaseAdminCatalogStore(
     },
     async getSofa(sofaId) {
       return fetchSofaWithTags(client, sofaId);
+    },
+    async getStorageAssetPreview(assetId) {
+      const asset = (await fetchAssetsByIds(client, [assetId])).get(assetId);
+
+      if (!isAdminPreviewablePrivateImageAsset(asset)) {
+        return null;
+      }
+
+      const { data: body, error } = await client.storage
+        .from(asset.bucket_id)
+        .download(asset.object_path);
+
+      if (error || !body) {
+        return null;
+      }
+
+      return {
+        body,
+        content_type: asset.content_type,
+      };
     },
     async getSofaPublicationReadiness(sofaId) {
       return fetchAdminSofaPublicationReadiness(client, sofaId);
@@ -3956,7 +3983,7 @@ async function fetchAdminRenderCoverage(
   }
 
   const [columns, sofaFabrics] = await Promise.all([
-    fetchVisualMatrixColumns(client, sofaId, env),
+    fetchVisualMatrixColumns(client, sofaId),
     fetchSofaFabricAssignments(client, sofaId),
   ]);
   const ensuredRenderCells = await ensureRenderCellsForCoverage(client, {
@@ -5242,28 +5269,25 @@ async function attachAssetsAndPreviewUrlsToCandidates(
   renderCell: AdminRenderCellRecord,
   env: NodeJS.ProcessEnv,
 ) {
+  void env;
+
   const assetIds = candidates
     .map((candidate) => candidate.asset_id)
     .filter((id): id is string => typeof id === "string");
   const assetMap = await fetchAssetsByIds(client, assetIds);
 
-  return Promise.all(
-    candidates.map(async (candidate) => {
-      const asset = assetMap.get(candidate.asset_id) ?? null;
-      const previewUrl = asset
-        ? await createPrivateAssetSignedUrl(client, asset, env)
-        : null;
+  return candidates.map((candidate) => {
+    const asset = assetMap.get(candidate.asset_id) ?? null;
 
-      return {
-        ...candidate,
-        asset,
-        is_current:
-          renderCell.accepted_fabric_render_candidate_id === candidate.id ||
-          renderCell.current_private_asset_id === candidate.asset_id,
-        preview_url: previewUrl,
-      };
-    }),
-  );
+    return {
+      ...candidate,
+      asset,
+      is_current:
+        renderCell.accepted_fabric_render_candidate_id === candidate.id ||
+        renderCell.current_private_asset_id === candidate.asset_id,
+      preview_url: null,
+    };
+  });
 }
 
 async function createPrivateAssetSignedUrl(
@@ -5568,26 +5592,25 @@ async function attachCurrentPrivatePreviewUrlsToRenderCells(
   cells: AdminRenderCellRecord[],
   env: NodeJS.ProcessEnv,
 ) {
-  const currentPrivateAssetIds = cells
-    .map((cell) => cell.current_private_asset_id)
-    .filter((id): id is string => typeof id === "string");
-  const assetMap = await fetchAssetsByIds(client, currentPrivateAssetIds);
+  void client;
+  void env;
 
-  return Promise.all(
-    cells.map(async (cell) => {
-      const asset =
-        typeof cell.current_private_asset_id === "string"
-          ? (assetMap.get(cell.current_private_asset_id) ?? null)
-          : null;
-      const previewUrl = asset
-        ? await createPrivateAssetSignedUrl(client, asset, env)
-        : null;
+  return cells.map((cell) => ({
+    ...cell,
+    current_private_preview_url: null,
+  }));
+}
 
-      return {
-        ...cell,
-        current_private_preview_url: previewUrl,
-      };
-    }),
+function isAdminPreviewablePrivateImageAsset(
+  asset: AdminStorageAssetRecord | undefined,
+): asset is AdminStorageAssetRecord {
+  return Boolean(
+    asset &&
+    asset.visibility === "private" &&
+    asset.lifecycle_state === "active" &&
+    asset.bucket_id === "catalog-private-assets" &&
+    asset.object_path &&
+    (IMAGE_CONTENT_TYPES as readonly string[]).includes(asset.content_type),
   );
 }
 

@@ -765,8 +765,7 @@ describe("admin catalog response shaping", () => {
     expect(coverageResponse.render_cells[0]).toMatchObject({
       blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
       candidate_count: 1,
-      current_private_preview_url:
-        "https://storage.example/current-private-preview",
+      current_private_preview_url: null,
       latest_job: {
         id: fabricRenderJobRecord.id,
       },
@@ -856,7 +855,7 @@ describe("admin catalog response shaping", () => {
     });
   });
 
-  it("returns only admin-safe render candidate fields with a signed preview URL", () => {
+  it("returns only admin-safe render candidate fields without private preview URLs", () => {
     const response = shapeFabricRenderCandidateResponse(
       fabricRenderCandidateRecord,
     );
@@ -881,8 +880,7 @@ describe("admin catalog response shaping", () => {
       id: fabricRenderCandidateRecord.id,
       is_current: false,
       job_id: fabricRenderJobRecord.id,
-      preview_url:
-        "https://storage.example/signed/private-candidate-preview?token=short",
+      preview_url: null,
       prompt_version: "v007",
       provider_model: "mock-fabric-render-v1",
       provider_name: "mock",

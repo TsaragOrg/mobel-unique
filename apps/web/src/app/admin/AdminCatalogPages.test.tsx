@@ -286,6 +286,9 @@ function createDependencies(
               ? "manual-render-upload"
               : "ai-reference-upload",
     })),
+    createStorageAssetPreviewUrl: vi.fn(
+      async (_accessToken, assetId) => `blob:admin-preview/${assetId}`,
+    ),
     createFabricRenderJob: vi.fn(async (_accessToken, input) => ({
       attempt_count: 0,
       completed_at: null,
@@ -494,6 +497,7 @@ function createDependencies(
     navigate: vi.fn(),
     redirect: vi.fn(),
     refreshAccessToken: vi.fn(async () => null),
+    revokeStorageAssetPreviewUrl: vi.fn(),
     removeSofaFabric: vi.fn(async () => {}),
     resumeFabricRenderJobs: vi.fn(async () => ({
       request_ids: ["00000000-0000-4000-8000-000000000916"],
@@ -2078,9 +2082,24 @@ describe("Admin catalog pages", () => {
     expect(
       within(dialog).queryByText("SOURCE_PHOTO_RENDER_COMPLETE"),
     ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        visualColumn.current_source_photo.asset_id,
+      );
+    });
     expect(
       within(dialog).getByRole("img", { name: "Current render preview" }),
-    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    ).toHaveAttribute(
+      "src",
+      `blob:admin-preview/${visualColumn.current_source_photo.asset_id}`,
+    );
+    expect(
+      within(dialog).getByRole("img", { name: "Current render preview" }),
+    ).not.toHaveAttribute(
+      "src",
+      "https://storage.example/source-photo-preview",
+    );
     fireEvent.click(
       within(dialog).getByRole("button", { name: "View current render" }),
     );
@@ -2091,7 +2110,10 @@ describe("Admin catalog pages", () => {
       within(currentRenderDialog).getByRole("img", {
         name: "Current render preview",
       }),
-    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    ).toHaveAttribute(
+      "src",
+      `blob:admin-preview/${visualColumn.current_source_photo.asset_id}`,
+    );
     expect(
       within(dialog).getAllByText("Source photo").length,
     ).toBeGreaterThanOrEqual(1);
@@ -2168,7 +2190,20 @@ describe("Admin catalog pages", () => {
       updated_at: "2026-04-28T10:00:00.000Z",
       visual_matrix_column_id: visualColumn.id,
     };
+    const manualRenderAsset = {
+      asset_kind: "fabric_render_private",
+      bucket_id: "catalog-private-assets",
+      byte_size: 2400,
+      content_type: "image/png",
+      height_px: 1200,
+      id: "00000000-0000-4000-8000-000000000909",
+      lifecycle_state: "active",
+      object_path: "renders/manual.png",
+      visibility: "private",
+      width_px: 1600,
+    };
     const dependencies = createDependencies({
+      completeUpload: vi.fn(async () => manualRenderAsset),
       getRenderCoverage: vi.fn(async () => ({
         render_cells: [sourcePhotoCell],
         sofa_fabrics: [assignedFabric],
@@ -2215,9 +2250,16 @@ describe("Admin catalog pages", () => {
     );
 
     await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000909",
+      );
       expect(
         within(dialog).getByRole("img", { name: "Current render preview" }),
-      ).toHaveAttribute("src", "https://storage.example/manual-render-preview");
+      ).toHaveAttribute(
+        "src",
+        "blob:admin-preview/00000000-0000-4000-8000-000000000909",
+      );
     });
     expect(within(dialog).queryByText("Source photo is current")).toBeNull();
     expect(within(dialog).getByText("Manual upload")).toBeInTheDocument();
@@ -3505,15 +3547,20 @@ describe("Admin catalog pages", () => {
       within(cellDialog).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
 
+    await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        renderCell.current_private_asset_id,
+      );
+    });
     // RU: Эта картинка нужна, чтобы проверить открытие большого просмотра по клику.
     // FR: Cette image sert a verifier l'ouverture du grand apercu au clic.
-    const currentRenderPreview = within(cellDialog).getByRole("img", {
+    const currentRenderPreview = await within(cellDialog).findByRole("img", {
       name: "Current render preview",
     });
-
     expect(currentRenderPreview).toHaveAttribute(
       "src",
-      "https://storage.example/current-render-preview",
+      `blob:admin-preview/${renderCell.current_private_asset_id}`,
     );
 
     fireEvent.click(currentRenderPreview);
@@ -3524,7 +3571,10 @@ describe("Admin catalog pages", () => {
       within(currentImageDialog).getByRole("img", {
         name: "Current render preview",
       }),
-    ).toHaveAttribute("src", "https://storage.example/current-render-preview");
+    ).toHaveAttribute(
+      "src",
+      `blob:admin-preview/${renderCell.current_private_asset_id}`,
+    );
     fireEvent.click(
       within(currentImageDialog).getByRole("button", {
         name: "Close large image",
@@ -3655,12 +3705,15 @@ describe("Admin catalog pages", () => {
       within(compareDialog).getByRole("img", {
         name: "Source photo preview",
       }),
-    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    ).toHaveAttribute(
+      "src",
+      `blob:admin-preview/${visualColumn.current_source_photo.asset_id}`,
+    );
     expect(
       within(compareDialog).getByRole("img", {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
       }),
-    ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
+    ).toHaveAttribute("src", `blob:admin-preview/${newCandidate.asset_id}`);
 
     fireEvent.click(
       within(compareDialog).getByRole("img", {
@@ -3674,7 +3727,7 @@ describe("Admin catalog pages", () => {
       within(candidateImageDialog).getByRole("img", {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
       }),
-    ).toHaveAttribute("src", "https://storage.example/new-candidate-preview");
+    ).toHaveAttribute("src", `blob:admin-preview/${newCandidate.asset_id}`);
     fireEvent.click(
       within(candidateImageDialog).getByRole("button", {
         name: "Close large image",
@@ -3938,7 +3991,13 @@ describe("Admin catalog pages", () => {
     const tagId = "00000000-0000-4000-8000-000000000801";
     const renderCellId = "00000000-0000-4000-8000-000000000905";
     const candidateId = "00000000-0000-4000-8000-000000000908";
+    const assetId = "00000000-0000-4000-8000-000000000907";
     const exportId = "00000000-0000-4000-8000-000000000980";
+    vi.stubGlobal("URL", {
+      ...globalThis.URL,
+      createObjectURL: vi.fn(() => "blob:admin-preview"),
+      revokeObjectURL: vi.fn(),
+    });
     const fetchMock = vi.fn(
       async (url: string | URL | Request, init?: RequestInit) => {
         const requestUrl = String(url);
@@ -3955,6 +4014,17 @@ describe("Admin catalog pages", () => {
               },
             },
             meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(`/api/admin/storage-assets/${assetId}/preview`)
+        ) {
+          return new Response(new Blob(["preview"], { type: "image/png" }), {
+            headers: {
+              "Content-Type": "image/png",
+            },
+            status: 200,
           });
         }
 
@@ -4378,6 +4448,7 @@ describe("Admin catalog pages", () => {
     await dependencies.setManualRender("admin-token", renderCellId, {
       asset_id: "00000000-0000-4000-8000-000000000909",
     });
+    await dependencies.createStorageAssetPreviewUrl("admin-token", assetId);
 
     const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
 
@@ -4416,6 +4487,7 @@ describe("Admin catalog pages", () => {
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/candidates",
       "/api/admin/render-candidates/00000000-0000-4000-8000-000000000908/use-as-current",
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/manual-render",
+      "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview",
     ]);
     expect(calledUrls.join("\n")).not.toContain("supabase");
     expect(calledUrls.join("\n")).not.toContain("functions");

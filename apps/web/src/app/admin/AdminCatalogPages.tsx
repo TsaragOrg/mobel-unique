@@ -436,6 +436,10 @@ export interface AdminCatalogPageDependencies {
     accessToken: string,
     input: UploadCreateInput,
   ): Promise<AdminCatalogUpload>;
+  createStorageAssetPreviewUrl(
+    accessToken: string,
+    assetId: string,
+  ): Promise<string>;
   createFabricRenderJob(
     accessToken: string,
     input: FabricRenderJobCreateInput,
@@ -497,6 +501,7 @@ export interface AdminCatalogPageDependencies {
     sofaId: string,
     fabricId: string,
   ): Promise<void>;
+  revokeStorageAssetPreviewUrl(url: string): void;
   resumeFabricRenderJobs(
     accessToken: string,
     input: FabricRenderResumeInput,
@@ -774,6 +779,24 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.upload as AdminCatalogUpload;
     },
+    async createStorageAssetPreviewUrl(accessToken, assetId) {
+      const response = await fetch(
+        `/api/admin/storage-assets/${encodeURIComponent(assetId)}/preview`,
+        {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("ASSET_PREVIEW_UNAVAILABLE");
+      }
+
+      return globalThis.URL.createObjectURL(await response.blob());
+    },
     async createFabricRenderJob(accessToken, input) {
       const data = await requestAdminJson(
         accessToken,
@@ -947,6 +970,9 @@ export function createDefaultAdminCatalogDependencies(
           method: "DELETE",
         },
       );
+    },
+    revokeStorageAssetPreviewUrl(url) {
+      globalThis.URL.revokeObjectURL(url);
     },
     async resumeFabricRenderJobs(accessToken, input) {
       const data = await requestAdminJson(
@@ -3580,23 +3606,21 @@ function RenderCellEmptyPreview({
 
 function RenderCellButtonContent({
   cell,
+  previewUrl,
   status,
 }: {
   cell: AdminCatalogRenderCell;
+  previewUrl: string | null;
   status: RenderCellDisplayStatus;
 }) {
-  const hasPreview = Boolean(cell.current_private_preview_url);
+  const hasPreview = Boolean(previewUrl);
   const latestJobStatus = cell.latest_job?.status ?? null;
   const displayBlockers = getRenderCellDisplayBlockers(cell.blockers);
 
   return (
     <span className="admin-render-cell-content">
       <span className="admin-render-cell-media" aria-hidden="true">
-        {hasPreview ? (
-          <img alt="" src={cell.current_private_preview_url ?? ""} />
-        ) : (
-          <span />
-        )}
+        {hasPreview ? <img alt="" src={previewUrl ?? ""} /> : <span />}
       </span>
       <span className="admin-render-cell-copy">
         <RenderStatusChip status={status} />
@@ -3626,6 +3650,13 @@ function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {
 
 function isTerminalFabricRenderJobStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
+}
+
+function assetPreviewUrlFor(
+  urls: Record<string, string>,
+  assetId: string | null | undefined,
+) {
+  return assetId ? (urls[assetId] ?? null) : null;
 }
 
 function RenderCoverageSection({
@@ -3687,10 +3718,18 @@ function RenderCoverageSection({
   const [isRenderExportBusy, setIsRenderExportBusy] = useState(false);
   const [renderExport, setRenderExport] =
     useState<AdminSofaRenderExport | null>(null);
+  // RU: Эти адреса показывают закрытые картинки без временных ссылок Supabase.
+  // FR: Ces adresses montrent les images privees sans liens temporaires Supabase.
+  const [assetPreviewUrls, setAssetPreviewUrls] = useState<
+    Record<string, string>
+  >({});
 
   // RU: Этот флажок нужен, чтобы остановить проверку, если админ ушел со страницы.
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
   const isAliveRef = useRef(true);
+  // RU: Этот список помогает закрывать старые адреса, когда картинка больше не нужна.
+  // FR: Cette liste aide a fermer les anciennes adresses quand l'image n'est plus utile.
+  const assetPreviewUrlsRef = useRef<Record<string, string>>({});
   // Return keyboard focus to the cell that opened the sheet after close.
   const renderCellOpenerRef = useRef<HTMLButtonElement | null>(null);
   const renderCellCloseButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -3789,6 +3828,95 @@ function RenderCoverageSection({
   }
 
   const renderCells = coverage?.render_cells ?? [];
+  // RU: Эти номера говорят, какие закрытые картинки нужны открытому экрану.
+  // FR: Ces numeros disent quelles images privees sont utiles a l'ecran ouvert.
+  const previewAssetIds = useMemo(() => {
+    const assetIds = new Set<string>();
+
+    for (const cell of renderCells) {
+      if (cell.current_private_asset_id) {
+        assetIds.add(cell.current_private_asset_id);
+      }
+    }
+
+    for (const column of visualMatrixColumns) {
+      const sourceAssetId = column.current_source_photo?.asset_id;
+
+      if (sourceAssetId) {
+        assetIds.add(sourceAssetId);
+      }
+    }
+
+    for (const candidate of reviewCandidates) {
+      if (candidate.asset_id) {
+        assetIds.add(candidate.asset_id);
+      }
+    }
+
+    return [...assetIds].sort();
+  }, [renderCells, reviewCandidates, visualMatrixColumns]);
+
+  // RU: Этот автоматический блок загружает закрытые картинки через защищенный путь.
+  // FR: Ce bloc automatique charge les images privees par le chemin protege.
+  useEffect(() => {
+    let isCurrent = true;
+    const neededAssetIds = new Set(previewAssetIds);
+    const currentUrls = assetPreviewUrlsRef.current;
+    const nextUrls = { ...currentUrls };
+    let hasChanged = false;
+
+    for (const [assetId, url] of Object.entries(currentUrls)) {
+      if (!neededAssetIds.has(assetId)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+        delete nextUrls[assetId];
+        hasChanged = true;
+      }
+    }
+
+    if (hasChanged) {
+      assetPreviewUrlsRef.current = nextUrls;
+      setAssetPreviewUrls(nextUrls);
+    }
+
+    for (const assetId of previewAssetIds) {
+      if (nextUrls[assetId]) {
+        continue;
+      }
+
+      void dependencies
+        .createStorageAssetPreviewUrl(accessToken, assetId)
+        .then((url) => {
+          if (!isCurrent) {
+            dependencies.revokeStorageAssetPreviewUrl(url);
+            return;
+          }
+
+          assetPreviewUrlsRef.current = {
+            ...assetPreviewUrlsRef.current,
+            [assetId]: url,
+          };
+          setAssetPreviewUrls(assetPreviewUrlsRef.current);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, previewAssetIds]);
+
+  // RU: Этот автоматический блок закрывает локальные адреса при уходе со страницы.
+  // FR: Ce bloc automatique ferme les adresses locales au depart de la page.
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(assetPreviewUrlsRef.current)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+      }
+
+      assetPreviewUrlsRef.current = {};
+    };
+  }, [dependencies]);
+
   const canGenerateAll = renderCells.some(
     (cell) => cell.can_generate_initial && !cell.current_private_asset_id,
   );
@@ -3830,10 +3958,18 @@ function RenderCoverageSection({
         (column) => column.id === selectedCell.visual_matrix_column_id,
       ) ?? null)
     : null;
-  // RU: Эта ссылка показывает исходное фото для выбранной позиции.
-  // FR: Ce lien montre la photo source de la position choisie.
-  const selectedSourcePhotoPreviewUrl =
-    selectedColumn?.current_source_photo?.preview_url ?? null;
+  // RU: Этот адрес показывает исходное фото для выбранной позиции.
+  // FR: Cette adresse montre la photo source de la position choisie.
+  const selectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+    assetPreviewUrls,
+    selectedColumn?.current_source_photo?.asset_id,
+  );
+  // RU: Этот адрес показывает текущую картинку выбранной ячейки.
+  // FR: Cette adresse montre l'image actuelle de la case choisie.
+  const selectedCellPreviewUrl = assetPreviewUrlFor(
+    assetPreviewUrls,
+    selectedCell?.current_private_asset_id,
+  );
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
     : null;
@@ -3865,7 +4001,7 @@ function RenderCoverageSection({
     ? reviewCandidates.filter(
         (candidate) =>
           candidate.render_cell_id === selectedCell.id &&
-          Boolean(candidate.preview_url),
+          Boolean(assetPreviewUrlFor(assetPreviewUrls, candidate.asset_id)),
       )
     : [];
   const compareCandidate =
@@ -3874,6 +4010,10 @@ function RenderCoverageSection({
       : (comparableCandidates.find(
           (candidate) => candidate.id === compareCandidateId,
         ) ?? null);
+  const compareCandidatePreviewUrl = assetPreviewUrlFor(
+    assetPreviewUrls,
+    compareCandidate?.asset_id,
+  );
   async function handleGenerateAll() {
     if (!coverage) {
       return;
@@ -4224,7 +4364,10 @@ function RenderCoverageSection({
       return;
     }
 
-    if (status === "ready" && cell.current_private_preview_url) {
+    if (
+      status === "ready" &&
+      assetPreviewUrlFor(assetPreviewUrls, cell.current_private_asset_id)
+    ) {
       handleOpenCurrentRenderPreview();
       return;
     }
@@ -4439,6 +4582,10 @@ function RenderCoverageSection({
                             >
                               <RenderCellButtonContent
                                 cell={cell}
+                                previewUrl={assetPreviewUrlFor(
+                                  assetPreviewUrls,
+                                  cell.current_private_asset_id,
+                                )}
                                 status={status}
                               />
                             </button>
@@ -4494,6 +4641,10 @@ function RenderCoverageSection({
                         {cell ? (
                           <RenderCellButtonContent
                             cell={cell}
+                            previewUrl={assetPreviewUrlFor(
+                              assetPreviewUrls,
+                              cell.current_private_asset_id,
+                            )}
                             status={status}
                           />
                         ) : (
@@ -4551,7 +4702,7 @@ function RenderCoverageSection({
                 <div className="admin-render-cell-sheet-body">
                   <div className="admin-render-cell-preview-pane">
                     {/* This block shows the current ready image for the selected cell. */}
-                    {selectedCell.current_private_preview_url ? (
+                    {selectedCellPreviewUrl ? (
                       <figure className="admin-current-render-preview">
                         <figcaption>Current render</figcaption>
                         <button
@@ -4560,8 +4711,7 @@ function RenderCoverageSection({
                           onClick={() =>
                             handleOpenLargeImagePreview({
                               alt: "Current render preview",
-                              src:
-                                selectedCell.current_private_preview_url ?? "",
+                              src: selectedCellPreviewUrl,
                               title: "Current render",
                             })
                           }
@@ -4570,7 +4720,7 @@ function RenderCoverageSection({
                           <img
                             alt="Current render preview"
                             className="admin-preview-image"
-                            src={selectedCell.current_private_preview_url}
+                            src={selectedCellPreviewUrl}
                           />
                         </button>
                       </figure>
@@ -4702,126 +4852,143 @@ function RenderCoverageSection({
                         {reviewCandidates.length === 0 ? (
                           <span className="admin-muted">No candidates</span>
                         ) : null}
-                        {reviewCandidates.map((candidate) => (
-                          <article
-                            aria-label={`Candidate ${candidate.id}`}
-                            className="admin-candidate-row"
-                            key={candidate.id}
-                          >
-                            <div className="admin-candidate-media">
-                              {candidate.preview_url ? (
-                                selectedSourcePhotoPreviewUrl ? (
-                                  <button
-                                    aria-label={`Open candidate preview ${candidate.id} in comparison`}
-                                    className="admin-image-preview-button admin-candidate-compare-button"
-                                    onClick={() =>
-                                      handleCompareCandidate(candidate)
-                                    }
-                                    type="button"
-                                  >
+                        {reviewCandidates.map((candidate) => {
+                          const candidatePreviewUrl = assetPreviewUrlFor(
+                            assetPreviewUrls,
+                            candidate.asset_id,
+                          );
+
+                          return (
+                            <article
+                              aria-label={`Candidate ${candidate.id}`}
+                              className="admin-candidate-row"
+                              key={candidate.id}
+                            >
+                              <div className="admin-candidate-media">
+                                {candidatePreviewUrl ? (
+                                  selectedSourcePhotoPreviewUrl ? (
+                                    <button
+                                      aria-label={`Open candidate preview ${candidate.id} in comparison`}
+                                      className="admin-image-preview-button admin-candidate-compare-button"
+                                      onClick={() =>
+                                        handleCompareCandidate(candidate)
+                                      }
+                                      type="button"
+                                    >
+                                      <img
+                                        alt={`Candidate preview ${candidate.id}`}
+                                        className="admin-preview-image"
+                                        src={candidatePreviewUrl}
+                                      />
+                                    </button>
+                                  ) : (
                                     <img
                                       alt={`Candidate preview ${candidate.id}`}
                                       className="admin-preview-image"
-                                      src={candidate.preview_url}
+                                      src={candidatePreviewUrl}
                                     />
-                                  </button>
+                                  )
                                 ) : (
-                                  <img
-                                    alt={`Candidate preview ${candidate.id}`}
-                                    className="admin-preview-image"
-                                    src={candidate.preview_url}
-                                  />
-                                )
-                              ) : (
-                                <span className="admin-preview-image admin-preview-image-empty">
-                                  No preview
+                                  <span className="admin-preview-image admin-preview-image-empty">
+                                    {candidate.asset_id
+                                      ? "Preview loading"
+                                      : "No preview"}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="admin-candidate-body">
+                                <strong>
+                                  {candidate.is_current
+                                    ? "Current candidate"
+                                    : "Candidate"}
+                                </strong>
+                                <span>
+                                  {candidate.generation_mode} -{" "}
+                                  {candidate.prompt_version}
                                 </span>
-                              )}
-                            </div>
-                            <div className="admin-candidate-body">
-                              <strong>
-                                {candidate.is_current
-                                  ? "Current candidate"
-                                  : "Candidate"}
-                              </strong>
-                              <span>
-                                {candidate.generation_mode} -{" "}
-                                {candidate.prompt_version}
-                              </span>
-                              <span className="admin-muted">
-                                {candidate.is_current ? "Current" : "Candidate"}
-                              </span>
-                              <div className="admin-candidate-actions">
-                                <button
-                                  className="admin-secondary-button"
-                                  disabled={
-                                    candidate.is_current ||
-                                    activeCellId === selectedCell.id
-                                  }
-                                  onClick={() =>
-                                    void handleUseCandidate(candidate)
-                                  }
-                                  type="button"
-                                >
-                                  Use candidate
-                                </button>
-                                {openRefineCandidateId !== candidate.id ? (
+                                <span className="admin-muted">
+                                  {candidate.is_current
+                                    ? "Current"
+                                    : "Candidate"}
+                                </span>
+                                <div className="admin-candidate-actions">
                                   <button
-                                    className="admin-quiet-button"
-                                    disabled={activeCellId === selectedCell.id}
+                                    className="admin-secondary-button"
+                                    disabled={
+                                      candidate.is_current ||
+                                      activeCellId === selectedCell.id
+                                    }
                                     onClick={() =>
-                                      handleOpenRefineCandidate(candidate.id)
+                                      void handleUseCandidate(candidate)
                                     }
                                     type="button"
                                   >
-                                    Refine candidate
+                                    Use candidate
                                   </button>
-                                ) : null}
+                                  {openRefineCandidateId !== candidate.id ? (
+                                    <button
+                                      className="admin-quiet-button"
+                                      disabled={
+                                        activeCellId === selectedCell.id
+                                      }
+                                      onClick={() =>
+                                        handleOpenRefineCandidate(candidate.id)
+                                      }
+                                      type="button"
+                                    >
+                                      Refine candidate
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
-                            {openRefineCandidateId === candidate.id ? (
-                              <>
-                                {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
-                                {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
-                                <form
-                                  className="admin-cell-form"
-                                  onSubmit={(event) => {
-                                    event.preventDefault();
-                                    void handleRefineCandidate(
-                                      selectedCell,
-                                      candidate,
-                                      event.currentTarget,
-                                    );
-                                  }}
-                                >
-                                  <label className="field">
-                                    <span>Refine prompt</span>
-                                    <textarea
-                                      name="refine_prompt"
-                                      required
-                                      rows={2}
-                                    />
-                                  </label>
-                                  <button
-                                    className="admin-primary-button"
-                                    disabled={activeCellId === selectedCell.id}
-                                    type="submit"
+                              {openRefineCandidateId === candidate.id ? (
+                                <>
+                                  {/* RU: Эта форма отправляет выбранный вариант на улучшение. */}
+                                  {/* FR: Ce formulaire envoie l'option choisie pour amelioration. */}
+                                  <form
+                                    className="admin-cell-form"
+                                    onSubmit={(event) => {
+                                      event.preventDefault();
+                                      void handleRefineCandidate(
+                                        selectedCell,
+                                        candidate,
+                                        event.currentTarget,
+                                      );
+                                    }}
                                   >
-                                    Refine
-                                  </button>
-                                  <button
-                                    className="admin-secondary-button"
-                                    disabled={activeCellId === selectedCell.id}
-                                    onClick={handleCloseRefineCandidate}
-                                    type="button"
-                                  >
-                                    Cancel refine
-                                  </button>
-                                </form>
-                              </>
-                            ) : null}
-                          </article>
-                        ))}
+                                    <label className="field">
+                                      <span>Refine prompt</span>
+                                      <textarea
+                                        name="refine_prompt"
+                                        required
+                                        rows={2}
+                                      />
+                                    </label>
+                                    <button
+                                      className="admin-primary-button"
+                                      disabled={
+                                        activeCellId === selectedCell.id
+                                      }
+                                      type="submit"
+                                    >
+                                      Refine
+                                    </button>
+                                    <button
+                                      className="admin-secondary-button"
+                                      disabled={
+                                        activeCellId === selectedCell.id
+                                      }
+                                      onClick={handleCloseRefineCandidate}
+                                      type="button"
+                                    >
+                                      Cancel refine
+                                    </button>
+                                  </form>
+                                </>
+                              ) : null}
+                            </article>
+                          );
+                        })}
                         {canGenerateNewCandidate ? (
                           <div
                             aria-label="Candidate follow-up actions"
@@ -4890,8 +5057,7 @@ function RenderCoverageSection({
                         activeCellId === selectedCell.id ||
                         (selectedStatus === "failed" &&
                           !selectedCell.latest_job) ||
-                        (selectedStatus === "ready" &&
-                          !selectedCell.current_private_preview_url)
+                        (selectedStatus === "ready" && !selectedCellPreviewUrl)
                       }
                       onClick={() =>
                         handleRenderCellPrimaryAction(
@@ -4940,8 +5106,7 @@ function RenderCoverageSection({
                   </figure>
                 </section>
               ) : null}
-              {isCurrentRenderPreviewOpen &&
-              selectedCell.current_private_preview_url ? (
+              {isCurrentRenderPreviewOpen && selectedCellPreviewUrl ? (
                 <section
                   aria-label={`Current render: ${getSofaFabricDisplayName(
                     selectedAssignment,
@@ -4974,7 +5139,7 @@ function RenderCoverageSection({
                       onClick={() =>
                         handleOpenLargeImagePreview({
                           alt: "Current render preview",
-                          src: selectedCell.current_private_preview_url ?? "",
+                          src: selectedCellPreviewUrl,
                           title: "Current render",
                         })
                       }
@@ -4983,7 +5148,7 @@ function RenderCoverageSection({
                       <img
                         alt="Current render preview"
                         className="admin-preview-image"
-                        src={selectedCell.current_private_preview_url}
+                        src={selectedCellPreviewUrl}
                       />
                     </button>
                   </figure>
@@ -5005,7 +5170,9 @@ function RenderCoverageSection({
                   ) : null}
                 </section>
               ) : null}
-              {compareCandidate && selectedSourcePhotoPreviewUrl ? (
+              {compareCandidate &&
+              selectedSourcePhotoPreviewUrl &&
+              compareCandidatePreviewUrl ? (
                 <section
                   aria-label={`Compare render candidate ${compareCandidate.id}`}
                   className="admin-alert-dialog admin-render-compare-dialog"
@@ -5058,7 +5225,7 @@ function RenderCoverageSection({
                         onClick={() =>
                           handleOpenLargeImagePreview({
                             alt: `Candidate preview ${compareCandidate.id}`,
-                            src: compareCandidate.preview_url ?? "",
+                            src: compareCandidatePreviewUrl,
                             title: "Candidate",
                           })
                         }
@@ -5067,7 +5234,7 @@ function RenderCoverageSection({
                         <img
                           alt={`Candidate preview ${compareCandidate.id}`}
                           className="admin-preview-image"
-                          src={compareCandidate.preview_url ?? ""}
+                          src={compareCandidatePreviewUrl}
                         />
                       </button>
                     </figure>
