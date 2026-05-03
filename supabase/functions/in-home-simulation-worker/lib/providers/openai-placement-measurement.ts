@@ -16,6 +16,11 @@
 // fallback mode, the feedback loop is disabled. The OpenAI primary uses it
 // to retry up to 3 times when the rendered sofa misses the target ratios.
 
+import {
+  OpenAIFetchTimeoutError,
+  openaiFetchWithTimeout
+} from "./openai-fetch.ts";
+
 export const OPENAI_MEASUREMENT_DEFAULT_MODEL = "gpt-5";
 
 const SYSTEM_PROMPT =
@@ -232,11 +237,13 @@ export class OpenAIPlacementMeasurementProvider
   readonly modelId: string;
   private readonly apiKey: string;
   private readonly promptText: string;
+  private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
     apiKey: string;
     model?: string;
     promptText?: string;
+    fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
       throw new Error(
@@ -246,6 +253,7 @@ export class OpenAIPlacementMeasurementProvider
     this.apiKey = options.apiKey;
     this.modelId = options.model ?? OPENAI_MEASUREMENT_DEFAULT_MODEL;
     this.promptText = options.promptText ?? DEFAULT_USER_PROMPT;
+    this.fetchTimeoutMs = options.fetchTimeoutMs;
   }
 
   async measureSofa(imageBytes: Uint8Array): Promise<MeasurementResult> {
@@ -263,15 +271,25 @@ export class OpenAIPlacementMeasurementProvider
     });
     let response: Response;
     try {
-      response = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json"
+      response = await openaiFetchWithTimeout(
+        `${OPENAI_API_BASE}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
         },
-        body: JSON.stringify(body)
-      });
+        { timeoutMs: this.fetchTimeoutMs }
+      );
     } catch (error) {
+      if (error instanceof OpenAIFetchTimeoutError) {
+        return {
+          ok: false,
+          failureReason: `measurement timeout: ${error.message}`
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         ok: false,

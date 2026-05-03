@@ -14,6 +14,10 @@ import type {
   ValidationProvider,
   ValidationResult
 } from "../providers.ts";
+import {
+  OpenAIFetchTimeoutError,
+  openaiFetchWithTimeout
+} from "./openai-fetch.ts";
 
 export const OPENAI_VISION_DEFAULT_MODEL = "gpt-5";
 
@@ -156,11 +160,13 @@ export class OpenAIValidationProvider implements ValidationProvider {
   readonly promptVersion = "room_prep_v001";
   private readonly apiKey: string;
   private readonly promptText: string;
+  private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
     apiKey: string;
     model?: string;
     promptText?: string;
+    fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
       throw new Error("OpenAIValidationProvider requires an apiKey");
@@ -169,6 +175,7 @@ export class OpenAIValidationProvider implements ValidationProvider {
     this.modelId = options.model ?? OPENAI_VISION_DEFAULT_MODEL;
     this.promptText = options.promptText ??
       "Validate the attached residential room photo. Return strict JSON.";
+    this.fetchTimeoutMs = options.fetchTimeoutMs;
   }
 
   async validateRoom(imageBytes: Uint8Array): Promise<ValidationResult> {
@@ -180,15 +187,25 @@ export class OpenAIValidationProvider implements ValidationProvider {
     });
     let response: Response;
     try {
-      response = await fetch(`${OPENAI_API_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json"
+      response = await openaiFetchWithTimeout(
+        `${OPENAI_API_BASE}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
         },
-        body: JSON.stringify(body)
-      });
+        { timeoutMs: this.fetchTimeoutMs }
+      );
     } catch (error) {
+      if (error instanceof OpenAIFetchTimeoutError) {
+        return {
+          ok: false,
+          failureReason: `openai validation timeout: ${error.message}`
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         ok: false,

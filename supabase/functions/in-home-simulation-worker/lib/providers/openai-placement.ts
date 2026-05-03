@@ -27,6 +27,10 @@ import type {
   MeasurementSuccess,
   PlacementMeasurementProvider
 } from "./openai-placement-measurement.ts";
+import {
+  OpenAIFetchTimeoutError,
+  openaiFetchWithTimeout
+} from "./openai-fetch.ts";
 
 export const OPENAI_PLACEMENT_DEFAULT_MODEL = "gpt-image-2";
 export const OPENAI_PLACEMENT_DEFAULT_SIZE = "auto";
@@ -517,6 +521,7 @@ export class OpenAIPlacementProvider implements PlacementProvider {
   private readonly measurementProvider: PlacementMeasurementProvider | null;
   private readonly maxAttempts: number;
   private readonly tolerancePct: number;
+  private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
     apiKey: string;
@@ -525,6 +530,7 @@ export class OpenAIPlacementProvider implements PlacementProvider {
     measurementProvider?: PlacementMeasurementProvider | null;
     maxAttempts?: number;
     tolerancePct?: number;
+    fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
       throw new Error("OpenAIPlacementProvider requires an apiKey");
@@ -535,6 +541,7 @@ export class OpenAIPlacementProvider implements PlacementProvider {
     this.measurementProvider = options.measurementProvider ?? null;
     this.maxAttempts = options.maxAttempts ?? MAX_PLACEMENT_ATTEMPTS;
     this.tolerancePct = options.tolerancePct ?? PLACEMENT_TOLERANCE_PCT;
+    this.fetchTimeoutMs = options.fetchTimeoutMs;
   }
 
   async placeSofa(inputs: PlacementInputs): Promise<PlacementResult> {
@@ -640,14 +647,24 @@ export class OpenAIPlacementProvider implements PlacementProvider {
 
     let response: Response;
     try {
-      response = await fetch(`${OPENAI_API_BASE}/images/edits`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`
+      response = await openaiFetchWithTimeout(
+        `${OPENAI_API_BASE}/images/edits`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.apiKey}`
+          },
+          body: form
         },
-        body: form
-      });
+        { timeoutMs: this.fetchTimeoutMs }
+      );
     } catch (error) {
+      if (error instanceof OpenAIFetchTimeoutError) {
+        return {
+          ok: false,
+          failureReason: `openai placement timeout: ${error.message}`
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         ok: false,

@@ -28,6 +28,7 @@ import {
 } from "./providers/openai-corners.ts";
 import { OpenAIPlacementProvider } from "./providers/openai-placement.ts";
 import { OpenAIPlacementMeasurementProvider } from "./providers/openai-placement-measurement.ts";
+import { resolveOpenAIFetchTimeoutMs } from "./providers/openai-fetch.ts";
 
 export type SceneMode = "back_wall" | "corner";
 
@@ -223,10 +224,22 @@ export function selectStage1Providers(
         "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the validation, cleaning, and corners adapters"
       );
     }
+    const fetchTimeoutMs = resolveOpenAIFetchTimeoutMs(
+      envGetter("OPENAI_FETCH_TIMEOUT_MS")
+    );
     return {
-      validation: new OpenAIValidationProvider({ apiKey: openaiKey }),
-      cleaning: new OpenAICleaningProvider({ apiKey: openaiKey }),
-      corners: new OpenAICornersProvider({ apiKey: openaiKey })
+      validation: new OpenAIValidationProvider({
+        apiKey: openaiKey,
+        fetchTimeoutMs
+      }),
+      cleaning: new OpenAICleaningProvider({
+        apiKey: openaiKey,
+        fetchTimeoutMs
+      }),
+      corners: new OpenAICornersProvider({
+        apiKey: openaiKey,
+        fetchTimeoutMs
+      })
     };
   }
   throw new Error(
@@ -248,13 +261,18 @@ export function selectStage2Providers(
         "IN_HOME_SIMULATION_PROVIDER_MODE=live requires OPENAI_API_KEY for the placement adapter"
       );
     }
+    const fetchTimeoutMs = resolveOpenAIFetchTimeoutMs(
+      envGetter("OPENAI_FETCH_TIMEOUT_MS")
+    );
     const measurementProvider = new OpenAIPlacementMeasurementProvider({
-      apiKey: openaiKey
+      apiKey: openaiKey,
+      fetchTimeoutMs
     });
     return {
       placement: new OpenAIPlacementProvider({
         apiKey: openaiKey,
-        measurementProvider
+        measurementProvider,
+        fetchTimeoutMs
       })
     };
   }

@@ -21,6 +21,10 @@ import { detectYellowDots } from "../lines.ts";
 import { validateClassifiedCorners } from "../corners-validate.ts";
 
 import type { SceneMode } from "../providers.ts";
+import {
+  OpenAIFetchTimeoutError,
+  openaiFetchWithTimeout
+} from "./openai-fetch.ts";
 
 export const OPENAI_CORNERS_DEFAULT_MODEL = "gpt-image-2";
 export const OPENAI_CORNERS_DEFAULT_SIZE = "auto";
@@ -258,6 +262,7 @@ export class OpenAICornersProvider implements CornersProvider {
   private readonly size: string;
   private readonly backWallPrompt: string;
   private readonly cornerPrompt: string;
+  private readonly fetchTimeoutMs: number | undefined;
 
   constructor(options: {
     apiKey: string;
@@ -265,6 +270,7 @@ export class OpenAICornersProvider implements CornersProvider {
     size?: string;
     backWallPrompt?: string;
     cornerPrompt?: string;
+    fetchTimeoutMs?: number;
   }) {
     if (!options.apiKey || options.apiKey.length === 0) {
       throw new Error("OpenAICornersProvider requires an apiKey");
@@ -274,6 +280,7 @@ export class OpenAICornersProvider implements CornersProvider {
     this.size = options.size ?? OPENAI_CORNERS_DEFAULT_SIZE;
     this.backWallPrompt = options.backWallPrompt ?? PROMPT_BACK_WALL;
     this.cornerPrompt = options.cornerPrompt ?? PROMPT_CORNER;
+    this.fetchTimeoutMs = options.fetchTimeoutMs;
   }
 
   async placeCornerDots(
@@ -320,12 +327,22 @@ export class OpenAICornersProvider implements CornersProvider {
     });
     let response: Response;
     try {
-      response = await fetch(`${OPENAI_API_BASE}/images/edits`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${this.apiKey}` },
-        body: form
-      });
+      response = await openaiFetchWithTimeout(
+        `${OPENAI_API_BASE}/images/edits`,
+        {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${this.apiKey}` },
+          body: form
+        },
+        { timeoutMs: this.fetchTimeoutMs }
+      );
     } catch (error) {
+      if (error instanceof OpenAIFetchTimeoutError) {
+        return {
+          ok: false,
+          failureReason: `corners timeout: ${error.message}`
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, failureReason: `corners network error: ${message}` };
     }
