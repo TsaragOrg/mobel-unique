@@ -60,6 +60,64 @@ vi.mock("../../lib/admin-image-upload", () => ({
 const swatchPreviewUrl =
   "https://supabase.example/storage/v1/object/public/catalog-public-assets/fabrics/fabric-id/swatches/swatch.png";
 
+// RU: Эта проверка нужна тестам, чтобы окно стояло по центру, как окно картинок.
+// FR: Cette verification aide les tests a confirmer que la fenetre reste au centre, comme la fenetre images.
+function expectCenteredVisualMatrixDialog(dialog: HTMLElement) {
+  expect(dialog).toHaveClass(
+    "admin-drawer",
+    "admin-render-cell-sheet",
+    "admin-render-cell-workbench",
+  );
+  expect(dialog.parentElement).toHaveClass(
+    "admin-dialog-scrim",
+    "admin-render-workbench-scrim",
+  );
+}
+
+// RU: Эта проверка нужна тестам, чтобы форма окна могла ровно ставить кнопку рядом с полями.
+// FR: Cette verification aide les tests a confirmer que le formulaire peut aligner le bouton avec les champs.
+function expectVisualMatrixDialogFormAlignment(dialog: HTMLElement) {
+  expect(dialog.querySelector("form")).toHaveClass(
+    "admin-visual-matrix-dialog-form",
+  );
+}
+
+// RU: Эта проверка нужна тестам, чтобы кнопки строки Visual matrix были одной ровной группой.
+// FR: Cette verification aide les tests a confirmer que les boutons de la ligne Visual matrix forment un groupe regulier.
+function expectVisualMatrixRowActions(button: HTMLElement) {
+  const actions = button.closest(".admin-visual-matrix-actions");
+
+  expect(actions).not.toBeNull();
+  expect(actions).toHaveClass("admin-visual-matrix-action-bar");
+  expect(
+    within(actions as HTMLElement)
+      .getAllByRole("button")
+      .map((actionButton) => actionButton.textContent?.trim()),
+  ).toEqual(["Edit", "Replace source", "Delete"]);
+  for (const actionButton of within(actions as HTMLElement).getAllByRole(
+    "button",
+  )) {
+    expect(actionButton).toHaveClass("admin-visual-matrix-action-button");
+  }
+}
+
+// RU: Эта проверка нужна тестам, чтобы у окна была верхняя кнопка закрытия, как в картинках.
+// FR: Cette verification aide les tests a confirmer que la fenetre a le bouton fermer en haut, comme dans les images.
+function closeCenteredVisualMatrixDialog(dialog: HTMLElement) {
+  const closeButton = within(dialog).getByRole("button", {
+    name: "Close Visual matrix dialog",
+  });
+
+  expect(closeButton).toHaveClass(
+    "admin-quiet-button",
+    "admin-render-cell-close-button",
+  );
+  expect(
+    within(dialog).queryByRole("button", { name: "Cancel" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(closeButton);
+}
+
 beforeEach(() => {
   vi.mocked(prepareAdminImageUploadFile).mockImplementation(
     async ({ file }) => ({
@@ -1289,7 +1347,9 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Internal fabric" });
     expect(
-      screen.getByText("Update fabric naming, readiness assets, and archive state."),
+      screen.getByText(
+        "Update fabric naming, readiness assets, and archive state.",
+      ),
     ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Public fabric name"), {
       target: { value: "Boucle naturel" },
@@ -2048,7 +2108,8 @@ describe("Admin catalog pages", () => {
       can_generate_initial: false,
       candidate_count: 0,
       current_private_asset_id: visualColumn.current_source_photo.asset_id,
-      current_private_preview_url: "https://storage.example/source-photo-preview",
+      current_private_preview_url:
+        "https://storage.example/source-photo-preview",
       current_public_asset_id: null,
       fabric_id: assignedFabric.fabric_id,
       has_private_render: true,
@@ -2356,7 +2417,7 @@ describe("Admin catalog pages", () => {
     });
   });
 
-  it("shows visual matrix list, column drawer, and delete confirmation", async () => {
+  it("shows visual matrix list, centered column dialogs, and delete confirmation", async () => {
     const sofaId = "00000000-0000-4000-8000-000000000701";
     const assignedFabric = {
       assigned_at: "2026-04-28T10:15:00.000Z",
@@ -2417,15 +2478,40 @@ describe("Admin catalog pages", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Source ready")).toBeInTheDocument();
     expect(screen.getByText("Original fabric")).toBeInTheDocument();
+    expectVisualMatrixRowActions(
+      screen.getByRole("button", { name: "Edit column 1" }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Add column" }));
-    expect(
-      screen.getByRole("dialog", { name: "Add column" }),
-    ).toBeInTheDocument();
+    let dialog = screen.getByRole("dialog", { name: "Add column" });
+    expectCenteredVisualMatrixDialog(dialog);
+    expectVisualMatrixDialogFormAlignment(dialog);
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    closeCenteredVisualMatrixDialog(dialog);
     expect(
       screen.queryByRole("dialog", { name: "Add column" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit column 1" }));
+    dialog = screen.getByRole("dialog", { name: "Edit column 1" });
+    expectCenteredVisualMatrixDialog(dialog);
+    expectVisualMatrixDialogFormAlignment(dialog);
+
+    closeCenteredVisualMatrixDialog(dialog);
+    expect(
+      screen.queryByRole("dialog", { name: "Edit column 1" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace source photo 1" }),
+    );
+    dialog = screen.getByRole("dialog", { name: "Source photo column 1" });
+    expectCenteredVisualMatrixDialog(dialog);
+    expectVisualMatrixDialogFormAlignment(dialog);
+
+    closeCenteredVisualMatrixDialog(dialog);
+    expect(
+      screen.queryByRole("dialog", { name: "Source photo column 1" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Delete column 1/i }));
@@ -2537,6 +2623,18 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Visual matrix/i }));
     fireEvent.click(screen.getByRole("button", { name: "Add source photo 1" }));
+    const sourcePhotoDialog = screen.getByRole("dialog", {
+      name: "Source photo column 1",
+    });
+    expectCenteredVisualMatrixDialog(sourcePhotoDialog);
+    expect(
+      within(sourcePhotoDialog).getByRole("button", {
+        name: "Close Visual matrix dialog",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(sourcePhotoDialog).queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Original fabric 1"), {
       target: { value: assignedFabric.fabric_id },
     });
@@ -2587,14 +2685,11 @@ describe("Admin catalog pages", () => {
         "The standard generation prompt is used automatically. Add this only when you want an extra instruction.",
       ),
     ).toBeInTheDocument();
-    fireEvent.change(
-      within(generationGroup).getByLabelText("Optional note"),
-      {
-        target: {
-          value: "Keep seams visible",
-        },
+    fireEvent.change(within(generationGroup).getByLabelText("Optional note"), {
+      target: {
+        value: "Keep seams visible",
       },
-    );
+    });
     fireEvent.click(
       within(generationGroup).getByRole("button", { name: "Generate" }),
     );
@@ -2790,7 +2885,9 @@ describe("Admin catalog pages", () => {
       screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
     ).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Publish sofa" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Publish sofa" }),
+      ).toBeEnabled();
     });
   });
 
@@ -3368,9 +3465,10 @@ describe("Admin catalog pages", () => {
       name: "Current render preview",
     });
 
-    expect(
-      currentRenderPreview,
-    ).toHaveAttribute("src", "https://storage.example/current-render-preview");
+    expect(currentRenderPreview).toHaveAttribute(
+      "src",
+      "https://storage.example/current-render-preview",
+    );
 
     fireEvent.click(currentRenderPreview);
     const currentImageDialog = screen.getByRole("dialog", {
@@ -3837,9 +3935,7 @@ describe("Admin catalog pages", () => {
           });
         }
 
-        if (
-          requestUrl.endsWith(`/api/admin/sofas/${sofaId}/render-exports`)
-        ) {
+        if (requestUrl.endsWith(`/api/admin/sofas/${sofaId}/render-exports`)) {
           return jsonResponse({
             data: {
               render_export: {
@@ -3856,7 +3952,8 @@ describe("Admin catalog pages", () => {
           return jsonResponse({
             data: {
               render_export: {
-                download_url: "https://storage.example/signed/render-export.zip",
+                download_url:
+                  "https://storage.example/signed/render-export.zip",
                 id: exportId,
                 included_render_count: 2,
                 status: "succeeded",

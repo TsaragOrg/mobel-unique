@@ -3819,6 +3819,13 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+@media (min-width: 561px) {
+  .admin-visual-matrix-dialog-form .admin-actions {
+    align-self: end;
+    margin: 0;
+  }
+}
+
 .admin-add-fabric-form {
   align-items: end;
   display: grid;
@@ -4859,15 +4866,29 @@ button:disabled {
     min-width: 0;
   }
 
+  .admin-visual-matrix-action-bar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.36fr) minmax(0, 0.82fr);
+  }
+
   .admin-visual-matrix-actions button {
     min-height: 44px;
     width: 100%;
   }
 
-  .admin-visual-matrix-actions .admin-danger-button {
-    grid-column: 1 / -1;
-    justify-self: start;
-    width: auto;
+  .admin-visual-matrix-action-bar .admin-visual-matrix-action-button {
+    font-size: 0.82rem;
+    height: 100%;
+    justify-self: stretch;
+    line-height: 1.15;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    padding: 7px 8px;
+    white-space: normal;
+  }
+
+  .admin-visual-matrix-action-bar .admin-danger-button {
+    grid-column: auto;
   }
 
   .admin-render-operations {
