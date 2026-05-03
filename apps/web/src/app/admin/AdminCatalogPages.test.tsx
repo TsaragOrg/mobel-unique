@@ -2327,6 +2327,16 @@ describe("Admin catalog pages", () => {
       screen.getByRole("img", { name: "Swatch for Boucle ivoire" }),
     ).toBeInTheDocument();
     expect(screen.getByText("No swatch")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("region", { name: "Fabric assignments" }),
+      ).getAllByRole("button", { name: "Delete" }),
+    ).toHaveLength(2);
+    expect(
+      within(
+        screen.getByRole("region", { name: "Fabric assignments" }),
+      ).queryByRole("button", { name: /Unassign/i }),
+    ).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Public order for Boucle ivoire"), {
       target: { value: "7" },

@@ -2855,7 +2855,7 @@ function SofaFabricAssignmentSection({
                     onClick={() => void handleRemove(assignment)}
                     type="button"
                   >
-                    Unassign {assignment.fabric?.public_name ?? "fabric"}
+                    Delete
                   </button>
                 </div>
               );

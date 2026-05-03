@@ -161,7 +161,7 @@ workbench structure proves correct in browser QA.
 - [ ] Replace the current assign/order/button-heavy area with a compact assigned-fabric workspace.
 - [ ] Show fabric swatch, short public name, short internal reference, AI-reference state, premium state, and public order.
 - [x] Move add-fabric into a calm add flow with one primary action.
-- [ ] Make ordering compact and clear without full-width inputs.
+- [x] Make ordering compact and clear without full-width inputs.
 - [x] Make unassign destructive but visually secondary.
 - [x] Update fabric assignment tests.
 
