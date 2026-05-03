@@ -224,8 +224,10 @@
         "PLAN-0040",
         "PLAN-0041",
         "PLAN-0042",
+        "PLAN-0050",
         "PLAN-0051",
-        "PLAN-0053"
+        "PLAN-0053",
+        "PLAN-0056"
       ],
       "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
       "areas": ["web", "supabase"]
