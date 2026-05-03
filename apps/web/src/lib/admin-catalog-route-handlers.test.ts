@@ -7,6 +7,7 @@ import {
   handleCreateFabricRequest,
   handleCreateFabricRenderJobRequest,
   handleCreateSofaRequest,
+  handleCreateSofaRenderExportRequest,
   handleCreateTagRequest,
   handleCreateUploadRequest,
   handleCreateVisualMatrixColumnRequest,
@@ -18,6 +19,7 @@ import {
   handleGetFabricRequest,
   handleGetRenderCoverageRequest,
   handleGetSofaPublicationReadinessRequest,
+  handleGetSofaRenderExportRequest,
   handleGetSofaRequest,
   handleListFabricsRequest,
   handleListRenderCellCandidatesRequest,
@@ -125,6 +127,7 @@ function createFakeStore(): AdminCatalogStore {
   const fabrics = new Map<string, Record<string, unknown>>();
   const renderCells = new Map<string, Record<string, unknown>>();
   const renderCandidates = new Map<string, Record<string, unknown>>();
+  const renderExports = new Map<string, Record<string, unknown>>();
   const renderJobs = new Map<string, Record<string, unknown>>();
   const sofaFabrics = new Map<string, Record<string, unknown>>();
   const sourcePhotos = new Map<string, Record<string, unknown>>();
@@ -406,6 +409,27 @@ function createFakeStore(): AdminCatalogStore {
       sofas.set(sofa.id, sofa);
 
       return sofa;
+    },
+    async createSofaRenderExport(sofaId) {
+      if (!sofas.has(sofaId)) {
+        return null;
+      }
+
+      const renderExport = {
+        asset_id: "00000000-0000-4000-8000-000000000981",
+        completed_at: "2026-04-28T11:05:00.000Z",
+        created_at: "2026-04-28T11:00:00.000Z",
+        download_url: null,
+        expires_at: "2026-04-29T11:05:00.000Z",
+        id: "00000000-0000-4000-8000-000000000980",
+        included_render_count: 2,
+        last_error_message: null,
+        sofa_id: sofaId,
+        status: "succeeded",
+      };
+      renderExports.set(String(renderExport.id), renderExport);
+
+      return renderExport;
     },
     async createTag(input) {
       tagCounter += 1;
@@ -913,6 +937,16 @@ function createFakeStore(): AdminCatalogStore {
             ],
         ready: false,
       };
+    },
+    async getSofaRenderExport(exportId) {
+      const renderExport = renderExports.get(exportId);
+
+      return renderExport
+        ? {
+            ...renderExport,
+            download_url: "https://storage.example/signed/render-export.zip",
+          }
+        : null;
     },
     async publishSofa(sofaId) {
       const existing = sofas.get(sofaId);
@@ -1567,6 +1601,61 @@ describe("admin catalog route handlers", () => {
           id: sofaId,
           lifecycle_state: "draft",
           public_slug: "public-sofa",
+        },
+      },
+      meta: {},
+    });
+  });
+
+  it("creates and reads a sofa render ZIP export through the admin boundary", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Internal sofa",
+          public_name: "Public sofa",
+          shopify_order_url: "https://shopify.example/products/public-sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+
+    const createExportResponse = await handleCreateSofaRenderExportRequest({
+      ...input,
+      sofaId,
+    });
+
+    expect(createExportResponse.status).toBe(201);
+    const createExportBody = await createExportResponse.json();
+    expect(createExportBody).toMatchObject({
+      data: {
+        render_export: {
+          download_url: null,
+          included_render_count: 2,
+          sofa_id: sofaId,
+          status: "succeeded",
+        },
+      },
+      meta: {},
+    });
+
+    const exportId = createExportBody.data.render_export.id as string;
+    const getExportResponse = await handleGetSofaRenderExportRequest({
+      ...input,
+      exportId,
+    });
+
+    expect(getExportResponse.status).toBe(200);
+    await expect(getExportResponse.json()).resolves.toMatchObject({
+      data: {
+        render_export: {
+          download_url: "https://storage.example/signed/render-export.zip",
+          id: exportId,
+          included_render_count: 2,
+          status: "succeeded",
         },
       },
       meta: {},

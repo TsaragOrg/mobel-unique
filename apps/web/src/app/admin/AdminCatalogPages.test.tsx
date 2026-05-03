@@ -198,6 +198,18 @@ function createDependencies(
       updated_at: "2026-04-28T10:00:00.000Z",
       length_cm: 220,
     })),
+    createSofaRenderExport: vi.fn(async (_accessToken, sofaId) => ({
+      asset_id: "00000000-0000-4000-8000-000000000981",
+      completed_at: "2026-04-28T11:05:00.000Z",
+      created_at: "2026-04-28T11:00:00.000Z",
+      download_url: null,
+      expires_at: "2026-04-29T11:05:00.000Z",
+      id: "00000000-0000-4000-8000-000000000980",
+      included_render_count: 2,
+      last_error_message: null,
+      sofa_id: sofaId,
+      status: "succeeded",
+    })),
     createTag: vi.fn(async () => ({
       id: "00000000-0000-4000-8000-000000000801",
       public_label: "Convertible",
@@ -341,6 +353,18 @@ function createDependencies(
       ],
       ready: false,
     })),
+    getSofaRenderExport: vi.fn(async (_accessToken, exportId) => ({
+      asset_id: "00000000-0000-4000-8000-000000000981",
+      completed_at: "2026-04-28T11:05:00.000Z",
+      created_at: "2026-04-28T11:00:00.000Z",
+      download_url: "https://storage.example/signed/render-export.zip",
+      expires_at: "2026-04-29T11:05:00.000Z",
+      id: exportId,
+      included_render_count: 2,
+      last_error_message: null,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      status: "succeeded",
+    })),
     publishSofa: vi.fn(async (_accessToken, sofaId) => ({
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
@@ -392,6 +416,8 @@ function createDependencies(
         public_name: "Canape test",
         public_slug: null,
         shopify_order_url: null,
+        source_photo_count: 1,
+        source_photo_preview_url: "https://storage.example/source-sofa-preview",
         tags: [],
         updated_at: "2026-04-28T10:00:00.000Z",
         length_cm: null,
@@ -613,8 +639,14 @@ describe("Admin catalog pages", () => {
       "/admin/sofas/new",
     );
     expect(await screen.findByText("Manual test sofa")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Source photo for Canape test" }),
+    ).toHaveAttribute("src", "https://storage.example/source-sofa-preview");
     expect(screen.getByText("Draft")).toBeInTheDocument();
-    expect(screen.getByText("Missing")).toBeInTheDocument();
+    expect(screen.queryByText("Shopify missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
+    expect(screen.getByText("1 source photo")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
   });
 
@@ -1498,7 +1530,7 @@ describe("Admin catalog pages", () => {
       name: "Boucle ivoire, Front: Ready",
     });
     expect(readyCellButton).toBeInTheDocument();
-    expect(screen.getByLabelText("Legend")).toBeInTheDocument();
+    expect(screen.getByText("Status key")).toBeInTheDocument();
 
     fireEvent.click(readyCellButton);
 
@@ -1583,7 +1615,7 @@ describe("Admin catalog pages", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
 
     expect(screen.getByText("Render coverage")).toBeInTheDocument();
-    expect(screen.getByText("Legend")).toBeInTheDocument();
+    expect(screen.getByText("Status key")).toBeInTheDocument();
     for (const label of [
       "Ready",
       "Missing",
@@ -2928,7 +2960,7 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate missing" }));
     await waitFor(() => {
       expect(dependencies.generateFabricRenderJobsForSofa).toHaveBeenCalledWith(
         "admin-token",
@@ -3648,6 +3680,48 @@ describe("Admin catalog pages", () => {
     });
   });
 
+  it("requests a sofa render ZIP export from the Renders tab", async () => {
+    const dependencies = createDependencies();
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
+    expect(
+      screen.queryByRole("button", { name: "Create ZIP export" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Create ZIP export" }));
+
+    await waitFor(() => {
+      expect(dependencies.createSofaRenderExport).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000701",
+      );
+    });
+    await waitFor(() => {
+      expect(dependencies.getSofaRenderExport).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000980",
+      );
+    });
+
+    const downloadLink = await screen.findByRole("link", {
+      name: "Download ZIP export",
+    });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "https://storage.example/signed/render-export.zip",
+    );
+    expect(screen.getByText("2 renders included.")).toBeInTheDocument();
+  });
+
   it("shows publish blockers with target tab actions", async () => {
     const dependencies = createDependencies({
       getSofaReadiness: vi.fn(async () => ({
@@ -3703,6 +3777,7 @@ describe("Admin catalog pages", () => {
     const tagId = "00000000-0000-4000-8000-000000000801";
     const renderCellId = "00000000-0000-4000-8000-000000000905";
     const candidateId = "00000000-0000-4000-8000-000000000908";
+    const exportId = "00000000-0000-4000-8000-000000000980";
     const fetchMock = vi.fn(
       async (url: string | URL | Request, init?: RequestInit) => {
         const requestUrl = String(url);
@@ -3746,6 +3821,35 @@ describe("Admin catalog pages", () => {
               readiness: {
                 errors: [],
                 ready: true,
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (
+          requestUrl.endsWith(`/api/admin/sofas/${sofaId}/render-exports`)
+        ) {
+          return jsonResponse({
+            data: {
+              render_export: {
+                id: exportId,
+                included_render_count: 2,
+                status: "succeeded",
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (requestUrl.endsWith(`/api/admin/render-exports/${exportId}`)) {
+          return jsonResponse({
+            data: {
+              render_export: {
+                download_url: "https://storage.example/signed/render-export.zip",
+                id: exportId,
+                included_render_count: 2,
+                status: "succeeded",
               },
             },
             meta: {},
@@ -4039,6 +4143,8 @@ describe("Admin catalog pages", () => {
     );
     await dependencies.publishSofa("admin-token", sofaId);
     await dependencies.unpublishSofa("admin-token", sofaId);
+    await dependencies.createSofaRenderExport("admin-token", sofaId);
+    await dependencies.getSofaRenderExport("admin-token", exportId);
     await dependencies.listTags("admin-token");
     await dependencies.createTag("admin-token", {
       public_label: "Convertible",
@@ -4123,6 +4229,8 @@ describe("Admin catalog pages", () => {
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publication-readiness",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publish",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/unpublish",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/render-exports",
+      "/api/admin/render-exports/00000000-0000-4000-8000-000000000980",
       "/api/admin/tags",
       "/api/admin/tags",
       "/api/admin/tags/00000000-0000-4000-8000-000000000801",

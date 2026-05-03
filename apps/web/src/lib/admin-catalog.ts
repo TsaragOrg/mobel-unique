@@ -67,6 +67,8 @@ export interface AdminSofaRecord {
   public_name?: string | null;
   public_slug?: string | null;
   shopify_order_url?: string | null;
+  source_photo_count?: number | null;
+  source_photo_preview_url?: string | null;
   tags?: AdminTagRecord[];
   updated_at: string;
   length_cm?: number | null;
@@ -225,6 +227,19 @@ export interface AdminRenderCoverageRecord {
   visual_matrix_columns: Array<AdminVisualMatrixColumnRecord | JsonObject>;
 }
 
+export interface AdminSofaRenderExportRecord {
+  asset_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  download_url?: string | null;
+  expires_at: string | null;
+  id: string;
+  included_render_count: number | null;
+  last_error_message: string | null;
+  sofa_id: string;
+  status: string;
+}
+
 export interface AdminCatalogStore {
   archiveFabric(
     fabricId: string,
@@ -245,6 +260,11 @@ export interface AdminCatalogStore {
     input: FabricMutationInput,
   ): Promise<AdminFabricRecord | JsonObject>;
   createSofa(input: SofaMutationInput): Promise<AdminSofaRecord | JsonObject>;
+  createSofaRenderExport(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRenderExportRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
   createTag(input: TagMutationInput): Promise<AdminTagRecord | JsonObject>;
   createUpload(
     input: UploadCreateInput,
@@ -292,6 +312,9 @@ export interface AdminCatalogStore {
   getSofaPublicationReadiness(
     sofaId: string,
   ): Promise<PublicationReadiness | null>;
+  getSofaRenderExport(
+    exportId: string,
+  ): Promise<AdminSofaRenderExportRecord | JsonObject | null>;
   publishSofa(
     sofaId: string,
   ): Promise<
@@ -1107,6 +1130,8 @@ export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
     public_name: stringOrNull(record.public_name),
     public_slug: stringOrNull(record.public_slug),
     shopify_order_url: stringOrNull(record.shopify_order_url),
+    source_photo_count: numberOrNull(record.source_photo_count) ?? 0,
+    source_photo_preview_url: stringOrNull(record.source_photo_preview_url),
     tags: readTags(record.tags),
     updated_at: stringOrNull(record.updated_at),
     length_cm: numberOrNull(record.length_cm),
@@ -1372,6 +1397,23 @@ export function shapeRenderCoverageResponse(
     visual_matrix_columns: visualMatrixColumns.map(
       shapeVisualMatrixColumnResponse,
     ),
+  };
+}
+
+export function shapeSofaRenderExportResponse(
+  record: AdminSofaRenderExportRecord | JsonObject,
+) {
+  return {
+    asset_id: stringOrNull(record.asset_id),
+    completed_at: stringOrNull(record.completed_at),
+    created_at: stringOrNull(record.created_at),
+    download_url: stringOrNull(record.download_url),
+    expires_at: stringOrNull(record.expires_at),
+    id: stringOrNull(record.id),
+    included_render_count: numberOrNull(record.included_render_count),
+    last_error_message: stringOrNull(record.last_error_message),
+    sofa_id: stringOrNull(record.sofa_id),
+    status: stringOrNull(record.status),
   };
 }
 
@@ -1661,6 +1703,108 @@ export function createSupabaseAdminCatalogStore(
       }
 
       return sofa;
+    },
+    async createSofaRenderExport(sofaId) {
+      const sofa = await fetchSofaLifecycle(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const exportId = randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(
+        now.getTime() + renderExportArtifactTtlMs(env),
+      ).toISOString();
+      const { data: exportRow, error: createError } = await client
+        .from("sofa_render_exports")
+        .insert({
+          expires_at: expiresAt,
+          id: exportId,
+          included_render_count: 0,
+          sofa_id: sofaId,
+          status: "queued",
+        })
+        .select(SOFA_RENDER_EXPORT_SELECT)
+        .single();
+
+      if (createError || !exportRow) {
+        throw mapSupabaseError(createError ?? {});
+      }
+
+      try {
+        const coverage = await fetchAdminRenderCoverage(client, sofaId, env);
+        const items = coverage
+          ? await collectSofaRenderExportItems(client, coverage)
+          : [];
+
+        if (items.length === 0) {
+          throw new AdminCatalogOperationError({
+            code: "SOFA_CONFLICT",
+            message: "Sofa has no render assets to export.",
+            status: 409,
+          });
+        }
+
+        const zipBytes = buildZipArchive(items);
+        const assetId = randomUUID();
+        const objectPath = buildSofaRenderExportObjectPath({
+          exportId,
+          sofaId,
+        });
+        const { error: uploadError } = await client.storage
+          .from("catalog-private-assets")
+          .upload(objectPath, zipBytes, {
+            contentType: "application/zip",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw mapSupabaseError(uploadError);
+        }
+
+        const { error: assetError } = await client
+          .from("storage_assets")
+          .insert({
+            asset_kind: "sofa_render_export",
+            bucket_id: "catalog-private-assets",
+            byte_size: zipBytes.byteLength,
+            content_type: "application/zip",
+            id: assetId,
+            lifecycle_state: "active",
+            object_path: objectPath,
+            visibility: "private",
+          });
+
+        if (assetError) {
+          throw mapSupabaseError(assetError);
+        }
+
+        const { data: completedExport, error: updateError } = await client
+          .from("sofa_render_exports")
+          .update({
+            asset_id: assetId,
+            completed_at: new Date().toISOString(),
+            included_render_count: items.length,
+            status: "succeeded",
+          })
+          .eq("id", exportId)
+          .select(SOFA_RENDER_EXPORT_SELECT)
+          .single();
+
+        if (updateError || !completedExport) {
+          throw mapSupabaseError(updateError ?? {});
+        }
+
+        return completedExport as AdminSofaRenderExportRecord;
+      } catch (error) {
+        await markSofaRenderExportFailed(client, {
+          error,
+          exportId,
+        });
+
+        throw error;
+      }
     },
     async createTag(input) {
       const { data, error } = await client
@@ -2134,6 +2278,39 @@ export function createSupabaseAdminCatalogStore(
     async getSofaPublicationReadiness(sofaId) {
       return fetchAdminSofaPublicationReadiness(client, sofaId);
     },
+    async getSofaRenderExport(exportId) {
+      const renderExport = await fetchSofaRenderExport(client, exportId);
+
+      if (!renderExport) {
+        return null;
+      }
+
+      if (
+        renderExport.status !== "succeeded" ||
+        typeof renderExport.asset_id !== "string"
+      ) {
+        return renderExport;
+      }
+
+      const asset = (
+        await fetchAssetsByIds(client, [renderExport.asset_id])
+      ).get(renderExport.asset_id);
+
+      if (!asset) {
+        return renderExport;
+      }
+
+      const downloadUrl = await createPrivateAssetSignedUrl(
+        client,
+        asset,
+        env,
+      );
+
+      return {
+        ...renderExport,
+        download_url: downloadUrl,
+      };
+    },
     async publishSofa(sofaId) {
       const sofa = await fetchSofaWithTags(client, sofaId);
 
@@ -2233,7 +2410,7 @@ export function createSupabaseAdminCatalogStore(
         throw mapSupabaseError(error);
       }
 
-      return attachTagsToSofas(client, data ?? []);
+      return attachSofaListDataToSofas(client, data ?? [], env);
     },
     async listTags() {
       const { data, error } = await client
@@ -2781,6 +2958,18 @@ const RENDER_CELL_SELECT = [
   "source_photo_id",
   "accepted_fabric_render_candidate_id",
   "updated_at",
+].join(",");
+
+const SOFA_RENDER_EXPORT_SELECT = [
+  "id",
+  "sofa_id",
+  "status",
+  "asset_id",
+  "included_render_count",
+  "last_error_message",
+  "expires_at",
+  "completed_at",
+  "created_at",
 ].join(",");
 
 const FABRIC_RENDER_JOB_SELECT_FIELDS = [
@@ -3801,6 +3990,262 @@ async function fetchAdminRenderCoverage(
     sofa_id: sofaId,
     visual_matrix_columns: columns,
   };
+}
+
+async function collectSofaRenderExportItems(
+  client: SupabaseCatalogClient,
+  coverage: AdminRenderCoverageRecord,
+) {
+  const cells = coverage.render_cells.filter(
+    (cell): cell is AdminRenderCellRecord =>
+      isRecord(cell) &&
+      typeof cell.id === "string" &&
+      typeof cell.current_private_asset_id === "string",
+  );
+  const privateAssetIds = cells
+    .map((cell) => cell.current_private_asset_id)
+    .filter((assetId): assetId is string => typeof assetId === "string");
+  const assetMap = await fetchAssetsByIds(client, privateAssetIds);
+  const fabricNameMap = new Map(
+    coverage.sofa_fabrics
+      .filter(isRecord)
+      .map((assignment) => {
+        const fabric = isRecord(assignment.fabric)
+          ? assignment.fabric
+          : null;
+        const name =
+          stringOrNull(fabric?.public_name) ??
+          stringOrNull(fabric?.internal_name) ??
+          stringOrNull(assignment.fabric_id) ??
+          "fabric";
+
+        return [stringOrNull(assignment.fabric_id), name] as const;
+      })
+      .filter((entry): entry is [string, string] => Boolean(entry[0])),
+  );
+  const columnNameMap = new Map(
+    coverage.visual_matrix_columns
+      .filter(isRecord)
+      .map((column) => {
+        const label =
+          stringOrNull(column.public_label) ??
+          stringOrNull(column.admin_label) ??
+          stringOrNull(column.id) ??
+          "view";
+
+        return [stringOrNull(column.id), label] as const;
+      })
+      .filter((entry): entry is [string, string] => Boolean(entry[0])),
+  );
+  const items: ZipArchiveItem[] = [];
+
+  for (const [index, cell] of cells.entries()) {
+    const privateAssetId = cell.current_private_asset_id;
+
+    if (typeof privateAssetId !== "string") {
+      continue;
+    }
+
+    const asset = assetMap.get(privateAssetId);
+
+    if (
+      !asset ||
+      asset.visibility !== "private" ||
+      asset.lifecycle_state !== "active" ||
+      asset.bucket_id !== "catalog-private-assets" ||
+      !asset.object_path
+    ) {
+      continue;
+    }
+
+    const { data: blob, error } = await client.storage
+      .from(asset.bucket_id)
+      .download(asset.object_path);
+
+    if (error || !blob) {
+      throw mapSupabaseError(error ?? {});
+    }
+
+    const fabricName =
+      fabricNameMap.get(cell.fabric_id) ?? cell.fabric_id ?? "fabric";
+    const columnName =
+      columnNameMap.get(cell.visual_matrix_column_id) ??
+      cell.visual_matrix_column_id ??
+      "view";
+    const extension = extensionForContentType(asset.content_type);
+    const fileName = [
+      String(index + 1).padStart(2, "0"),
+      sanitizeZipFileNameSegment(fabricName),
+      sanitizeZipFileNameSegment(columnName),
+    ].join("-");
+
+    items.push({
+      data: new Uint8Array(await blob.arrayBuffer()),
+      name: `${fileName}.${extension}`,
+    });
+  }
+
+  return items;
+}
+
+async function fetchSofaRenderExport(
+  client: SupabaseCatalogClient,
+  exportId: string,
+) {
+  const { data, error } = await client
+    .from("sofa_render_exports")
+    .select(SOFA_RENDER_EXPORT_SELECT)
+    .eq("id", exportId)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminSofaRenderExportRecord | null;
+}
+
+async function markSofaRenderExportFailed(
+  client: SupabaseCatalogClient,
+  input: {
+    error: unknown;
+    exportId: string;
+  },
+) {
+  const message =
+    input.error instanceof AdminCatalogOperationError
+      ? input.error.message
+      : "Unable to create ZIP export.";
+
+  await client
+    .from("sofa_render_exports")
+    .update({
+      completed_at: new Date().toISOString(),
+      included_render_count: 0,
+      last_error_message: message,
+      status: "failed",
+    })
+    .eq("id", input.exportId);
+}
+
+function buildSofaRenderExportObjectPath(input: {
+  exportId: string;
+  sofaId: string;
+}) {
+  return `sofas/${input.sofaId}/render-exports/${input.exportId}.zip`;
+}
+
+function renderExportArtifactTtlMs(env: NodeJS.ProcessEnv) {
+  const seconds = Number(env.ADMIN_RENDER_EXPORT_TTL_SECONDS ?? 60 * 60 * 24);
+
+  return Number.isFinite(seconds) && seconds > 0
+    ? seconds * 1000
+    : 60 * 60 * 24 * 1000;
+}
+
+function sanitizeZipFileNameSegment(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "item"
+  );
+}
+
+interface ZipArchiveItem {
+  data: Uint8Array;
+  name: string;
+}
+
+function buildZipArchive(items: ZipArchiveItem[]) {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const item of items) {
+    const fileName = Buffer.from(item.name, "utf8");
+    const data = Buffer.from(item.data);
+    const crc = crc32(data);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(data.byteLength, 18);
+    localHeader.writeUInt32LE(data.byteLength, 22);
+    localHeader.writeUInt16LE(fileName.byteLength, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, fileName, data);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(data.byteLength, 20);
+    centralHeader.writeUInt32LE(data.byteLength, 24);
+    centralHeader.writeUInt16LE(fileName.byteLength, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, fileName);
+
+    offset += localHeader.byteLength + fileName.byteLength + data.byteLength;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const localFiles = Buffer.concat(localParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(items.length, 8);
+  end.writeUInt16LE(items.length, 10);
+  end.writeUInt32LE(centralDirectory.byteLength, 12);
+  end.writeUInt32LE(localFiles.byteLength, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([localFiles, centralDirectory, end]);
+}
+
+let crcTable: number[] | null = null;
+
+function crc32(bytes: Uint8Array) {
+  const table = crcTable ?? buildCrc32Table();
+  crcTable = table;
+  let crc = 0xffffffff;
+
+  for (const byte of bytes) {
+    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildCrc32Table() {
+  return Array.from({ length: 256 }, (_value, index) => {
+    let value = index;
+
+    for (let bit = 0; bit < 8; bit += 1) {
+      value =
+        value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+
+    return value >>> 0;
+  });
 }
 
 async function markExpiredFabricRenderJobsForSofa(
@@ -5436,6 +5881,104 @@ async function attachTagsToSofas(
         tags: typeof sofa.id === "string" ? (tagMap.get(sofa.id) ?? []) : [],
       }) as AdminSofaRecord,
   );
+}
+
+async function attachSofaListDataToSofas(
+  client: SupabaseCatalogClient,
+  sofas: JsonObject[],
+  env: NodeJS.ProcessEnv,
+) {
+  const sofaIds = sofas
+    .map((sofa) => sofa.id)
+    .filter((id): id is string => typeof id === "string");
+  const [tagMap, sourcePhotoSummaryMap] = await Promise.all([
+    fetchTagsBySofaIds(client, sofaIds),
+    fetchSofaListSourcePhotoSummaries(client, sofaIds, env),
+  ]);
+
+  return sofas.map((sofa) => {
+    const sofaId = typeof sofa.id === "string" ? sofa.id : null;
+    const sourcePhotoSummary = sofaId
+      ? sourcePhotoSummaryMap.get(sofaId)
+      : null;
+
+    return {
+      ...sofa,
+      source_photo_count: sourcePhotoSummary?.count ?? 0,
+      source_photo_preview_url: sourcePhotoSummary?.previewUrl ?? null,
+      tags: sofaId ? (tagMap.get(sofaId) ?? []) : [],
+    } as AdminSofaRecord;
+  });
+}
+
+async function fetchSofaListSourcePhotoSummaries(
+  client: SupabaseCatalogClient,
+  sofaIds: string[],
+  env: NodeJS.ProcessEnv,
+) {
+  const summaryMap = new Map<
+    string,
+    {
+      count: number;
+      previewUrl: string | null;
+    }
+  >();
+  const uniqueSofaIds = [...new Set(sofaIds)];
+
+  if (uniqueSofaIds.length === 0) {
+    return summaryMap;
+  }
+
+  const { data, error } = await client
+    .from("visual_matrix_columns")
+    .select("sofa_id,sequence,current_source_photo_id")
+    .in("sofa_id", uniqueSofaIds)
+    .is("deleted_at", null)
+    .order("sequence", {
+      ascending: true,
+    });
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  const sourcePhotoIdsBySofa = new Map<string, string[]>();
+
+  for (const row of data ?? []) {
+    if (
+      typeof row.sofa_id !== "string" ||
+      typeof row.current_source_photo_id !== "string"
+    ) {
+      continue;
+    }
+
+    const sourcePhotoIds = sourcePhotoIdsBySofa.get(row.sofa_id) ?? [];
+
+    if (!sourcePhotoIds.includes(row.current_source_photo_id)) {
+      sourcePhotoIds.push(row.current_source_photo_id);
+    }
+
+    sourcePhotoIdsBySofa.set(row.sofa_id, sourcePhotoIds);
+  }
+
+  const sourcePhotoMap = await fetchSourcePhotosByIds(
+    client,
+    [...sourcePhotoIdsBySofa.values()].flat(),
+    env,
+  );
+
+  for (const [sofaId, sourcePhotoIds] of sourcePhotoIdsBySofa) {
+    const previewSourcePhoto = sourcePhotoIds
+      .map((sourcePhotoId) => sourcePhotoMap.get(sourcePhotoId) ?? null)
+      .find((sourcePhoto) => Boolean(sourcePhoto?.preview_url));
+
+    summaryMap.set(sofaId, {
+      count: sourcePhotoIds.length,
+      previewUrl: previewSourcePhoto?.preview_url ?? null,
+    });
+  }
+
+  return summaryMap;
 }
 
 async function fetchTagsBySofaIds(

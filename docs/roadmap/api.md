@@ -17,9 +17,10 @@
 | Done   | SPEC-0006 | PLAN-0030 | Admin fabric render job creation accepts initial prompt notes and validated refine jobs from private candidates.            |
 | Done | SPEC-0006 | PLAN-0031 | Manual fabric render pump invocation endpoints, generate-all, resume, and shared `request_id` orchestration.                |
 | Done | SPEC-0014 | PLAN-0035 | Admin fabric and source photo responses expose safe preview URLs without storage object paths.                            |
+| Done | SPEC-0010 | PLAN-0051 | Authenticated admin render export endpoints create private ZIP artifacts and return short-lived signed download URLs.      |
 
 ## Next
 
-- Add authenticated admin export endpoint implementations behind the established admin boundary.
+- Finish authenticated admin export endpoint implementations behind the established admin boundary.
 - Build the public simulation email verification and job-creation API after the storefront read path.
 - Define remaining server-to-server authorization for internal and worker-only APIs.

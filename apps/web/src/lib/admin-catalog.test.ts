@@ -622,6 +622,8 @@ describe("admin catalog response shaping", () => {
       public_name: "Public sofa",
       public_slug: "public-sofa",
       shopify_order_url: "https://shopify.example/products/public-sofa",
+      source_photo_count: 0,
+      source_photo_preview_url: null,
       tags: [
         {
           id: "00000000-0000-4000-8000-000000000201",

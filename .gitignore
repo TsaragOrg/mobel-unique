@@ -36,5 +36,9 @@ apps/web/public/*.mov
 tmp/
 .tmp/
 
+# Local agent artifacts
+.code-artifacts/
+.codex-artifacts/
+
 # Local pipeline-only auto-downloaded font cache
 scripts/in-home-simulation-live-pipeline/.font-cache/
