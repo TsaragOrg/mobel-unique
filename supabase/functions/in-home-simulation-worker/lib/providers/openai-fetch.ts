@@ -1,16 +1,21 @@
 // SPEC-0015 PLAN-0056 shared OpenAI fetch helper.
+// SPEC-0015 PLAN-0057 race-style timeout for Edge Functions.
 //
-// Wraps a single `fetch` call with an `AbortController` whose timer
-// fires before the Supabase Edge Functions 150-second wall-clock kills
-// the isolate. Without this wrapper, a slow `gpt-image-2` call leaves
-// the job in `room_prep_processing` (or `placement_processing`)
-// forever: the isolate dies mid-fetch, no catch path runs, no
-// release-claim RPC fires, no `worker_job_events` row is written.
+// Wraps a single `fetch` call with two layered defenses:
+//   1. An `AbortController` whose timer fires at `timeoutMs` so Deno
+//      can free the underlying socket if it honours the abort signal.
+//   2. A `Promise.race` against the same timer that rejects the
+//      caller's awaited promise even when the platform fetch
+//      implementation does not honour abort during slow body reads
+//      (Supabase Edge Functions exhibits this on long
+//      `gpt-image-2` calls).
 //
 // Default timeout 130_000 ms is empirically chosen — it leaves
-// roughly 20 seconds inside the wall-clock for the catch path to
-// record `cleaning_failed`/`placement_failed`, call the release-claim
-// RPC, and emit a `worker_job_events` row.
+// roughly 20 seconds inside the Edge Functions 150-second wall-clock
+// for the catch path to record `cleaning_failed`/`placement_failed`,
+// call the release-claim RPC, and emit a `worker_job_events` row.
+// Without the race fallback, a slow OpenAI response can hold the
+// isolate to the wall-clock kill, after which no event is written.
 
 const DEFAULT_OPENAI_FETCH_TIMEOUT_MS = 130_000;
 
@@ -68,18 +73,32 @@ export async function openaiFetchWithTimeout(
     }
   }
 
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
   const startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(
+        new OpenAIFetchTimeoutError(
+          input,
+          timeoutMs,
+          Date.now() - startedAt
+        )
+      );
+    }, timeoutMs);
+  });
+
+  const fetchPromise = fetch(input, {
+    ...init,
+    signal: controller.signal
+  });
+
   try {
-    const response = await fetch(input, {
-      ...init,
-      signal: controller.signal
-    });
-    return response;
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (error) {
+    if (error instanceof OpenAIFetchTimeoutError) {
+      throw error;
+    }
     const elapsedMs = Date.now() - startedAt;
     const externalAborted = options.signal?.aborted === true;
     if (controller.signal.aborted && !externalAborted) {
@@ -87,9 +106,17 @@ export async function openaiFetchWithTimeout(
     }
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     if (options.signal) {
       options.signal.removeEventListener("abort", onExternalAbort);
     }
+    // Best-effort: do not leave the underlying fetch dangling. We
+    // explicitly do not await the dangling promise; if Deno never
+    // resolves it, the isolate will reap on shutdown. Adding a
+    // `.catch(() => {})` keeps the runtime from logging
+    // "uncaught promise rejection" on the dangling rejection.
+    fetchPromise.catch(() => {});
   }
 }

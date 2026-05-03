@@ -108,4 +108,25 @@ describe("openaiFetchWithTimeout", () => {
       )
     ).rejects.toThrow(/network down/);
   });
+
+  it("rejects via Promise.race even when the underlying fetch ignores abort", async () => {
+    // Edge Functions on Supabase sometimes do not honour
+    // `AbortController.abort()` during a slow body read. The race
+    // timer must still reject the awaited promise so the worker
+    // catch path can run.
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      return new Promise(() => {
+        // Never resolve, never reject. Models a fetch that ignores
+        // abort.
+      });
+    });
+
+    const promise = openaiFetchWithTimeout(
+      "https://api.openai.com/v1/race-timeout",
+      { method: "POST" },
+      { timeoutMs: 30 }
+    );
+
+    await expect(promise).rejects.toBeInstanceOf(OpenAIFetchTimeoutError);
+  });
 });
