@@ -3918,10 +3918,80 @@ button:disabled {
   padding: 0;
 }
 
-.admin-app .admin-form .admin-swatch-reset-button {
+.admin-app .admin-form .admin-swatch-save-button {
   background: #ffffff;
   color: var(--admin-ink, #171717);
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
   width: fit-content;
+}
+
+.admin-app .admin-form .admin-swatch-save-button-saved {
+  background: #eef8f0;
+  border-color: #87b995;
+  box-shadow: 0 0 0 3px rgb(135 185 149 / 0.18);
+  color: #205c31;
+  transform: translateY(-1px);
+}
+
+.admin-app .admin-ai-reference-preview {
+  background: #fbfaf8;
+  display: grid;
+  gap: 14px;
+}
+
+.admin-ai-reference-preview-grid {
+  align-items: flex-start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+}
+
+.admin-ai-reference-preview-frame {
+  align-items: center;
+  aspect-ratio: 1;
+  background:
+    linear-gradient(45deg, #f1efe9 25%, transparent 25%),
+    linear-gradient(-45deg, #f1efe9 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f1efe9 75%),
+    linear-gradient(-45deg, transparent 75%, #f1efe9 75%);
+  background-color: #ffffff;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+  width: min(100%, 280px);
+}
+
+.admin-ai-reference-preview-image {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.admin-ai-reference-preview-copy {
+  align-content: start;
+  color: var(--admin-muted, #5b5b5b);
+  display: grid;
+  font-size: 0.88rem;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.admin-ai-reference-preview-copy strong {
+  color: var(--admin-ink, #171717);
+  font-size: 0.95rem;
 }
 
 .admin-checkboxes {
@@ -4577,10 +4647,12 @@ button:disabled {
   .admin-form-grid,
   .admin-form-two-column,
   .admin-add-fabric-form,
+  .admin-ai-reference-preview-grid,
   .admin-swatch-cropper-grid {
     grid-template-columns: 1fr;
   }
 
+  .admin-ai-reference-preview-frame,
   .admin-swatch-crop-frame {
     width: 100%;
   }

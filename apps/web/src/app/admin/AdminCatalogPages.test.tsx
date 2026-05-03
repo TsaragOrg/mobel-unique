@@ -939,11 +939,51 @@ describe("Admin catalog pages", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Swatch zoom")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Reset crop" }),
+      screen.getByRole("button", { name: "Save crop" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reset crop" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save crop" }));
+    expect(
+      screen.getByRole("button", { name: "Crop saved" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Swatch zoom"), {
+      target: { value: "140" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Save crop" }),
     ).toBeInTheDocument();
   });
 
-  it("resets a selected swatch crop to the centered square", async () => {
+  it("shows an AI reference image preview after a file is selected", async () => {
+    const dependencies = createDependencies();
+
+    render(<AdminFabricCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create fabric" });
+    expect(
+      screen.queryByRole("group", { name: "AI reference preview" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("AI reference image"), {
+      target: {
+        files: [
+          new File(["reference"], "reference.jpg", { type: "image/jpeg" }),
+        ],
+      },
+    });
+
+    expect(
+      screen.getByRole("group", { name: "AI reference preview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "AI reference image preview" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("reference.jpg")).toBeInTheDocument();
+  });
+
+  it("keeps a selected swatch crop when save crop is clicked", async () => {
     stubImageDimensions({ height: 900, width: 1600 });
     const selectedSwatch = new File(["swatch"], "swatch.png", {
       type: "image/png",
@@ -968,7 +1008,7 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Swatch zoom"), {
       target: { value: "160" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Reset crop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save crop" }));
     fireEvent.change(screen.getByLabelText("AI reference image"), {
       target: {
         files: [
@@ -981,9 +1021,9 @@ describe("Admin catalog pages", () => {
     await waitFor(() => {
       expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
         fabricSwatchCrop: {
-          sourceSize: 900,
-          sourceX: 350,
-          sourceY: 0,
+          sourceSize: 563,
+          sourceX: 519,
+          sourceY: 169,
         },
         file: selectedSwatch,
         purpose: "fabric_swatch",

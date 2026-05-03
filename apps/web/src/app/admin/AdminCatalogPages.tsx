@@ -316,6 +316,12 @@ interface FabricSwatchCropSelection {
   zoomPercent: number;
 }
 
+interface FabricImagePreview {
+  canRevoke: boolean;
+  fileName: string;
+  previewUrl: string;
+}
+
 interface FabricSwatchPointerPoint {
   clientX: number;
   clientY: number;
@@ -5120,6 +5126,13 @@ function FabricForm({
   // RU: Эти данные дают прямой доступ к квадратной рамке для колесика мыши.
   // FR: Ces donnees donnent un acces direct au cadre carre pour la molette de la souris.
   const swatchCropFrameRef = useRef<HTMLDivElement | null>(null);
+  // RU: Эти данные показывают, что админ уже подтвердил выбранный квадрат.
+  // FR: Ces donnees montrent que l'admin a deja confirme le carre choisi.
+  const [isSwatchCropSaved, setIsSwatchCropSaved] = useState(false);
+  // RU: Эти данные показывают выбранную AI reference картинку прямо в форме.
+  // FR: Ces donnees montrent l'image AI reference choisie directement dans le formulaire.
+  const [selectedAiReferencePreview, setSelectedAiReferencePreview] =
+    useState<FabricImagePreview | null>(null);
 
   // RU: Эти данные ставят картинку так, чтобы в рамке был виден выбранный квадрат.
   // FR: Ces donnees placent l'image pour voir le carre choisi dans le cadre.
@@ -5151,6 +5164,7 @@ function FabricForm({
       event.preventDefault();
       const zoomStep = event.deltaY < 0 ? 10 : -10;
 
+      setIsSwatchCropSaved(false);
       onSelectedSwatchCropChange(
         updateFabricSwatchSelectionZoom(
           activeSwatchCrop,
@@ -5168,6 +5182,18 @@ function FabricForm({
     };
   }, [onSelectedSwatchCropChange, selectedSwatchCrop]);
 
+  // RU: Этот автоматический блок убирает временную ссылку на AI reference картинку.
+  // FR: Ce bloc automatique supprime le lien temporaire vers l'image AI reference.
+  useEffect(() => {
+    const preview = selectedAiReferencePreview;
+
+    return () => {
+      if (preview?.canRevoke && globalThis.URL?.revokeObjectURL) {
+        globalThis.URL.revokeObjectURL(preview.previewUrl);
+      }
+    };
+  }, [selectedAiReferencePreview]);
+
   // RU: Это действие читает новую картинку ткани и готовит квадрат для выбора.
   // FR: Cette action lit la nouvelle image de tissu et prepare le carre a choisir.
   async function handleSwatchFileChange(event: FormEvent<HTMLInputElement>) {
@@ -5175,6 +5201,7 @@ function FabricForm({
     const file = input.files?.[0] ?? null;
 
     if (!file) {
+      setIsSwatchCropSaved(false);
       onSelectedSwatchCropChange(null);
       return;
     }
@@ -5185,6 +5212,7 @@ function FabricForm({
         ? globalThis.URL.createObjectURL(file)
         : "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
+      setIsSwatchCropSaved(false);
       onSelectedSwatchCropChange(
         buildFabricSwatchCropSelection({
           file,
@@ -5194,6 +5222,7 @@ function FabricForm({
         }),
       );
     } catch {
+      setIsSwatchCropSaved(false);
       onSelectedSwatchCropChange(null);
     }
   }
@@ -5207,26 +5236,43 @@ function FabricForm({
 
     const zoomPercent = Number(event.currentTarget.value);
 
+    setIsSwatchCropSaved(false);
     onSelectedSwatchCropChange(
       updateFabricSwatchSelectionZoom(selectedSwatchCrop, zoomPercent),
     );
   }
 
-  // RU: Это действие возвращает выбор к центральному квадрату.
-  // FR: Cette action remet le choix au carre central.
-  function handleResetSwatchCrop() {
+  // RU: Это действие подтверждает текущий квадрат и оставляет его для сохранения формы.
+  // FR: Cette action confirme le carre actuel et le garde pour enregistrer le formulaire.
+  function handleSaveSwatchCrop() {
     if (!selectedSwatchCrop) {
       return;
     }
 
-    onSelectedSwatchCropChange(
-      buildFabricSwatchCropSelection({
-        fileName: selectedSwatchCrop.fileName,
-        imageHeight: selectedSwatchCrop.imageHeight,
-        imageWidth: selectedSwatchCrop.imageWidth,
-        previewUrl: selectedSwatchCrop.previewUrl,
-      }),
-    );
+    onSelectedSwatchCropChange(selectedSwatchCrop);
+    setIsSwatchCropSaved(true);
+  }
+
+  // RU: Это действие показывает выбранную AI reference картинку под полем файла.
+  // FR: Cette action montre l'image AI reference choisie sous le champ fichier.
+  function handleAiReferenceFileChange(event: FormEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0] ?? null;
+
+    if (!file) {
+      setSelectedAiReferencePreview(null);
+      return;
+    }
+
+    const canCreatePreview = Boolean(globalThis.URL?.createObjectURL);
+    const previewUrl = canCreatePreview
+      ? globalThis.URL.createObjectURL(file)
+      : "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+    setSelectedAiReferencePreview({
+      canRevoke: canCreatePreview,
+      fileName: file.name,
+      previewUrl,
+    });
   }
 
   // RU: Это действие начинает движение картинки внутри квадратной рамки.
@@ -5300,6 +5346,7 @@ function FabricForm({
         onSelectedSwatchCropChange(
           updateFabricSwatchSelectionZoom(selectedSwatchCrop, zoomPercent),
         );
+        setIsSwatchCropSaved(false);
         return;
       }
     }
@@ -5337,6 +5384,7 @@ function FabricForm({
       imageWidth: selectedSwatchCrop.imageWidth,
     });
 
+    setIsSwatchCropSaved(false);
     onSelectedSwatchCropChange({
       ...selectedSwatchCrop,
       crop: nextCrop,
@@ -5442,11 +5490,16 @@ function FabricForm({
                 />
               </label>
               <button
-                className="admin-secondary-button admin-swatch-reset-button"
-                onClick={handleResetSwatchCrop}
+                aria-live="polite"
+                className={`admin-secondary-button admin-swatch-save-button${
+                  isSwatchCropSaved
+                    ? " admin-swatch-save-button-saved"
+                    : ""
+                }`}
+                onClick={handleSaveSwatchCrop}
                 type="button"
               >
-                Reset crop
+                {isSwatchCropSaved ? "Crop saved" : "Save crop"}
               </button>
             </div>
           </div>
@@ -5457,9 +5510,34 @@ function FabricForm({
         <input
           accept="image/png,image/jpeg,image/webp"
           name="ai_reference_file"
+          onChange={handleAiReferenceFileChange}
           type="file"
         />
       </label>
+      {/* RU: Этот большой блок показывает выбранную AI reference картинку перед сохранением ткани. */}
+      {/* FR: Ce grand bloc montre l'image AI reference choisie avant d'enregistrer le tissu. */}
+      {selectedAiReferencePreview ? (
+        <fieldset className="admin-fieldset admin-ai-reference-preview">
+          <legend>AI reference preview</legend>
+          <div className="admin-ai-reference-preview-grid">
+            <div
+              aria-label="AI reference image preview"
+              className="admin-ai-reference-preview-frame"
+              role="img"
+            >
+              <img
+                alt=""
+                className="admin-ai-reference-preview-image"
+                src={selectedAiReferencePreview.previewUrl}
+              />
+            </div>
+            <div className="admin-ai-reference-preview-copy">
+              <strong>{selectedAiReferencePreview.fileName}</strong>
+              <span>Selected AI reference image</span>
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
       <button type="submit">{buttonLabel}</button>
     </form>
   );
