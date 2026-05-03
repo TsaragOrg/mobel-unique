@@ -18,6 +18,21 @@ through the existing signed upload flow.
 This plan must not change storage schema, API contracts, upload route handlers,
 fabric mutation contracts, public catalog pages, or AI reference upload behavior.
 
+## Follow-up UX Adjustment
+
+Admin review on 2026-05-03 changed two fabric form details without changing the
+upload contract:
+
+- replace the confusing `Reset crop` cropper action with `Save crop`, including
+  a visible saved confirmation while keeping the chosen crop unchanged;
+- show an immediate framed preview after a new `AI reference image` file is
+  selected, so admins can visually confirm the attached reference image before
+  creating or saving the fabric.
+
+These changes are documented by
+`docs/specs/change-requests/CR-SPEC-0016-save-swatch-crop-action.md` and
+`docs/specs/change-requests/CR-SPEC-0016-ai-reference-image-preview.md`.
+
 ## Current Surface
 
 - `apps/web/src/app/admin/AdminCatalogPages.tsx` owns the protected fabric
