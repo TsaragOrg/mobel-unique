@@ -3486,6 +3486,17 @@ function renderSourceTypeLabel(sourceType: string) {
   return sourceType || "Unknown";
 }
 
+function renderCellSourceDetailLabel(
+  cell: AdminCatalogRenderCell,
+  status: RenderCellDisplayStatus,
+) {
+  if (status === "missing" || status === "blocked") {
+    return "No source yet";
+  }
+
+  return renderSourceTypeLabel(cell.source_type);
+}
+
 function getRenderCellStatusLabel(status: RenderCellDisplayStatus) {
   return RENDER_CELL_STATUS_LABELS[status];
 }
@@ -3516,6 +3527,54 @@ function RenderStatusChip({ status }: { status: RenderCellDisplayStatus }) {
       </span>
       {getRenderCellStatusLabel(status)}
     </span>
+  );
+}
+
+function RenderCellEmptyPreview({
+  hasCurrentAsset,
+  status,
+}: {
+  hasCurrentAsset: boolean;
+  status: RenderCellDisplayStatus;
+}) {
+  // RU: Эти слова объясняют, почему слева пока нет готовой картинки.
+  // FR: Ces mots expliquent pourquoi il n'y a pas encore d'image finale a gauche.
+  const emptyPreviewCopy = hasCurrentAsset
+    ? {
+        description: "The image exists, but the preview cannot be loaded here.",
+        title: "Preview unavailable",
+      }
+    : status === "blocked"
+      ? {
+          description: "Complete the missing render input first.",
+          title: "Render blocked",
+        }
+      : status === "missing"
+        ? {
+            description: "This cell has no current render yet.",
+            title: "Render missing",
+          }
+        : {
+            description: "No current preview is available for this cell.",
+            title: "Render unavailable",
+          };
+
+  // RU: Этот блок рисует спокойную заглушку вместо пустого места.
+  // FR: Ce bloc montre un repere simple a la place de la zone vide.
+  return (
+    <figure
+      className={`admin-render-empty-preview admin-render-empty-preview-${status}`}
+    >
+      <div className="admin-render-empty-preview-frame" aria-hidden="true">
+        <span />
+      </div>
+      <figcaption className="admin-render-empty-preview-copy">
+        <span className="admin-render-empty-preview-title">
+          {emptyPreviewCopy.title}
+        </span>
+        <span>{emptyPreviewCopy.description}</span>
+      </figcaption>
+    </figure>
   );
 }
 
@@ -4516,11 +4575,15 @@ function RenderCoverageSection({
                         </button>
                       </figure>
                     ) : selectedCell.current_private_asset_id ? (
-                      <span className="admin-muted">
-                        Current render preview unavailable
-                      </span>
+                      <RenderCellEmptyPreview
+                        hasCurrentAsset={true}
+                        status={selectedStatus}
+                      />
                     ) : (
-                      <span className="admin-muted">No current render yet</span>
+                      <RenderCellEmptyPreview
+                        hasCurrentAsset={false}
+                        status={selectedStatus}
+                      />
                     )}
                   </div>
                   <div className="admin-render-cell-controls-pane">
@@ -4537,7 +4600,10 @@ function RenderCoverageSection({
                       <div>
                         <dt>Source</dt>
                         <dd>
-                          {renderSourceTypeLabel(selectedCell.source_type)}
+                          {renderCellSourceDetailLabel(
+                            selectedCell,
+                            selectedStatus,
+                          )}
                         </dd>
                       </div>
                       <div>

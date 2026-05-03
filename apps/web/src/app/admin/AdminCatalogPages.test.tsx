@@ -1742,6 +1742,12 @@ describe("Admin catalog pages", () => {
 
     expect(within(dialog).getByText("Boucle ivoire")).toBeInTheDocument();
     expect(within(dialog).getByText("Front")).toBeInTheDocument();
+    expect(within(dialog).getByText("Render missing")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("This cell has no current render yet."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("No source yet")).toBeInTheDocument();
+    expect(within(dialog).queryByText("AI generated")).not.toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Generate" }),
     ).toBeInTheDocument();
@@ -3764,6 +3770,13 @@ describe("Admin catalog pages", () => {
       }),
     );
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+
+    expect(within(dialog).getByText("Render blocked")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Complete the missing render input first."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("No source yet")).toBeInTheDocument();
+    expect(within(dialog).queryByText("AI generated")).not.toBeInTheDocument();
 
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Go to Visual matrix" }),

@@ -45,6 +45,7 @@
 | Active | SPEC-0015 | PLAN-0041 | Follow-up fix: `simulation-client/upload.ts` `safeParseSuccess` now unwraps the `{ data: ... }` envelope returned by the route handler. The original parser assumed flat fields, returned `null` on a successful 201, surfaced as `INVALID_RESPONSE` and the wizard's generic "L'envoi n'a pas pu aboutir" error even though the API succeeded and the job was queued. New unit test covers the enveloped path; existing flat-shape tests still pass via fallback. Mirrors the PLAN-0050 envelope fix on `auth.ts`. |
 | Done | SPEC-0010 | PLAN-0051 | Sofa edit Publish tab can request an authenticated private ZIP render export and download it from a short-lived signed URL. |
 | Active | SPEC-0014 | PLAN-0052 | Sofa edit operational redesign: sober workflow tabs, non-nested page structure, refined forms and checkboxes, compact aligned fabric order controls, calmer fabric and visual matrix actions with centered edit/source workbenches, aligned desktop form actions, and compact mobile row action bars, richer render cells, larger cell detail workspace, ZIP export relocation, and source-image sofa list cards. |
+| Done | SPEC-0014 | PLAN-0053 | Sofa edit render cell sheets show desktop and compact mobile placeholders for Missing and Blocked cells, and their Source detail says no source exists yet. |
 
 ## Next
 
