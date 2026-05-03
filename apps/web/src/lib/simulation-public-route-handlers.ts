@@ -524,7 +524,8 @@ export async function handleCreateSimulationRequest(input: {
       bytes: parsed.body.fileBytes,
       contentType: parsed.body.fileContentType
     });
-  } catch {
+  } catch (error) {
+    console.error("[simulations] uploadRoomPhoto failed:", error);
     return errorResponse(
       "INTERNAL_ERROR",
       "Could not upload the room photo.",
@@ -544,7 +545,8 @@ export async function handleCreateSimulationRequest(input: {
       jobIdOverride: jobId,
       retentionHours: input.deps.retentionHours
     });
-  } catch {
+  } catch (error) {
+    console.error("[simulations] createJobStore.create failed:", error);
     await safeDeleteUploadedPhoto(input.deps.storageUploader, storagePath);
     return errorResponse(
       "INTERNAL_ERROR",
@@ -567,7 +569,8 @@ export async function handleCreateSimulationRequest(input: {
       jobId: createResult.jobId,
       queueName: input.deps.queueName
     });
-  } catch {
+  } catch (error) {
+    console.error("[simulations] queueEnqueuer.enqueueRoomPrep failed:", error);
     return errorResponse(
       "INTERNAL_ERROR",
       "Simulation queued partially; please refresh.",
