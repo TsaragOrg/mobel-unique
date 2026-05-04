@@ -81,7 +81,7 @@ describe("admin sofa edit model", () => {
 
   it("selects the primary render cell action", () => {
     expect(getRenderCellPrimaryAction("blocked")).toMatchObject({
-      label: "Go to Visual matrix",
+      label: "Go to View columns",
       targetTab: "visual_matrix",
     });
     expect(getRenderCellPrimaryAction("missing")).toMatchObject({

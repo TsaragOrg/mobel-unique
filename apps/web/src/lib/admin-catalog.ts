@@ -476,7 +476,9 @@ export interface VisualMatrixColumnMutationInput {
 }
 
 export type VisualMatrixColumnPatchInput =
-  Partial<VisualMatrixColumnMutationInput>;
+  Partial<VisualMatrixColumnMutationInput> & {
+    source_original_fabric_id?: string;
+  };
 
 export type FabricRenderJobCreateInput =
   | {
@@ -550,6 +552,7 @@ const VISUAL_MATRIX_COLUMN_FIELDS = [
   "sequence",
   "admin_label",
   "public_label",
+  "source_original_fabric_id",
 ] as const;
 
 const FABRIC_RENDER_JOB_FIELDS = [
@@ -2778,7 +2781,9 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
-      const updatePayload = removeUndefinedValues(input);
+      const { source_original_fabric_id: sourceOriginalFabricId, ...columnInput } =
+        input;
+      const updatePayload = removeUndefinedValues(columnInput);
 
       if (Object.keys(updatePayload).length > 0) {
         const { error } = await client
@@ -2788,6 +2793,18 @@ export function createSupabaseAdminCatalogStore(
 
         if (error) {
           return mapVisualMatrixColumnMutationError(error);
+        }
+      }
+
+      if (sourceOriginalFabricId !== undefined) {
+        const sourcePhotoError =
+          await updateCurrentSourcePhotoOriginalFabric(client, {
+            column: existing,
+            nextOriginalFabricId: sourceOriginalFabricId,
+          });
+
+        if (sourcePhotoError) {
+          return sourcePhotoError;
         }
       }
 
@@ -3258,6 +3275,20 @@ function validateVisualMatrixColumnPayload(
     } else if (result.present) {
       value[field] = result.value;
     }
+  }
+
+  const sourceOriginalFabricId = readUuidField(
+    payload,
+    "source_original_fabric_id",
+    {
+      required: false,
+    },
+  );
+
+  if (!sourceOriginalFabricId.ok) {
+    fields.push("source_original_fabric_id");
+  } else if (sourceOriginalFabricId.present) {
+    value.source_original_fabric_id = sourceOriginalFabricId.value;
   }
 
   if (fields.length > 0) {
@@ -4645,6 +4676,71 @@ async function validateManualRenderUploadContext(
   return null;
 }
 
+async function updateCurrentSourcePhotoOriginalFabric(
+  client: SupabaseCatalogClient,
+  input: {
+    column: AdminVisualMatrixColumnRecord;
+    nextOriginalFabricId: string;
+  },
+): Promise<AdminCatalogOperationErrorData | null> {
+  if (!input.column.current_source_photo_id) {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message:
+        "A source photo is required before changing the source fabric.",
+      status: 422,
+    };
+  }
+
+  const { data: sourcePhoto, error: sourcePhotoFetchError } = await client
+    .from("sofa_source_photos")
+    .select(SOFA_SOURCE_PHOTO_SELECT)
+    .eq("id", input.column.current_source_photo_id)
+    .maybeSingle();
+
+  if (sourcePhotoFetchError) {
+    throw mapSupabaseError(sourcePhotoFetchError);
+  }
+
+  if (!sourcePhoto) {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+      message: "Visual matrix column source photo was not found.",
+      status: 404,
+    };
+  }
+
+  const currentSourcePhoto = sourcePhoto as AdminSofaSourcePhotoRecord;
+
+  if (currentSourcePhoto.original_fabric_id === input.nextOriginalFabricId) {
+    return null;
+  }
+
+  const previousOriginalFabricId = currentSourcePhoto.original_fabric_id;
+  const { data: updatedSourcePhoto, error: updateError } = await client
+    .from("sofa_source_photos")
+    .update({
+      original_fabric_id: input.nextOriginalFabricId,
+    })
+    .eq("id", currentSourcePhoto.id)
+    .select(SOFA_SOURCE_PHOTO_SELECT)
+    .single();
+
+  if (updateError) {
+    return mapSourcePhotoMutationError(updateError);
+  }
+
+  const nextSourcePhoto = updatedSourcePhoto as AdminSofaSourcePhotoRecord;
+
+  await clearPreviousSourcePhotoRenderCell(client, {
+    previousOriginalFabricId,
+    sourcePhoto: nextSourcePhoto,
+  });
+  await syncSourcePhotoRenderCell(client, nextSourcePhoto);
+
+  return null;
+}
+
 async function attachSourcePhotoToColumn(
   client: SupabaseCatalogClient,
   descriptor: UploadDescriptor,
@@ -5541,6 +5637,35 @@ async function syncSourcePhotoRenderCell(
   }
 }
 
+async function clearPreviousSourcePhotoRenderCell(
+  client: SupabaseCatalogClient,
+  input: {
+    previousOriginalFabricId: string;
+    sourcePhoto: AdminSofaSourcePhotoRecord;
+  },
+) {
+  const { error } = await client
+    .from("sofa_render_cells")
+    .update({
+      accepted_fabric_render_candidate_id: null,
+      current_private_asset_id: null,
+      source_photo_id: null,
+      source_type: "ai_generated",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("sofa_id", input.sourcePhoto.sofa_id)
+    .eq("fabric_id", input.previousOriginalFabricId)
+    .eq(
+      "visual_matrix_column_id",
+      input.sourcePhoto.visual_matrix_column_id,
+    )
+    .eq("source_photo_id", input.sourcePhoto.id);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+}
+
 async function decorateRenderCells(input: {
   candidateCountsByCellId: Map<string, number>;
   cells: AdminRenderCellRecord[];
@@ -6232,6 +6357,34 @@ function mapVisualMatrixColumnMutationError(error: {
     return {
       code: "VISUAL_MATRIX_COLUMN_CONFLICT",
       message: "Visual matrix column is invalid.",
+      status: 422,
+    };
+  }
+
+  return {
+    code: "CATALOG_UNAVAILABLE",
+    message: "Catalog service is unavailable.",
+    status: 500,
+  };
+}
+
+function mapSourcePhotoMutationError(error: {
+  code?: string;
+  message?: string;
+}): AdminCatalogOperationErrorData {
+  if (error.code === "23505") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message:
+        "Another source photo already uses this source fabric for this column.",
+      status: 409,
+    };
+  }
+
+  if (error.code === "23503" || error.code === "23514") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message: "Source fabric is invalid for this source photo.",
       status: 422,
     };
   }

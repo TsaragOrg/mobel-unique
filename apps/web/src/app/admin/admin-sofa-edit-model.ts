@@ -75,7 +75,7 @@ export function getRenderCellPrimaryAction(
   switch (status) {
     case "blocked":
       return {
-        label: "Go to Visual matrix",
+        label: "Go to View columns",
         targetTab: "visual_matrix",
       };
     case "candidate":

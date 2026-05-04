@@ -94,7 +94,7 @@ function expectVisualMatrixRowActions(button: HTMLElement) {
     within(actions as HTMLElement)
       .getAllByRole("button")
       .map((actionButton) => actionButton.textContent?.trim()),
-  ).toEqual(["Edit", "Replace source", "Delete"]);
+  ).toEqual(["Edit"]);
   for (const actionButton of within(actions as HTMLElement).getAllByRole(
     "button",
   )) {
@@ -102,11 +102,22 @@ function expectVisualMatrixRowActions(button: HTMLElement) {
   }
 }
 
+// This keeps the readiness dot beside the workflow step number.
+function expectSofaEditTabDotBesideNumber(tab: HTMLElement, number: string) {
+  const tabMeta = tab.querySelector(".admin-sofa-edit-tab-meta");
+
+  expect(tabMeta).not.toBeNull();
+  expect(tabMeta).toHaveTextContent(number);
+  expect(
+    (tabMeta as HTMLElement).querySelector(".admin-readiness-dot"),
+  ).toBeInTheDocument();
+}
+
 // RU: Эта проверка нужна тестам, чтобы у окна была верхняя кнопка закрытия, как в картинках.
 // FR: Cette verification aide les tests a confirmer que la fenetre a le bouton fermer en haut, comme dans les images.
 function closeCenteredVisualMatrixDialog(dialog: HTMLElement) {
   const closeButton = within(dialog).getByRole("button", {
-    name: "Close Visual matrix dialog",
+    name: "Close View columns dialog",
   });
 
   expect(closeButton).toHaveClass(
@@ -747,7 +758,7 @@ describe("Admin catalog pages", () => {
     render(<AdminTagsPage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Tags" });
-    fireEvent.change(screen.getByLabelText("Public label"), {
+    fireEvent.change(screen.getByLabelText("New tag"), {
       target: { value: "Angle premium" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create tag" }));
@@ -758,7 +769,22 @@ describe("Admin catalog pages", () => {
       });
     });
 
-    fireEvent.change(screen.getByLabelText("Edit Convertible"), {
+    const convertibleInput = screen.getByLabelText("Tag name for Convertible");
+    const convertibleRow = convertibleInput.closest("form");
+
+    expect(convertibleRow).not.toBeNull();
+    expect(
+      within(convertibleRow as HTMLElement).getByRole("button", {
+        name: "Save Convertible",
+      }),
+    ).toHaveTextContent("Save");
+    expect(
+      within(convertibleRow as HTMLElement).getByRole("button", {
+        name: "Delete Convertible",
+      }),
+    ).toHaveTextContent("Delete");
+
+    fireEvent.change(convertibleInput, {
       target: { value: "Angle premium" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Convertible" }));
@@ -1471,7 +1497,7 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     expect(
       screen.getByText(
-        "Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness.",
+        "Manage basics, fabric lines, view columns, render coverage, and publishing readiness.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -1515,10 +1541,15 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
 
     expect(screen.getByRole("tab", { name: /Basics/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Fabrics/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: /Visual matrix/i }),
+      screen.getByRole("tab", { name: /Fabric lines/i }),
     ).toBeInTheDocument();
+    const visualMatrixTab = screen.getByRole("tab", {
+      name: /View columns/i,
+    });
+
+    expect(visualMatrixTab).toBeInTheDocument();
+    expectSofaEditTabDotBesideNumber(visualMatrixTab, "03");
     expect(screen.getByRole("tab", { name: /Renders/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Publish/i })).toBeInTheDocument();
     expect(
@@ -1618,7 +1649,7 @@ describe("Admin catalog pages", () => {
       screen.queryByRole("navigation", { name: "Sofa test sections" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: /Fabrics Blocked/i }),
+      screen.getByRole("tab", { name: /Fabric lines Blocked/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /Renders Ready/i }),
@@ -2378,7 +2409,7 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
-    fireEvent.click(screen.getByRole("tab", { name: /Fabrics/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /Fabric lines/i }));
     fireEvent.change(screen.getByLabelText("Assign fabric"), {
       target: { value: "00000000-0000-4000-8000-000000000903" },
     });
@@ -2468,7 +2499,7 @@ describe("Admin catalog pages", () => {
     render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
-    fireEvent.click(screen.getByRole("tab", { name: /Fabrics/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /Fabric lines/i }));
 
     expect(screen.getByText("Boucle ivoire")).toBeInTheDocument();
     expect(screen.getByText("Internal: Internal fabric")).toBeInTheDocument();
@@ -2604,7 +2635,7 @@ describe("Admin catalog pages", () => {
     render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
-    fireEvent.click(screen.getByRole("tab", { name: /Fabrics/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /Fabric lines/i }));
     fireEvent.change(screen.getByLabelText("Public order for First fabric"), {
       target: { value: "2" },
     });
@@ -2647,7 +2678,7 @@ describe("Admin catalog pages", () => {
         is_premium: false,
         lifecycle_state: "active",
         public_name: "Original fabric",
-        swatch_preview_url: null,
+        swatch_preview_url: swatchPreviewUrl,
         swatch_asset: null,
         swatch_asset_id: "00000000-0000-4000-8000-000000000901",
         updated_at: "2026-04-28T10:00:00.000Z",
@@ -2656,6 +2687,17 @@ describe("Admin catalog pages", () => {
       public_order: 1,
       sofa_id: sofaId,
       updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const reassignedFabric = {
+      ...assignedFabric,
+      fabric: {
+        ...assignedFabric.fabric,
+        id: "00000000-0000-4000-8000-000000000908",
+        internal_name: "Replacement fabric",
+        public_name: "Replacement fabric",
+        swatch_preview_url: null,
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000908",
     };
     const visualColumn = {
       admin_label: "Front internal",
@@ -2666,6 +2708,7 @@ describe("Admin catalog pages", () => {
         created_at: "2026-04-28T10:00:00.000Z",
         id: "00000000-0000-4000-8000-000000000905",
         original_fabric_id: assignedFabric.fabric_id,
+        preview_url: "https://storage.example/source-photo-preview",
         sofa_id: sofaId,
         updated_at: "2026-04-28T10:00:00.000Z",
         visual_matrix_column_id: "00000000-0000-4000-8000-000000000904",
@@ -2679,21 +2722,29 @@ describe("Admin catalog pages", () => {
       updated_at: "2026-04-28T10:00:00.000Z",
     };
     const dependencies = createDependencies({
-      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listSofaFabrics: vi.fn(async () => [assignedFabric, reassignedFabric]),
       listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
     });
 
     render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
-    fireEvent.click(screen.getByRole("tab", { name: /Visual matrix/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /View columns/i }));
 
-    expect(screen.getByText("Visual matrix columns")).toBeInTheDocument();
+    expect(screen.getAllByText("View columns").length).toBeGreaterThan(0);
     expect(
       screen.getByText("Configures positions. Renders shows coverage."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source ready")).toBeInTheDocument();
-    expect(screen.getByText("Original fabric")).toBeInTheDocument();
+    expect(screen.queryByText("Source ready")).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".admin-visual-matrix-source-preview img"),
+    ).toHaveAttribute(
+      "src",
+      "https://storage.example/source-photo-preview",
+    );
+    expect(
+      screen.getByRole("img", { name: "Swatch for Original fabric" }),
+    ).toHaveAttribute("src", swatchPreviewUrl);
     expectVisualMatrixRowActions(
       screen.getByRole("button", { name: "Edit column 1" }),
     );
@@ -2712,30 +2763,59 @@ describe("Admin catalog pages", () => {
     dialog = screen.getByRole("dialog", { name: "Edit column 1" });
     expectCenteredVisualMatrixDialog(dialog);
     expectVisualMatrixDialogFormAlignment(dialog);
+    expect(within(dialog).getByLabelText("Order 1")).toHaveValue(1);
+    expect(within(dialog).getByLabelText("Source fabric 1")).toHaveValue(
+      assignedFabric.fabric_id,
+    );
+    expect(
+      dialog.querySelector(".admin-view-column-source-preview img"),
+    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
 
-    closeCenteredVisualMatrixDialog(dialog);
+    fireEvent.change(within(dialog).getByLabelText("Source fabric 1"), {
+      target: { value: reassignedFabric.fabric_id },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(dependencies.updateVisualMatrixColumn).toHaveBeenCalledWith(
+        "admin-token",
+        visualColumn.id,
+        {
+          admin_label: "Front internal",
+          public_label: "Front",
+          sequence: 1,
+          source_original_fabric_id: reassignedFabric.fabric_id,
+        },
+      );
+    });
+    expect(dependencies.createUpload).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("dialog", { name: "Edit column 1" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Replace source photo 1" }),
+    fireEvent.click(screen.getByRole("button", { name: "Edit column 1" }));
+    dialog = screen.getByRole("dialog", { name: "Edit column 1" });
+    fireEvent.change(within(dialog).getByLabelText("Source fabric 1"), {
+      target: { value: "" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "SOURCE_FABRIC_REQUIRED",
     );
-    dialog = screen.getByRole("dialog", { name: "Source photo column 1" });
-    expectCenteredVisualMatrixDialog(dialog);
-    expectVisualMatrixDialogFormAlignment(dialog);
 
-    closeCenteredVisualMatrixDialog(dialog);
-    expect(
-      screen.queryByRole("dialog", { name: "Source photo column 1" }),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Delete column 1/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(
       screen.getByText(
         "Deleting this column affects all fabrics for this sofa.",
       ),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByText(
+        "Deleting this column affects all fabrics for this sofa.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("queues render preparation work from the sofa edit page", async () => {
@@ -2800,6 +2880,9 @@ describe("Admin catalog pages", () => {
       sofa_id: "00000000-0000-4000-8000-000000000701",
       updated_at: "2026-04-28T10:00:00.000Z",
     };
+    let resolveColumnUpdate:
+      | ((column: typeof visualColumn) => void)
+      | null = null;
     const dependencies = createDependencies({
       getRenderCoverage: vi.fn(async () => ({
         render_cells: [
@@ -2827,6 +2910,12 @@ describe("Admin catalog pages", () => {
       })),
       listSofaFabrics: vi.fn(async () => [assignedFabric]),
       listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      updateVisualMatrixColumn: vi.fn(
+        () =>
+          new Promise<typeof visualColumn>((resolve) => {
+            resolveColumnUpdate = resolve;
+          }),
+      ),
     });
 
     render(
@@ -2837,21 +2926,23 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
-    fireEvent.click(screen.getByRole("tab", { name: /Visual matrix/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Add source photo 1" }));
+    fireEvent.click(screen.getByRole("tab", { name: /View columns/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit column 1" }),
+    );
     const sourcePhotoDialog = screen.getByRole("dialog", {
-      name: "Source photo column 1",
+      name: "Edit column 1",
     });
     expectCenteredVisualMatrixDialog(sourcePhotoDialog);
     expect(
       within(sourcePhotoDialog).getByRole("button", {
-        name: "Close Visual matrix dialog",
+        name: "Close View columns dialog",
       }),
     ).toBeInTheDocument();
     expect(
       within(sourcePhotoDialog).queryByRole("button", { name: "Cancel" }),
     ).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Original fabric 1"), {
+    fireEvent.change(screen.getByLabelText("Source fabric 1"), {
       target: { value: assignedFabric.fabric_id },
     });
     fireEvent.change(screen.getByLabelText("Source photo 1"), {
@@ -2859,9 +2950,31 @@ describe("Admin catalog pages", () => {
         files: [new File(["source"], "source.png", { type: "image/png" })],
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Upload source 1" }));
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    fireEvent.click(saveButton);
+
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveTextContent("Saving");
+    expect(sourcePhotoDialog).toHaveAttribute("aria-busy", "true");
+    const finishColumnUpdate = resolveColumnUpdate as
+      | ((column: typeof visualColumn) => void)
+      | null;
+    expect(finishColumnUpdate).not.toBeNull();
+    if (!finishColumnUpdate) {
+      throw new Error("Column update promise was not started.");
+    }
+    finishColumnUpdate(visualColumn);
 
     await waitFor(() => {
+      expect(dependencies.updateVisualMatrixColumn).toHaveBeenCalledWith(
+        "admin-token",
+        visualColumn.id,
+        {
+          admin_label: "Front",
+          public_label: "Front",
+          sequence: 1,
+        },
+      );
       expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
         byte_size: preparedSourcePhoto.size,
         content_type: "image/jpeg",
@@ -3874,7 +3987,7 @@ describe("Admin catalog pages", () => {
     });
   });
 
-  it("links blocked render cells to the Visual matrix tab", async () => {
+  it("links blocked render cells to the View columns tab", async () => {
     // RU: Эти значения описывают заблокированную ячейку для перехода к фото позиции.
     // FR: Ces valeurs decrivent une case bloquee pour aller vers la photo de position.
     const sofaId = "00000000-0000-4000-8000-000000000701";
@@ -3960,11 +4073,11 @@ describe("Admin catalog pages", () => {
     expect(within(dialog).queryByText("AI generated")).not.toBeInTheDocument();
 
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Go to Visual matrix" }),
+      within(dialog).getByRole("button", { name: "Go to View columns" }),
     );
 
     expect(
-      screen.getByRole("tabpanel", { name: /Visual matrix/i }),
+      screen.getByRole("tabpanel", { name: /View columns/i }),
     ).toBeInTheDocument();
   });
 
@@ -4100,16 +4213,18 @@ describe("Admin catalog pages", () => {
       screen.getByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Go to Fabrics" }),
+      screen.getByRole("button", { name: "Go to Fabric lines" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Go to Renders" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Go to Fabrics" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Go to Fabric lines" }),
+    );
 
     expect(
-      screen.getByRole("tabpanel", { name: /Fabrics/i }),
+      screen.getByRole("tabpanel", { name: /Fabric lines/i }),
     ).toBeInTheDocument();
   });
 
