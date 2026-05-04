@@ -38,6 +38,12 @@ import {
   type SofaEditReadinessKind,
   type SofaEditTabKey,
 } from "./admin-sofa-edit-model";
+import {
+  formatAdminApiErrorMessage,
+  formatAdminErrorMessage,
+  formatAdminPublicationBlockerLabel,
+  formatRenderCellBlockerLabel,
+} from "./admin-error-messages";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
@@ -2452,8 +2458,10 @@ function PublicationReadinessSection({
             return (
               <li className="admin-publish-blocker" key={error.code}>
                 <div>
-                  <strong>{error.code}</strong>
-                  <span>{error.message}</span>
+                  <strong>
+                    {formatAdminPublicationBlockerLabel(error.code)}
+                  </strong>
+                  <span>{formatAdminErrorMessage(error.message)}</span>
                 </div>
                 <button
                   className="admin-secondary-button"
@@ -4326,7 +4334,9 @@ function RenderCoverageSection({
   // RU: Эти данные находят видимые причины остановки и варианты для сравнения.
   // FR: Ces donnees retrouvent les raisons visibles et les options a comparer.
   const selectedDisplayBlockers = selectedCell
-    ? getRenderCellDisplayBlockers(selectedCell.blockers)
+    ? getRenderCellDisplayBlockers(selectedCell.blockers).map(
+        formatRenderCellBlockerLabel,
+      )
     : [];
   const comparableCandidates = selectedCell
     ? reviewCandidates.filter(
@@ -4612,7 +4622,7 @@ function RenderCoverageSection({
     const refinePrompt = String(formData.get("refine_prompt") ?? "").trim();
 
     if (!refinePrompt) {
-      setErrorMessage("REFINE_PROMPT_REQUIRED");
+      setErrorMessage(formatAdminErrorMessage("REFINE_PROMPT_REQUIRED"));
       return;
     }
 
@@ -4652,7 +4662,7 @@ function RenderCoverageSection({
     const file = readFileField(form, formData, `manual_render_${cell.id}`);
 
     if (!file) {
-      setErrorMessage("MANUAL_RENDER_REQUIRED");
+      setErrorMessage(formatAdminErrorMessage("MANUAL_RENDER_REQUIRED"));
       setActiveCellId(null);
       return;
     }
@@ -5153,8 +5163,10 @@ function RenderCoverageSection({
                       <div className="admin-cell-blockers">
                         <strong>Generation failed</strong>
                         <span>
-                          {selectedCell.latest_job.last_error_message ??
-                            "FABRIC_RENDER_JOB_FAILED"}
+                          {formatAdminErrorMessage(
+                            selectedCell.latest_job.last_error_message ??
+                              "FABRIC_RENDER_JOB_FAILED",
+                          )}
                         </span>
                       </div>
                     ) : null}
@@ -6620,16 +6632,14 @@ async function requestAdminJson(
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
-      body.error?.code ?? body.error?.message ?? "Request failed.",
-    );
+    throw new Error(formatAdminApiErrorMessage(body));
   }
 
   return body.data ?? {};
 }
 
 function readErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Request failed.";
+  return formatAdminErrorMessage(error);
 }
 
 function formatTimestamp(value: string) {
