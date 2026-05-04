@@ -142,17 +142,17 @@ export function HomeHeroVideo() {
 
   return (
     <>
-      <button
-        aria-label="Changer la couleur du canapé"
-        className="home-preview-pill"
-        disabled={isPlaying || prefersReducedMotion === null}
-        onClick={handleToggleColor}
-        type="button"
-      >
-        <span aria-hidden="true">✧</span>
-        Changer la couleur
-      </button>
       <div className="home-sofa-stage">
+        <button
+          aria-label="Changer la couleur du canapé"
+          className="home-preview-pill"
+          disabled={isPlaying || prefersReducedMotion === null}
+          onClick={handleToggleColor}
+          type="button"
+        >
+          <span aria-hidden="true">✧</span>
+          Changer la couleur
+        </button>
         <video
           ref={forwardVideoRef}
           aria-hidden={visibleDirection !== "forward"}

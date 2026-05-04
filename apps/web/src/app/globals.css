@@ -247,6 +247,7 @@ button:disabled {
   list-style: none;
   margin: 0 0 28px;
   padding: 0;
+  width: min(100%, 340px);
 }
 
 .home-steps li {
@@ -313,9 +314,10 @@ button:disabled {
   margin: 0;
   padding: 16px 22px;
   position: absolute;
-  right: 34px;
-  top: 38px;
-  z-index: 2;
+  bottom: clamp(18px, 4vw, 30px);
+  right: clamp(16px, 3.5vw, 44px);
+  top: auto;
+  z-index: 3;
 }
 
 .home-preview-pill span {
@@ -357,65 +359,12 @@ button:disabled {
   z-index: 0;
 }
 
-.home-upload-card {
-  align-items: center;
-  background: rgb(255 255 255 / 92%);
-  border: 1px solid #d8d8d8;
-  border-radius: 8px;
-  bottom: 16px;
-  box-shadow: 0 20px 42px rgb(0 0 0 / 10%);
-  color: var(--home-ink);
-  display: grid;
-  justify-items: center;
-  min-height: 198px;
-  padding: 32px 26px;
-  position: absolute;
-  right: 16px;
-  text-align: center;
-  width: 268px;
-  z-index: 2;
-}
-
-.home-upload-card::before {
-  border: 1px dashed #d8d8d8;
-  border-radius: 7px;
-  content: "";
-  inset: 18px;
-  pointer-events: none;
-  position: absolute;
-}
-
-.home-upload-icon,
 .home-benefit-icon {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
-}
-
-.home-upload-icon {
-  height: 42px;
-  margin-bottom: 12px;
-  width: 42px;
-}
-
-.home-upload-card strong {
-  font-size: 1.02rem;
-  font-weight: 400;
-  line-height: 1.25;
-}
-
-.home-upload-card span,
-.home-upload-card small {
-  color: var(--home-soft);
-  display: block;
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-
-.home-upload-card small {
-  margin-top: 16px;
 }
 
 .home-benefits {
@@ -485,6 +434,7 @@ button:disabled {
 }
 
 .home-primary-cta:focus-visible,
+.home-preview-pill:focus-visible,
 .home-header-nav a:focus-visible,
 .home-menu-link:focus-visible,
 .home-brand:focus-visible {
@@ -520,8 +470,7 @@ button:disabled {
     gap: 0;
     grid-template-areas:
       "media"
-      "copy"
-      "upload";
+      "copy";
     grid-template-columns: 1fr;
     min-height: auto;
     padding: 12px 24px 0;
@@ -532,10 +481,11 @@ button:disabled {
   }
 
   .home-preview-pill {
-    left: 0;
+    bottom: 18px;
+    left: auto;
     padding: 13px 19px;
-    right: auto;
-    top: 4px;
+    right: 18px;
+    top: auto;
   }
 
   .home-sofa-stage {
@@ -562,14 +512,8 @@ button:disabled {
     max-width: 430px;
   }
 
-  .home-upload-card {
-    bottom: auto;
-    grid-area: upload;
-    margin: 28px 0 0;
-    min-height: 188px;
-    position: relative;
-    right: auto;
-    width: 100%;
+  .home-steps {
+    width: min(100%, 430px);
   }
 
   .home-benefits {
@@ -625,6 +569,7 @@ button:disabled {
 
   .home-steps {
     margin-bottom: 20px;
+    width: 100%;
   }
 
   .home-steps li {
