@@ -1197,6 +1197,7 @@ Update these roadmap files:
 - [x] Tightened the sofa edit render review UX after manual testing: queued and processing cells are informational only, candidate previews and current renders can open in a large image dialog, refine prompt textareas open only on demand and can be canceled, duplicate close actions were removed from popups, and the technical sofa UUID is no longer shown in the edit header.
 - [x] Fixed stale publish blockers in the sofa edit workflow by refreshing publication readiness after render coverage and visual matrix changes, including manual render uploads and Realtime render job updates.
 - [x] Fixed Fabric order swaps by temporarily clearing changed occupied public order values before saving the final values, preventing transient `SOFA_FABRIC_ORDER_CONFLICT` responses during valid reordering.
+- [x] Fixed render cell candidate refresh paths by preserving candidate metadata after manual render uploads and opening candidate review in the active Missing cell sheet once generation completes.
 
 ## Self-Review
 
