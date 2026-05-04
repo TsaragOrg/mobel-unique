@@ -1913,6 +1913,212 @@ describe("Admin catalog pages", () => {
     });
   });
 
+  it("shows candidate review in an open Missing cell after generation finishes", async () => {
+    // RU: Эти данные описывают открытую пустую ячейку, где готовый вариант появляется позже.
+    // FR: Ces donnees decrivent une case vide ouverte ou une option prete arrive plus tard.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const fabricId = "00000000-0000-4000-8000-000000000903";
+    const columnId = "00000000-0000-4000-8000-000000000904";
+    const cellId = "00000000-0000-4000-8000-000000000906";
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: {
+          asset_kind: "fabric_ai_reference",
+          byte_size: 2200,
+          content_type: "image/jpeg",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000902",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: fabricId,
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_preview_url: null,
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: fabricId,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: {
+        asset: null,
+        asset_id: "00000000-0000-4000-8000-000000000905",
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000905",
+        original_fabric_id: fabricId,
+        preview_url: "https://storage.example/source-photo-preview",
+        sofa_id: sofaId,
+        updated_at: "2026-04-28T10:00:00.000Z",
+        visual_matrix_column_id: columnId,
+      },
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: columnId,
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const missingCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 0,
+      current_private_asset_id: null,
+      current_private_preview_url: null,
+      current_public_asset_id: null,
+      fabric_id: fabricId,
+      has_private_render: false,
+      has_public_render: false,
+      id: cellId,
+      latest_job: null,
+      sofa_id: sofaId,
+      source_photo_id: visualColumn.current_source_photo_id,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: columnId,
+    };
+    const queuedCell = {
+      ...missingCell,
+      can_generate_initial: false,
+      latest_job: {
+        attempt_count: 0,
+        completed_at: null,
+        created_at: "2026-04-28T10:30:00.000Z",
+        fabric_id: fabricId,
+        generation_mode: "initial",
+        id: "00000000-0000-4000-8000-000000000910",
+        last_error_message: null,
+        max_attempts: 3,
+        prompt_note: null,
+        queued_at: "2026-04-28T10:30:00.000Z",
+        request_id: "00000000-0000-4000-8000-000000000916",
+        refinement_source_asset_id: null,
+        refine_prompt: null,
+        render_cell_id: cellId,
+        sofa_id: sofaId,
+        status: "queued",
+        updated_at: "2026-04-28T10:30:00.000Z",
+        visual_matrix_column_id: columnId,
+      },
+    };
+    const candidateCell = {
+      ...missingCell,
+      candidate_count: 1,
+      latest_job: {
+        ...queuedCell.latest_job,
+        completed_at: "2026-04-28T10:35:00.000Z",
+        status: "succeeded",
+        updated_at: "2026-04-28T10:35:00.000Z",
+      },
+    };
+    const candidate = {
+      accepted_at: null,
+      asset: {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: "00000000-0000-4000-8000-000000000907",
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      asset_id: "00000000-0000-4000-8000-000000000907",
+      created_at: "2026-04-28T10:35:00.000Z",
+      fabric_id: fabricId,
+      generation_mode: "initial",
+      id: "00000000-0000-4000-8000-000000000908",
+      is_current: false,
+      job_id: "00000000-0000-4000-8000-000000000910",
+      preview_url: "https://storage.example/candidate-preview",
+      prompt_version: "v007",
+      provider_model: "mock-fabric-render-v1",
+      provider_name: "mock",
+      render_cell_id: cellId,
+      sofa_id: sofaId,
+      visual_matrix_column_id: columnId,
+    };
+    let onJobChange:
+      | ((job: { status: string; sofa_id: string }) => void)
+      | null = null;
+    let phase: "missing" | "queued" | "candidate" = "missing";
+    const dependencies = createDependencies({
+      createFabricRenderJob: vi.fn(async () => {
+        phase = "queued";
+
+        return queuedCell.latest_job;
+      }),
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          phase === "candidate"
+            ? candidateCell
+            : phase === "queued"
+              ? queuedCell
+              : missingCell,
+        ],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listRenderCellCandidates: vi.fn(async () => [candidate]),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      subscribeToFabricRenderJobs: vi.fn((_sofaId, callback) => {
+        onJobChange = callback;
+
+        return vi.fn();
+      }),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front: Missing/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(dependencies.createFabricRenderJob).toHaveBeenCalledWith(
+        "admin-token",
+        expect.objectContaining({
+          generation_mode: "initial",
+        }),
+      );
+    });
+
+    await act(async () => {
+      phase = "candidate";
+      onJobChange?.({
+        sofa_id: sofaId,
+        status: "succeeded",
+      });
+    });
+
+    expect(
+      await within(dialog).findByRole("group", { name: "Review candidates" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Use candidate" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps Processing render cells informational without a job action", async () => {
     // RU: Эти значения описывают ячейку, где создание картинки уже идет.
     // FR: Ces valeurs decrivent une case ou la creation d'image est en cours.
@@ -3662,6 +3868,218 @@ describe("Admin catalog pages", () => {
         asset_id: "00000000-0000-4000-8000-000000000902",
       },
     );
+  });
+
+  it("keeps existing candidates after manual render upload without a page refresh", async () => {
+    // RU: Эти данные описывают диван, ткань и открытую позицию с готовым вариантом.
+    // FR: Ces donnees decrivent un canape, un tissu et une position avec une option prete.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const fabricId = "00000000-0000-4000-8000-000000000903";
+    const columnId = "00000000-0000-4000-8000-000000000904";
+    const cellId = "00000000-0000-4000-8000-000000000906";
+    const candidateAssetId = "00000000-0000-4000-8000-000000000907";
+    const candidateId = "00000000-0000-4000-8000-000000000908";
+    const manualAssetId = "00000000-0000-4000-8000-000000000909";
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: {
+          asset_kind: "fabric_ai_reference",
+          byte_size: 2200,
+          content_type: "image/jpeg",
+          height_px: 1200,
+          id: "00000000-0000-4000-8000-000000000902",
+          lifecycle_state: "active",
+          visibility: "private",
+          width_px: 1600,
+        },
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: fabricId,
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_preview_url: null,
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: fabricId,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: {
+        asset: null,
+        asset_id: "00000000-0000-4000-8000-000000000905",
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000905",
+        original_fabric_id: fabricId,
+        preview_url: "https://storage.example/source-photo-preview",
+        sofa_id: sofaId,
+        updated_at: "2026-04-28T10:00:00.000Z",
+        visual_matrix_column_id: columnId,
+      },
+      current_source_photo_id: "00000000-0000-4000-8000-000000000905",
+      deleted_at: null,
+      id: columnId,
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const candidateCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 1,
+      current_private_asset_id: null,
+      current_private_preview_url: null,
+      current_public_asset_id: null,
+      fabric_id: fabricId,
+      has_private_render: false,
+      has_public_render: false,
+      id: cellId,
+      latest_job: null,
+      sofa_id: sofaId,
+      source_photo_id: visualColumn.current_source_photo_id,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:00:00.000Z",
+      visual_matrix_column_id: columnId,
+    };
+    const manualCellFromUpload = {
+      ...candidateCell,
+      can_generate_initial: false,
+      candidate_count: 0,
+      current_private_asset_id: manualAssetId,
+      current_private_preview_url:
+        "https://storage.example/manual-render-preview",
+      has_private_render: true,
+      source_type: "manual_upload",
+      updated_at: "2026-04-28T10:45:00.000Z",
+    };
+    const refreshedManualCell = {
+      ...manualCellFromUpload,
+      can_generate_initial: true,
+      candidate_count: 1,
+    };
+    const candidate = {
+      accepted_at: null,
+      asset: {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: candidateAssetId,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      asset_id: candidateAssetId,
+      created_at: "2026-04-28T10:35:00.000Z",
+      fabric_id: fabricId,
+      generation_mode: "initial",
+      id: candidateId,
+      is_current: false,
+      job_id: "00000000-0000-4000-8000-000000000910",
+      preview_url: "https://storage.example/candidate-preview",
+      prompt_version: "v007",
+      provider_model: "mock-fabric-render-v1",
+      provider_name: "mock",
+      render_cell_id: cellId,
+      sofa_id: sofaId,
+      visual_matrix_column_id: columnId,
+    };
+    let manualUploadCompleted = false;
+    const dependencies = createDependencies({
+      completeUpload: vi.fn(async () => ({
+        asset_kind: "manual_render",
+        byte_size: 1900,
+        content_type: "image/png",
+        height_px: 1200,
+        id: manualAssetId,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      })),
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          manualUploadCompleted ? refreshedManualCell : candidateCell,
+        ],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listRenderCellCandidates: vi.fn(async () => [candidate]),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      setManualRender: vi.fn(async () => {
+        manualUploadCompleted = true;
+
+        return manualCellFromUpload;
+      }),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front: Candidate/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Render cell/i });
+
+    await within(dialog).findByAltText(`Candidate preview ${candidateId}`);
+    fireEvent.change(within(dialog).getByLabelText("Manual render"), {
+      target: {
+        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Upload manual render" }),
+    );
+
+    await waitFor(() => {
+      expect(dependencies.setManualRender).toHaveBeenCalledWith(
+        "admin-token",
+        cellId,
+        {
+          asset_id: manualAssetId,
+        },
+      );
+    });
+    await within(dialog).findByText("Ready");
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close render cell" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Render cell/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front: Ready/i }),
+    );
+    const reopenedDialog = screen.getByRole("dialog", {
+      name: /Render cell/i,
+    });
+
+    expect(
+      within(reopenedDialog).getByRole("button", {
+        name: "Review candidates",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(reopenedDialog).getByRole("button", {
+        name: "Generate new candidate",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("compares a generated candidate with the source photo in a separate dialog", async () => {
