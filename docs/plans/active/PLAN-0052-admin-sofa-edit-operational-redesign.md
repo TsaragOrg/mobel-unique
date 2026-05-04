@@ -230,6 +230,9 @@ workbench structure proves correct in browser QA.
   codes, publication blockers, and render-cell blockers into plain English UI
   copy instead of exposing technical strings such as `TAG_CONFLICT`,
   `TAG_IN_USE`, or `INCOMPLETE_PUBLIC_RENDER_COVERAGE`.
+- Follow-up fix: Basics tag assignment now uses a local search picker with
+  pinned selected tag chips and remove actions instead of showing every tag as
+  a persistent checkbox, keeping the form usable when the tag list grows.
 
 ## Acceptance Criteria
 

@@ -1472,7 +1472,10 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Shopify order URL"), {
       target: { value: "https://example.com/products/manual-test" },
     });
-    fireEvent.click(await screen.findByLabelText("Convertible"));
+    fireEvent.change(await screen.findByLabelText("Search tags"), {
+      target: { value: "con" },
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Add Convertible tag" }));
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
 
     await waitFor(() => {
@@ -1486,6 +1489,65 @@ describe("Admin catalog pages", () => {
     expect(dependencies.navigate).toHaveBeenCalledWith(
       "/admin/sofas/00000000-0000-4000-8000-000000000701",
     );
+  });
+
+  it("searches sofa tags, pins a selected tag, and removes it", async () => {
+    // RU: Эти данные дают проверке несколько тегов для поиска и выбора.
+    // FR: Ces donnees donnent plusieurs etiquettes a la verification.
+    const dependencies = createDependencies({
+      listTags: vi.fn(async () => [
+        {
+          id: "00000000-0000-4000-8000-000000000801",
+          public_label: "Convertible",
+          slug: "convertible",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000802",
+          public_label: "Red sofa",
+          slug: "red-sofa",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000803",
+          public_label: "Top sofa",
+          slug: "top-sofa",
+        },
+      ]),
+    });
+
+    render(<AdminSofaCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create sofa" });
+    fireEvent.change(await screen.findByLabelText("Search tags"), {
+      target: { value: "r" },
+    });
+    expect(
+      within(screen.getByRole("listbox", { name: "Matching tags" })).getByRole(
+        "option",
+        { name: "Add Red sofa tag" },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("listbox", { name: "Matching tags" })).queryByRole(
+        "option",
+        { name: "Add Top sofa tag" },
+      ),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("option", { name: "Add Red sofa tag" }));
+
+    expect(screen.getByText("Selected tags")).toBeInTheDocument();
+    expect(screen.getByText("Red sofa")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search tags")).toHaveValue("");
+    expect(
+      screen.queryByRole("option", { name: "Add Red sofa tag" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Red sofa tag" }),
+    );
+
+    expect(screen.queryByText("Red sofa")).not.toBeInTheDocument();
+    expect(screen.getByText("No tags selected yet.")).toBeInTheDocument();
   });
 
   it("edits sofa metadata and shows readiness blockers", async () => {
