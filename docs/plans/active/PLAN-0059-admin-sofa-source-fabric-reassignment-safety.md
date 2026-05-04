@@ -141,21 +141,34 @@ workbench.
 
 ## Tasks
 
-- [ ] Add failing validation tests for create-vs-patch payload handling.
-- [ ] Add failing store tests for transactional source fabric reassignment.
-- [ ] Add failing UI tests for no-upload reassignment and visible save failures.
-- [ ] Add the Supabase migration for the transaction boundary.
-- [ ] Wire `updateVisualMatrixColumn` to use the transaction boundary.
-- [ ] Remove or retire the current multi-step source fabric reassignment helper
+- [x] Add failing validation tests for create-vs-patch payload handling.
+- [x] Add failing store tests for transactional source fabric reassignment.
+- [x] Add failing UI tests for no-upload reassignment and visible save failures.
+- [x] Add the Supabase migration for the transaction boundary.
+- [x] Wire `updateVisualMatrixColumn` to use the transaction boundary.
+- [x] Remove or retire the current multi-step source fabric reassignment helper
       path after the transaction boundary is in place.
-- [ ] Tighten visual matrix create payload validation.
-- [ ] Normalize user-facing error copy for this save flow.
-- [ ] Update web and Supabase roadmaps.
-- [ ] Run the narrow web tests.
-- [ ] Run `pnpm --filter @mobel-unique/web typecheck`.
-- [ ] Run `pnpm spec:check`.
-- [ ] Run broader checks if the Supabase migration or route-handler behavior has
+- [x] Tighten visual matrix create payload validation.
+- [x] Normalize user-facing error copy for this save flow.
+- [x] Update web and Supabase roadmaps.
+- [x] Run the narrow web tests.
+- [x] Run `pnpm --filter @mobel-unique/web typecheck`.
+- [x] Run `pnpm spec:check`.
+- [x] Run broader checks if the Supabase migration or route-handler behavior has
       cross-package impact.
+
+## Implementation Notes
+
+- Added `admin_update_visual_matrix_column_source_fabric` as the
+  service-role-only transaction boundary for source fabric reassignment.
+- `updateVisualMatrixColumn` now uses the RPC whenever
+  `source_original_fabric_id` is present, so the previous multi-step application
+  helper is no longer used.
+- Visual matrix create payloads now reject `source_original_fabric_id` instead
+  of accepting and ignoring it.
+- The View Columns workbench keeps no-upload source fabric correction for
+  existing source images, but now shows English validation messages for missing
+  source fabric or missing source image cases.
 
 ## Tests
 

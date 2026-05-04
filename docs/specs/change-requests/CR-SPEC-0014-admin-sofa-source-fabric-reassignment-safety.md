@@ -1,7 +1,7 @@
 # CR-SPEC-0014 Admin Sofa Source Fabric Reassignment Safety
 
 Target spec ids: SPEC-0005, SPEC-0009, SPEC-0010, SPEC-0013, SPEC-0014
-Status: draft
+Status: accepted
 
 ## Reason For Change
 
@@ -132,5 +132,6 @@ The View Columns edit workbench should keep the no-upload correction behavior:
 
 ## Approval Note
 
-Pending. This change request should be accepted before implementing the
-transactional follow-up in `PLAN-0059`.
+Accepted for `PLAN-0059` after review found that the no-upload source fabric
+correction path must not leave visual matrix column metadata, source photos, and
+render cells out of sync.

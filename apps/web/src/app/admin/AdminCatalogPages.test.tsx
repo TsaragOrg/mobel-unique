@@ -2800,7 +2800,7 @@ describe("Admin catalog pages", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "SOURCE_FABRIC_REQUIRED",
+      "Choose a source fabric before saving this source image.",
     );
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));

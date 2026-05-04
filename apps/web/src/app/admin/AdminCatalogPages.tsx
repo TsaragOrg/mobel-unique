@@ -3280,13 +3280,15 @@ function VisualMatrixSection({
     const sourceFabricChanged = originalFabricId !== currentOriginalFabricId;
 
     if (!originalFabricId && (file || column.current_source_photo)) {
-      setErrorMessage("SOURCE_FABRIC_REQUIRED");
+      setErrorMessage("Choose a source fabric before saving this source image.");
       setIsSubmitting(false);
       return;
     }
 
     if (!file && sourceFabricChanged && !column.current_source_photo) {
-      setErrorMessage("SOURCE_PHOTO_REQUIRED_FOR_FABRIC_CHANGE");
+      setErrorMessage(
+        "Upload a source image before assigning a source fabric to this view column.",
+      );
       setIsSubmitting(false);
       return;
     }
@@ -3314,8 +3316,7 @@ function VisualMatrixSection({
     }
   }
 
-  // RU: Это действие удаляет выбранную колонку после подтверждения.
-  // FR: Cette action supprime la colonne choisie apres confirmation.
+  // Deletes the selected view column after confirmation.
   async function handleDelete(column: AdminCatalogVisualMatrixColumn) {
     setErrorMessage(null);
     setIsSubmitting(true);

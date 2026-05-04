@@ -431,6 +431,18 @@ describe("admin catalog validation", () => {
     });
     expect(
       validateVisualMatrixColumnCreatePayload({
+        sequence: 1,
+        source_original_fabric_id: fabricRecord.id,
+      }),
+    ).toMatchObject({
+      error: {
+        code: "UNSUPPORTED_FIELD",
+      },
+      ok: false,
+      status: 400,
+    });
+    expect(
+      validateVisualMatrixColumnCreatePayload({
         sequence: 0,
         sql: "select 1",
       }),
