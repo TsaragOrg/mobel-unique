@@ -111,6 +111,24 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("retryable: false");
   });
 
+  it("persists input-resolution failures on claimed jobs", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const processIndex = source.indexOf("async function processClaimedJob");
+    const resolveIndex = source.indexOf(
+      "fabric_render_worker_resolve_inputs",
+      processIndex,
+    );
+    const tryIndex = source.indexOf("try {", processIndex);
+    const catchIndex = source.indexOf("} catch (error) {", processIndex);
+    const failIndex = source.indexOf("fabric_render_worker_fail", catchIndex);
+
+    expect(processIndex).toBeGreaterThan(-1);
+    expect(tryIndex).toBeGreaterThan(processIndex);
+    expect(resolveIndex).toBeGreaterThan(tryIndex);
+    expect(resolveIndex).toBeLessThan(catchIndex);
+    expect(failIndex).toBeGreaterThan(catchIndex);
+  });
+
   it("requires a worker invocation secret for non-local requests", async () => {
     const source = await readFile(functionPath, "utf8");
 

@@ -69,7 +69,8 @@
         "PLAN-0020",
         "PLAN-0025",
         "PLAN-0026",
-        "PLAN-0030"
+        "PLAN-0030",
+        "PLAN-0060"
       ],
       "path": "docs/specs/accepted/SPEC-0006-fabric-render-worker.md",
       "areas": ["api", "supabase"]

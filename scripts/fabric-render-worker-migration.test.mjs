@@ -17,6 +17,8 @@ const manualPumpRealtimeMigrationPath =
   "supabase/migrations/20260430000300_manual_fabric_render_pump_realtime.sql";
 const globalCapacityMigrationPath =
   "supabase/migrations/20260501000100_fabric_render_worker_global_capacity.sql";
+const webpInputMigrationPath =
+  "supabase/migrations/20260504000200_fabric_render_worker_webp_input.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -181,5 +183,16 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("grant execute on function public.fabric_render_worker_request_status(uuid, text)");
     expect(sql).toContain("grant execute on function public.fabric_render_worker_claim_one_for_request");
     expect(sql).toContain("grant execute on function public.fabric_render_worker_next_queued_request_id(uuid)");
+  });
+
+  it("allows WebP private assets as fabric render worker inputs", async () => {
+    const sql = await readFile(webpInputMigrationPath, "utf8");
+
+    expect(sql).toContain("public.fabric_render_worker_validate_input_asset");
+    expect(sql).toContain("'image/jpeg'");
+    expect(sql).toContain("'image/png'");
+    expect(sql).toContain("'image/webp'");
+    expect(sql).toContain("catalog-private-assets");
+    expect(sql).toContain("greatest(asset.width_px, asset.height_px) <= 2048");
   });
 });

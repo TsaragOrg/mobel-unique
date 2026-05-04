@@ -767,17 +767,18 @@ async function processClaimedJob(input: {
   providerConfig: WorkerProviderConfig;
   geminiApiKey?: string;
 }): Promise<Response> {
-  const resolvedJob = await callRpc<ResolvedJob>(
-    input.supabaseUrl,
-    input.serviceRoleKey,
-    "fabric_render_worker_resolve_inputs",
-    {
-      job_id: input.jobId,
-    },
-  );
   const scratchDir = buildScratchDir(input.jobId);
 
   try {
+    const resolvedJob = await callRpc<ResolvedJob>(
+      input.supabaseUrl,
+      input.serviceRoleKey,
+      "fabric_render_worker_resolve_inputs",
+      {
+        job_id: input.jobId,
+      },
+    );
+
     validateFabricRenderJobInputs({
       fabricReference: {
         heightPx: resolvedJob.fabric_reference.height_px,

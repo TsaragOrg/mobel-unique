@@ -16,3 +16,4 @@ Every active plan must reference a registered spec id from `docs/specs/manifest.
 | PLAN-0050 | SPEC-0015 | active | web | Public simulation email gate UI: two-step verification screen at `/sofas/[slug]/simulate/start` that mints the access cookie before the wizard. |
 | PLAN-0052 | SPEC-0014 | active | web | Sofa edit operational redesign for sober admin UX, clearer tab hierarchy, quieter controls, richer render cells, larger cell detail, and export relocation. |
 | PLAN-0059 | SPEC-0014 | active | web | Transaction-safe View Columns source fabric reassignment when an existing source image changes fabric line without upload. |
+| PLAN-0060 | SPEC-0006 | active | supabase | Fabric render worker accepts WebP input assets and records input-resolution failures on claimed jobs. |
