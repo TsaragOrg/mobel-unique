@@ -3,12 +3,12 @@ import { HomeHeroVideo } from "./home-hero-video";
 
 export const metadata: Metadata = {
   description:
-    "Téléversez une photo de votre pièce et visualisez un canapé MÖBEL UNIQUE chez vous avec une simulation assistée par IA.",
-  title: "MÖBEL UNIQUE | Simulez ce canapé chez vous",
+    "Découvrez les canapés MÖBEL UNIQUE et visualisez-les chez vous avec une simulation assistée par IA.",
+  title: "MÖBEL UNIQUE | Simulez nos canapés chez vous",
 };
 
 const steps = [
-  "Ajoutez une photo",
+  "Choisissez un canapé",
   "Lancez la simulation",
   "Découvrez le rendu chez vous",
 ];
@@ -43,27 +43,35 @@ export default function Home() {
           <a href="#process">À propos</a>
           <a href="#limits">Simulation</a>
         </nav>
-        <a className="home-menu-link" href="/catalog" aria-label="Voir les collections">
+        <a
+          className="home-menu-link"
+          href="/catalog"
+          aria-label="Voir les collections"
+        >
           <span aria-hidden="true" />
           <span aria-hidden="true" />
           <span aria-hidden="true" />
         </a>
       </header>
 
-      <section className="home-hero" id="simulation-preview" aria-labelledby="page-title">
+      <section
+        className="home-hero"
+        id="simulation-preview"
+        aria-labelledby="page-title"
+      >
         <div className="home-hero-media">
           <HomeHeroVideo />
         </div>
 
         <div className="home-hero-copy" id="process">
           <h1 id="page-title">
-            <span>Simulez ce canapé</span>
+            <span>Simulez nos canapés</span>
             <span>chez vous</span>
           </h1>
           <span className="home-title-rule" aria-hidden="true" />
           <p className="home-lede">
-            Téléversez une photo de votre pièce pour visualiser instantanément
-            ce canapé dans votre intérieur.
+            Parcourez notre sélection et visualisez rapidement le modèle dans
+            votre intérieur.
           </p>
           <ol className="home-steps">
             {steps.map((step, index) => (
@@ -78,16 +86,12 @@ export default function Home() {
             <span aria-hidden="true">→</span>
           </a>
         </div>
-
-        <div className="home-upload-card" aria-label="Zone de photo pour simulation">
-          <UploadIcon />
-          <strong>Déposez votre photo</strong>
-          <span>ou cliquez pour importer</span>
-          <small>JPG, PNG — Max 10 Mo</small>
-        </div>
       </section>
 
-      <section className="home-benefits" aria-label="Bénéfices de la simulation">
+      <section
+        className="home-benefits"
+        aria-label="Bénéfices de la simulation"
+      >
         {benefits.map((benefit) => (
           <article className="home-benefit" key={benefit.title}>
             <BenefitIcon name={benefit.icon} />
@@ -110,16 +114,6 @@ export default function Home() {
         <span>Simulation privée, sélection maîtrisée.</span>
       </footer>
     </main>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 32 32" className="home-upload-icon">
-      <path d="M16 22V6" />
-      <path d="m9 13 7-7 7 7" />
-      <path d="M7 22v5h18v-5" />
-    </svg>
   );
 }
 

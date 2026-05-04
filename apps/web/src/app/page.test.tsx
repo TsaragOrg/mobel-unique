@@ -44,14 +44,17 @@ describe("Home page", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: "Simulez ce canapé chez vous",
+        name: "Simulez nos canapés chez vous",
       }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("MÖBEL UNIQUE")[0]).toBeInTheDocument();
 
-    expect(screen.getByText("Ajoutez une photo")).toBeInTheDocument();
+    expect(screen.getByText("Choisissez un canapé")).toBeInTheDocument();
     expect(screen.getByText("Lancez la simulation")).toBeInTheDocument();
-    expect(screen.getByText("Découvrez le rendu chez vous")).toBeInTheDocument();
+    expect(
+      screen.getByText("Découvrez le rendu chez vous"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/téléversez/i)).not.toBeInTheDocument();
 
     expect(
       screen.getByText(/L'achat final reste séparé sur Shopify/i),
@@ -63,9 +66,11 @@ describe("Home page", () => {
       screen.getByRole("button", { name: "Changer la couleur du canapé" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Changer la couleur")).toBeInTheDocument();
-    expect(screen.getByText("Déposez votre photo")).toBeInTheDocument();
-    expect(screen.getByText("ou cliquez pour importer")).toBeInTheDocument();
-    expect(screen.getByText("JPG, PNG — Max 10 Mo")).toBeInTheDocument();
+    expect(screen.queryByText("Déposez votre photo")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("ou cliquez pour importer"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("JPG, PNG — Max 10 Mo")).not.toBeInTheDocument();
     expect(screen.getByText("Simulation instantanée")).toBeInTheDocument();
     expect(screen.getByText("Ajustement réaliste")).toBeInTheDocument();
     expect(screen.getByText("Rendu en quelques secondes")).toBeInTheDocument();
@@ -75,7 +80,9 @@ describe("Home page", () => {
     });
 
     expect(cta).toHaveAttribute("href", "/catalog");
-    expect(screen.queryByRole("link", { name: /voir un exemple/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /voir un exemple/i }),
+    ).not.toBeInTheDocument();
 
     const video = container.querySelector('video[data-direction="forward"]');
 
@@ -101,9 +108,9 @@ describe("Home page", () => {
       "src",
       "/videos/home-sofa-transform-forward.mp4",
     );
-    expect(
-      video?.compareDocumentPosition(cta) ?? 0,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(video?.compareDocumentPosition(cta) ?? 0).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
 
     const colorButton = screen.getByRole("button", {
       name: "Changer la couleur du canapé",
@@ -112,7 +119,9 @@ describe("Home page", () => {
     fireEvent.ended(video as HTMLVideoElement);
     fireEvent.click(colorButton);
 
-    const reverseVideo = container.querySelector('video[data-direction="reverse"]');
+    const reverseVideo = container.querySelector(
+      'video[data-direction="reverse"]',
+    );
 
     expect(video).toHaveAttribute("data-active", "true");
     expect(reverseVideo).toHaveAttribute("data-active", "false");
@@ -125,14 +134,12 @@ describe("Home page", () => {
     fireEvent.playing(reverseVideo as HTMLVideoElement);
 
     expect(reverseVideo).toHaveAttribute("data-active", "true");
-    expect(reverseVideo?.querySelector('source[type="video/webm"]')).toHaveAttribute(
-      "src",
-      "/videos/home-sofa-transform-reverse.webm",
-    );
-    expect(reverseVideo?.querySelector('source[type="video/mp4"]')).toHaveAttribute(
-      "src",
-      "/videos/home-sofa-transform-reverse.mp4",
-    );
+    expect(
+      reverseVideo?.querySelector('source[type="video/webm"]'),
+    ).toHaveAttribute("src", "/videos/home-sofa-transform-reverse.webm");
+    expect(
+      reverseVideo?.querySelector('source[type="video/mp4"]'),
+    ).toHaveAttribute("src", "/videos/home-sofa-transform-reverse.mp4");
   });
 
   it("does not autoplay the transformation for reduced motion users", async () => {
@@ -187,8 +194,12 @@ describe("Home page", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Environment")).not.toBeInTheDocument();
     expect(screen.queryByText("API")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/panier|checkout|compte|prix|stock/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /admin/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/panier|checkout|compte|prix|stock/i),
+    ).not.toBeInTheDocument();
   });
 
   it("defines public indexable metadata without private values", () => {

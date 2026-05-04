@@ -52,3 +52,7 @@ from green to white.
   first page view plays the forward clip once and stops. The `Changer la couleur`
   control alternates between the forward and reverse clips without relying on
   unsupported negative playback rates.
+- Follow-up on 2026-05-04: the home page no longer shows the upload cue or
+  upload-oriented hero copy. The headline now presents the broader sofa
+  collection, and the color-change control sits at the lower side of the sofa
+  visual on desktop and mobile.
