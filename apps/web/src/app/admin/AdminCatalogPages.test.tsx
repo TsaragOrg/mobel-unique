@@ -943,9 +943,7 @@ describe("Admin catalog pages", () => {
       public_name: "Boucle ivoire",
       swatch_asset_id: "00000000-0000-4000-8000-000000000901",
     });
-    expect(dependencies.navigate).toHaveBeenCalledWith(
-      "/admin/fabrics/00000000-0000-4000-8000-000000000903",
-    );
+    expect(dependencies.navigate).toHaveBeenCalledWith("/admin/fabrics");
   });
 
   it("shows crop controls only after a new swatch image is selected", async () => {
@@ -2901,7 +2899,7 @@ describe("Admin catalog pages", () => {
         id: "00000000-0000-4000-8000-000000000908",
         internal_name: "Replacement fabric",
         public_name: "Replacement fabric",
-        swatch_preview_url: null,
+        swatch_preview_url: "https://storage.example/replacement-swatch.png",
       },
       fabric_id: "00000000-0000-4000-8000-000000000908",
     };
@@ -2944,10 +2942,7 @@ describe("Admin catalog pages", () => {
     expect(screen.queryByText("Source ready")).not.toBeInTheDocument();
     expect(
       document.querySelector(".admin-visual-matrix-source-preview img"),
-    ).toHaveAttribute(
-      "src",
-      "https://storage.example/source-photo-preview",
-    );
+    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
     expect(
       screen.getByRole("img", { name: "Swatch for Original fabric" }),
     ).toHaveAttribute("src", swatchPreviewUrl);
@@ -2980,6 +2975,11 @@ describe("Admin catalog pages", () => {
     fireEvent.change(within(dialog).getByLabelText("Source fabric 1"), {
       target: { value: reassignedFabric.fabric_id },
     });
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Swatch for Replacement fabric",
+      }),
+    ).toHaveAttribute("src", "https://storage.example/replacement-swatch.png");
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -3022,6 +3022,103 @@ describe("Admin catalog pages", () => {
         "Deleting this column affects all fabrics for this sofa.",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows selected source image and fabric previews before saving a view column", async () => {
+    vi.stubGlobal("URL", {
+      ...globalThis.URL,
+      createObjectURL: vi.fn(() => "blob:selected-source-photo"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    // RU: Эти данные задают две ткани, чтобы окно могло сразу менять картинку ткани.
+    // FR: Ces donnees fixent deux tissus pour que la fenetre change vite l'image du tissu.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const firstFabric = {
+      ai_reference_asset: null,
+      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000903",
+      internal_name: "Original fabric",
+      is_premium: false,
+      lifecycle_state: "active",
+      public_name: "Original fabric",
+      swatch_preview_url: "https://storage.example/original-swatch.png",
+      swatch_asset: null,
+      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const secondFabric = {
+      ...firstFabric,
+      id: "00000000-0000-4000-8000-000000000908",
+      internal_name: "Replacement fabric",
+      public_name: "Replacement fabric",
+      swatch_preview_url: "https://storage.example/replacement-swatch.png",
+    };
+    const assignments = [firstFabric, secondFabric].map((fabric, index) => ({
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric,
+      fabric_id: fabric.id,
+      public_order: index + 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    }));
+
+    // RU: Эта колонка еще без фото, чтобы выбранный файл был виден сразу.
+    // FR: Cette colonne n'a pas encore de photo, pour voir tout de suite le fichier choisi.
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: null,
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const dependencies = createDependencies({
+      listSofaFabrics: vi.fn(async () => assignments),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /View columns/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit column 1" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit column 1" });
+
+    fireEvent.change(within(dialog).getByLabelText("Source fabric 1"), {
+      target: { value: secondFabric.id },
+    });
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Swatch for Replacement fabric",
+      }),
+    ).toHaveAttribute("src", secondFabric.swatch_preview_url);
+
+    // RU: Этот файл выбирают в окне, но кнопку Save пока не нажимают.
+    // FR: Ce fichier est choisi dans la fenetre, mais le bouton Save n'est pas encore utilise.
+    const selectedFile = new File(["source"], "new-source.png", {
+      type: "image/png",
+    });
+
+    fireEvent.change(within(dialog).getByLabelText("Source photo 1"), {
+      target: {
+        files: [selectedFile],
+      },
+    });
+
+    expect(globalThis.URL.createObjectURL).toHaveBeenCalledWith(selectedFile);
+    expect(
+      dialog.querySelector(".admin-view-column-source-preview img"),
+    ).toHaveAttribute("src", "blob:selected-source-photo");
+    expect(within(dialog).getByText("new-source.png")).toBeInTheDocument();
+    expect(dependencies.updateVisualMatrixColumn).not.toHaveBeenCalled();
+    expect(dependencies.createUpload).not.toHaveBeenCalled();
   });
 
   it("queues render preparation work from the sofa edit page", async () => {
@@ -3086,9 +3183,8 @@ describe("Admin catalog pages", () => {
       sofa_id: "00000000-0000-4000-8000-000000000701",
       updated_at: "2026-04-28T10:00:00.000Z",
     };
-    let resolveColumnUpdate:
-      | ((column: typeof visualColumn) => void)
-      | null = null;
+    let resolveColumnUpdate: ((column: typeof visualColumn) => void) | null =
+      null;
     const dependencies = createDependencies({
       getRenderCoverage: vi.fn(async () => ({
         render_cells: [
@@ -3133,9 +3229,7 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /View columns/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit column 1" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit column 1" }));
     const sourcePhotoDialog = screen.getByRole("dialog", {
       name: "Edit column 1",
     });
@@ -4637,9 +4731,7 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: "Go to Renders" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Go to Fabric lines" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Go to Fabric lines" }));
 
     expect(
       screen.getByRole("tabpanel", { name: /Fabric lines/i }),
