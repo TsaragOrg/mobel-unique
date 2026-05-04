@@ -111,7 +111,7 @@
         "SPEC-0007",
         "SPEC-0008"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0061"],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
     },
