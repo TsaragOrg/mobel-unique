@@ -476,7 +476,9 @@ export interface VisualMatrixColumnMutationInput {
 }
 
 export type VisualMatrixColumnPatchInput =
-  Partial<VisualMatrixColumnMutationInput>;
+  Partial<VisualMatrixColumnMutationInput> & {
+    source_original_fabric_id?: string;
+  };
 
 export type FabricRenderJobCreateInput =
   | {
@@ -546,10 +548,17 @@ const UPLOAD_FIELDS = [
 
 const SOFA_FABRIC_FIELDS = ["public_order"] as const;
 
-const VISUAL_MATRIX_COLUMN_FIELDS = [
+const VISUAL_MATRIX_COLUMN_CREATE_FIELDS = [
   "sequence",
   "admin_label",
   "public_label",
+] as const;
+
+const VISUAL_MATRIX_COLUMN_PATCH_FIELDS = [
+  "sequence",
+  "admin_label",
+  "public_label",
+  "source_original_fabric_id",
 ] as const;
 
 const FABRIC_RENDER_JOB_FIELDS = [
@@ -869,6 +878,7 @@ export function validateVisualMatrixColumnCreatePayload(
   payload: unknown,
 ): ValidationResult<VisualMatrixColumnMutationInput> {
   const result = validateVisualMatrixColumnPayload(payload, {
+    allowSourceOriginalFabricId: false,
     requireSequence: true,
   });
 
@@ -890,6 +900,7 @@ export function validateVisualMatrixColumnPatchPayload(
   payload: unknown,
 ): ValidationResult<VisualMatrixColumnPatchInput> {
   return validateVisualMatrixColumnPayload(payload, {
+    allowSourceOriginalFabricId: true,
     requireSequence: false,
   });
 }
@@ -2778,9 +2789,38 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
-      const updatePayload = removeUndefinedValues(input);
+      const { source_original_fabric_id: sourceOriginalFabricId, ...columnInput } =
+        input;
+      const updatePayload = removeUndefinedValues(columnInput);
 
-      if (Object.keys(updatePayload).length > 0) {
+      if (sourceOriginalFabricId !== undefined) {
+        const { error } = await client.rpc(
+          "admin_update_visual_matrix_column_source_fabric",
+          {
+            p_admin_label: input.admin_label ?? null,
+            p_column_id: columnId,
+            p_public_label: input.public_label ?? null,
+            p_sequence: input.sequence ?? null,
+            p_source_original_fabric_id: sourceOriginalFabricId,
+            p_update_admin_label: Object.prototype.hasOwnProperty.call(
+              input,
+              "admin_label",
+            ),
+            p_update_public_label: Object.prototype.hasOwnProperty.call(
+              input,
+              "public_label",
+            ),
+            p_update_sequence: Object.prototype.hasOwnProperty.call(
+              input,
+              "sequence",
+            ),
+          },
+        );
+
+        if (error) {
+          return mapVisualMatrixColumnSourceFabricMutationError(error);
+        }
+      } else if (Object.keys(updatePayload).length > 0) {
         const { error } = await client
           .from("visual_matrix_columns")
           .update(updatePayload)
@@ -3215,6 +3255,7 @@ function validateFabricPayload(
 function validateVisualMatrixColumnPayload(
   payload: unknown,
   options: {
+    allowSourceOriginalFabricId: boolean;
     requireSequence: boolean;
   },
 ): ValidationResult<VisualMatrixColumnPatchInput> {
@@ -3224,7 +3265,9 @@ function validateVisualMatrixColumnPayload(
 
   const unsupportedFields = findUnsupportedFields(
     payload,
-    VISUAL_MATRIX_COLUMN_FIELDS,
+    options.allowSourceOriginalFabricId
+      ? VISUAL_MATRIX_COLUMN_PATCH_FIELDS
+      : VISUAL_MATRIX_COLUMN_CREATE_FIELDS,
   );
 
   if (unsupportedFields.length > 0) {
@@ -3258,6 +3301,20 @@ function validateVisualMatrixColumnPayload(
     } else if (result.present) {
       value[field] = result.value;
     }
+  }
+
+  const sourceOriginalFabricId = readUuidField(
+    payload,
+    "source_original_fabric_id",
+    {
+      required: false,
+    },
+  );
+
+  if (!sourceOriginalFabricId.ok) {
+    fields.push("source_original_fabric_id");
+  } else if (sourceOriginalFabricId.present) {
+    value.source_original_fabric_id = sourceOriginalFabricId.value;
   }
 
   if (fields.length > 0) {
@@ -6232,6 +6289,42 @@ function mapVisualMatrixColumnMutationError(error: {
     return {
       code: "VISUAL_MATRIX_COLUMN_CONFLICT",
       message: "Visual matrix column is invalid.",
+      status: 422,
+    };
+  }
+
+  return {
+    code: "CATALOG_UNAVAILABLE",
+    message: "Catalog service is unavailable.",
+    status: 500,
+  };
+}
+
+function mapVisualMatrixColumnSourceFabricMutationError(error: {
+  code?: string;
+  message?: string;
+}): AdminCatalogOperationErrorData {
+  if (error.code === "23505") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message:
+        "Another visual matrix record already uses this source fabric or sequence.",
+      status: 409,
+    };
+  }
+
+  if (error.code === "P0002") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_NOT_FOUND",
+      message: "Visual matrix column source photo was not found.",
+      status: 404,
+    };
+  }
+
+  if (error.code === "23503" || error.code === "23514") {
+    return {
+      code: "VISUAL_MATRIX_COLUMN_CONFLICT",
+      message: "Source fabric is invalid for this visual matrix column.",
       status: 422,
     };
   }

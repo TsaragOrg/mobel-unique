@@ -139,8 +139,8 @@ export interface AdminCatalogSofaSourcePhoto {
 // FR: Cette liste fixe les etapes de la page du canape dans la barre du haut.
 const SOFA_EDIT_TABS = [
   { key: "basics", label: "Basics" },
-  { key: "fabrics", label: "Fabrics" },
-  { key: "visual_matrix", label: "Visual matrix" },
+  { key: "fabrics", label: "Fabric lines" },
+  { key: "visual_matrix", label: "View columns" },
   { key: "renders", label: "Renders" },
   { key: "publish", label: "Publish" },
 ] as const;
@@ -352,7 +352,9 @@ export interface VisualMatrixColumnMutationInput {
 }
 
 export type VisualMatrixColumnPatchInput =
-  Partial<VisualMatrixColumnMutationInput>;
+  Partial<VisualMatrixColumnMutationInput> & {
+    source_original_fabric_id?: string;
+  };
 
 export type FabricRenderJobCreateInput =
   | {
@@ -2137,7 +2139,7 @@ function SofaEditContent({
                 </div>
               ) : undefined
             }
-            description="Manage basics, fabric assignments, visual matrix, render coverage, and publishing readiness."
+            description="Manage basics, fabric lines, view columns, render coverage, and publishing readiness."
             eyebrow="Catalog"
             title={sofa.internal_name}
             titleId="edit-sofa-title"
@@ -2171,24 +2173,15 @@ function SofaEditContent({
                   role="tab"
                   type="button"
                 >
-                  <span
-                    aria-hidden="true"
-                    className="admin-sofa-edit-tab-index"
-                  >
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="admin-sofa-edit-tab-copy">
-                    <span className="admin-sofa-edit-tab-label">
-                      {tab.label}
+                  <span aria-hidden="true" className="admin-sofa-edit-tab-meta">
+                    <span className="admin-sofa-edit-tab-index">
+                      {String(index + 1).padStart(2, "0")}
                     </span>
-                    <span className="admin-sofa-edit-tab-state">
-                      <span
-                        aria-hidden="true"
-                        className={`admin-readiness-dot admin-readiness-dot-${readinessKind}`}
-                      />
-                      <span>{formatReadinessKind(readinessKind)}</span>
-                    </span>
+                    <span
+                      className={`admin-readiness-dot admin-readiness-dot-${readinessKind}`}
+                    />
                   </span>
+                  <span className="admin-sofa-edit-tab-label">{tab.label}</span>
                 </button>
               );
             })}
@@ -2522,6 +2515,7 @@ function TagManagerContent({
   const [pendingDeleteTagId, setPendingDeleteTagId] = useState<string | null>(
     null,
   );
+  const [submittingTagId, setSubmittingTagId] = useState<string | null>(null);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
   async function loadTags() {
@@ -2562,6 +2556,7 @@ function TagManagerContent({
 
   async function handleUpdate(tag: AdminCatalogTag, form: HTMLFormElement) {
     setErrorMessage(null);
+    setSubmittingTagId(tag.id);
     const formData = new FormData(form);
     const publicLabel = String(formData.get(`tag-${tag.id}`) ?? "").trim();
 
@@ -2572,11 +2567,14 @@ function TagManagerContent({
       await loadTags();
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
+    } finally {
+      setSubmittingTagId(null);
     }
   }
 
   async function handleDelete(tag: AdminCatalogTag) {
     setErrorMessage(null);
+    setSubmittingTagId(tag.id);
 
     try {
       await dependencies.deleteTag(accessToken, tag.id);
@@ -2584,6 +2582,8 @@ function TagManagerContent({
       await loadTags();
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
+    } finally {
+      setSubmittingTagId(null);
     }
   }
 
@@ -2603,13 +2603,22 @@ function TagManagerContent({
           {errorMessage}
         </p>
       ) : null}
-      <form className="admin-inline-form" onSubmit={handleCreate}>
-        <label className="field">
-          <span>Public label</span>
+      <form
+        aria-busy={isSubmitting}
+        className="admin-inline-form admin-tag-create-form"
+        onSubmit={handleCreate}
+      >
+        <label className="field admin-tag-create-field">
+          <span>New tag</span>
           <input name="public_label" required />
         </label>
-        <button disabled={isSubmitting} type="submit">
-          {isSubmitting ? "Creating" : "Create tag"}
+        <button
+          aria-label="Create tag"
+          className="admin-primary-button"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          {isSubmitting ? "Creating" : "Create"}
         </button>
       </form>
       {isLoading ? (
@@ -2622,49 +2631,83 @@ function TagManagerContent({
       ) : null}
       {tags.length > 0 ? (
         <div className="admin-list admin-tag-list">
-          {tags.map((tag) => (
-            <form
-              className="admin-list-row admin-tag-row"
-              key={tag.id}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleUpdate(tag, event.currentTarget);
-              }}
-            >
-              <label className="field">
-                <span>Edit {tag.public_label}</span>
-                <input
-                  aria-label={`Edit ${tag.public_label}`}
-                  defaultValue={tag.public_label}
-                  name={`tag-${tag.id}`}
-                  required
-                />
-              </label>
-              <span className="admin-table-code">{tag.slug}</span>
-              <div className="admin-row-actions">
-                <button className="admin-quiet-button" type="submit">
-                  Save {tag.public_label}
-                </button>
-                {pendingDeleteTagId === tag.id ? (
+          {tags.map((tag) => {
+            const isTagSubmitting = submittingTagId === tag.id;
+            const isConfirmingDelete = pendingDeleteTagId === tag.id;
+
+            return (
+              <form
+                aria-busy={isTagSubmitting}
+                aria-label={`Edit tag ${tag.public_label}`}
+                className="admin-list-row admin-tag-row"
+                key={tag.id}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleUpdate(tag, event.currentTarget);
+                }}
+              >
+                <label className="field admin-tag-name-field">
+                  <span>Name</span>
+                  <input
+                    aria-label={`Tag name for ${tag.public_label}`}
+                    defaultValue={tag.public_label}
+                    disabled={isTagSubmitting}
+                    name={`tag-${tag.id}`}
+                    required
+                  />
+                </label>
+                <span
+                  aria-label={`Slug ${tag.slug}`}
+                  className="admin-tag-slug"
+                >
+                  <span>Slug</span>
+                  <code>{tag.slug}</code>
+                </span>
+                <div className="admin-row-actions admin-tag-row-actions">
                   <button
-                    className="admin-danger-button"
-                    onClick={() => void handleDelete(tag)}
-                    type="button"
-                  >
-                    Confirm delete {tag.public_label}
-                  </button>
-                ) : (
-                  <button
+                    aria-label={`Save ${tag.public_label}`}
                     className="admin-quiet-button"
-                    onClick={() => setPendingDeleteTagId(tag.id)}
-                    type="button"
+                    disabled={isTagSubmitting}
+                    type="submit"
                   >
-                    Delete {tag.public_label}
+                    {isTagSubmitting ? "Saving" : "Save"}
                   </button>
-                )}
-              </div>
-            </form>
-          ))}
+                  {isConfirmingDelete ? (
+                    <>
+                      <button
+                        aria-label={`Confirm delete ${tag.public_label}`}
+                        className="admin-danger-button"
+                        disabled={isTagSubmitting}
+                        onClick={() => void handleDelete(tag)}
+                        type="button"
+                      >
+                        {isTagSubmitting ? "Deleting" : "Confirm"}
+                      </button>
+                      <button
+                        aria-label={`Cancel delete ${tag.public_label}`}
+                        className="admin-secondary-button admin-tag-cancel-button"
+                        disabled={isTagSubmitting}
+                        onClick={() => setPendingDeleteTagId(null)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      aria-label={`Delete ${tag.public_label}`}
+                      className="admin-quiet-button"
+                      disabled={isTagSubmitting}
+                      onClick={() => setPendingDeleteTagId(tag.id)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </form>
+            );
+          })}
         </div>
       ) : null}
     </section>
@@ -3122,11 +3165,13 @@ function VisualMatrixSection({
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedSourcePhotoFileName, setSelectedSourcePhotoFileName] =
+    useState<string | null>(null);
 
   // RU: Эти значения выбирают окно для добавления, изменения или фото.
   // FR: Ces valeurs choisissent la fenetre pour ajouter, changer ou envoyer une photo.
   const [activeColumnDrawerMode, setActiveColumnDrawerMode] = useState<
-    "add" | "edit" | "source_photo" | null
+    "add" | "edit" | null
   >(null);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [pendingDeleteColumnId, setPendingDeleteColumnId] = useState<
@@ -3145,9 +3190,12 @@ function VisualMatrixSection({
   // RU: Это действие открывает центральное окно для колонки.
   // FR: Cette action ouvre la fenetre centrale pour une colonne.
   function openColumnDrawer(
-    mode: "add" | "edit" | "source_photo",
+    mode: "add" | "edit",
     column?: AdminCatalogVisualMatrixColumn,
   ) {
+    setErrorMessage(null);
+    setUploadInfoMessage(null);
+    setSelectedSourcePhotoFileName(null);
     setActiveColumnDrawerMode(mode);
     setActiveColumnId(column?.id ?? null);
   }
@@ -3155,6 +3203,8 @@ function VisualMatrixSection({
   // RU: Это действие прячет центральное окно Visual matrix.
   // FR: Cette action cache la fenetre centrale de Visual matrix.
   function closeColumnDrawer() {
+    setErrorMessage(null);
+    setSelectedSourcePhotoFileName(null);
     setActiveColumnDrawerMode(null);
     setActiveColumnId(null);
   }
@@ -3185,32 +3235,91 @@ function VisualMatrixSection({
     }
   }
 
-  // RU: Это действие сохраняет изменения выбранной колонки.
-  // FR: Cette action garde les changements de la colonne choisie.
-  async function handleUpdate(
+  async function uploadSourcePhoto(
+    column: AdminCatalogVisualMatrixColumn,
+    originalFabricId: string,
+    file: File,
+  ) {
+    const preparedUpload = await prepareAdminImageUploadFile({
+      file,
+      purpose: "sofa_source_photo",
+    });
+    const uploadFile = preparedUpload.file;
+
+    if (preparedUpload.message) {
+      setUploadInfoMessage(preparedUpload.message);
+    }
+
+    const upload = await dependencies.createUpload(accessToken, {
+      byte_size: uploadFile.size,
+      content_type: uploadFile.type,
+      original_fabric_id: originalFabricId,
+      purpose: "sofa_source_photo",
+      sofa_id: sofaId,
+      visual_matrix_column_id: column.id,
+    });
+    await dependencies.uploadToSignedUrl(upload, uploadFile);
+    await dependencies.completeUpload(accessToken, upload.upload_id);
+  }
+
+  // Saves column metadata and an optional replacement source image together.
+  async function handleSaveColumn(
     column: AdminCatalogVisualMatrixColumn,
     form: HTMLFormElement,
   ) {
     setErrorMessage(null);
+    setUploadInfoMessage(null);
+    setIsSubmitting(true);
     const formData = new FormData(form);
+    const originalFabricId = String(
+      formData.get(`source_fabric_${column.id}`) ?? "",
+    );
+    const currentOriginalFabricId =
+      column.current_source_photo?.original_fabric_id ?? "";
+    const file = readFileField(form, formData, `source_photo_${column.id}`);
+    const sourceFabricChanged = originalFabricId !== currentOriginalFabricId;
+
+    if (!originalFabricId && (file || column.current_source_photo)) {
+      setErrorMessage("Choose a source fabric before saving this source image.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!file && sourceFabricChanged && !column.current_source_photo) {
+      setErrorMessage(
+        "Upload a source image before assigning a source fabric to this view column.",
+      );
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       await dependencies.updateVisualMatrixColumn(accessToken, column.id, {
         admin_label: nullableFormString(formData, `admin_label_${column.id}`),
         public_label: nullableFormString(formData, `public_label_${column.id}`),
         sequence: Number(formData.get(`sequence_${column.id}`)),
+        ...(!file && sourceFabricChanged
+          ? { source_original_fabric_id: originalFabricId }
+          : {}),
       });
+
+      if (file && originalFabricId) {
+        await uploadSourcePhoto(column, originalFabricId, file);
+      }
+
       closeColumnDrawer();
       await onRefresh();
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  // RU: Это действие удаляет выбранную колонку после подтверждения.
-  // FR: Cette action supprime la colonne choisie apres confirmation.
+  // Deletes the selected view column after confirmation.
   async function handleDelete(column: AdminCatalogVisualMatrixColumn) {
     setErrorMessage(null);
+    setIsSubmitting(true);
 
     try {
       await dependencies.deleteVisualMatrixColumn(accessToken, column.id);
@@ -3218,60 +3327,21 @@ function VisualMatrixSection({
       await onRefresh();
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  // RU: Это действие отправляет исходное фото и может уменьшить большое фото перед отправкой.
-  // FR: Cette action envoie la photo source et peut reduire une grande image avant l'envoi.
-  async function handleSourcePhotoUpload(
-    column: AdminCatalogVisualMatrixColumn,
-    form: HTMLFormElement,
-  ) {
-    setErrorMessage(null);
-    setUploadInfoMessage(null);
-    const formData = new FormData(form);
-    const originalFabricId = String(formData.get(`source_fabric_${column.id}`));
-    const file = readFileField(form, formData, `source_photo_${column.id}`);
+  function getOriginalFabricAssignment(column: AdminCatalogVisualMatrixColumn) {
+    const originalFabricId = column.current_source_photo?.original_fabric_id;
 
-    if (!file) {
-      setErrorMessage("SOURCE_PHOTO_REQUIRED");
-      return;
-    }
-
-    try {
-      const preparedUpload = await prepareAdminImageUploadFile({
-        file,
-        purpose: "sofa_source_photo",
-      });
-      const uploadFile = preparedUpload.file;
-
-      if (preparedUpload.message) {
-        setUploadInfoMessage(preparedUpload.message);
-      }
-
-      const upload = await dependencies.createUpload(accessToken, {
-        byte_size: uploadFile.size,
-        content_type: uploadFile.type,
-        original_fabric_id: originalFabricId,
-        purpose: "sofa_source_photo",
-        sofa_id: sofaId,
-        visual_matrix_column_id: column.id,
-      });
-      await dependencies.uploadToSignedUrl(upload, uploadFile);
-      await dependencies.completeUpload(accessToken, upload.upload_id);
-      form.reset();
-      closeColumnDrawer();
-      await onRefresh();
-    } catch (error) {
-      setErrorMessage(readErrorMessage(error));
-    }
+    return sofaFabrics.find(
+      (sofaFabric) => sofaFabric.fabric_id === originalFabricId,
+    );
   }
 
   function getOriginalFabricName(column: AdminCatalogVisualMatrixColumn) {
-    const originalFabricId = column.current_source_photo?.original_fabric_id;
-    const assignment = sofaFabrics.find(
-      (sofaFabric) => sofaFabric.fabric_id === originalFabricId,
-    );
+    const assignment = getOriginalFabricAssignment(column);
 
     return (
       assignment?.fabric?.public_name ??
@@ -3279,6 +3349,18 @@ function VisualMatrixSection({
       "No original fabric"
     );
   }
+
+  const activeOriginalFabricAssignment = activeColumn
+    ? getOriginalFabricAssignment(activeColumn)
+    : null;
+  const activeOriginalFabric = activeOriginalFabricAssignment?.fabric ?? null;
+  const activeOriginalFabricName = activeColumn
+    ? getOriginalFabricName(activeColumn)
+    : "No original fabric";
+  const activeSourcePhotoPreviewUrl =
+    activeColumn?.current_source_photo?.preview_url ?? null;
+  const shouldShowSectionFeedback =
+    !activeColumnDrawerMode && !pendingDeleteColumnId;
 
   return (
     <section
@@ -3288,21 +3370,21 @@ function VisualMatrixSection({
     >
       <SectionStepHeading
         headingId="visual-matrix-title"
-        title="Visual matrix"
+        title="View columns"
       />
-      {errorMessage ? (
+      {shouldShowSectionFeedback && errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {uploadInfoMessage ? (
+      {shouldShowSectionFeedback && uploadInfoMessage ? (
         <p className="form-info" role="status">
           {uploadInfoMessage}
         </p>
       ) : null}
       <div className="admin-visual-matrix-toolbar">
         <div>
-          <h3>Visual matrix columns</h3>
+          <h3>View columns</h3>
           <p>Configures positions. Renders shows coverage.</p>
         </div>
         <button
@@ -3317,19 +3399,31 @@ function VisualMatrixSection({
       {columns.length > 0 ? (
         <div className="admin-visual-matrix-list">
           {columns.map((column) => {
+            const originalFabricAssignment = getOriginalFabricAssignment(column);
+            const originalFabric = originalFabricAssignment?.fabric ?? null;
             const originalFabricName = getOriginalFabricName(column);
             const sourcePhotoPreviewUrl =
               column.current_source_photo?.preview_url ?? null;
 
             return (
               <article className="admin-visual-matrix-row" key={column.id}>
-                <div className="admin-visual-matrix-preview" aria-hidden="true">
+                <button
+                  aria-label={`Edit source image column ${column.sequence}`}
+                  className="admin-visual-matrix-source-preview admin-visual-matrix-source-button"
+                  onClick={() => openColumnDrawer("edit", column)}
+                  type="button"
+                >
                   {sourcePhotoPreviewUrl ? (
                     <img alt="" src={sourcePhotoPreviewUrl} />
                   ) : (
-                    <span>No source</span>
+                    <span className="admin-visual-matrix-source-empty">
+                      Upload
+                    </span>
                   )}
-                </div>
+                  <span className="admin-visual-matrix-source-action">
+                    {sourcePhotoPreviewUrl ? "Edit" : "Upload"}
+                  </span>
+                </button>
                 <div className="admin-visual-matrix-copy">
                   <span className="admin-visual-matrix-kicker">
                     Position {String(column.sequence).padStart(2, "0")}
@@ -3339,19 +3433,20 @@ function VisualMatrixSection({
                   </strong>
                   <span>{column.admin_label ?? "No admin label"}</span>
                 </div>
-                <div className="admin-visual-matrix-meta">
-                  <span>
-                    <span>Status</span>
-                    <strong>
-                      {column.current_source_photo
-                        ? "Source ready"
-                        : "Source missing"}
-                    </strong>
-                  </span>
-                  <span>
-                    <span>Source fabric</span>
-                    <strong>{originalFabricName}</strong>
-                  </span>
+                <div
+                  aria-label={`Source fabric ${originalFabricName}`}
+                  className="admin-visual-matrix-fabric-preview"
+                >
+                  {originalFabric?.swatch_preview_url ? (
+                    <img
+                      alt={`Swatch for ${originalFabricName}`}
+                      src={originalFabric.swatch_preview_url}
+                    />
+                  ) : (
+                    <span>
+                      {originalFabric ? "No swatch" : "No fabric"}
+                    </span>
+                  )}
                 </div>
                 <div className="admin-visual-matrix-actions admin-visual-matrix-action-bar">
                   <button
@@ -3361,28 +3456,6 @@ function VisualMatrixSection({
                     type="button"
                   >
                     Edit
-                  </button>
-                  <button
-                    aria-label={
-                      column.current_source_photo
-                        ? `Replace source photo ${column.sequence}`
-                        : `Add source photo ${column.sequence}`
-                    }
-                    className="admin-secondary-button admin-visual-matrix-action-button"
-                    onClick={() => openColumnDrawer("source_photo", column)}
-                    type="button"
-                  >
-                    {column.current_source_photo
-                      ? "Replace source"
-                      : "Add source"}
-                  </button>
-                  <button
-                    aria-label={`Delete column ${column.sequence}`}
-                    className="admin-danger-button admin-visual-matrix-action-button"
-                    onClick={() => setPendingDeleteColumnId(column.id)}
-                    type="button"
-                  >
-                    Delete
                   </button>
                 </div>
               </article>
@@ -3395,17 +3468,19 @@ function VisualMatrixSection({
           <div
             aria-label="Add column"
             aria-modal="true"
+            aria-busy={isSubmitting}
             className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
             role="dialog"
           >
             <header className="admin-render-cell-sheet-header">
               <div>
-                <p className="eyebrow">Visual matrix</p>
+                <p className="eyebrow">View columns</p>
                 <h3>Add column</h3>
               </div>
               <button
-                aria-label="Close Visual matrix dialog"
+                aria-label="Close View columns dialog"
                 className="admin-quiet-button admin-render-cell-close-button"
+                disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
@@ -3413,30 +3488,37 @@ function VisualMatrixSection({
               </button>
             </header>
             <form
+              aria-busy={isSubmitting}
               className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
               onSubmit={handleCreate}
             >
-              <label className="field">
-                <span>Sequence</span>
-                <input min="1" name="sequence" required type="number" />
-              </label>
-              <label className="field">
-                <span>Admin label</span>
-                <input name="admin_label" />
-              </label>
-              <label className="field">
-                <span>Public label</span>
-                <input name="public_label" />
-              </label>
-              <div className="admin-actions">
-                <button
-                  className="admin-primary-button"
-                  disabled={isSubmitting}
-                  type="submit"
-                >
-                  Add column
-                </button>
-              </div>
+              {errorMessage ? (
+                <p className="form-error admin-dialog-feedback" role="alert">
+                  {errorMessage}
+                </p>
+              ) : null}
+              <fieldset
+                className="admin-view-column-fieldset"
+                disabled={isSubmitting}
+              >
+                <label className="field">
+                  <span>Order</span>
+                  <input min="1" name="sequence" required type="number" />
+                </label>
+                <label className="field">
+                  <span>Admin label</span>
+                  <input name="admin_label" />
+                </label>
+                <label className="field">
+                  <span>Public label</span>
+                  <input name="public_label" />
+                </label>
+                <div className="admin-actions">
+                  <button className="admin-primary-button" type="submit">
+                    {isSubmitting ? "Adding" : "Add column"}
+                  </button>
+                </div>
+              </fieldset>
             </form>
           </div>
         </div>
@@ -3446,82 +3528,23 @@ function VisualMatrixSection({
           <div
             aria-label={`Edit column ${activeColumn.sequence}`}
             aria-modal="true"
+            aria-busy={isSubmitting}
             className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
             role="dialog"
           >
             <header className="admin-render-cell-sheet-header">
               <div>
-                <p className="eyebrow">Visual matrix</p>
+                <p className="eyebrow">View columns</p>
                 <h3>Edit column {activeColumn.sequence}</h3>
-              </div>
-              <button
-                aria-label="Close Visual matrix dialog"
-                className="admin-quiet-button admin-render-cell-close-button"
-                onClick={closeColumnDrawer}
-                type="button"
-              >
-                Close
-              </button>
-            </header>
-            <form
-              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleUpdate(activeColumn, event.currentTarget);
-              }}
-            >
-              <label className="field">
-                <span>Sequence {activeColumn.sequence}</span>
-                <input
-                  defaultValue={activeColumn.sequence}
-                  min="1"
-                  name={`sequence_${activeColumn.id}`}
-                  type="number"
-                />
-              </label>
-              <label className="field">
-                <span>Admin label {activeColumn.sequence}</span>
-                <input
-                  defaultValue={activeColumn.admin_label ?? ""}
-                  name={`admin_label_${activeColumn.id}`}
-                />
-              </label>
-              <label className="field">
-                <span>Public label {activeColumn.sequence}</span>
-                <input
-                  defaultValue={activeColumn.public_label ?? ""}
-                  name={`public_label_${activeColumn.id}`}
-                />
-              </label>
-              <div className="admin-actions">
-                <button className="admin-primary-button" type="submit">
-                  Save column
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-      {activeColumnDrawerMode === "source_photo" && activeColumn ? (
-        <div className="admin-dialog-scrim admin-render-workbench-scrim">
-          <div
-            aria-label={`Source photo column ${activeColumn.sequence}`}
-            aria-modal="true"
-            className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
-            role="dialog"
-          >
-            <header className="admin-render-cell-sheet-header">
-              <div>
-                <p className="eyebrow">Visual matrix</p>
-                <h3>Source photo {activeColumn.sequence}</h3>
                 <p className="admin-muted">
                   {activeColumn.public_label ??
                     `Column ${activeColumn.sequence}`}
                 </p>
               </div>
               <button
-                aria-label="Close Visual matrix dialog"
+                aria-label="Close View columns dialog"
                 className="admin-quiet-button admin-render-cell-close-button"
+                disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
@@ -3529,39 +3552,146 @@ function VisualMatrixSection({
               </button>
             </header>
             <form
-              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form"
+              aria-busy={isSubmitting}
+              className="admin-inline-form admin-inline-form-wide admin-visual-matrix-dialog-form admin-view-column-editor-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                void handleSourcePhotoUpload(activeColumn, event.currentTarget);
+                void handleSaveColumn(activeColumn, event.currentTarget);
               }}
             >
-              <label className="field">
-                <span>Original fabric {activeColumn.sequence}</span>
-                <select name={`source_fabric_${activeColumn.id}`} required>
-                  <option value="">Select fabric</option>
-                  {sofaFabrics.map((assignment) => (
-                    <option
-                      key={assignment.fabric_id}
-                      value={assignment.fabric_id}
-                    >
-                      {assignment.fabric?.internal_name ?? assignment.fabric_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Source photo {activeColumn.sequence}</span>
-                <input
-                  accept="image/png,image/jpeg,image/webp"
-                  name={`source_photo_${activeColumn.id}`}
-                  type="file"
-                />
-              </label>
-              <div className="admin-actions">
-                <button className="admin-primary-button" type="submit">
-                  Upload source {activeColumn.sequence}
-                </button>
-              </div>
+              {errorMessage ? (
+                <p className="form-error admin-dialog-feedback" role="alert">
+                  {errorMessage}
+                </p>
+              ) : null}
+              {uploadInfoMessage ? (
+                <p className="form-info admin-dialog-feedback" role="status">
+                  {uploadInfoMessage}
+                </p>
+              ) : null}
+              <fieldset
+                className="admin-view-column-fieldset"
+                disabled={isSubmitting}
+              >
+                <div className="admin-view-column-editor-layout">
+                  <div className="admin-view-column-media-panel">
+                    <div className="admin-view-column-editor-media">
+                      <label className="admin-view-column-source-preview admin-view-column-source-upload">
+                        <span className="admin-view-column-source-frame">
+                          {activeSourcePhotoPreviewUrl ? (
+                            <img alt="" src={activeSourcePhotoPreviewUrl} />
+                          ) : (
+                            <span>No source image</span>
+                          )}
+                        </span>
+                        <span className="admin-view-column-source-action">
+                          <strong>
+                            {activeSourcePhotoPreviewUrl
+                              ? "Edit image"
+                              : "Upload image"}
+                          </strong>
+                          <small>
+                            {selectedSourcePhotoFileName ?? "PNG, JPG, WEBP"}
+                          </small>
+                        </span>
+                        <input
+                          accept="image/png,image/jpeg,image/webp"
+                          aria-label={`Source photo ${activeColumn.sequence}`}
+                          className="admin-view-column-file-input"
+                          name={`source_photo_${activeColumn.id}`}
+                          onChange={(event) => {
+                            setSelectedSourcePhotoFileName(
+                              event.currentTarget.files?.[0]?.name ?? null,
+                            );
+                          }}
+                          type="file"
+                        />
+                      </label>
+                      <div
+                        aria-label={`Current source fabric ${activeOriginalFabricName}`}
+                        className="admin-view-column-fabric-preview"
+                      >
+                        {activeOriginalFabric?.swatch_preview_url ? (
+                          <img
+                            alt={`Swatch for ${activeOriginalFabricName}`}
+                            src={activeOriginalFabric.swatch_preview_url}
+                          />
+                        ) : (
+                          <span>
+                            {activeOriginalFabric ? "No swatch" : "No fabric"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className="admin-view-column-fields"
+                    aria-label={`Column ${activeColumn.sequence} settings`}
+                  >
+                    <label className="field">
+                      <span>Order {activeColumn.sequence}</span>
+                      <input
+                        defaultValue={activeColumn.sequence}
+                        min="1"
+                        name={`sequence_${activeColumn.id}`}
+                        type="number"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Public label {activeColumn.sequence}</span>
+                      <input
+                        defaultValue={activeColumn.public_label ?? ""}
+                        name={`public_label_${activeColumn.id}`}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Admin label {activeColumn.sequence}</span>
+                      <input
+                        defaultValue={activeColumn.admin_label ?? ""}
+                        name={`admin_label_${activeColumn.id}`}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Source fabric {activeColumn.sequence}</span>
+                      <select
+                        defaultValue={
+                          activeColumn.current_source_photo
+                            ?.original_fabric_id ?? ""
+                        }
+                        name={`source_fabric_${activeColumn.id}`}
+                      >
+                        <option value="">Select fabric</option>
+                        {sofaFabrics.map((assignment) => (
+                          <option
+                            key={assignment.fabric_id}
+                            value={assignment.fabric_id}
+                          >
+                            {assignment.fabric?.internal_name ??
+                              assignment.fabric_id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div
+                  className="admin-actions admin-view-column-editor-actions"
+                >
+                  <button className="admin-primary-button" type="submit">
+                    {isSubmitting ? "Saving" : "Save"}
+                  </button>
+                  <button
+                    className="admin-danger-button"
+                    onClick={() => {
+                      closeColumnDrawer();
+                      setPendingDeleteColumnId(activeColumn.id);
+                    }}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </fieldset>
             </form>
           </div>
         </div>
@@ -3571,21 +3701,31 @@ function VisualMatrixSection({
           <div
             aria-label={`Delete column ${pendingDeleteColumn.sequence}`}
             aria-modal="true"
+            aria-busy={isSubmitting}
             className="admin-alert-dialog"
             role="alertdialog"
           >
             <h3>Delete column {pendingDeleteColumn.sequence}</h3>
             <p>Deleting this column affects all fabrics for this sofa.</p>
+            {errorMessage ? (
+              <p className="form-error admin-dialog-feedback" role="alert">
+                {errorMessage}
+              </p>
+            ) : null}
             <div className="admin-actions">
               <button
                 className="admin-danger-button"
+                disabled={isSubmitting}
                 onClick={() => void handleDelete(pendingDeleteColumn)}
                 type="button"
               >
-                Confirm delete column {pendingDeleteColumn.sequence}
+                {isSubmitting
+                  ? "Deleting"
+                  : `Confirm delete column ${pendingDeleteColumn.sequence}`}
               </button>
               <button
                 className="admin-secondary-button"
+                disabled={isSubmitting}
                 onClick={() => setPendingDeleteColumnId(null)}
                 type="button"
               >

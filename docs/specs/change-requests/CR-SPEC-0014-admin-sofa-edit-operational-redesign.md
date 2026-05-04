@@ -1,7 +1,7 @@
 # CR-SPEC-0014 Admin Sofa Edit Operational Redesign
 
 Spec: SPEC-0014
-Status: draft
+Status: accepted
 Layer: feature
 Parent Spec: SPEC-0014
 Depends On: SPEC-0003, SPEC-0005, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0013, SPEC-0014
@@ -98,6 +98,23 @@ Checkboxes should use the admin visual system rather than browser-default stylin
 Mobile must not be a squeezed desktop table. Actions should avoid stacked button clusters, horizontal overflow as the primary pattern, and cramped drawers. Touch targets should remain at least 44px high.
 
 ## Target Experience
+
+### Admin-Facing Workflow Wording
+
+`SPEC-0014` originally used the internal workflow labels `Fabrics` and
+`Visual matrix`. The operational redesign changes the administrator-facing
+labels while preserving the underlying domain concepts:
+
+- `Fabrics` becomes `Fabric lines`.
+- `Visual matrix` becomes `View Columns`.
+
+The copy should make the row/column relationship clear to the administrator:
+fabric lines are the fabric dimension, and view columns are the visual-position
+dimension used by render coverage.
+
+Technical code, database objects, and API contracts may continue to use
+`visual_matrix` naming where that is already established. The wording change is
+for the protected admin UI and related tests/docs only.
 
 ### Header And Workflow Navigation
 
@@ -323,3 +340,10 @@ Implementation plans must add or update tests for:
 - Should the workflow navigation include an explicit next recommended task, or should that live only in each tab summary?
 - Should the export area become part of Renders immediately, or should a dedicated Assets/Exports tab be introduced only after more export workflows exist?
 - Should fabric ordering remain numeric for this phase, or should the UI introduce a compact reorder control while keeping the same persisted order field?
+
+## Approval Note
+
+Accepted for `PLAN-0052` after manual admin sofa edit review confirmed that the
+page needed an operational redesign, admin-facing wording updates, and visual
+system harmonization while preserving the existing data model, API boundary, and
+worker behavior.

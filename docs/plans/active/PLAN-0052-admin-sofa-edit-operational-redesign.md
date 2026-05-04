@@ -167,7 +167,7 @@ workbench structure proves correct in browser QA.
 
 ### 5. Visual Matrix
 
-- [ ] Redesign visual position rows with source-photo state and original fabric context.
+- [x] Redesign visual position rows with source-photo state and original fabric context.
 - [x] Replace row button clusters with row-open/detail behavior plus secondary or overflow actions.
 - [x] Align mobile Visual Matrix row actions into one compact action bar so Edit, source, and Delete stay visually ordered.
 - [x] Improve source-photo drawer or sheet layout by opening Visual Matrix add, edit, and source-photo flows in the same centered workbench pattern as Renders, with the same top-right Close action instead of form-level Cancel buttons and desktop action buttons aligned with the input row.
@@ -214,6 +214,13 @@ workbench structure proves correct in browser QA.
 - Do not expose private storage paths while moving export UI.
 - Keep the page operational, dense, and restrained; avoid decorative card layouts.
 - Keep cards at 8px radius or less and avoid cards inside cards.
+- Checkpoint commit `6792164` captures the sofa edit UX refinement slice:
+  workflow tab wording, View Columns rows and edit workbench, tag-row
+  simplification, transparent action buttons, and no-upload source fabric
+  reassignment in the UI.
+- `PLAN-0059` owns the follow-up consistency hardening for source fabric
+  reassignment so the checkpoint behavior is backed by a transaction-safe data
+  mutation before merge.
 
 ## Acceptance Criteria
 

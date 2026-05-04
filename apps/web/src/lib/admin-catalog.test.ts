@@ -420,12 +420,26 @@ describe("admin catalog validation", () => {
     expect(
       validateVisualMatrixColumnPatchPayload({
         admin_label: "  Front  ",
+        source_original_fabric_id: fabricRecord.id,
       }),
     ).toEqual({
       ok: true,
       value: {
         admin_label: "Front",
+        source_original_fabric_id: fabricRecord.id,
       },
+    });
+    expect(
+      validateVisualMatrixColumnCreatePayload({
+        sequence: 1,
+        source_original_fabric_id: fabricRecord.id,
+      }),
+    ).toMatchObject({
+      error: {
+        code: "UNSUPPORTED_FIELD",
+      },
+      ok: false,
+      status: 400,
     });
     expect(
       validateVisualMatrixColumnCreatePayload({
