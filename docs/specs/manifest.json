@@ -199,7 +199,15 @@
       "layer": "feature",
       "parent": "SPEC-0013",
       "dependsOn": ["SPEC-0005", "SPEC-0006", "SPEC-0009", "SPEC-0010", "SPEC-0011", "SPEC-0013"],
-      "implementationPlans": ["PLAN-0035", "PLAN-0045", "PLAN-0046", "PLAN-0047", "PLAN-0048"],
+      "implementationPlans": [
+        "PLAN-0035",
+        "PLAN-0045",
+        "PLAN-0046",
+        "PLAN-0047",
+        "PLAN-0048",
+        "PLAN-0052",
+        "PLAN-0059"
+      ],
       "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
       "areas": ["web", "api"]
     },
