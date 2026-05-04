@@ -2044,7 +2044,9 @@ function SofaEditContent({
       return {
         ...currentCoverage,
         render_cells: currentCoverage.render_cells.map((cell) =>
-          cell.id === nextCell.id ? nextCell : cell,
+          cell.id === nextCell.id
+            ? mergeManualRenderCellChange(cell, nextCell)
+            : cell,
         ),
       };
     });
@@ -3891,6 +3893,25 @@ function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {
   );
 }
 
+function mergeManualRenderCellChange(
+  currentCell: AdminCatalogRenderCell,
+  nextCell: AdminCatalogRenderCell,
+): AdminCatalogRenderCell {
+  if (nextCell.source_type !== "manual_upload") {
+    return nextCell;
+  }
+
+  return {
+    ...nextCell,
+    can_generate_initial:
+      currentCell.can_generate_initial || nextCell.can_generate_initial,
+    candidate_count: Math.max(
+      currentCell.candidate_count,
+      nextCell.candidate_count,
+    ),
+  };
+}
+
 function isTerminalFabricRenderJobStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
 }
@@ -4277,6 +4298,21 @@ function RenderCoverageSection({
       setActiveCellId(null);
     }
   }
+
+  // RU: Этот автоматический блок открывает готовые варианты, если пустая ячейка стала ячейкой с вариантами.
+  // FR: Ce bloc automatique ouvre les options pretes si une case vide devient une case avec options.
+  useEffect(() => {
+    if (
+      !selectedCell ||
+      selectedStatus !== "candidate" ||
+      reviewCellId === selectedCell.id ||
+      activeCellId === selectedCell.id
+    ) {
+      return;
+    }
+
+    void handleReviewCandidates(selectedCell);
+  }, [activeCellId, reviewCellId, selectedCell, selectedStatus]);
 
   async function handleResumeQueuedJobs() {
     if (!coverage) {
