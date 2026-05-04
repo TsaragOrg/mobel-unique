@@ -1,0 +1,72 @@
+name: Supabase DEV Catalog Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_path:
+        description: Committed SQL snapshot path to apply to Supabase DEV.
+        required: true
+        default: supabase/catalog-snapshots/dev/catalog-data.sql
+      confirm:
+        description: Type REPLACE_DEV_CATALOG to apply the snapshot.
+        required: true
+      dry_run:
+        description: Validate the snapshot without applying it.
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  apply-dev-catalog-snapshot:
+    name: Apply Supabase DEV Catalog Snapshot
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_ID }}
+      SNAPSHOT_PATH: ${{ inputs.snapshot_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate DEV catalog snapshot request
+        run: |
+          test "${GITHUB_REF_NAME}" = "dev"
+          test "${{ inputs.confirm }}" = "REPLACE_DEV_CATALOG"
+          test -n "${SUPABASE_ACCESS_TOKEN}"
+          test -n "${SUPABASE_DB_PASSWORD}"
+          test -n "${SUPABASE_PROJECT_REF}"
+          case "${SNAPSHOT_PATH}" in
+            supabase/catalog-snapshots/dev/*.sql) ;;
+            *) echo "Snapshot path must stay under supabase/catalog-snapshots/dev/*.sql"; exit 1 ;;
+          esac
+          test -f "${SNAPSHOT_PATH}"
+          node scripts/validate-dev-catalog-snapshot.mjs "${SNAPSHOT_PATH}"
+
+      - name: Stop before apply for dry run
+        if: ${{ inputs.dry_run }}
+        run: echo "Dry run complete. Snapshot was validated and was not applied."
+
+      - name: Link Supabase DEV project
+        if: ${{ !inputs.dry_run }}
+        run: pnpm exec supabase link --project-ref "${SUPABASE_PROJECT_REF}" --password "${SUPABASE_DB_PASSWORD}" --yes
+
+      - name: Apply catalog snapshot to Supabase DEV
+        if: ${{ !inputs.dry_run }}
+        run: pnpm exec supabase db query --linked --file "${SNAPSHOT_PATH}"
