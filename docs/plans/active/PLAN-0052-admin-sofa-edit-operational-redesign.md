@@ -172,6 +172,7 @@ workbench structure proves correct in browser QA.
 - [x] Align mobile Visual Matrix row actions into one compact action bar so Edit, source, and Delete stay visually ordered.
 - [x] Improve source-photo drawer or sheet layout by opening Visual Matrix add, edit, and source-photo flows in the same centered workbench pattern as Renders, with the same top-right Close action instead of form-level Cancel buttons and desktop action buttons aligned with the input row.
 - [x] Fix mobile spacing around add position and row actions.
+- [x] Show newly selected source image and source fabric previews immediately in the View Columns edit workbench before the admin saves.
 - [x] Update Visual Matrix tests.
 
 ### 6. Renders
@@ -221,6 +222,9 @@ workbench structure proves correct in browser QA.
 - `PLAN-0059` owns the follow-up consistency hardening for source fabric
   reassignment so the checkpoint behavior is backed by a transaction-safe data
   mutation before merge.
+- Follow-up fix: the View Columns edit workbench now keeps local preview state
+  for an unsaved source image upload and for the selected source fabric line, so
+  admins can confirm both choices before pressing Save.
 
 ## Acceptance Criteria
 

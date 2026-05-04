@@ -12,6 +12,7 @@ FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer un
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  type ChangeEvent,
   FormEvent,
   ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -1618,8 +1619,10 @@ function FabricCreateContent({
         requireFiles: true,
         swatchCrop: selectedSwatchCrop?.crop,
       });
-      const fabric = await dependencies.createFabric(accessToken, payload);
-      dependencies.navigate(`/admin/fabrics/${fabric.id}`);
+      await dependencies.createFabric(accessToken, payload);
+      // RU: После создания админ возвращается к списку тканей и видит новую запись там.
+      // FR: Apres la creation, l'admin revient a la liste des tissus et voit la nouvelle ligne.
+      dependencies.navigate("/admin/fabrics");
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -3167,8 +3170,19 @@ function VisualMatrixSection({
     null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // RU: Эти значения показывают файл и быстрый вид выбранного исходного фото.
+  // FR: Ces valeurs montrent le fichier et l'apercu rapide de la photo source choisie.
   const [selectedSourcePhotoFileName, setSelectedSourcePhotoFileName] =
     useState<string | null>(null);
+  const [selectedSourcePhotoPreviewUrl, setSelectedSourcePhotoPreviewUrl] =
+    useState<string | null>(null);
+
+  // RU: Это значение сразу меняет картинку ткани в окне изменения колонки.
+  // FR: Cette valeur change tout de suite l'image du tissu dans la fenetre de changement.
+  const [selectedSourceFabricId, setSelectedSourceFabricId] = useState<
+    string | null
+  >(null);
 
   // RU: Эти значения выбирают окно для добавления, изменения или фото.
   // FR: Ces valeurs choisissent la fenetre pour ajouter, changer ou envoyer une photo.
@@ -3189,6 +3203,16 @@ function VisualMatrixSection({
     ? columns.find((column) => column.id === pendingDeleteColumnId)
     : null;
 
+  // RU: Этот автоматический блок убирает быстрый адрес фото, когда он уже не нужен.
+  // FR: Ce bloc automatique retire l'adresse rapide de la photo quand elle n'est plus utile.
+  useEffect(() => {
+    return () => {
+      if (selectedSourcePhotoPreviewUrl && globalThis.URL?.revokeObjectURL) {
+        globalThis.URL.revokeObjectURL(selectedSourcePhotoPreviewUrl);
+      }
+    };
+  }, [selectedSourcePhotoPreviewUrl]);
+
   // RU: Это действие открывает центральное окно для колонки.
   // FR: Cette action ouvre la fenetre centrale pour une colonne.
   function openColumnDrawer(
@@ -3198,6 +3222,12 @@ function VisualMatrixSection({
     setErrorMessage(null);
     setUploadInfoMessage(null);
     setSelectedSourcePhotoFileName(null);
+    setSelectedSourcePhotoPreviewUrl(null);
+    setSelectedSourceFabricId(
+      mode === "edit"
+        ? (column?.current_source_photo?.original_fabric_id ?? "")
+        : null,
+    );
     setActiveColumnDrawerMode(mode);
     setActiveColumnId(column?.id ?? null);
   }
@@ -3207,6 +3237,8 @@ function VisualMatrixSection({
   function closeColumnDrawer() {
     setErrorMessage(null);
     setSelectedSourcePhotoFileName(null);
+    setSelectedSourcePhotoPreviewUrl(null);
+    setSelectedSourceFabricId(null);
     setActiveColumnDrawerMode(null);
     setActiveColumnId(null);
   }
@@ -3237,6 +3269,29 @@ function VisualMatrixSection({
     }
   }
 
+  // RU: Это действие запоминает выбранный файл и сразу показывает его в окне.
+  // FR: Cette action garde le fichier choisi et le montre tout de suite dans la fenetre.
+  function handleSourcePhotoFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0] ?? null;
+
+    setSelectedSourcePhotoFileName(file?.name ?? null);
+
+    if (!file || !globalThis.URL?.createObjectURL) {
+      setSelectedSourcePhotoPreviewUrl(null);
+      return;
+    }
+
+    setSelectedSourcePhotoPreviewUrl(globalThis.URL.createObjectURL(file));
+  }
+
+  // RU: Это действие сразу меняет выбранную ткань рядом с исходным фото.
+  // FR: Cette action change tout de suite le tissu choisi pres de la photo source.
+  function handleSourceFabricChange(event: ChangeEvent<HTMLSelectElement>) {
+    setSelectedSourceFabricId(event.currentTarget.value);
+  }
+
+  // RU: Это действие отправляет выбранное исходное фото после сохранения окна.
+  // FR: Cette action envoie la photo source choisie apres la sauvegarde de la fenetre.
   async function uploadSourcePhoto(
     column: AdminCatalogVisualMatrixColumn,
     originalFabricId: string,
@@ -3264,7 +3319,8 @@ function VisualMatrixSection({
     await dependencies.completeUpload(accessToken, upload.upload_id);
   }
 
-  // Saves column metadata and an optional replacement source image together.
+  // RU: Это действие сохраняет подписи колонки, порядок, ткань и новое исходное фото.
+  // FR: Cette action sauvegarde les textes, l'ordre, le tissu et la nouvelle photo source.
   async function handleSaveColumn(
     column: AdminCatalogVisualMatrixColumn,
     form: HTMLFormElement,
@@ -3282,7 +3338,9 @@ function VisualMatrixSection({
     const sourceFabricChanged = originalFabricId !== currentOriginalFabricId;
 
     if (!originalFabricId && (file || column.current_source_photo)) {
-      setErrorMessage("Choose a source fabric before saving this source image.");
+      setErrorMessage(
+        "Choose a source fabric before saving this source image.",
+      );
       setIsSubmitting(false);
       return;
     }
@@ -3318,7 +3376,8 @@ function VisualMatrixSection({
     }
   }
 
-  // Deletes the selected view column after confirmation.
+  // RU: Это действие удаляет выбранную колонку после подтверждения.
+  // FR: Cette action supprime la colonne choisie apres confirmation.
   async function handleDelete(column: AdminCatalogVisualMatrixColumn) {
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -3334,17 +3393,17 @@ function VisualMatrixSection({
     }
   }
 
+  function getFabricAssignmentById(fabricId?: string | null) {
+    return sofaFabrics.find((sofaFabric) => sofaFabric.fabric_id === fabricId);
+  }
+
   function getOriginalFabricAssignment(column: AdminCatalogVisualMatrixColumn) {
     const originalFabricId = column.current_source_photo?.original_fabric_id;
 
-    return sofaFabrics.find(
-      (sofaFabric) => sofaFabric.fabric_id === originalFabricId,
-    );
+    return getFabricAssignmentById(originalFabricId);
   }
 
-  function getOriginalFabricName(column: AdminCatalogVisualMatrixColumn) {
-    const assignment = getOriginalFabricAssignment(column);
-
+  function getFabricAssignmentName(assignment?: AdminCatalogSofaFabric | null) {
     return (
       assignment?.fabric?.public_name ??
       assignment?.fabric?.internal_name ??
@@ -3352,15 +3411,32 @@ function VisualMatrixSection({
     );
   }
 
+  function getOriginalFabricName(column: AdminCatalogVisualMatrixColumn) {
+    const assignment = getOriginalFabricAssignment(column);
+
+    return getFabricAssignmentName(assignment);
+  }
+
+  // RU: Эти данные показывают в окне выбранную ткань и исходное фото до сохранения.
+  // FR: Ces donnees montrent dans la fenetre le tissu choisi et la photo source avant la sauvegarde.
+  const activeSelectedSourceFabricId =
+    selectedSourceFabricId ??
+    activeColumn?.current_source_photo?.original_fabric_id ??
+    "";
   const activeOriginalFabricAssignment = activeColumn
-    ? getOriginalFabricAssignment(activeColumn)
+    ? getFabricAssignmentById(activeSelectedSourceFabricId)
     : null;
   const activeOriginalFabric = activeOriginalFabricAssignment?.fabric ?? null;
-  const activeOriginalFabricName = activeColumn
-    ? getOriginalFabricName(activeColumn)
-    : "No original fabric";
+  const activeOriginalFabricName = getFabricAssignmentName(
+    activeOriginalFabricAssignment,
+  );
   const activeSourcePhotoPreviewUrl =
-    activeColumn?.current_source_photo?.preview_url ?? null;
+    selectedSourcePhotoPreviewUrl ??
+    activeColumn?.current_source_photo?.preview_url ??
+    null;
+
+  // RU: Это значение решает, где показывать сообщение: в окне или над списком.
+  // FR: Cette valeur decide ou montrer le message: dans la fenetre ou au-dessus de la liste.
   const shouldShowSectionFeedback =
     !activeColumnDrawerMode && !pendingDeleteColumnId;
 
@@ -3401,7 +3477,8 @@ function VisualMatrixSection({
       {columns.length > 0 ? (
         <div className="admin-visual-matrix-list">
           {columns.map((column) => {
-            const originalFabricAssignment = getOriginalFabricAssignment(column);
+            const originalFabricAssignment =
+              getOriginalFabricAssignment(column);
             const originalFabric = originalFabricAssignment?.fabric ?? null;
             const originalFabricName = getOriginalFabricName(column);
             const sourcePhotoPreviewUrl =
@@ -3445,9 +3522,7 @@ function VisualMatrixSection({
                       src={originalFabric.swatch_preview_url}
                     />
                   ) : (
-                    <span>
-                      {originalFabric ? "No swatch" : "No fabric"}
-                    </span>
+                    <span>{originalFabric ? "No swatch" : "No fabric"}</span>
                   )}
                 </div>
                 <div className="admin-visual-matrix-actions admin-visual-matrix-action-bar">
@@ -3601,11 +3676,7 @@ function VisualMatrixSection({
                           aria-label={`Source photo ${activeColumn.sequence}`}
                           className="admin-view-column-file-input"
                           name={`source_photo_${activeColumn.id}`}
-                          onChange={(event) => {
-                            setSelectedSourcePhotoFileName(
-                              event.currentTarget.files?.[0]?.name ?? null,
-                            );
-                          }}
+                          onChange={handleSourcePhotoFileChange}
                           type="file"
                         />
                       </label>
@@ -3656,10 +3727,8 @@ function VisualMatrixSection({
                     <label className="field">
                       <span>Source fabric {activeColumn.sequence}</span>
                       <select
-                        defaultValue={
-                          activeColumn.current_source_photo
-                            ?.original_fabric_id ?? ""
-                        }
+                        onChange={handleSourceFabricChange}
+                        value={activeSelectedSourceFabricId}
                         name={`source_fabric_${activeColumn.id}`}
                       >
                         <option value="">Select fabric</option>
@@ -3676,9 +3745,7 @@ function VisualMatrixSection({
                     </label>
                   </div>
                 </div>
-                <div
-                  className="admin-actions admin-view-column-editor-actions"
-                >
+                <div className="admin-actions admin-view-column-editor-actions">
                   <button className="admin-primary-button" type="submit">
                     {isSubmitting ? "Saving" : "Save"}
                   </button>
@@ -6004,9 +6071,7 @@ function FabricForm({
               <button
                 aria-live="polite"
                 className={`admin-secondary-button admin-swatch-save-button${
-                  isSwatchCropSaved
-                    ? " admin-swatch-save-button-saved"
-                    : ""
+                  isSwatchCropSaved ? " admin-swatch-save-button-saved" : ""
                 }`}
                 onClick={handleSaveSwatchCrop}
                 type="button"
