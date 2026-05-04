@@ -3959,6 +3959,118 @@ button:disabled {
   font-weight: 500;
 }
 
+.admin-tag-picker {
+  display: grid;
+  gap: 12px;
+  max-width: 680px;
+}
+
+.admin-selected-tags {
+  background: #f7f8f8;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.admin-tag-picker-label {
+  color: var(--admin-ink, #0b0b0b);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.admin-tag-picker-empty {
+  color: var(--admin-muted, #5b5b5b);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.admin-tag-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-tag-chip {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--admin-ink, #0b0b0b);
+  color: var(--admin-ink, #0b0b0b);
+  display: inline-flex;
+  font-size: 0.88rem;
+  font-weight: 650;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 5px 5px 11px;
+}
+
+.admin-app .admin-form .admin-tag-chip-remove {
+  background: #eceeed;
+  border: 0;
+  border-radius: 0;
+  color: var(--admin-ink, #0b0b0b);
+  display: inline-grid;
+  font-size: 1rem;
+  height: 24px;
+  line-height: 1;
+  min-height: 24px;
+  padding: 0;
+  place-items: center;
+  width: 24px;
+}
+
+.admin-app .admin-form .admin-tag-chip-remove:hover {
+  background: var(--admin-ink, #0b0b0b);
+  color: #ffffff;
+}
+
+.admin-tag-search-field {
+  max-width: 460px;
+}
+
+.admin-tag-results {
+  background: #ffffff;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  display: grid;
+  gap: 6px;
+  max-height: 244px;
+  max-width: 520px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.admin-app .admin-form .admin-tag-result {
+  align-items: start;
+  background: #f7f8f8;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--admin-ink, #0b0b0b);
+  display: grid;
+  gap: 2px;
+  justify-content: stretch;
+  min-height: 0;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: normal;
+  width: 100%;
+}
+
+.admin-app .admin-form .admin-tag-result:hover {
+  background: #ffffff;
+  border-color: var(--admin-ink, #0b0b0b);
+}
+
+.admin-tag-result-label {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.admin-tag-result-slug {
+  color: var(--admin-muted, #5b5b5b);
+  font-size: 0.78rem;
+}
+
 .admin-form-footer {
   border-top: 1px solid var(--admin-line, #dfdfdf);
   padding-top: 16px;

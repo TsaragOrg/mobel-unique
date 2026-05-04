@@ -52,6 +52,10 @@ type AdminPageState = "checking" | "forbidden" | "ready";
 // FR: Ce nombre fixe le plus grand zoom pour choisir l'echantillon de tissu.
 const FABRIC_SWATCH_ZOOM_MAX_PERCENT = 500;
 
+// RU: Это число ограничивает список найденных тегов, чтобы он не стал слишком длинным.
+// FR: Ce nombre limite la liste des etiquettes trouvees pour qu'elle reste courte.
+const TAG_SEARCH_RESULT_LIMIT = 8;
+
 export interface AdminCatalogTag {
   id: string;
   public_label: string;
@@ -6306,13 +6310,77 @@ function SofaForm({
   sofa?: AdminCatalogSofa;
   tags: AdminCatalogTag[];
 }) {
-  function handleTagToggle(tagId: string) {
-    if (selectedTagIds.includes(tagId)) {
-      onSelectedTagIdsChange(selectedTagIds.filter((id) => id !== tagId));
+  // RU: Это значение хранит текст, который админ пишет для поиска тега.
+  // FR: Cette valeur garde le texte que l'admin ecrit pour chercher une etiquette.
+  const [tagSearch, setTagSearch] = useState("");
+
+  // RU: Эти данные помогают быстро находить выбранные теги и не показывать их в подсказках.
+  // FR: Ces donnees aident a retrouver les etiquettes choisies et a les cacher des suggestions.
+  const selectedTagIdSet = useMemo(
+    () => new Set(selectedTagIds),
+    [selectedTagIds],
+  );
+
+  // RU: Эти данные связывают номер тега с его названием для красивых плашек.
+  // FR: Ces donnees relient l'identifiant de l'etiquette a son nom pour de jolies pastilles.
+  const tagsById = useMemo(
+    () => new Map(tags.map((tag) => [tag.id, tag])),
+    [tags],
+  );
+
+  // RU: Этот список показывает только выбранные теги, которые еще есть в общей базе тегов.
+  // FR: Cette liste montre seulement les etiquettes choisies encore presentes dans la base.
+  const selectedTags = useMemo(
+    () =>
+      selectedTagIds
+        .map((tagId) => tagsById.get(tagId))
+        .filter((tag): tag is AdminCatalogTag => Boolean(tag)),
+    [selectedTagIds, tagsById],
+  );
+
+  // RU: Этот текст нужен для поиска без учета больших и маленьких букв.
+  // FR: Ce texte sert a chercher sans tenir compte des majuscules et minuscules.
+  const normalizedTagSearch = tagSearch.trim().toLowerCase();
+
+  // RU: Этот список показывает подходящие теги, кроме тех, которые уже выбраны.
+  // FR: Cette liste montre les etiquettes utiles, sauf celles deja choisies.
+  const matchingTags = useMemo(() => {
+    if (!normalizedTagSearch) {
+      return [];
+    }
+
+    return tags
+      .filter(
+        (tag) =>
+          !selectedTagIdSet.has(tag.id) &&
+          `${tag.public_label} ${tag.slug}`
+            .toLowerCase()
+            .includes(normalizedTagSearch),
+      )
+      .slice(0, TAG_SEARCH_RESULT_LIMIT);
+  }, [normalizedTagSearch, selectedTagIdSet, tags]);
+
+  // RU: Эта команда обновляет текст поиска, когда админ печатает в поле.
+  // FR: Cette action met a jour le texte de recherche quand l'admin ecrit.
+  function handleTagSearchChange(event: ChangeEvent<HTMLInputElement>) {
+    setTagSearch(event.target.value);
+  }
+
+  // RU: Эта команда добавляет найденный тег в выбранные и очищает поле поиска.
+  // FR: Cette action ajoute l'etiquette trouvee aux choix et vide le champ.
+  function handleTagSelect(tagId: string) {
+    if (selectedTagIdSet.has(tagId)) {
       return;
     }
 
     onSelectedTagIdsChange([...selectedTagIds, tagId]);
+    setTagSearch("");
+  }
+
+  // RU: Эта команда убирает закрепленный тег из выбранных.
+  // FR: Cette action retire une etiquette epinglee des choix.
+  function handleTagRemove(tagId: string) {
+    onSelectedTagIdsChange(selectedTagIds.filter((id) => id !== tagId));
   }
 
   return (
@@ -6414,25 +6482,84 @@ function SofaForm({
           </label>
         </div>
       </section>
+      {/* RU: Этот раздел дает поиск по тегам и показывает выбранные метки. */}
+      {/* FR: Cette partie donne la recherche des etiquettes et montre les choix. */}
       <section className="admin-form-section" aria-labelledby="sofa-tags">
         <div className="admin-form-section-header">
           <h3 id="sofa-tags">Tags</h3>
           <p>Public grouping and readiness behavior.</p>
         </div>
-        {tags.length === 0 ? <p>No tags.</p> : null}
-        <div className="admin-choice-grid">
-          {tags.map((tag) => (
-            <label className="admin-choice" key={tag.id}>
+        {tags.length === 0 ? (
+          <p className="admin-tag-picker-empty">No tags.</p>
+        ) : (
+          <div className="admin-tag-picker">
+            <div className="admin-selected-tags" aria-live="polite">
+              <p className="admin-tag-picker-label">Selected tags</p>
+              {selectedTags.length > 0 ? (
+                <div className="admin-tag-chip-list" aria-label="Selected tags">
+                  {selectedTags.map((tag) => (
+                    <span className="admin-tag-chip" key={tag.id}>
+                      <span>{tag.public_label}</span>
+                      <button
+                        aria-label={`Remove ${tag.public_label} tag`}
+                        className="admin-tag-chip-remove"
+                        onClick={() => handleTagRemove(tag.id)}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="admin-tag-picker-empty">
+                  No tags selected yet.
+                </p>
+              )}
+            </div>
+            <label className="field admin-tag-search-field">
+              <span>Search tags</span>
               <input
-                checked={selectedTagIds.includes(tag.id)}
-                onChange={() => handleTagToggle(tag.id)}
-                type="checkbox"
+                aria-controls="sofa-tag-results"
+                aria-expanded={Boolean(normalizedTagSearch)}
+                autoComplete="off"
+                onChange={handleTagSearchChange}
+                placeholder="Type a tag name"
+                type="search"
+                value={tagSearch}
               />
-              <span aria-hidden="true" className="admin-choice-box" />
-              <span className="admin-choice-label">{tag.public_label}</span>
             </label>
-          ))}
-        </div>
+            {normalizedTagSearch ? (
+              <div
+                aria-label="Matching tags"
+                className="admin-tag-results"
+                id="sofa-tag-results"
+                role="listbox"
+              >
+                {matchingTags.length > 0 ? (
+                  matchingTags.map((tag) => (
+                    <button
+                      aria-label={`Add ${tag.public_label} tag`}
+                      aria-selected="false"
+                      className="admin-tag-result"
+                      key={tag.id}
+                      onClick={() => handleTagSelect(tag.id)}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="admin-tag-result-label">
+                        {tag.public_label}
+                      </span>
+                      <span className="admin-tag-result-slug">{tag.slug}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="admin-tag-picker-empty">No matching tags.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
       </section>
       <footer className="admin-form-footer">
         <button className="admin-primary-button" type="submit">
