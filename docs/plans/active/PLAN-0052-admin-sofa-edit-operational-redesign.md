@@ -146,6 +146,7 @@ workbench structure proves correct in browser QA.
 - [x] Introduce or normalize sofa edit button variants: primary, secondary, quiet, danger, inline, overflow.
 - [x] Introduce designed field, unit-field, checkbox, status, compact action menu, dialog, and sheet patterns.
 - [x] Remove `admin-test-workflow` visual dependency from the production sofa edit page.
+- [x] Format admin-facing errors and blockers so technical codes are not shown as customer-visible UI copy.
 - [ ] Add visual states for loading, disabled, failed, blocked, ready, current, and selected.
 
 ### 3. Basics
@@ -225,6 +226,10 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: the View Columns edit workbench now keeps local preview state
   for an unsaved source image upload and for the selected source fabric line, so
   admins can confirm both choices before pressing Save.
+- Follow-up fix: admin catalog pages now format API error codes, local validation
+  codes, publication blockers, and render-cell blockers into plain English UI
+  copy instead of exposing technical strings such as `TAG_CONFLICT`,
+  `TAG_IN_USE`, or `INCOMPLETE_PUBLIC_RENDER_COVERAGE`.
 
 ## Acceptance Criteria
 

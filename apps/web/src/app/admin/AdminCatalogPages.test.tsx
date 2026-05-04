@@ -744,8 +744,9 @@ describe("Admin catalog pages", () => {
     render(<AdminSofasPage dependencies={errorDependencies} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "SOFA_LIST_FAILED",
+      "Something went wrong. Please try again.",
     );
+    expect(screen.queryByText("SOFA_LIST_FAILED")).not.toBeInTheDocument();
   });
 
   it("creates, edits, and handles assigned-tag delete conflicts", async () => {
@@ -799,7 +800,12 @@ describe("Admin catalog pages", () => {
     );
 
     await screen.findByRole("alert");
-    expect(screen.getByText("TAG_IN_USE")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This tag is already assigned to a sofa, so it cannot be deleted.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("TAG_IN_USE")).not.toBeInTheDocument();
   });
 
   it("loads fabrics through the first-party admin facade abstraction", async () => {
@@ -1518,7 +1524,8 @@ describe("Admin catalog pages", () => {
     });
 
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
-    expect(screen.getByText("MISSING_PUBLIC_FABRIC")).toBeInTheDocument();
+    expect(screen.getByText("No public fabric yet")).toBeInTheDocument();
+    expect(screen.queryByText("MISSING_PUBLIC_FABRIC")).not.toBeInTheDocument();
   });
 
   it("shows sofa edit workflow tabs and keeps publishing inside Publish", async () => {
@@ -2577,8 +2584,9 @@ describe("Admin catalog pages", () => {
     );
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "UPLOAD_FAILED",
+      "The image upload failed. Please try again.",
     );
+    expect(within(dialog).queryByText("UPLOAD_FAILED")).not.toBeInTheDocument();
   });
 
   it("assigns a fabric to a sofa and refreshes readiness", async () => {
@@ -2634,9 +2642,12 @@ describe("Admin catalog pages", () => {
     });
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
     expect(
-      await screen.findByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+      await screen.findByText("Missing public renders"),
     ).toBeInTheDocument();
     expect(screen.queryByText("MISSING_PUBLIC_FABRIC")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows fabric cards and saves public order explicitly", async () => {
@@ -3473,8 +3484,11 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
     expect(
-      screen.getByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+      screen.getByText("Missing public renders"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish sofa" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
@@ -3510,6 +3524,9 @@ describe("Admin catalog pages", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
 
+    expect(
+      screen.queryByText("Missing public renders"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
     ).not.toBeInTheDocument();
@@ -4581,6 +4598,10 @@ describe("Admin catalog pages", () => {
     expect(
       within(dialog).getByText("Complete the missing render input first."),
     ).toBeInTheDocument();
+    expect(within(dialog).getByText("Source photo missing")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("MISSING_SOURCE_PHOTO"),
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByText("No source yet")).toBeInTheDocument();
     expect(within(dialog).queryByText("AI generated")).not.toBeInTheDocument();
 
@@ -4720,10 +4741,12 @@ describe("Admin catalog pages", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
 
-    expect(screen.getByText("MISSING_PUBLIC_FABRIC")).toBeInTheDocument();
+    expect(screen.getByText("No public fabric yet")).toBeInTheDocument();
+    expect(screen.getByText("Missing public renders")).toBeInTheDocument();
+    expect(screen.queryByText("MISSING_PUBLIC_FABRIC")).not.toBeInTheDocument();
     expect(
-      screen.getByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
-    ).toBeInTheDocument();
+      screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Go to Fabric lines" }),
     ).toBeInTheDocument();
