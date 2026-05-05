@@ -83,22 +83,20 @@ function expectVisualMatrixDialogFormAlignment(dialog: HTMLElement) {
   );
 }
 
-// RU: Эта проверка нужна тестам, чтобы кнопки строки Visual matrix были одной ровной группой.
-// FR: Cette verification aide les tests a confirmer que les boutons de la ligne Visual matrix forment un groupe regulier.
+// RU: Эта проверка нужна тестам, чтобы правая кнопка правки в строке Visual matrix оставалась текстовой.
+// FR: Cette verification aide les tests a confirmer que le bouton de modification a droite dans la ligne Visual matrix reste avec du texte.
 function expectVisualMatrixRowActions(button: HTMLElement) {
   const actions = button.closest(".admin-visual-matrix-actions");
 
   expect(actions).not.toBeNull();
   expect(actions).toHaveClass("admin-visual-matrix-action-bar");
-  expect(
-    within(actions as HTMLElement)
-      .getAllByRole("button")
-      .map((actionButton) => actionButton.textContent?.trim()),
-  ).toEqual(["Edit"]);
   for (const actionButton of within(actions as HTMLElement).getAllByRole(
     "button",
   )) {
     expect(actionButton).toHaveClass("admin-visual-matrix-action-button");
+    expect(actionButton).not.toHaveClass("admin-icon-button");
+    expect(actionButton).toHaveTextContent("Edit");
+    expect(actionButton.querySelector(".admin-edit-icon")).toBe(null);
   }
 }
 
@@ -779,11 +777,22 @@ describe("Admin catalog pages", () => {
         name: "Save Convertible",
       }),
     ).toHaveTextContent("Save");
+    const deleteConvertibleButton = within(
+      convertibleRow as HTMLElement,
+    ).getByRole("button", {
+      name: "Delete Convertible",
+    });
+
+    expect(deleteConvertibleButton).not.toHaveTextContent("Delete");
     expect(
-      within(convertibleRow as HTMLElement).getByRole("button", {
-        name: "Delete Convertible",
-      }),
-    ).toHaveTextContent("Delete");
+      deleteConvertibleButton.querySelector(".admin-delete-icon"),
+    ).not.toBe(null);
+    expect(
+      deleteConvertibleButton.querySelectorAll(".admin-delete-icon path"),
+    ).toHaveLength(4);
+    expect(
+      deleteConvertibleButton.querySelector(".admin-delete-icon-mark"),
+    ).not.toBe(null);
 
     fireEvent.change(convertibleInput, {
       target: { value: "Angle premium" },
@@ -794,10 +803,16 @@ describe("Admin catalog pages", () => {
       expect(dependencies.updateTag).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Convertible" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm delete Convertible" }),
-    );
+    fireEvent.click(deleteConvertibleButton);
+    const confirmDeleteConvertibleButton = screen.getByRole("button", {
+      name: "Confirm delete Convertible",
+    });
+
+    expect(confirmDeleteConvertibleButton).not.toHaveTextContent("Confirm");
+    expect(
+      confirmDeleteConvertibleButton.querySelector(".admin-delete-icon"),
+    ).not.toBe(null);
+    fireEvent.click(confirmDeleteConvertibleButton);
 
     await screen.findByRole("alert");
     expect(
@@ -2785,11 +2800,15 @@ describe("Admin catalog pages", () => {
       screen.getByRole("img", { name: "Swatch for Boucle ivoire" }),
     ).toBeInTheDocument();
     expect(screen.getByText("No swatch")).toBeInTheDocument();
-    expect(
-      within(
-        screen.getByRole("region", { name: "Fabric assignments" }),
-      ).getAllByRole("button", { name: "Delete" }),
-    ).toHaveLength(2);
+    const fabricDeleteButtons = within(
+      screen.getByRole("region", { name: "Fabric assignments" }),
+    ).getAllByRole("button", { name: /Delete fabric assignment/i });
+
+    expect(fabricDeleteButtons).toHaveLength(2);
+    for (const button of fabricDeleteButtons) {
+      expect(button).not.toHaveTextContent("Delete");
+      expect(button.querySelector(".admin-delete-icon")).not.toBe(null);
+    }
     expect(
       within(
         screen.getByRole("region", { name: "Fabric assignments" }),
@@ -3016,6 +3035,12 @@ describe("Admin catalog pages", () => {
     expect(
       document.querySelector(".admin-visual-matrix-source-preview img"),
     ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    const sourceImageButton = screen.getByRole("button", {
+      name: "Edit source image column 1",
+    });
+
+    expect(sourceImageButton).not.toHaveTextContent("Edit");
+    expect(sourceImageButton.querySelector(".admin-edit-icon")).not.toBe(null);
     expect(
       screen.getByRole("img", { name: "Swatch for Original fabric" }),
     ).toHaveAttribute("src", swatchPreviewUrl);
@@ -3082,12 +3107,29 @@ describe("Admin catalog pages", () => {
       "Choose a source fabric before saving this source image.",
     );
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    const deleteColumnButton = within(dialog).getByRole("button", {
+      name: "Delete column 1",
+    });
+
+    expect(deleteColumnButton).not.toHaveTextContent("Delete");
+    expect(deleteColumnButton.querySelector(".admin-delete-icon")).not.toBe(
+      null,
+    );
+    fireEvent.click(deleteColumnButton);
     expect(
       screen.getByText(
         "Deleting this column affects all fabrics for this sofa.",
       ),
     ).toBeInTheDocument();
+
+    const confirmDeleteColumnButton = screen.getByRole("button", {
+      name: "Confirm delete column 1",
+    });
+
+    expect(confirmDeleteColumnButton).not.toHaveTextContent("Confirm delete");
+    expect(
+      confirmDeleteColumnButton.querySelector(".admin-delete-icon"),
+    ).not.toBe(null);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(
