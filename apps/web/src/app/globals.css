@@ -2032,6 +2032,18 @@ button:disabled {
   width: 20px;
 }
 
+.admin-close-icon,
+.admin-arrow-icon {
+  color: currentColor;
+  fill: none;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.45;
+  width: 20px;
+}
+
 .admin-form {
   display: grid;
   gap: 16px;

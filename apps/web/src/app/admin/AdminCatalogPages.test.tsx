@@ -111,6 +111,27 @@ function expectSofaEditTabDotBesideNumber(tab: HTMLElement, number: string) {
   ).toBeInTheDocument();
 }
 
+// RU: Эта проверка нужна тестам, чтобы кнопка закрытия была маленькой и без слова Close.
+// FR: Cette verification aide les tests a confirmer que le bouton de fermeture reste petit et sans le mot Close.
+function expectCloseIconButton(button: HTMLElement) {
+  expect(button).toHaveClass("admin-icon-button");
+  expect(button).not.toHaveTextContent("Close");
+  expect(button.querySelector(".admin-close-icon")).not.toBe(null);
+}
+
+// RU: Эта проверка нужна тестам, чтобы переход между вариантами был маленькой стрелкой.
+// FR: Cette verification aide les tests a confirmer que le passage entre les options reste une petite fleche.
+function expectCandidateArrowButton(
+  button: HTMLElement,
+  direction: "previous" | "next",
+) {
+  expect(button).toHaveClass("admin-icon-button");
+  expect(button).not.toHaveTextContent(
+    direction === "previous" ? "Previous candidate" : "Next candidate",
+  );
+  expect(button.querySelector(`.admin-arrow-icon-${direction}`)).not.toBe(null);
+}
+
 // RU: Эта проверка нужна тестам, чтобы у окна была верхняя кнопка закрытия, как в картинках.
 // FR: Cette verification aide les tests a confirmer que la fenetre a le bouton fermer en haut, comme dans les images.
 function closeCenteredVisualMatrixDialog(dialog: HTMLElement) {
@@ -122,6 +143,7 @@ function closeCenteredVisualMatrixDialog(dialog: HTMLElement) {
     "admin-quiet-button",
     "admin-render-cell-close-button",
   );
+  expectCloseIconButton(closeButton);
   expect(
     within(dialog).queryByRole("button", { name: "Cancel" }),
   ).not.toBeInTheDocument();
@@ -1870,6 +1892,7 @@ describe("Admin catalog pages", () => {
       within(dialog).getByRole("button", { name: "Generate" }),
     ).toBeInTheDocument();
     expect(closeButton).toBeInTheDocument();
+    expectCloseIconButton(closeButton);
 
     fireEvent.click(closeButton);
 
@@ -4414,9 +4437,12 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Boucle ivoire, Front: Ready/i }),
     );
     const cellDialog = screen.getByRole("dialog", { name: /Render cell/i });
-    expect(
-      within(cellDialog).getByRole("button", { name: "Close render cell" }),
-    ).toBeInTheDocument();
+    const cellCloseButton = within(cellDialog).getByRole("button", {
+      name: "Close render cell",
+    });
+
+    expect(cellCloseButton).toBeInTheDocument();
+    expectCloseIconButton(cellCloseButton);
     expect(
       within(cellDialog).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
@@ -4449,11 +4475,15 @@ describe("Admin catalog pages", () => {
       "src",
       `blob:admin-preview/${renderCell.current_private_asset_id}`,
     );
-    fireEvent.click(
-      within(currentImageDialog).getByRole("button", {
+    const currentImageCloseButton = within(currentImageDialog).getByRole(
+      "button",
+      {
         name: "Close large image",
-      }),
+      },
     );
+
+    expectCloseIconButton(currentImageCloseButton);
+    fireEvent.click(currentImageCloseButton);
 
     fireEvent.click(
       within(cellDialog).getByRole("button", { name: "View current render" }),
@@ -4461,11 +4491,15 @@ describe("Admin catalog pages", () => {
     const currentRenderDialog = screen.getByRole("dialog", {
       name: /Current render/i,
     });
-    expect(
-      within(currentRenderDialog).getByRole("button", {
+    const currentRenderCloseButton = within(currentRenderDialog).getByRole(
+      "button",
+      {
         name: "Close current render",
-      }),
-    ).toBeInTheDocument();
+      },
+    );
+
+    expect(currentRenderCloseButton).toBeInTheDocument();
+    expectCloseIconButton(currentRenderCloseButton);
     expect(
       within(currentRenderDialog).queryByRole("button", { name: "Close" }),
     ).not.toBeInTheDocument();
@@ -4552,11 +4586,14 @@ describe("Admin catalog pages", () => {
         name: "Use candidate",
       }),
     ).toBeDisabled();
-    fireEvent.click(
-      within(currentCandidateCompareDialog).getByRole("button", {
-        name: "Close comparison",
-      }),
-    );
+    const currentCandidateCloseButton = within(
+      currentCandidateCompareDialog,
+    ).getByRole("button", {
+      name: "Close comparison",
+    });
+
+    expectCloseIconButton(currentCandidateCloseButton);
+    fireEvent.click(currentCandidateCloseButton);
 
     expect(
       within(cellDialog).queryByRole("button", {
@@ -4574,6 +4611,15 @@ describe("Admin catalog pages", () => {
     const compareDialog = screen.getByRole("dialog", {
       name: /Compare render candidate/i,
     });
+    const previousCandidateButton = within(compareDialog).getByRole("button", {
+      name: "Previous candidate",
+    });
+    const nextCandidateButton = within(compareDialog).getByRole("button", {
+      name: "Next candidate",
+    });
+
+    expectCandidateArrowButton(previousCandidateButton, "previous");
+    expectCandidateArrowButton(nextCandidateButton, "next");
 
     expect(
       within(compareDialog).getByRole("img", {
@@ -4602,11 +4648,15 @@ describe("Admin catalog pages", () => {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
       }),
     ).toHaveAttribute("src", `blob:admin-preview/${newCandidate.asset_id}`);
-    fireEvent.click(
-      within(candidateImageDialog).getByRole("button", {
+    const candidateImageCloseButton = within(candidateImageDialog).getByRole(
+      "button",
+      {
         name: "Close large image",
-      }),
+      },
     );
+
+    expectCloseIconButton(candidateImageCloseButton);
+    fireEvent.click(candidateImageCloseButton);
 
     fireEvent.click(
       within(compareDialog).getByRole("button", { name: "Use candidate" }),
