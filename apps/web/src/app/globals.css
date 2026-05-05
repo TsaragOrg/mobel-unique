@@ -2141,6 +2141,79 @@ button:disabled {
   padding: 18px 0 0;
 }
 
+.admin-sofa-status-filter {
+  align-items: center;
+  background: #fbfbfa;
+  border: 1px solid var(--admin-line, #dfdfdf);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-start;
+  justify-self: start;
+  min-height: 44px;
+  padding: 5px;
+}
+
+.admin-sofa-status-filter-label {
+  color: var(--admin-soft, #8a8a8a);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0 8px 0 10px;
+  text-transform: uppercase;
+}
+
+.admin-sofa-status-filter-buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.admin-sofa-status-filter-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--admin-muted, #5b5b5b);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  justify-content: center;
+  line-height: 1;
+  min-height: 34px;
+  padding: 8px 12px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.admin-sofa-status-filter-button:hover {
+  background: #ffffff;
+  border-color: var(--admin-line, #dfdfdf);
+  color: var(--admin-ink, #0b0b0b);
+}
+
+.admin-sofa-status-filter-button:focus-visible {
+  outline: 2px solid var(--admin-focus, #0e5f50);
+  outline-offset: 2px;
+}
+
+.admin-sofa-status-filter-button-active {
+  background: var(--admin-ink, #0b0b0b);
+  border-color: var(--admin-ink, #0b0b0b);
+  color: #ffffff;
+}
+
+.admin-sofa-status-filter-button-active:hover {
+  background: var(--admin-ink, #0b0b0b);
+  border-color: var(--admin-ink, #0b0b0b);
+  color: #ffffff;
+}
+
 .admin-sofa-list {
   border-top: 1px solid var(--admin-line, #dfdfdf);
   display: grid;
