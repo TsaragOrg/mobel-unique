@@ -11,6 +11,10 @@ const providerOwnershipMigrationPath =
   "supabase/migrations/20260429000300_fabric_render_worker_provider_ownership.sql";
 const adminPublicationMigrationPath =
   "supabase/migrations/20260430000100_admin_sofa_publication.sql";
+const adminSofaArchiveMigrationPath =
+  "supabase/migrations/20260505000100_admin_sofa_archive.sql";
+const adminSofaUnarchiveMigrationPath =
+  "supabase/migrations/20260505000200_admin_sofa_unarchive.sql";
 const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 const manualPumpRealtimeMigrationPath =
@@ -113,6 +117,30 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("lifecycle_state = 'published'");
     expect(sql).toContain("lifecycle_state = 'draft'");
   });
+
+  it("adds an admin sofa archive helper that removes public references", async () => {
+    const sql = await readFile(adminSofaArchiveMigrationPath, "utf8");
+
+    expect(sql).toContain("public.admin_archive_sofa");
+    expect(sql).toContain("for update");
+    expect(sql).toContain("current_public_asset_id = null");
+    expect(sql).toContain("lifecycle_state = 'archived'");
+    expect(sql).toContain("published_at = null");
+    expect(sql).toContain("archived_at = coalesce");
+  expect(sql).toContain("grant execute on function public.admin_archive_sofa(uuid) to service_role");
+});
+
+it("adds an admin sofa unarchive helper that restores draft state", async () => {
+  const sql = await readFile(adminSofaUnarchiveMigrationPath, "utf8");
+
+  expect(sql).toContain("public.admin_unarchive_sofa");
+  expect(sql).toContain("for update");
+  expect(sql).toContain("target_sofa.lifecycle_state <> 'archived'");
+  expect(sql).toContain("lifecycle_state = 'draft'");
+  expect(sql).toContain("archived_at = null");
+  expect(sql).toContain("published_at = null");
+  expect(sql).toContain("grant execute on function public.admin_unarchive_sofa(uuid) to service_role");
+});
 
   it("adds admin prompt notes and refine prompts to render job persistence", async () => {
     const sql = await readFile(adminRenderPromptRefineMigrationPath, "utf8");

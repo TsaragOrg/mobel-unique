@@ -2,11 +2,11 @@
 
 /*
 RU: Этот файл нужен для страниц админского каталога.
-RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений и публикацию.
-RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать и снимать публикацию.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений, публикацию и архив.
+RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать, снимать публикацию, архивировать и возвращать из архива.
 FR: Ce fichier sert aux pages du catalogue admin.
-FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images et publication.
-FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier et retirer la publication.
+FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images, publication et archive.
+FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier, retirer la publication, archiver et remettre depuis l'archive.
 */
 
 import Link from "next/link";
@@ -63,6 +63,7 @@ export interface AdminCatalogTag {
 }
 
 export interface AdminCatalogSofa {
+  archived_at: string | null;
   created_at: string;
   depth_cm: number | null;
   footprint_measurements: unknown;
@@ -414,6 +415,14 @@ export interface FabricRenderResumeResult {
 }
 
 export interface AdminCatalogPageDependencies {
+  archiveSofa(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogSofa>;
+  unarchiveSofa(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogSofa>;
   archiveFabric(
     accessToken: string,
     fabricId: string,
@@ -710,6 +719,28 @@ export function createDefaultAdminCatalogDependencies(
   redirect: (path: string) => void,
 ): AdminCatalogPageDependencies {
   return {
+    async archiveSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/archive`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
+    },
+    async unarchiveSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/unarchive`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
+    },
     async archiveFabric(accessToken, fabricId) {
       const data = await requestAdminJson(
         accessToken,
@@ -1306,10 +1337,21 @@ function SofaListContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения показывают ошибку, загрузку, список диванов и видимость архива.
+  // FR: Ces valeurs affichent une erreur, le chargement, la liste des canapes et la vue archive.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sofas, setSofas] = useState<AdminCatalogSofa[]>([]);
+  const [showArchivedSofas, setShowArchivedSofas] = useState(false);
 
+  // RU: Этот список прячет архивные диваны, пока админ не нажмет Archive.
+  // FR: Cette liste cache les canapes archives tant que l'admin ne choisit pas Archive.
+  const visibleSofas = showArchivedSofas
+    ? sofas
+    : sofas.filter((sofa) => sofa.lifecycle_state !== "archived");
+
+  // RU: Этот автоматический блок загружает диваны при открытии списка.
+  // FR: Ce bloc automatique charge les canapes a l'ouverture de la liste.
   useEffect(() => {
     let isCurrent = true;
 
@@ -1339,6 +1381,12 @@ function SofaListContent({
     };
   }, [accessToken, dependencies]);
 
+  // RU: Это действие показывает или снова прячет архивные диваны в списке.
+  // FR: Cette action affiche ou cache a nouveau les canapes archives dans la liste.
+  function handleArchiveListToggle() {
+    setShowArchivedSofas((currentValue) => !currentValue);
+  }
+
   return (
     <section
       aria-labelledby="sofas-title"
@@ -1346,9 +1394,19 @@ function SofaListContent({
     >
       <AdminPageHeader
         actions={
-          <Link className="admin-primary-link" href="/admin/sofas/new">
-            New sofa
-          </Link>
+          <>
+            <button
+              aria-pressed={showArchivedSofas}
+              className="admin-secondary-button"
+              onClick={handleArchiveListToggle}
+              type="button"
+            >
+              Archive
+            </button>
+            <Link className="admin-primary-link" href="/admin/sofas/new">
+              New sofa
+            </Link>
+          </>
         }
         description="Review sofa records, source imagery, publishing state, and recent catalog updates."
         eyebrow="Catalog"
@@ -1368,9 +1426,14 @@ function SofaListContent({
       {!isLoading && sofas.length === 0 ? (
         <p className="admin-list-feedback">No sofa records yet.</p>
       ) : null}
-      {sofas.length > 0 ? (
+      {!isLoading && sofas.length > 0 && visibleSofas.length === 0 ? (
+        <p className="admin-list-feedback">
+          No visible sofa records. Use Archive to show archived sofas.
+        </p>
+      ) : null}
+      {visibleSofas.length > 0 ? (
         <div className="admin-sofa-list" role="list">
-          {sofas.map((sofa) => {
+          {visibleSofas.map((sofa) => {
             const sofaDisplayName = sofa.public_name ?? sofa.internal_name;
             const sourcePhotoCount = sofa.source_photo_count ?? 0;
 
@@ -2376,17 +2439,19 @@ function PublicationReadinessSection({
   sofa: AdminCatalogSofa;
   sofaId: string;
 }) {
-  // RU: Эти значения показывают ошибку и занятость кнопок публикации.
-  // FR: Ces valeurs affichent l'erreur et l'occupation des boutons de publication.
+  // RU: Эти значения показывают ошибку, занятость кнопок и подтверждение архива.
+  // FR: Ces valeurs affichent l'erreur, l'occupation des boutons et la confirmation d'archive.
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(
     null,
   );
   const [isPublicationActionBusy, setIsPublicationActionBusy] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState(false);
 
-  // RU: Эти данные говорят, виден ли диван на публичном сайте.
-  // FR: Ces donnees indiquent si le canape est visible sur le site public.
+  // RU: Эти данные говорят, виден ли диван на публичном сайте или уже в архиве.
+  // FR: Ces donnees indiquent si le canape est public ou deja archive.
   const isPublished = sofa.lifecycle_state === "published";
-  const lifecycleLabel = isPublished ? "Published" : "Draft";
+  const isArchived = sofa.lifecycle_state === "archived";
+  const lifecycleLabel = formatLifecycleState(sofa.lifecycle_state);
 
   // RU: Это действие обновляет проверку готовности после публикации.
   // FR: Cette action actualise la verification apres la publication.
@@ -2402,6 +2467,7 @@ function PublicationReadinessSection({
   // FR: Cette action rend le canape visible sur le site public.
   async function handlePublish() {
     setActionErrorMessage(null);
+    setPendingArchive(false);
     setIsPublicationActionBusy(true);
 
     try {
@@ -2419,6 +2485,7 @@ function PublicationReadinessSection({
   // FR: Cette action retire le canape du site public.
   async function handleUnpublish() {
     setActionErrorMessage(null);
+    setPendingArchive(false);
     setIsPublicationActionBusy(true);
 
     try {
@@ -2430,6 +2497,54 @@ function PublicationReadinessSection({
     } finally {
       setIsPublicationActionBusy(false);
     }
+  }
+
+  // RU: Это действие кладет диван в архив и убирает его с публичного сайта.
+  // FR: Cette action met le canape en archive et le retire du site public.
+  async function handleArchive() {
+    setActionErrorMessage(null);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.archiveSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      setPendingArchive(false);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
+  // RU: Это действие возвращает диван из архива в черновик.
+  // FR: Cette action remet le canape archive en brouillon.
+  async function handleUnarchive() {
+    setActionErrorMessage(null);
+    setPendingArchive(false);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.unarchiveSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
+  // RU: Это действие просит админа подтвердить перенос дивана в архив.
+  // FR: Cette action demande a l'admin de confirmer le passage du canape en archive.
+  function handleStartArchiveConfirm() {
+    setPendingArchive(true);
+  }
+
+  // RU: Это действие отменяет подтверждение архива, если админ передумал.
+  // FR: Cette action annule la confirmation d'archive si l'admin change d'avis.
+  function handleCancelArchiveConfirm() {
+    setPendingArchive(false);
   }
 
   return (
@@ -2480,7 +2595,7 @@ function PublicationReadinessSection({
         </ul>
       ) : null}
       <div className="admin-actions">
-        {!isPublished ? (
+        {!isArchived && !isPublished ? (
           <button
             className="admin-primary-button"
             disabled={isPublicationActionBusy || !readiness?.ready}
@@ -2489,7 +2604,8 @@ function PublicationReadinessSection({
           >
             {isPublicationActionBusy ? "Publishing" : "Publish sofa"}
           </button>
-        ) : (
+        ) : null}
+        {!isArchived && isPublished ? (
           <button
             className="admin-danger-button"
             disabled={isPublicationActionBusy}
@@ -2498,7 +2614,47 @@ function PublicationReadinessSection({
           >
             {isPublicationActionBusy ? "Unpublishing" : "Unpublish sofa"}
           </button>
-        )}
+        ) : null}
+        {!isArchived && pendingArchive ? (
+          <>
+            <button
+              className="admin-danger-button"
+              disabled={isPublicationActionBusy}
+              onClick={() => void handleArchive()}
+              type="button"
+            >
+              {isPublicationActionBusy ? "Archiving" : "Confirm archive"}
+            </button>
+            <button
+              className="admin-secondary-button"
+              disabled={isPublicationActionBusy}
+              onClick={handleCancelArchiveConfirm}
+              type="button"
+            >
+              Cancel
+            </button>
+          </>
+        ) : null}
+        {!isArchived && !pendingArchive ? (
+          <button
+            className="admin-danger-button"
+            disabled={isPublicationActionBusy}
+            onClick={handleStartArchiveConfirm}
+            type="button"
+          >
+            Archive sofa
+          </button>
+        ) : null}
+        {isArchived ? (
+          <button
+            className="admin-secondary-button"
+            disabled={isPublicationActionBusy}
+            onClick={() => void handleUnarchive()}
+            type="button"
+          >
+            {isPublicationActionBusy ? "Restoring" : "Restore from archive"}
+          </button>
+        ) : null}
       </div>
     </section>
   );
