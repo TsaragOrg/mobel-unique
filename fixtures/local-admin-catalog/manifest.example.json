@@ -1,0 +1,112 @@
+{
+  "prefix": "mobel-local",
+  "tags": [
+    {
+      "slug": "mobel-local-test",
+      "public_label": "Mobel Local Test"
+    },
+    {
+      "slug": "mobel-local-corner",
+      "public_label": "Mobel Local Corner"
+    },
+    {
+      "slug": "mobel-local-soft",
+      "public_label": "Mobel Local Soft"
+    }
+  ],
+  "fabrics": [
+    {
+      "slug": "grey-soft",
+      "internal_name": "mobel-local fabric grey soft",
+      "public_name": "Grey Soft",
+      "is_premium": false,
+      "swatch_image": "images/fabrics/grey-soft/swatch.png",
+      "ai_reference_image": "images/fabrics/grey-soft/ai-reference.jpg"
+    },
+    {
+      "slug": "beige-dotted",
+      "internal_name": "mobel-local fabric beige dotted",
+      "public_name": "Beige Dotted",
+      "is_premium": false,
+      "swatch_image": "images/fabrics/beige-dotted/swatch.png",
+      "ai_reference_image": "images/fabrics/beige-dotted/ai-reference.jpg"
+    },
+    {
+      "slug": "beige-textured",
+      "internal_name": "mobel-local fabric beige textured",
+      "public_name": "Beige Textured",
+      "is_premium": true,
+      "swatch_image": "images/fabrics/beige-textured/swatch.png",
+      "ai_reference_image": "images/fabrics/beige-textured/ai-reference.jpg"
+    }
+  ],
+  "sofas": [
+    {
+      "slug": "big-gray-lines",
+      "internal_name": "mobel-local sofa big gray lines",
+      "public_name": "Big Gray Lines",
+      "public_description": "Local fixture sofa with two corner source photos.",
+      "shopify_order_url": "https://shopify.example/products/big-gray-lines",
+      "length_cm": 285,
+      "depth_cm": 175,
+      "height_cm": 82,
+      "footprint_type": "corner",
+      "tag_slugs": ["mobel-local-test", "mobel-local-corner"],
+      "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
+      "source_fabric_slug": "grey-soft",
+      "visual_positions": [
+        {
+          "sequence": 1,
+          "admin_label": "Right corner",
+          "public_label": "Right corner",
+          "source_fabric_slug": "grey-soft",
+          "source_image": "images/sofas/big-gray-lines/right-corner.jpg"
+        },
+        {
+          "sequence": 2,
+          "admin_label": "Left corner",
+          "public_label": "Left corner",
+          "source_fabric_slug": "grey-soft",
+          "source_image": "images/sofas/big-gray-lines/left-corner.jpg"
+        }
+      ]
+    },
+    {
+      "slug": "medium-milky-color-sofa",
+      "internal_name": "mobel-local sofa medium milky color",
+      "public_name": "Medium Milky Color Sofa",
+      "public_description": "Local fixture sofa with front, right, and left source photos.",
+      "shopify_order_url": "https://shopify.example/products/medium-milky-color-sofa",
+      "length_cm": 235,
+      "depth_cm": 98,
+      "height_cm": 82,
+      "footprint_type": "straight",
+      "tag_slugs": ["mobel-local-test", "mobel-local-soft"],
+      "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
+      "source_fabric_slug": "beige-textured",
+      "visual_positions": [
+        {
+          "sequence": 1,
+          "admin_label": "Front",
+          "public_label": "Front",
+          "source_fabric_slug": "beige-textured",
+          "source_image": "images/sofas/medium-milky-color-sofa/front.jpg"
+        },
+        {
+          "sequence": 2,
+          "admin_label": "Right",
+          "public_label": "Right",
+          "source_fabric_slug": "beige-textured",
+          "source_image": "images/sofas/medium-milky-color-sofa/right.jpg"
+        },
+        {
+          "sequence": 3,
+          "admin_label": "Left",
+          "public_label": "Left",
+          "source_fabric_slug": "beige-textured",
+          "source_image": "images/sofas/medium-milky-color-sofa/left.jpg"
+        }
+      ]
+    }
+  ]
+}

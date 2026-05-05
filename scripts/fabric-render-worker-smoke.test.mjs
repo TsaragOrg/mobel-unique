@@ -1,0 +1,148 @@
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const scriptPath = fileURLToPath(
+  new URL("./fabric-render-worker-smoke.mjs", import.meta.url),
+);
+
+function runSmoke(env, nodeArgs = []) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [...nodeArgs, scriptPath], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    child.on("close", (status) => {
+      resolve({ status, stderr, stdout });
+    });
+  });
+}
+
+function createFunctionNotFoundFetchMock() {
+  const cwd = mkdtempSync(join(tmpdir(), "mobel-fabric-smoke-fetch-mock-"));
+  const mockPath = join(cwd, "fetch-mock.mjs");
+
+  writeFileSync(
+    mockPath,
+    `
+globalThis.fetch = async () => new Response("Function not found", {
+  headers: {
+    "Content-Type": "text/plain"
+  },
+  status: 404
+});
+`,
+  );
+
+  return pathToFileURL(mockPath).href;
+}
+
+describe("fabric render worker smoke script", () => {
+  it("skips clearly when the local function is unreachable", async () => {
+    const result = await runSmoke({
+      FABRIC_RENDER_WORKER_FUNCTION_URL:
+        "http://127.0.0.1:1/functions/v1/fabric-render-worker",
+      FABRIC_RENDER_WORKER_SMOKE_TIMEOUT_MS: "250",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("SKIP fabric render worker smoke");
+    expect(result.stdout).toContain("pnpm supabase:start");
+  });
+
+  it("passes when the function accepts a manual pump request", async () => {
+    const body = encodeURIComponent(
+      JSON.stringify({
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000006",
+        started_count: 1,
+        status: "started",
+      }),
+    );
+    const result = await runSmoke({
+      FABRIC_RENDER_WORKER_FUNCTION_URL: `data:application/json,${body}`,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("PASS fabric render worker smoke");
+    expect(result.stdout).toContain("started");
+    expect(result.stdout).toContain("00000000-0000-4000-8000-000000000006");
+  });
+
+  it("sends the worker invocation secret header when configured", async () => {
+    let receivedSecret = null;
+    let receivedBody = null;
+    const server = createServer((request, response) => {
+      receivedSecret = request.headers["x-fabric-render-worker-secret"] ?? null;
+      request.on("data", (chunk) => {
+        receivedBody = JSON.parse(String(chunk));
+      });
+      response.writeHead(200, {
+        "Content-Type": "application/json",
+      });
+      response.end(
+        JSON.stringify({
+          mode: "pump",
+          request_id: "00000000-0000-4000-8000-000000000006",
+          started_count: 1,
+          status: "started",
+        }),
+      );
+    });
+
+    await new Promise((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    try {
+      const { port } = server.address();
+      const result = await runSmoke({
+        FABRIC_RENDER_WORKER_FUNCTION_URL: `http://127.0.0.1:${port}/functions/v1/fabric-render-worker`,
+        FABRIC_RENDER_WORKER_INVOKE_SECRET: "local-secret",
+      });
+
+      expect(result.status).toBe(0);
+      expect(receivedSecret).toBe("local-secret");
+      expect(receivedBody).toMatchObject({
+        mode: "pump",
+        request_id: "00000000-0000-4000-8000-000000000001",
+      });
+    } finally {
+      await new Promise((resolve) => {
+        server.close(resolve);
+      });
+    }
+  });
+
+  it("skips clearly when the local Supabase gateway has no served function", async () => {
+    const result = await runSmoke(
+      {
+        FABRIC_RENDER_WORKER_FUNCTION_URL:
+          "http://127.0.0.1:54321/functions/v1/fabric-render-worker",
+      },
+      ["--import", createFunctionNotFoundFetchMock()],
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("SKIP fabric render worker smoke");
+    expect(result.stdout).toContain("pnpm supabase:functions:serve");
+  });
+});

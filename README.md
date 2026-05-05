@@ -7,13 +7,14 @@ Minimal monorepo foundation for the Mobel Unique project.
 ```text
 apps/
   web/          Next.js frontend for Vercel
-  api/          Node.js Express API for Railway
+  api/          Legacy local Node.js Express API foundation
 workers/
-  image/        Node.js image worker for Railway
+  image/        Legacy local Node.js image worker foundation
 packages/
   shared/       Shared code when needed
 supabase/
   migrations/   Database migrations and policies
+  functions/    Supabase Edge Functions for production API and workers
 docs/
   specs/       Product, technical, and feature specs
   plans/       Execution plans linked to specs
@@ -29,8 +30,8 @@ docs/
 The project uses two isolated environments:
 
 ```text
-dev   -> Vercel DEV, Railway API DEV, Railway Worker DEV, Supabase DEV
-main  -> Vercel PROD, Railway API PROD, Railway Worker PROD, Supabase PROD
+dev   -> Vercel DEV, Supabase DEV
+main  -> Vercel PROD, Supabase PROD
 ```
 
 Recommended flow:
@@ -61,9 +62,9 @@ Use `docs/specs/_template.md` for new specs.
 Configure each platform service to use the matching monorepo root directory:
 
 ```text
-apps/web       -> Vercel
-apps/api       -> Railway API service
-workers/image  -> Railway worker service
+apps/web             -> Vercel
+supabase/migrations  -> Supabase database migrations
+supabase/functions   -> Supabase Edge Functions for API and workers
 ```
 
 ## Local Development
@@ -87,6 +88,16 @@ pnpm dev:web
 pnpm dev:api
 pnpm dev:worker
 ```
+
+Run the local Supabase worker foundation:
+
+```bash
+pnpm supabase:start
+pnpm supabase:functions:serve
+pnpm test:workers:local
+```
+
+See `docs/local-supabase-worker-development.md` for setup details.
 
 Build all packages:
 

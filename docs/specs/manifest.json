@@ -5,9 +5,253 @@
       "id": "SPEC-0001",
       "title": "Repo Foundation",
       "status": "accepted",
+      "layer": "workflow",
+      "parent": null,
+      "dependsOn": [],
+      "implementationPlans": ["PLAN-0001", "PLAN-0003", "PLAN-0027"],
       "path": "docs/specs/accepted/SPEC-0001-repo-foundation.md",
       "areas": ["web", "api", "image-worker", "shared", "supabase", "workflow"]
+    },
+    {
+      "id": "SPEC-0002",
+      "title": "AI Branch Workflow",
+      "status": "accepted",
+      "layer": "workflow",
+      "parent": "SPEC-0001",
+      "dependsOn": ["SPEC-0001"],
+      "implementationPlans": ["PLAN-0002"],
+      "path": "docs/specs/accepted/SPEC-0002-ai-branch-workflow.md",
+      "areas": ["workflow"]
+    },
+    {
+      "id": "SPEC-0003",
+      "title": "Business Context - AI Sofa Visualization",
+      "status": "accepted",
+      "layer": "business-context",
+      "parent": null,
+      "dependsOn": [],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0003-business-context.md",
+      "areas": ["web", "api", "image-worker", "supabase"]
+    },
+    {
+      "id": "SPEC-0004",
+      "title": "Public Customer Experience",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0003",
+      "dependsOn": ["SPEC-0003"],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0004-public-customer-experience.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0005",
+      "title": "Admin Catalog and Fabric Management",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0003",
+      "dependsOn": ["SPEC-0003", "SPEC-0004"],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0005-admin-catalog-and-fabric-management.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0006",
+      "title": "Fabric Render Worker",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0005",
+      "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004", "SPEC-0005"],
+      "implementationPlans": [
+        "PLAN-0006",
+        "PLAN-0010",
+        "PLAN-0020",
+        "PLAN-0025",
+        "PLAN-0026",
+        "PLAN-0030"
+      ],
+      "path": "docs/specs/accepted/SPEC-0006-fabric-render-worker.md",
+      "areas": ["api", "supabase"]
+    },
+    {
+      "id": "SPEC-0007",
+      "title": "In-Home Simulation Worker",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0004",
+      "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004"],
+      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034"],
+      "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
+      "areas": ["api", "supabase"]
+    },
+    {
+      "id": "SPEC-0008",
+      "title": "Local Supabase Worker Development",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0001",
+      "dependsOn": ["SPEC-0001", "SPEC-0003"],
+      "implementationPlans": ["PLAN-0008"],
+      "path": "docs/specs/accepted/SPEC-0008-local-supabase-worker-development.md",
+      "areas": ["api", "supabase", "workflow"]
+    },
+    {
+      "id": "SPEC-0009",
+      "title": "Data Model And Storage",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0003",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0008"
+      ],
+      "implementationPlans": ["PLAN-0061"],
+      "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
+      "areas": ["web", "api", "image-worker", "supabase", "shared"]
+    },
+    {
+      "id": "SPEC-0010",
+      "title": "API Contracts And Edge Functions",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0003",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0008",
+        "SPEC-0009"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0010-api-contracts-and-edge-functions.md",
+      "areas": ["web", "api", "supabase", "image-worker", "shared"]
+    },
+    {
+      "id": "SPEC-0011",
+      "title": "Admin Authentication And Authorization",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0010",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0008",
+        "SPEC-0009",
+        "SPEC-0010"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0011-admin-authentication-and-authorization.md",
+      "areas": ["web", "api", "supabase", "workflow"]
+    },
+    {
+      "id": "SPEC-0012",
+      "title": "Public Frontend Experience And Page Flows",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0004",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0012-public-frontend-experience-and-page-flows.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0013",
+      "title": "Admin Frontend Experience And Page Flows",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0005",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0006",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0011",
+        "SPEC-0012"
+      ],
+      "implementationPlans": [],
+      "path": "docs/specs/accepted/SPEC-0013-admin-frontend-experience-and-page-flows.md",
+      "areas": ["web", "api", "supabase"]
+    },
+    {
+      "id": "SPEC-0014",
+      "title": "Admin Sofa Edit UX Simplification",
+      "status": "accepted",
+      "layer": "feature",
+      "parent": "SPEC-0013",
+      "dependsOn": ["SPEC-0005", "SPEC-0006", "SPEC-0009", "SPEC-0010", "SPEC-0011", "SPEC-0013"],
+      "implementationPlans": [
+        "PLAN-0035",
+        "PLAN-0045",
+        "PLAN-0046",
+        "PLAN-0047",
+        "PLAN-0048",
+        "PLAN-0052",
+        "PLAN-0059"
+      ],
+      "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
+      "areas": ["web", "api"]
+    },
+    {
+      "id": "SPEC-0015",
+      "title": "Public Simulation Wizard",
+      "status": "accepted",
+      "layer": "technical",
+      "parent": "SPEC-0012",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0012"
+      ],
+      "implementationPlans": [
+        "PLAN-0038",
+        "PLAN-0039",
+        "PLAN-0040",
+        "PLAN-0041",
+        "PLAN-0042",
+        "PLAN-0050",
+        "PLAN-0051",
+        "PLAN-0053",
+        "PLAN-0056",
+        "PLAN-0057",
+        "PLAN-0058"
+      ],
+      "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
+      "areas": ["web", "supabase"]
+    },
+    {
+      "id": "SPEC-0016",
+      "title": "Admin Fabric Swatch Cropper",
+      "status": "accepted",
+      "layer": "domain",
+      "parent": "SPEC-0013",
+      "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0005", "SPEC-0009", "SPEC-0010", "SPEC-0011", "SPEC-0013"],
+      "implementationPlans": ["PLAN-0049"],
+      "path": "docs/specs/accepted/SPEC-0016-admin-fabric-swatch-cropper.md",
+      "areas": ["web"]
     }
   ]
 }
-

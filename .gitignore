@@ -24,3 +24,21 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local manual test assets
+test-assets/
+design admin ui/
+
+# Raw public video sources
+apps/web/public/*.mov
+
+# In-home simulation local scratch
+tmp/
+.tmp/
+
+# Local agent artifacts
+.code-artifacts/
+.codex-artifacts/
+
+# Local pipeline-only auto-downloaded font cache
+scripts/in-home-simulation-live-pipeline/.font-cache/

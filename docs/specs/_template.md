@@ -2,6 +2,15 @@
 
 Spec: SPEC-0000
 Status: draft
+Layer: domain
+Parent Spec: SPEC-0000
+Depends On: none
+Areas: web
+Implementation Plans: none yet
+
+## Traceability
+
+Explain why this spec exists, which parent spec created the need for it, which prior specs it must follow, and which later specs or plans it is expected to feed.
 
 ## Goal
 
