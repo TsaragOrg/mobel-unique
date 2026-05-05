@@ -1,3 +1,8 @@
+/*
+RU: Этот файл нужен для первого экрана админки. Пользователь видит проверку доступа, сообщение отказа или рабочую панель. Здесь можно открыть разделы каталога и выйти из админки.
+FR: Ce fichier sert au premier ecran admin. L'utilisateur voit le controle d'acces, un refus ou le panneau de travail. Ici il peut ouvrir les zones du catalogue et sortir de l'admin.
+*/
+
 "use client";
 
 import Link from "next/link";
@@ -7,6 +12,7 @@ import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type DashboardState = "checking" | "forbidden" | "ready";
+type AdminActionIconName = "sofas" | "new-sofa" | "fabrics" | "tags";
 
 export interface AdminDashboardDependencies {
   clearTrustedDevice(): Promise<void>;
@@ -25,15 +31,25 @@ export default function AdminDashboard({
 }: {
   dependencies?: AdminDashboardDependencies;
 }) {
+  // RU: Эта связь меняет адрес страницы внутри админки.
+  // FR: Ce lien change l'adresse de la page dans l'admin.
   const router = useRouter();
+  // RU: Эти действия берутся из настоящего сайта, если тест не передал свои.
+  // FR: Ces actions viennent du vrai site si le test n'en donne pas.
   const defaultDependencies = useMemo(
     () => createDefaultDependencies((path) => router.replace(path)),
     [router],
   );
+  // RU: Этот набор действий используется для проверки доступа и выхода.
+  // FR: Ce groupe d'actions sert au controle d'acces et a la sortie.
   const activeDependencies = dependencies ?? defaultDependencies;
+  // RU: Эта отметка решает, какой экран показать сейчас.
+  // FR: Cette valeur decide quel ecran afficher maintenant.
   const [dashboardState, setDashboardState] =
     useState<DashboardState>("checking");
 
+  // RU: Этот блок сам проверяет доступ при открытии страницы.
+  // FR: Ce bloc verifie seul l'acces quand la page s'ouvre.
   useEffect(() => {
     let isCurrent = true;
 
@@ -92,6 +108,8 @@ export default function AdminDashboard({
     };
   }, [activeDependencies]);
 
+  // RU: Это действие очищает доверенное устройство и возвращает к входу.
+  // FR: Cette action efface l'appareil de confiance et ramene a l'entree.
   async function handleLogout() {
     await activeDependencies.clearTrustedDevice();
     await activeDependencies.signOut();
@@ -99,6 +117,8 @@ export default function AdminDashboard({
   }
 
   if (dashboardState === "checking") {
+    // RU: Этот экран показывается, пока доступ еще проверяется.
+    // FR: Cet ecran apparait pendant le controle d'acces.
     return (
       <AdminShell showNavigation={false} variant="auth">
         <section className="admin-auth-card" aria-live="polite">
@@ -111,6 +131,8 @@ export default function AdminDashboard({
   }
 
   if (dashboardState === "forbidden") {
+    // RU: Этот экран сообщает, что у аккаунта нет доступа к админке.
+    // FR: Cet ecran indique que le compte n'a pas acces a l'admin.
     return (
       <AdminShell showNavigation={false} variant="auth">
         <section
@@ -135,6 +157,8 @@ export default function AdminDashboard({
     );
   }
 
+  // RU: Главная рабочая зона ведет в разделы каталога.
+  // FR: La zone de travail principale ouvre les zones du catalogue.
   return (
     <AdminShell>
       <section className="admin-dashboard" aria-labelledby="admin-title">
@@ -153,13 +177,18 @@ export default function AdminDashboard({
           title="Admin dashboard"
           titleId="admin-title"
         />
+        {/* RU: Эти карточки открывают основные разделы админского каталога.
+            FR: Ces cartes ouvrent les zones principales du catalogue admin. */}
         <nav className="admin-action-grid" aria-label="Catalog actions">
           <Link
             aria-label="Sofas"
             className="admin-action-card"
             href="/admin/sofas"
           >
-            <span className="admin-action-kicker">Catalog</span>
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">Catalog</span>
+              <AdminActionIcon name="sofas" />
+            </span>
             <strong>Sofas</strong>
             <span aria-hidden="true">
               Manage sofa entries, dimensions, and publishing state.
@@ -170,7 +199,10 @@ export default function AdminDashboard({
             className="admin-action-card"
             href="/admin/sofas/new"
           >
-            <span className="admin-action-kicker">Create</span>
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">Create</span>
+              <AdminActionIcon name="new-sofa" />
+            </span>
             <strong>New sofa</strong>
             <span aria-hidden="true">Start a new sofa catalog record.</span>
           </Link>
@@ -179,7 +211,10 @@ export default function AdminDashboard({
             className="admin-action-card"
             href="/admin/fabrics"
           >
-            <span className="admin-action-kicker">Materials</span>
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">Materials</span>
+              <AdminActionIcon name="fabrics" />
+            </span>
             <strong>Fabrics</strong>
             <span aria-hidden="true">
               Maintain swatches, references, and ordering.
@@ -190,7 +225,10 @@ export default function AdminDashboard({
             className="admin-action-card"
             href="/admin/tags"
           >
-            <span className="admin-action-kicker">Taxonomy</span>
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">Taxonomy</span>
+              <AdminActionIcon name="tags" />
+            </span>
             <strong>Tags</strong>
             <span aria-hidden="true">Organize public catalog filters.</span>
           </Link>
@@ -200,6 +238,55 @@ export default function AdminDashboard({
   );
 }
 
+function AdminActionIcon({ name }: { name: AdminActionIconName }) {
+  if (name === "sofas") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+        <path d="M8 16h16a4 4 0 0 1 4 4v5H4v-5a4 4 0 0 1 4-4Z" />
+        <path d="M9 16v-3a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3" />
+        <path d="M7 25v3" />
+        <path d="M25 25v3" />
+      </svg>
+    );
+  }
+
+  if (name === "new-sofa") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+        <path d="M7 18h13a4 4 0 0 1 4 4v4H4v-4a4 4 0 0 1 3-4Z" />
+        <path d="M8 18v-3a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v3" />
+        <path d="M7 26v2" />
+        <path d="M22 26v2" />
+        <path d="M25 5v8" />
+        <path d="M21 9h8" />
+      </svg>
+    );
+  }
+
+  if (name === "fabrics") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+        <path d="M8 5h16a3 3 0 0 1 3 3v19H8a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3Z" />
+        <path d="M11 5v22" />
+        <path d="M18 5v22" />
+        <path d="M5 13c4-2 7 2 11 0 4-2 7 2 11 0" />
+        <path d="M5 21c4-2 7 2 11 0 4-2 7 2 11 0" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+      <path d="M6 6h9l11 11-9 9L6 15V6Z" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M14 12h9" />
+      <path d="M23 12c3 0 4 2 4 4" />
+    </svg>
+  );
+}
+
+// RU: Эти действия связывают экран с Supabase и серверной проверкой.
+// FR: Ces actions relient l'ecran a Supabase et au controle serveur.
 function createDefaultDependencies(
   redirect: (path: string) => void,
 ): AdminDashboardDependencies {

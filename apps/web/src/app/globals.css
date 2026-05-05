@@ -1925,6 +1925,31 @@ button:disabled {
   transform: translateY(-1px);
 }
 
+.admin-action-card-top {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.admin-action-icon {
+  color: var(--admin-muted);
+  fill: none;
+  flex: 0 0 auto;
+  height: 34px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  transition: color 160ms ease;
+  width: 34px;
+}
+
+.admin-action-card:hover .admin-action-icon {
+  color: var(--admin-ink);
+}
+
 .admin-action-card strong {
   font-size: 1.35rem;
   font-weight: 400;
@@ -1980,6 +2005,22 @@ button:disabled {
   border-color: var(--admin-ink);
 }
 
+.admin-icon-button {
+  min-width: 36px;
+  padding: 7px;
+}
+
+.admin-delete-icon {
+  color: currentColor;
+  fill: none;
+  height: 25px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.9;
+  width: 25px;
+}
+
 .admin-edit-icon {
   color: currentColor;
   fill: none;
@@ -1990,6 +2031,7 @@ button:disabled {
   stroke-width: 1.15;
   width: 20px;
 }
+
 .admin-form {
   display: grid;
   gap: 16px;

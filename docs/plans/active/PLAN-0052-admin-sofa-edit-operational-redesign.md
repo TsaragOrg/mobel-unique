@@ -236,6 +236,8 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: View Columns source-photo thumbnails now keep the visible
   row-level Edit action while replacing the image overlay text with a subtle
   square edit icon attached to the top-right image corner.
+- Follow-up fix: Admin dashboard catalog cards and compact destructive actions
+  now use quiet SVG icons while preserving accessible button and link names.
 
 ## Acceptance Criteria
 

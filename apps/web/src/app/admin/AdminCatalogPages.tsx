@@ -2519,6 +2519,19 @@ function SectionStepHeading({
   );
 }
 
+// RU: Этот знак показывает удаление без текста на маленьких кнопках.
+// FR: Ce signe montre la suppression sans texte sur les petits boutons.
+function AdminDeleteIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-delete-icon">
+      <path d="M8 8.25h8a1 1 0 0 1 1 1v1.25H7V9.25a1 1 0 0 1 1-1Z" />
+      <path d="M10.5 8.25v-1.5h3v1.5" />
+      <path d="M8.5 10.5h7l-.65 7.3a1.6 1.6 0 0 1-1.6 1.45h-2.5a1.6 1.6 0 0 1-1.6-1.45L8.5 10.5Z" />
+      <path className="admin-delete-icon-mark" d="M10.4 13.1 13.6 16.3M13.6 13.1 10.4 16.3" />
+    </svg>
+  );
+}
+
 // RU: Этот знак показывает правку без слова Edit на маленьких кнопках.
 // FR: Ce signe montre la modification sans le mot Edit sur les petits boutons.
 function AdminEditIcon() {
@@ -2531,6 +2544,7 @@ function AdminEditIcon() {
     </svg>
   );
 }
+
 function TagManagerContent({
   accessToken,
   dependencies,
@@ -2704,13 +2718,17 @@ function TagManagerContent({
                   {isConfirmingDelete ? (
                     <>
                       <button
-                        aria-label={`Confirm delete ${tag.public_label}`}
-                        className="admin-danger-button"
+                        aria-label={
+                          isTagSubmitting
+                            ? `Deleting ${tag.public_label}`
+                            : `Confirm delete ${tag.public_label}`
+                        }
+                        className="admin-danger-button admin-icon-button"
                         disabled={isTagSubmitting}
                         onClick={() => void handleDelete(tag)}
                         type="button"
                       >
-                        {isTagSubmitting ? "Deleting" : "Confirm"}
+                        <AdminDeleteIcon />
                       </button>
                       <button
                         aria-label={`Cancel delete ${tag.public_label}`}
@@ -2725,12 +2743,12 @@ function TagManagerContent({
                   ) : (
                     <button
                       aria-label={`Delete ${tag.public_label}`}
-                      className="admin-quiet-button"
+                      className="admin-quiet-button admin-icon-button"
                       disabled={isTagSubmitting}
                       onClick={() => setPendingDeleteTagId(tag.id)}
                       type="button"
                     >
-                      Delete
+                      <AdminDeleteIcon />
                     </button>
                   )}
                 </div>
@@ -3034,11 +3052,12 @@ function SofaFabricAssignmentSection({
                     />
                   </label>
                   <button
-                    className="admin-danger-button"
+                    aria-label={`Delete fabric assignment ${fabricLabel}`}
+                    className="admin-danger-button admin-icon-button"
                     onClick={() => void handleRemove(assignment)}
                     type="button"
                   >
-                    Delete
+                    <AdminDeleteIcon />
                   </button>
                 </div>
               );
@@ -3780,14 +3799,15 @@ function VisualMatrixSection({
                     {isSubmitting ? "Saving" : "Save"}
                   </button>
                   <button
-                    className="admin-danger-button"
+                    aria-label={`Delete column ${activeColumn.sequence}`}
+                    className="admin-danger-button admin-icon-button"
                     onClick={() => {
                       closeColumnDrawer();
                       setPendingDeleteColumnId(activeColumn.id);
                     }}
                     type="button"
                   >
-                    Delete
+                    <AdminDeleteIcon />
                   </button>
                 </div>
               </fieldset>
@@ -3813,14 +3833,17 @@ function VisualMatrixSection({
             ) : null}
             <div className="admin-actions">
               <button
-                className="admin-danger-button"
+                aria-label={
+                  isSubmitting
+                    ? `Deleting column ${pendingDeleteColumn.sequence}`
+                    : `Confirm delete column ${pendingDeleteColumn.sequence}`
+                }
+                className="admin-danger-button admin-icon-button"
                 disabled={isSubmitting}
                 onClick={() => void handleDelete(pendingDeleteColumn)}
                 type="button"
               >
-                {isSubmitting
-                  ? "Deleting"
-                  : `Confirm delete column ${pendingDeleteColumn.sequence}`}
+                <AdminDeleteIcon />
               </button>
               <button
                 className="admin-secondary-button"
