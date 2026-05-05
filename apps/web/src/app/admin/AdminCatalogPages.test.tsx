@@ -83,22 +83,20 @@ function expectVisualMatrixDialogFormAlignment(dialog: HTMLElement) {
   );
 }
 
-// RU: Эта проверка нужна тестам, чтобы кнопки строки Visual matrix были одной ровной группой.
-// FR: Cette verification aide les tests a confirmer que les boutons de la ligne Visual matrix forment un groupe regulier.
+// RU: Эта проверка нужна тестам, чтобы правая кнопка правки в строке Visual matrix оставалась текстовой.
+// FR: Cette verification aide les tests a confirmer que le bouton de modification a droite dans la ligne Visual matrix reste avec du texte.
 function expectVisualMatrixRowActions(button: HTMLElement) {
   const actions = button.closest(".admin-visual-matrix-actions");
 
   expect(actions).not.toBeNull();
   expect(actions).toHaveClass("admin-visual-matrix-action-bar");
-  expect(
-    within(actions as HTMLElement)
-      .getAllByRole("button")
-      .map((actionButton) => actionButton.textContent?.trim()),
-  ).toEqual(["Edit"]);
   for (const actionButton of within(actions as HTMLElement).getAllByRole(
     "button",
   )) {
     expect(actionButton).toHaveClass("admin-visual-matrix-action-button");
+    expect(actionButton).not.toHaveClass("admin-icon-button");
+    expect(actionButton).toHaveTextContent("Edit");
+    expect(actionButton.querySelector(".admin-edit-icon")).toBe(null);
   }
 }
 
@@ -3016,6 +3014,12 @@ describe("Admin catalog pages", () => {
     expect(
       document.querySelector(".admin-visual-matrix-source-preview img"),
     ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    const sourceImageButton = screen.getByRole("button", {
+      name: "Edit source image column 1",
+    });
+
+    expect(sourceImageButton).not.toHaveTextContent("Edit");
+    expect(sourceImageButton.querySelector(".admin-edit-icon")).not.toBe(null);
     expect(
       screen.getByRole("img", { name: "Swatch for Original fabric" }),
     ).toHaveAttribute("src", swatchPreviewUrl);

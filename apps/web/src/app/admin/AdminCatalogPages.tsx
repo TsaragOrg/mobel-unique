@@ -2519,6 +2519,18 @@ function SectionStepHeading({
   );
 }
 
+// RU: Этот знак показывает правку без слова Edit на маленьких кнопках.
+// FR: Ce signe montre la modification sans le mot Edit sur les petits boutons.
+function AdminEditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-edit-icon">
+      <path d="M14.25 4.75H6.5a2 2 0 0 0-2 2v10.75a2 2 0 0 0 2 2h10.75a2 2 0 0 0 2-2V9.75" />
+      <path d="M13.4 16.15 8.2 17.6l1.45-5.2 7.65-7.65a1.85 1.85 0 0 1 2.62 0l.43.43a1.85 1.85 0 0 1 0 2.62l-7.65 7.65Z" />
+      <path d="m15.95 6.1 2.35 2.35" />
+      <path d="m9.65 12.4 3.05 3.05" />
+    </svg>
+  );
+}
 function TagManagerContent({
   accessToken,
   dependencies,
@@ -3511,8 +3523,14 @@ function VisualMatrixSection({
                       Upload
                     </span>
                   )}
-                  <span className="admin-visual-matrix-source-action">
-                    {sourcePhotoPreviewUrl ? "Edit" : "Upload"}
+                  <span
+                    className={
+                      sourcePhotoPreviewUrl
+                        ? "admin-visual-matrix-source-action admin-visual-matrix-source-action--icon"
+                        : "admin-visual-matrix-source-action"
+                    }
+                  >
+                    {sourcePhotoPreviewUrl ? <AdminEditIcon /> : "Upload"}
                   </span>
                 </button>
                 <div className="admin-visual-matrix-copy">

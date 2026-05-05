@@ -233,6 +233,9 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: Basics tag assignment now uses a local search picker with
   pinned selected tag chips and remove actions instead of showing every tag as
   a persistent checkbox, keeping the form usable when the tag list grows.
+- Follow-up fix: View Columns source-photo thumbnails now keep the visible
+  row-level Edit action while replacing the image overlay text with a subtle
+  square edit icon attached to the top-right image corner.
 
 ## Acceptance Criteria
 

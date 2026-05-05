@@ -1980,6 +1980,16 @@ button:disabled {
   border-color: var(--admin-ink);
 }
 
+.admin-edit-icon {
+  color: currentColor;
+  fill: none;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.15;
+  width: 20px;
+}
 .admin-form {
   display: grid;
   gap: 16px;
@@ -2954,6 +2964,31 @@ button:disabled {
   position: absolute;
   right: 0;
   text-transform: uppercase;
+}
+
+.admin-visual-matrix-source-action--icon {
+  align-items: center;
+  background: rgb(255 255 255 / 0.72);
+  border: 1px solid rgb(11 11 11 / 0.1);
+  border-radius: 0;
+  bottom: auto;
+  box-shadow: none;
+  color: rgb(11 11 11 / 0.72);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  left: auto;
+  padding: 4px;
+  right: 0;
+  top: 0;
+  width: 34px;
+}
+
+.admin-visual-matrix-source-button:hover .admin-visual-matrix-source-action--icon,
+.admin-visual-matrix-source-button:focus-visible .admin-visual-matrix-source-action--icon {
+  background: rgb(255 255 255 / 0.9);
+  border-color: rgb(11 11 11 / 0.2);
+  color: var(--admin-ink, #0b0b0b);
 }
 
 .admin-visual-matrix-copy {
