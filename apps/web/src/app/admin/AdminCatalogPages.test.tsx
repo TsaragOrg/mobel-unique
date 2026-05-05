@@ -1,10 +1,10 @@
 /*
 RU: Этот файл проверяет страницы админского каталога.
-RU: Во время проверки показаны формы, списки, кнопки загрузки, подготовка картинок, публикация и архив дивана.
-RU: Проверки помогают убедиться, что админ может запускать генерацию, выбирать картинку, публиковать, снимать публикацию, архивировать и возвращать из архива.
+RU: Во время проверки показаны формы, списки, фильтры, кнопки загрузки, подготовка картинок, публикация и архив дивана.
+RU: Проверки помогают убедиться, что админ может фильтровать списки, запускать генерацию, выбирать картинку, публиковать, снимать публикацию, архивировать и возвращать из архива.
 FR: Ce fichier verifie les pages du catalogue admin.
-FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi, preparation d'images, publication et archive du canape.
-FR: Les tests aident a verifier que l'admin peut lancer la generation, choisir l'image, publier, retirer la publication, archiver et remettre depuis l'archive.
+FR: Pendant les tests, on voit les formulaires, listes, filtres, boutons d'envoi, preparation d'images, publication et archive du canape.
+FR: Les tests aident a verifier que l'admin peut filtrer les listes, lancer la generation, choisir l'image, publier, retirer la publication, archiver et remettre depuis l'archive.
 */
 
 import {
@@ -780,7 +780,11 @@ describe("Admin catalog pages", () => {
     expect(
       screen.getByRole("img", { name: "Source photo for Canape test" }),
     ).toHaveAttribute("src", "https://storage.example/source-sofa-preview");
-    expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: "Open Canape test" })).getByText(
+        "Draft",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Shopify missing")).not.toBeInTheDocument();
     expect(screen.queryByText("Open")).not.toBeInTheDocument();
     expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
@@ -852,7 +856,188 @@ describe("Admin catalog pages", () => {
     expect(
       screen.getByRole("link", { name: "Open Archived sofa" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Archived")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("link", { name: "Open Archived sofa" }),
+      ).getByText("Archived"),
+    ).toBeInTheDocument();
+  });
+
+  it("filters the sofa list by lifecycle status above the list", async () => {
+    const dependencies = createDependencies({
+      listSofas: vi.fn(async () => [
+        {
+          archived_at: null,
+          created_at: "2026-04-28T10:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000701",
+          internal_name: "Draft internal sofa",
+          lifecycle_state: "draft",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Draft sofa",
+          public_slug: null,
+          shopify_order_url: null,
+          source_photo_count: 1,
+          source_photo_preview_url:
+            "https://storage.example/source-sofa-preview",
+          tags: [],
+          updated_at: "2026-04-28T10:00:00.000Z",
+          length_cm: null,
+        },
+        {
+          archived_at: null,
+          created_at: "2026-04-28T09:30:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000702",
+          internal_name: "Published internal sofa",
+          lifecycle_state: "published",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Published sofa",
+          public_slug: "published-sofa",
+          shopify_order_url: null,
+          source_photo_count: 2,
+          source_photo_preview_url: null,
+          tags: [],
+          updated_at: "2026-04-28T09:30:00.000Z",
+          length_cm: null,
+        },
+        {
+          archived_at: "2026-04-28T10:55:00.000Z",
+          created_at: "2026-04-28T09:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000703",
+          internal_name: "Archived internal sofa",
+          lifecycle_state: "archived",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Archived sofa",
+          public_slug: "archived-sofa",
+          shopify_order_url: null,
+          source_photo_count: 0,
+          source_photo_preview_url: null,
+          tags: [],
+          updated_at: "2026-04-28T10:55:00.000Z",
+          length_cm: null,
+        },
+      ]),
+    });
+
+    render(<AdminSofasPage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Sofas" });
+    const statusFilter = await screen.findByLabelText("Sofa status filter");
+    const sofaList = screen.getByRole("list");
+
+    expect(within(statusFilter).getByText("Filters")).toBeInTheDocument();
+    expect(
+      statusFilter.compareDocumentPosition(sofaList) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      await screen.findByRole("link", { name: "Open Draft sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Published sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Archived sofa" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft" }));
+
+    expect(
+      screen.getByRole("link", { name: "Open Draft sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Published sofa" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Archived sofa" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+
+    expect(
+      screen.queryByRole("link", { name: "Open Draft sofa" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Published sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Archived sofa" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archived" }));
+
+    expect(
+      screen.queryByRole("link", { name: "Open Draft sofa" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Published sofa" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Archived sofa" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archived" }));
+
+    expect(
+      screen.getByRole("link", { name: "Open Draft sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Published sofa" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Archived sofa" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a status-filter empty message when no sofas match the selected status", async () => {
+    const dependencies = createDependencies({
+      listSofas: vi.fn(async () => [
+        {
+          archived_at: null,
+          created_at: "2026-04-28T10:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000701",
+          internal_name: "Draft internal sofa",
+          lifecycle_state: "draft",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Draft sofa",
+          public_slug: null,
+          shopify_order_url: null,
+          source_photo_count: 1,
+          source_photo_preview_url: null,
+          tags: [],
+          updated_at: "2026-04-28T10:00:00.000Z",
+          length_cm: null,
+        },
+      ]),
+    });
+
+    render(<AdminSofasPage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Sofas" });
+    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
+
+    expect(
+      screen.getByText("No sofa records match the selected status."),
+    ).toBeInTheDocument();
   });
 
   it("shows sofa list empty and error states", async () => {

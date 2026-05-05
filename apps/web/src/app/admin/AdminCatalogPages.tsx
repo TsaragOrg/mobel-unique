@@ -2,11 +2,11 @@
 
 /*
 RU: Этот файл нужен для страниц админского каталога.
-RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений, публикацию и архив.
-RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать, снимать публикацию, архивировать и возвращать из архива.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений, публикацию, архив и фильтры.
+RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать, снимать публикацию, архивировать, возвращать из архива и фильтровать списки.
 FR: Ce fichier sert aux pages du catalogue admin.
-FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images, publication et archive.
-FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier, retirer la publication, archiver et remettre depuis l'archive.
+FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images, publication, archive et filtres.
+FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier, retirer la publication, archiver, remettre depuis l'archive et filtrer les listes.
 */
 
 import Link from "next/link";
@@ -55,6 +55,19 @@ const FABRIC_SWATCH_ZOOM_MAX_PERCENT = 500;
 // RU: Это число ограничивает список найденных тегов, чтобы он не стал слишком длинным.
 // FR: Ce nombre limite la liste des etiquettes trouvees pour qu'elle reste courte.
 const TAG_SEARCH_RESULT_LIMIT = 8;
+
+type SofaStatusFilter = "draft" | "published" | "archived";
+
+// RU: Эти варианты дают быстрый выбор статуса дивана в списке.
+// FR: Ces choix donnent un filtre rapide par statut de canape dans la liste.
+const SOFA_STATUS_FILTER_OPTIONS: Array<{
+  label: string;
+  value: SofaStatusFilter;
+}> = [
+  { label: "Draft", value: "draft" },
+  { label: "Published", value: "published" },
+  { label: "Archived", value: "archived" },
+];
 
 export interface AdminCatalogTag {
   id: string;
@@ -1337,18 +1350,22 @@ function SofaListContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
-  // RU: Эти значения показывают ошибку, загрузку, список диванов и видимость архива.
-  // FR: Ces valeurs affichent une erreur, le chargement, la liste des canapes et la vue archive.
+  // RU: Эти значения показывают ошибку, загрузку, список диванов, видимость архива и выбранный статус.
+  // FR: Ces valeurs affichent une erreur, le chargement, la liste des canapes, la vue archive et le statut choisi.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sofas, setSofas] = useState<AdminCatalogSofa[]>([]);
   const [showArchivedSofas, setShowArchivedSofas] = useState(false);
+  const [sofaStatusFilter, setSofaStatusFilter] =
+    useState<SofaStatusFilter | null>(null);
 
-  // RU: Этот список прячет архивные диваны, пока админ не нажмет Archive.
-  // FR: Cette liste cache les canapes archives tant que l'admin ne choisit pas Archive.
-  const visibleSofas = showArchivedSofas
-    ? sofas
-    : sofas.filter((sofa) => sofa.lifecycle_state !== "archived");
+  // RU: Этот список применяет выбранный статус, а без него сохраняет прежнее правило кнопки Archive.
+  // FR: Cette liste applique le statut choisi, et sans lui garde l'ancienne regle du bouton Archive.
+  const visibleSofas = sofaStatusFilter
+    ? sofas.filter((sofa) => sofa.lifecycle_state === sofaStatusFilter)
+    : showArchivedSofas
+      ? sofas
+      : sofas.filter((sofa) => sofa.lifecycle_state !== "archived");
 
   // RU: Этот автоматический блок загружает диваны при открытии списка.
   // FR: Ce bloc automatique charge les canapes a l'ouverture de la liste.
@@ -1385,6 +1402,14 @@ function SofaListContent({
   // FR: Cette action affiche ou cache a nouveau les canapes archives dans la liste.
   function handleArchiveListToggle() {
     setShowArchivedSofas((currentValue) => !currentValue);
+  }
+
+  // RU: Это действие выбирает статус или убирает выбор при повторном нажатии.
+  // FR: Cette action choisit un statut ou retire le choix au second clic.
+  function handleStatusFilterClick(nextFilter: SofaStatusFilter) {
+    setSofaStatusFilter((currentFilter) =>
+      currentFilter === nextFilter ? null : nextFilter,
+    );
   }
 
   return (
@@ -1426,9 +1451,37 @@ function SofaListContent({
       {!isLoading && sofas.length === 0 ? (
         <p className="admin-list-feedback">No sofa records yet.</p>
       ) : null}
+      {/* RU: Этот блок стоит сверху слева над списком, подписывает фильтры и выбирает статус диванов.
+          FR: Ce bloc reste en haut a gauche au-dessus de la liste, nomme les filtres et choisit le statut des canapes. */}
+      {!isLoading && sofas.length > 0 ? (
+        <div className="admin-sofa-status-filter" aria-label="Sofa status filter">
+          <span className="admin-sofa-status-filter-label">Filters</span>
+          <span className="admin-sofa-status-filter-buttons">
+            {SOFA_STATUS_FILTER_OPTIONS.map((option) => {
+              const isActive = sofaStatusFilter === option.value;
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={`admin-sofa-status-filter-button${
+                    isActive ? " admin-sofa-status-filter-button-active" : ""
+                  }`}
+                  key={option.value}
+                  onClick={() => handleStatusFilterClick(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </span>
+        </div>
+      ) : null}
       {!isLoading && sofas.length > 0 && visibleSofas.length === 0 ? (
         <p className="admin-list-feedback">
-          No visible sofa records. Use Archive to show archived sofas.
+          {sofaStatusFilter
+            ? "No sofa records match the selected status."
+            : "No visible sofa records. Use Archive to show archived sofas."}
         </p>
       ) : null}
       {visibleSofas.length > 0 ? (
