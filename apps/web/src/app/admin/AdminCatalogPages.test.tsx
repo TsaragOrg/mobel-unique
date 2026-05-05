@@ -1,10 +1,10 @@
 /*
 RU: Этот файл проверяет страницы админского каталога.
-RU: Во время проверки показаны формы, списки, кнопки загрузки, подготовка картинок и публикация дивана.
-RU: Проверки помогают убедиться, что админ может запускать генерацию, выбирать картинку, публиковать и снимать публикацию.
+RU: Во время проверки показаны формы, списки, кнопки загрузки, подготовка картинок, публикация и архив дивана.
+RU: Проверки помогают убедиться, что админ может запускать генерацию, выбирать картинку, публиковать, снимать публикацию, архивировать и возвращать из архива.
 FR: Ce fichier verifie les pages du catalogue admin.
-FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi, preparation d'images et publication du canape.
-FR: Les tests aident a verifier que l'admin peut lancer la generation, choisir l'image, publier et retirer la publication.
+FR: Pendant les tests, on voit les formulaires, listes, boutons d'envoi, preparation d'images, publication et archive du canape.
+FR: Les tests aident a verifier que l'admin peut lancer la generation, choisir l'image, publier, retirer la publication, archiver et remettre depuis l'archive.
 */
 
 import {
@@ -246,6 +246,44 @@ function createDependencies(
       id: fabricId,
       lifecycle_state: "archived",
     })),
+    archiveSofa: vi.fn(async (_accessToken, sofaId) => ({
+      archived_at: "2026-04-28T10:55:00.000Z",
+      created_at: "2026-04-28T10:00:00.000Z",
+      depth_cm: 95,
+      footprint_measurements: null,
+      footprint_type: null,
+      height_cm: 82,
+      id: sofaId,
+      internal_name: "Manual test sofa",
+      lifecycle_state: "archived",
+      manual_public_order: null,
+      public_description: "Manual copy",
+      public_name: "Canape test",
+      public_slug: "canape-test",
+      shopify_order_url: "https://example.com/products/manual-test",
+      tags: [],
+      updated_at: "2026-04-28T10:55:00.000Z",
+      length_cm: 220,
+    })),
+    unarchiveSofa: vi.fn(async (_accessToken, sofaId) => ({
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      depth_cm: 95,
+      footprint_measurements: null,
+      footprint_type: null,
+      height_cm: 82,
+      id: sofaId,
+      internal_name: "Manual test sofa",
+      lifecycle_state: "draft",
+      manual_public_order: null,
+      public_description: "Manual copy",
+      public_name: "Canape test",
+      public_slug: "canape-test",
+      shopify_order_url: "https://example.com/products/manual-test",
+      tags: [],
+      updated_at: "2026-04-28T11:05:00.000Z",
+      length_cm: 220,
+    })),
     assignSofaFabric: vi.fn(async (_accessToken, sofaId, fabricId, input) => ({
       assigned_at: "2026-04-28T10:15:00.000Z",
       fabric,
@@ -265,6 +303,7 @@ function createDependencies(
       ...input,
     })),
     createSofa: vi.fn(async () => ({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: null,
@@ -414,6 +453,7 @@ function createDependencies(
       },
     ]),
     getSofa: vi.fn(async () => ({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: null,
@@ -459,6 +499,7 @@ function createDependencies(
       status: "succeeded",
     })),
     publishSofa: vi.fn(async (_accessToken, sofaId) => ({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: null,
@@ -477,6 +518,7 @@ function createDependencies(
       length_cm: 220,
     })),
     unpublishSofa: vi.fn(async (_accessToken, sofaId) => ({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: null,
@@ -496,6 +538,7 @@ function createDependencies(
     })),
     listSofas: vi.fn(async () => [
       {
+        archived_at: null,
         created_at: "2026-04-28T10:00:00.000Z",
         depth_cm: null,
         footprint_measurements: null,
@@ -580,6 +623,7 @@ function createDependencies(
       id: fabricId,
     })),
     updateSofa: vi.fn(async (_accessToken, _sofaId, input) => ({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: null,
       footprint_measurements: null,
@@ -742,6 +786,73 @@ describe("Admin catalog pages", () => {
     expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
     expect(screen.getByText("1 source photo")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
+  });
+
+  it("hides archived sofas until the archive list toggle is enabled", async () => {
+    const dependencies = createDependencies({
+      listSofas: vi.fn(async () => [
+        {
+          archived_at: null,
+          created_at: "2026-04-28T10:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000701",
+          internal_name: "Manual test sofa",
+          lifecycle_state: "draft",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Canape test",
+          public_slug: null,
+          shopify_order_url: null,
+          source_photo_count: 1,
+          source_photo_preview_url:
+            "https://storage.example/source-sofa-preview",
+          tags: [],
+          updated_at: "2026-04-28T10:00:00.000Z",
+          length_cm: null,
+        },
+        {
+          archived_at: "2026-04-28T10:55:00.000Z",
+          created_at: "2026-04-28T09:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000702",
+          internal_name: "Old internal sofa",
+          lifecycle_state: "archived",
+          manual_public_order: null,
+          public_description: null,
+          public_name: "Archived sofa",
+          public_slug: "archived-sofa",
+          shopify_order_url: null,
+          source_photo_count: 0,
+          source_photo_preview_url: null,
+          tags: [],
+          updated_at: "2026-04-28T10:55:00.000Z",
+          length_cm: null,
+        },
+      ]),
+    });
+
+    render(<AdminSofasPage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Sofas" });
+    expect(
+      await screen.findByRole("link", { name: "Open Canape test" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Open Archived sofa" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    expect(
+      screen.getByRole("link", { name: "Open Archived sofa" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Archived")).toBeInTheDocument();
   });
 
   it("shows sofa list empty and error states", async () => {
@@ -4822,6 +4933,115 @@ describe("Admin catalog pages", () => {
     });
   });
 
+  it("archives a published sofa from the publication section", async () => {
+    const dependencies = createDependencies({
+      getSofa: vi.fn(async () => ({
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        depth_cm: 95,
+        footprint_measurements: null,
+        footprint_type: null,
+        height_cm: 82,
+        id: "00000000-0000-4000-8000-000000000701",
+        internal_name: "Manual test sofa",
+        lifecycle_state: "published",
+        manual_public_order: null,
+        public_description: "Manual copy",
+        public_name: "Canape test",
+        public_slug: "canape-test",
+        shopify_order_url: "https://example.com/products/manual-test",
+        tags: [],
+        updated_at: "2026-04-28T10:45:00.000Z",
+        length_cm: 220,
+      })),
+      getSofaReadiness: vi.fn(async () => ({
+        errors: [],
+        ready: true,
+      })),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive sofa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+
+    await waitFor(() => {
+      expect(dependencies.archiveSofa).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000701",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Archived").length).toBeGreaterThan(0);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Unpublish sofa" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Archive sofa" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores an archived sofa from the publication section", async () => {
+    const dependencies = createDependencies({
+      getSofa: vi.fn(async () => ({
+        archived_at: "2026-04-28T10:55:00.000Z",
+        created_at: "2026-04-28T10:00:00.000Z",
+        depth_cm: 95,
+        footprint_measurements: null,
+        footprint_type: null,
+        height_cm: 82,
+        id: "00000000-0000-4000-8000-000000000701",
+        internal_name: "Manual test sofa",
+        lifecycle_state: "archived",
+        manual_public_order: null,
+        public_description: "Manual copy",
+        public_name: "Canape test",
+        public_slug: "canape-test",
+        shopify_order_url: "https://example.com/products/manual-test",
+        tags: [],
+        updated_at: "2026-04-28T10:55:00.000Z",
+        length_cm: 220,
+      })),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
+    expect(
+      screen.queryByRole("button", { name: "Archive sofa" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore from archive" }),
+    );
+
+    await waitFor(() => {
+      expect(dependencies.unarchiveSofa).toHaveBeenCalledWith(
+        "admin-token",
+        "00000000-0000-4000-8000-000000000701",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Draft").length).toBeGreaterThan(0);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Restore from archive" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("requests a sofa render ZIP export from the Renders tab", async () => {
     const dependencies = createDependencies();
 
@@ -5182,6 +5402,32 @@ describe("Admin catalog pages", () => {
           });
         }
 
+        if (requestUrl.endsWith(`/api/admin/sofas/${sofaId}/archive`)) {
+          return jsonResponse({
+            data: {
+              sofa: {
+                archived_at: "2026-04-28T10:55:00.000Z",
+                id: sofaId,
+                lifecycle_state: "archived",
+              },
+            },
+            meta: {},
+          });
+        }
+
+        if (requestUrl.endsWith(`/api/admin/sofas/${sofaId}/unarchive`)) {
+          return jsonResponse({
+            data: {
+              sofa: {
+                archived_at: null,
+                id: sofaId,
+                lifecycle_state: "draft",
+              },
+            },
+            meta: {},
+          });
+        }
+
         if (requestUrl.endsWith("/api/admin/sofas")) {
           return jsonResponse({
             data: {
@@ -5303,6 +5549,8 @@ describe("Admin catalog pages", () => {
     );
     await dependencies.publishSofa("admin-token", sofaId);
     await dependencies.unpublishSofa("admin-token", sofaId);
+    await dependencies.archiveSofa("admin-token", sofaId);
+    await dependencies.unarchiveSofa("admin-token", sofaId);
     await dependencies.createSofaRenderExport("admin-token", sofaId);
     await dependencies.getSofaRenderExport("admin-token", exportId);
     await dependencies.listTags("admin-token");
@@ -5390,6 +5638,8 @@ describe("Admin catalog pages", () => {
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publication-readiness",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/publish",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/unpublish",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/archive",
+      "/api/admin/sofas/00000000-0000-4000-8000-000000000701/unarchive",
       "/api/admin/sofas/00000000-0000-4000-8000-000000000701/render-exports",
       "/api/admin/render-exports/00000000-0000-4000-8000-000000000980",
       "/api/admin/tags",

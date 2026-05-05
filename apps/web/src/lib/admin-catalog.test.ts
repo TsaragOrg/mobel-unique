@@ -621,6 +621,7 @@ describe("admin catalog response shaping", () => {
     const serialized = JSON.stringify(response);
 
     expect(response).toEqual({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: {

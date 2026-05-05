@@ -258,6 +258,54 @@ export async function handlePublishSofaRequest(input: SofaInput) {
   });
 }
 
+export async function handleArchiveSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.archiveSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUnarchiveSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.unarchiveSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
 export async function handleUnpublishSofaRequest(input: SofaInput) {
   return withAuthorizedStore(input, async (store) => {
     const result = await store.unpublishSofa(input.sofaId);

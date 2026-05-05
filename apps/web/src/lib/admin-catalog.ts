@@ -55,6 +55,7 @@ export interface AdminTagRecord {
 }
 
 export interface AdminSofaRecord {
+  archived_at?: string | null;
   created_at: string;
   depth_cm?: number | null;
   footprint_measurements?: unknown;
@@ -247,6 +248,16 @@ export interface AdminSofaRenderExportRecord {
 }
 
 export interface AdminCatalogStore {
+  archiveSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
+  unarchiveSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
   archiveFabric(
     fabricId: string,
   ): Promise<AdminFabricRecord | JsonObject | null>;
@@ -1134,6 +1145,7 @@ export function buildPublicRenderAssetObjectPath(input: {
 
 export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
   return {
+    archived_at: stringOrNull(record.archived_at),
     created_at: stringOrNull(record.created_at),
     depth_cm: numberOrNull(record.depth_cm),
     footprint_measurements:
@@ -1487,6 +1499,44 @@ export function createSupabaseAdminCatalogStore(
   }) as SupabaseCatalogClient;
 
   return {
+    async archiveSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const { error } = await client.rpc("admin_archive_sofa", {
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be archived.",
+        });
+      }
+
+      return fetchSofaWithTags(client, sofaId);
+    },
+    async unarchiveSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const { error } = await client.rpc("admin_unarchive_sofa", {
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be restored from archive.",
+        });
+      }
+
+      return fetchSofaWithTags(client, sofaId);
+    },
     async archiveFabric(fabricId) {
       const existing = await fetchFabricWithAssets(client, fabricId);
 
@@ -2941,6 +2991,7 @@ export function createSupabaseAdminCatalogStore(
 const SOFA_SELECT = [
   "id",
   "lifecycle_state",
+  "archived_at",
   "internal_name",
   "public_name",
   "public_slug",

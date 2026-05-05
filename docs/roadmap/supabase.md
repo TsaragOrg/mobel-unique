@@ -4,6 +4,8 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                       |
 | ------ | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Done   | SPEC-0013 | PLAN-0064 | Service-role-only admin unarchive RPC restores archived sofas to draft while leaving them unpublished. |
+| Done   | SPEC-0013 | PLAN-0063 | Service-role-only admin archive RPC moves a sofa to archived, clears publication state, and removes public render asset references atomically. |
 | Done   | SPEC-0001 | PLAN-0001 | Migration directory prepared.                                                                                              |
 | Done   | SPEC-0008 | PLAN-0008 | Local Supabase worker development foundation with queues, storage, Edge Function smoke path, and local scripts.            |
 | Done   | SPEC-0009 | PLAN-0009 | Supabase data model migration, storage buckets, RLS policies, public read views, cleanup helpers, and schema smoke checks. |
