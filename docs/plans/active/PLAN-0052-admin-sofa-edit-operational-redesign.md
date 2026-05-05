@@ -238,6 +238,9 @@ workbench structure proves correct in browser QA.
   square edit icon attached to the top-right image corner.
 - Follow-up fix: Admin dashboard catalog cards and compact destructive actions
   now use quiet SVG icons while preserving accessible button and link names.
+- Follow-up fix: Admin modal close actions now use compact close icons, and
+  render candidate previous/next controls now use arrow icons while preserving
+  accessible button names.
 
 ## Acceptance Criteria
 

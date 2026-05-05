@@ -2545,6 +2545,37 @@ function AdminEditIcon() {
   );
 }
 
+// RU: Этот знак закрывает окно без слова Close на маленьких кнопках.
+// FR: Ce signe ferme la fenetre sans le mot Close sur les petits boutons.
+function AdminCloseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-close-icon">
+      <path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25" />
+    </svg>
+  );
+}
+
+// RU: Этот знак показывает переход к прошлому или следующему варианту без длинного текста.
+// FR: Ce signe montre le passage vers le choix avant ou apres sans long texte.
+function AdminArrowIcon({ direction }: { direction: "previous" | "next" }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={`admin-arrow-icon admin-arrow-icon-${direction}`}
+    >
+      <path
+        d={
+          direction === "previous"
+            ? "M14.5 6.5 9 12l5.5 5.5"
+            : "M9.5 6.5 15 12l-5.5 5.5"
+        }
+      />
+      <path d={direction === "previous" ? "M9.5 12h9" : "M5.5 12h9"} />
+    </svg>
+  );
+}
+
 function TagManagerContent({
   accessToken,
   dependencies,
@@ -3605,12 +3636,12 @@ function VisualMatrixSection({
               </div>
               <button
                 aria-label="Close View columns dialog"
-                className="admin-quiet-button admin-render-cell-close-button"
+                className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                 disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
-                Close
+                <AdminCloseIcon />
               </button>
             </header>
             <form
@@ -3669,12 +3700,12 @@ function VisualMatrixSection({
               </div>
               <button
                 aria-label="Close View columns dialog"
-                className="admin-quiet-button admin-render-cell-close-button"
+                className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                 disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
-                Close
+                <AdminCloseIcon />
               </button>
             </header>
             <form
@@ -5092,12 +5123,12 @@ function RenderCoverageSection({
                   </div>
                   <button
                     aria-label="Close render cell"
-                    className="admin-quiet-button admin-render-cell-close-button"
+                    className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                     onClick={handleCloseRenderCell}
                     ref={renderCellCloseButtonRef}
                     type="button"
                   >
-                    Close
+                    <AdminCloseIcon />
                   </button>
                 </header>
                 <div className="admin-render-cell-sheet-body">
@@ -5491,12 +5522,12 @@ function RenderCoverageSection({
                       <h3>{largeImagePreview.title}</h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
                       aria-label="Close large image"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseLargeImagePreview}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <figure className="admin-image-lightbox-frame">
@@ -5526,12 +5557,12 @@ function RenderCoverageSection({
                       </h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
                       aria-label="Close current render"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseCurrentRenderPreview}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <figure className="admin-render-compare-frame">
@@ -5590,12 +5621,12 @@ function RenderCoverageSection({
                       </h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
                       aria-label="Close comparison"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseCompareCandidate}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <div className="admin-render-compare-grid">
@@ -5644,20 +5675,22 @@ function RenderCoverageSection({
                   </div>
                   <footer className="admin-render-cell-sheet-footer">
                     <button
-                      className="admin-secondary-button"
+                      aria-label="Previous candidate"
+                      className="admin-secondary-button admin-icon-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(-1)}
                       type="button"
                     >
-                      Previous candidate
+                      <AdminArrowIcon direction="previous" />
                     </button>
                     <button
-                      className="admin-secondary-button"
+                      aria-label="Next candidate"
+                      className="admin-secondary-button admin-icon-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(1)}
                       type="button"
                     >
-                      Next candidate
+                      <AdminArrowIcon direction="next" />
                     </button>
                     <button
                       className="admin-primary-button"
