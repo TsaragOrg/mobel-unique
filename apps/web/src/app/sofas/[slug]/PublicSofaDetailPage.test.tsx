@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет публичную страницу одного дивана.
+RU: Во время проверки видны название, цена, ткань, вид, размеры, метки и кнопки для симуляции или заказа.
+RU: Проверки помогают убедиться, что посетитель может выбрать ткань и вид, открыть симуляцию и увидеть главные данные дивана.
+FR: Ce fichier verifie la page publique d'un canape.
+FR: Pendant les tests, on voit le nom, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
+FR: Les tests aident a verifier que le visiteur peut choisir le tissu et la vue, ouvrir la simulation et voir les donnees principales du canape.
+*/
+
 import {
   cleanup,
   fireEvent,
@@ -7,6 +16,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicSofaDetailPage } from "./PublicSofaDetailPage";
 
+// RU: Эти данные дают странице диван с ценой, тканями, видами, размерами и метками.
+// FR: Ces donnees donnent a la page un canape avec prix, tissus, vues, tailles et etiquettes.
 const detail = {
   defaults: {
     fabric_id: "fabric-boucle",
@@ -67,6 +78,10 @@ const detail = {
       length_cm: 240,
     },
     id: "sofa-rivoli",
+    price: {
+      amount_cents: 129900,
+      currency: "EUR",
+    },
     public_description: "Un canapé modulable pour le salon.",
     public_name: "Canapé Rivoli",
     public_slug: "canape-rivoli",
@@ -126,6 +141,7 @@ describe("PublicSofaDetailPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
     expect(screen.getByText("Un canapé modulable pour le salon.")).toBeInTheDocument();
+    expect(screen.getByText("1 299 €")).toBeInTheDocument();
     expect(screen.getByText("Longueur 240 cm")).toBeInTheDocument();
     expect(screen.getByText("Profondeur 96 cm")).toBeInTheDocument();
     expect(screen.getByText("Hauteur 82 cm")).toBeInTheDocument();
@@ -151,6 +167,9 @@ describe("PublicSofaDetailPage", () => {
       "href",
       "https://shopify.example/products/canape-rivoli",
     );
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/public/sofas/canape-rivoli", {
+      cache: "no-store",
+    });
     expect(screen.getByText(/Le rendu IA reste une estimation visuelle/i)).toBeInTheDocument();
   });
 

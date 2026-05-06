@@ -548,6 +548,8 @@ function createDependencies(
         internal_name: "Manual test sofa",
         lifecycle_state: "draft",
         manual_public_order: null,
+        price_cents: 129900,
+        price_currency: "EUR",
         public_description: null,
         public_name: "Canape test",
         public_slug: null,
@@ -789,6 +791,7 @@ describe("Admin catalog pages", () => {
     expect(screen.queryByText("Open")).not.toBeInTheDocument();
     expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
     expect(screen.getByText("1 source photo")).toBeInTheDocument();
+    expect(screen.getByText("1 299 €")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
   });
 
@@ -1805,6 +1808,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Shopify order URL"), {
       target: { value: "https://example.com/products/manual-test" },
     });
+    fireEvent.change(screen.getByRole("textbox", { name: "Price" }), {
+      target: { value: "1299" },
+    });
     fireEvent.change(await screen.findByLabelText("Search tags"), {
       target: { value: "con" },
     });
@@ -1814,6 +1820,7 @@ describe("Admin catalog pages", () => {
     await waitFor(() => {
       expect(dependencies.createSofa).toHaveBeenCalledWith("admin-token", {
         internal_name: "Manual test sofa",
+        price_cents: 129900,
         public_name: "Canape test",
         shopify_order_url: "https://example.com/products/manual-test",
         tag_ids: ["00000000-0000-4000-8000-000000000801"],
@@ -1822,6 +1829,30 @@ describe("Admin catalog pages", () => {
     expect(dependencies.navigate).toHaveBeenCalledWith(
       "/admin/sofas/00000000-0000-4000-8000-000000000701",
     );
+  });
+
+  it("rejects a decimal sofa price before create", async () => {
+    // RU: Эти проверки показывают ошибку, если админ ввел цену с центами.
+    // FR: Ces verifications montrent une erreur si l'admin ecrit un prix avec des centimes.
+    const dependencies = createDependencies();
+
+    render(<AdminSofaCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create sofa" });
+    fireEvent.change(screen.getByLabelText("Internal name"), {
+      target: { value: "Manual test sofa" },
+    });
+    const priceInput = screen.getByRole("textbox", {
+      name: "Price",
+    }) as HTMLInputElement;
+
+    fireEvent.change(priceInput, {
+      target: { value: "1299.99" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    expect(priceInput.checkValidity()).toBe(false);
+    expect(dependencies.createSofa).not.toHaveBeenCalled();
   });
 
   it("searches sofa tags, pins a selected tag, and removes it", async () => {
@@ -1905,6 +1936,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Public description"), {
       target: { value: "Updated manually" },
     });
+    fireEvent.change(screen.getByRole("textbox", { name: "Price" }), {
+      target: { value: "1499" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save sofa" }));
 
     await waitFor(() => {
@@ -1912,6 +1946,7 @@ describe("Admin catalog pages", () => {
         "admin-token",
         "00000000-0000-4000-8000-000000000701",
         expect.objectContaining({
+          price_cents: 149900,
           public_description: "Updated manually",
           tag_ids: ["00000000-0000-4000-8000-000000000801"],
         }),

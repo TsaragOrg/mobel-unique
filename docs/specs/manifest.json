@@ -111,7 +111,7 @@
         "SPEC-0007",
         "SPEC-0008"
       ],
-      "implementationPlans": ["PLAN-0061"],
+      "implementationPlans": ["PLAN-0061", "PLAN-0065"],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
     },
@@ -188,7 +188,7 @@
         "SPEC-0011",
         "SPEC-0012"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0065"],
       "path": "docs/specs/accepted/SPEC-0013-admin-frontend-experience-and-page-flows.md",
       "areas": ["web", "api", "supabase"]
     },
@@ -206,7 +206,8 @@
         "PLAN-0047",
         "PLAN-0048",
         "PLAN-0052",
-        "PLAN-0059"
+        "PLAN-0059",
+        "PLAN-0065"
       ],
       "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
       "areas": ["web", "api"]

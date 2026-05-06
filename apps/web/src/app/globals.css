@@ -2326,7 +2326,7 @@ button:disabled {
   color: var(--admin-muted, #5b5b5b);
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(110px, 0.55fr) minmax(130px, 0.75fr) minmax(190px, 1fr);
+  grid-template-columns: minmax(96px, 0.5fr) minmax(120px, 0.7fr) minmax(120px, 0.65fr) minmax(176px, 1fr);
 }
 
 .admin-sofa-list-details > span {
@@ -3977,6 +3977,22 @@ button:disabled {
 
 .admin-sofa-form {
   max-width: 880px;
+}
+
+.admin-sofa-tags-section {
+  order: 3;
+}
+
+.admin-sofa-price-section {
+  order: 4;
+}
+
+.admin-sofa-dimensions-section {
+  order: 5;
+}
+
+.admin-sofa-form .admin-form-footer {
+  order: 6;
 }
 
 .admin-form-section {
