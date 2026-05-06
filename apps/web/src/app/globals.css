@@ -780,6 +780,45 @@ button:disabled {
   width: 100%;
 }
 
+.sofa-detail-image-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--public-ink);
+  cursor: zoom-in;
+  display: grid;
+  height: 100%;
+  inset: 0;
+  justify-items: center;
+  min-height: 0;
+  padding: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.sofa-detail-image-viewer-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--public-line);
+  bottom: 14px;
+  color: var(--public-ink);
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  position: absolute;
+  right: 14px;
+  width: 44px;
+  z-index: 1;
+}
+
+.sofa-detail-expand-icon,
+.sofa-image-viewer-close-icon {
+  display: block;
+  fill: currentColor;
+  height: 22px;
+  width: 22px;
+}
+
 .catalog-card-image span,
 .sofa-detail-image span {
   color: var(--public-soft);
@@ -1087,6 +1126,66 @@ button:disabled {
 .sofa-limits {
   border-top: 1px solid var(--public-line);
   padding-top: 22px;
+}
+
+.sofa-image-viewer-backdrop {
+  background: rgba(8, 8, 8, 0.94);
+  display: grid;
+  inset: 0;
+  padding: clamp(14px, 3vw, 30px);
+  place-items: center;
+  position: fixed;
+  z-index: 80;
+}
+
+.sofa-image-viewer-dialog {
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  max-width: 1280px;
+  min-height: 0;
+  width: 100%;
+}
+
+.sofa-image-viewer-header {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 48px;
+}
+
+.sofa-image-viewer-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0;
+  width: 48px;
+}
+
+.sofa-image-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sofa-image-viewer-frame {
+  align-items: center;
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+}
+
+.sofa-image-viewer-frame img {
+  display: block;
+  height: 100%;
+  max-height: calc(100vh - 110px);
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
 }
 
 .public-footer {
@@ -1657,6 +1756,35 @@ button:disabled {
 
   .sofa-detail-image {
     aspect-ratio: 4 / 3;
+  }
+
+  .sofa-detail-image-viewer-icon {
+    bottom: 10px;
+    height: 40px;
+    right: 10px;
+    width: 40px;
+  }
+
+  .sofa-image-viewer-backdrop {
+    padding: 10px;
+  }
+
+  .sofa-image-viewer-dialog {
+    gap: 8px;
+  }
+
+  .sofa-image-viewer-header {
+    min-height: 44px;
+  }
+
+  .sofa-image-viewer-close {
+    height: 44px;
+    min-height: 44px;
+    width: 44px;
+  }
+
+  .sofa-image-viewer-frame img {
+    max-height: calc(100vh - 72px);
   }
 
   .sofa-detail-copy {
