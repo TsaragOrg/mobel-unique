@@ -1,5 +1,14 @@
 "use client";
 
+/*
+RU: Этот файл нужен для страницы одного дивана на публичном сайте.
+RU: На экране посетитель видит диван, цену, ткань, вид, размеры, метки и кнопки для симуляции или заказа.
+RU: Здесь можно выбрать ткань и вид, открыть симуляцию, перейти к заказу и проверить главные данные дивана.
+FR: Ce fichier sert a la page d'un canape sur le site public.
+FR: A l'ecran, le visiteur voit le canape, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
+FR: Ici, on peut choisir le tissu et la vue, ouvrir la simulation, aller vers la commande et verifier les donnees principales du canape.
+*/
+
 import { useEffect, useMemo, useState } from "react";
 import { PublicShell } from "../../PublicShell";
 import type { PublicSofaDetailResponse } from "../../../lib/public-catalog";
@@ -23,6 +32,8 @@ interface StoredSelection {
 }
 
 export function PublicSofaDetailPage({ slug }: { slug: string }) {
+  // RU: Эти значения держат данные дивана, выбранную ткань, выбранный вид, сообщения и картинку.
+  // FR: Ces valeurs gardent les donnees du canape, le tissu choisi, la vue choisie, les messages et l'image.
   const [detail, setDetail] = useState<PublicSofaDetailResponse | null>(null);
   const [status, setStatus] = useState<DetailStatus>("idle");
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
@@ -31,6 +42,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   const [staleSelection, setStaleSelection] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
 
+  // RU: Этот автоматический блок получает данные дивана при открытии страницы.
+  // FR: Ce bloc automatique prend les donnees du canape quand la page s'ouvre.
   useEffect(() => {
     let isCurrent = true;
 
@@ -38,7 +51,9 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       setStatus("loading");
 
       try {
-        const response = await fetch(`/api/public/sofas/${slug}`);
+        const response = await fetch(`/api/public/sofas/${slug}`, {
+          cache: "no-store",
+        });
         const body = (await response.json()) as ApiEnvelope<PublicSofaDetailResponse>;
 
         if (!response.ok || !body.data) {
@@ -97,6 +112,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  // RU: Эти данные находят выбранную ткань, выбранный вид, нужную картинку и готовность кнопки симуляции.
+  // FR: Ces donnees trouvent le tissu choisi, la vue choisie, la bonne image et le bouton de simulation pret.
   const selectedFabric = useMemo(
     () => detail?.fabrics.find((fabric) => fabric.id === selectedFabricId) ?? null,
     [detail?.fabrics, selectedFabricId],
@@ -125,18 +142,24 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       !staleSelection,
   );
 
+  // RU: Это действие выбирает ткань и снова показывает картинку.
+  // FR: Cette action choisit le tissu et montre de nouveau l'image.
   function chooseFabric(fabricId: string) {
     setSelectedFabricId(fabricId);
     setStaleSelection(false);
     setImageFailed(false);
   }
 
+  // RU: Это действие выбирает вид дивана и снова показывает картинку.
+  // FR: Cette action choisit la vue du canape et montre de nouveau l'image.
   function chooseVisualPosition(visualPositionId: string) {
     setSelectedVisualPositionId(visualPositionId);
     setStaleSelection(false);
     setImageFailed(false);
   }
 
+  // RU: Это действие возвращает первый доступный выбор.
+  // FR: Cette action remet le premier choix disponible.
   function resetToDefaults() {
     if (!detail) {
       return;
@@ -148,6 +171,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     setImageFailed(false);
   }
 
+  // RU: Это действие запоминает выбор перед открытием симуляции.
+  // FR: Cette action garde le choix avant d'ouvrir la simulation.
   function rememberSimulationContext(event: React.MouseEvent<HTMLAnchorElement>) {
     if (!canLaunchSimulation || !selectedFabricId || !selectedVisualPositionId) {
       event.preventDefault();
@@ -166,6 +191,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         Retour au catalogue
       </a>
 
+      {/* RU: Эти части показывают загрузку, ошибку или недоступный диван. */}
+      {/* FR: Ces parties montrent le chargement, l'erreur ou le canape indisponible. */}
       {status === "loading" || status === "idle" ? (
         <section className="public-status-panel" aria-live="polite">
           Chargement du canapé...
@@ -191,6 +218,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         </section>
       ) : null}
 
+      {/* RU: Эта большая часть показывает выбранный диван и действия для посетителя. */}
+      {/* FR: Cette grande partie montre le canape choisi et les actions du visiteur. */}
       {status === "ready" && detail ? (
         <article className="sofa-detail">
           <section className="sofa-detail-media">
@@ -281,6 +310,14 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
             </div>
 
             <section className="sofa-info-grid" aria-label="Informations publiques">
+              {detail.sofa.price ? (
+                <div>
+                  <h2>Prix</h2>
+                  <p className="sofa-price">
+                    {formatPublicWholeEuroPrice(detail.sofa.price)}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <h2>Dimensions</h2>
                 <DimensionList dimensions={detail.sofa.dimensions} />
@@ -347,6 +384,20 @@ function DimensionList({
   );
 }
 
+function formatPublicWholeEuroPrice(
+  price: PublicSofaDetailResponse["sofa"]["price"],
+) {
+  if (!price || price.currency !== "EUR" || price.amount_cents <= 0) {
+    return "";
+  }
+
+  return `${new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 0,
+  })
+    .format(price.amount_cents / 100)
+    .replace(/\u202f|\u00a0/g, " ")} €`;
+}
+
 function consumeStoredSelection(slug: string): StoredSelection | null {
   const key = `${CATALOG_SELECTION_PREFIX}${slug}`;
 
@@ -370,7 +421,8 @@ function writeSessionJson(key: string, value: Record<string, string>) {
   try {
     window.sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Session state is a progressive enhancement for the future wizard.
+    // RU: Запоминание выбора помогает открыть будущий мастер, но страница работает и без него.
+    // FR: Garder le choix aide a ouvrir le futur parcours, mais la page marche aussi sans cela.
   }
 }
 

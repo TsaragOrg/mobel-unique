@@ -56,6 +56,10 @@ const FABRIC_SWATCH_ZOOM_MAX_PERCENT = 500;
 // FR: Ce nombre limite la liste des etiquettes trouvees pour qu'elle reste courte.
 const TAG_SEARCH_RESULT_LIMIT = 8;
 
+// RU: Это правило пропускает только целые евро без нуля в начале.
+// FR: Cette regle accepte seulement les euros entiers sans zero au debut.
+const WHOLE_EURO_PRICE_PATTERN = /^[1-9][0-9]*$/;
+
 type SofaStatusFilter = "draft" | "published" | "archived";
 
 // RU: Эти варианты дают быстрый выбор статуса дивана в списке.
@@ -86,6 +90,8 @@ export interface AdminCatalogSofa {
   internal_name: string;
   lifecycle_state: string;
   manual_public_order: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description: string | null;
   public_name: string | null;
   public_slug: string | null;
@@ -299,6 +305,7 @@ export interface SofaMutationInput {
   height_cm?: number;
   internal_name?: string;
   manual_public_order?: number;
+  price_cents?: number | null;
   public_description?: string;
   public_name?: string;
   shopify_order_url?: string;
@@ -1530,6 +1537,10 @@ function SofaListContent({
                         </span>
                       </span>
                       <span>
+                        <small>Price</small>
+                        <span>{formatWholeEuroPrice(sofa.price_cents)}</span>
+                      </span>
+                      <span>
                         <small>Updated</small>
                         <span>{formatTimestamp(sofa.updated_at)}</span>
                       </span>
@@ -1967,10 +1978,9 @@ function SofaCreateContent({
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
-    const payload = buildSofaPayload(formData, selectedTagIds);
-
     try {
+      const formData = new FormData(event.currentTarget);
+      const payload = buildSofaPayload(formData, selectedTagIds);
       const sofa = await dependencies.createSofa(accessToken, payload);
       dependencies.navigate(`/admin/sofas/${sofa.id}`);
     } catch (error) {
@@ -2102,10 +2112,9 @@ function SofaEditContent({
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
-    const payload = buildSofaPayload(formData, selectedTagIds);
-
     try {
+      const formData = new FormData(event.currentTarget);
+      const payload = buildSofaPayload(formData, selectedTagIds);
       const nextSofa = await dependencies.updateSofa(
         accessToken,
         sofaId,
@@ -2394,6 +2403,39 @@ function formatLifecycleState(lifecycleState: string) {
     .filter(Boolean)
     .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function formatWholeEuroPrice(priceCents: number | null | undefined) {
+  if (
+    typeof priceCents !== "number" ||
+    !Number.isInteger(priceCents) ||
+    priceCents <= 0
+  ) {
+    return "Price not entered";
+  }
+
+  return `${formatWholeEuroAmount(priceCents / 100)} €`;
+}
+
+function formatWholeEuroAmount(amount: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 0,
+  })
+    .format(amount)
+    .replace(/\u202f|\u00a0/g, " ");
+}
+
+function formatPriceEurosForInput(priceCents: number | null | undefined) {
+  if (
+    typeof priceCents !== "number" ||
+    !Number.isInteger(priceCents) ||
+    priceCents <= 0 ||
+    priceCents % 100 !== 0
+  ) {
+    return "";
+  }
+
+  return String(priceCents / 100);
 }
 
 function AdminStateBadge({
@@ -4353,12 +4395,13 @@ function RenderCoverageSection({
     };
   }, []);
 
+  // RU: Этот автоматический блок переносит фокус на кнопку закрытия, когда открывается окно ячейки.
+  // FR: Ce bloc automatique place le curseur sur le bouton de fermeture quand la fenetre de case s'ouvre.
   useEffect(() => {
     if (!selectedCellId) {
       return;
     }
 
-    // Move focus into the dialog as soon as the render cell sheet opens.
     renderCellCloseButtonRef.current?.focus();
   }, [selectedCellId]);
 
@@ -6700,59 +6743,12 @@ function SofaForm({
           />
         </label>
       </section>
-      <section className="admin-form-section" aria-labelledby="sofa-dimensions">
-        <div className="admin-form-section-header">
-          <h3 id="sofa-dimensions">Dimensions</h3>
-          <p>Centimeter values used for catalog checks.</p>
-        </div>
-        <div className="admin-form-grid admin-dimension-grid">
-          <label className="field admin-unit-field">
-            <span>Length</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.length_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="length_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-          <label className="field admin-unit-field">
-            <span>Depth</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.depth_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="depth_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-          <label className="field admin-unit-field">
-            <span>Height</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.height_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="height_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-        </div>
-      </section>
       {/* RU: Этот раздел дает поиск по тегам и показывает выбранные метки. */}
       {/* FR: Cette partie donne la recherche des etiquettes et montre les choix. */}
-      <section className="admin-form-section" aria-labelledby="sofa-tags">
+      <section
+        className="admin-form-section admin-sofa-tags-section"
+        aria-labelledby="sofa-tags"
+      >
         <div className="admin-form-section-header">
           <h3 id="sofa-tags">Tags</h3>
           <p>Public grouping and readiness behavior.</p>
@@ -6828,6 +6824,86 @@ function SofaForm({
             ) : null}
           </div>
         )}
+      </section>
+      {/* RU: Р­С‚РѕС‚ СЂР°Р·РґРµР» РґР°РµС‚ С†РµРЅСѓ РґРёРІР°РЅР° С†РµР»С‹РјРё РµРІСЂРѕ РґР»СЏ Р°РґРјРёРЅР° Рё СЃР°Р№С‚Р°. */}
+      {/* FR: Cette partie donne le prix du canape en euros entiers pour l'admin et le site. */}
+      <section
+        className="admin-form-section admin-sofa-price-section"
+        aria-labelledby="sofa-price"
+      >
+        <div className="admin-form-section-header">
+          <h3 id="sofa-price">Price</h3>
+          <p>Whole euro value shown on the public sofa detail page.</p>
+        </div>
+        <label className="field admin-unit-field admin-price-field">
+          <span>Price</span>
+          <span className="admin-unit-control">
+            <input
+              defaultValue={formatPriceEurosForInput(sofa?.price_cents)}
+              inputMode="numeric"
+              min="1"
+              name="price_eur"
+              pattern="[1-9][0-9]*"
+              type="text"
+            />
+            <span aria-hidden="true">EUR</span>
+          </span>
+        </label>
+      </section>
+      {/* RU: Этот раздел дает размеры дивана в сантиметрах для проверки каталога. */}
+      {/* FR: Cette partie donne les tailles du canape en centimetres pour verifier le catalogue. */}
+      <section
+        className="admin-form-section admin-sofa-dimensions-section"
+        aria-labelledby="sofa-dimensions"
+      >
+        <div className="admin-form-section-header">
+          <h3 id="sofa-dimensions">Dimensions</h3>
+          <p>Centimeter values used for catalog checks.</p>
+        </div>
+        <div className="admin-form-grid admin-dimension-grid">
+          <label className="field admin-unit-field">
+            <span>Length</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.length_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="length_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Depth</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.depth_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="depth_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Height</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.height_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="height_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+        </div>
       </section>
       <footer className="admin-form-footer">
         <button className="admin-primary-button" type="submit">
@@ -6995,6 +7071,16 @@ function buildSofaPayload(
     if (value) {
       payload[field] = Number(value);
     }
+  }
+
+  if (formData.has("price_eur")) {
+    const priceEuros = String(formData.get("price_eur") ?? "").trim();
+
+    if (priceEuros && !WHOLE_EURO_PRICE_PATTERN.test(priceEuros)) {
+      throw new Error("Price must be a whole euro amount.");
+    }
+
+    payload.price_cents = priceEuros ? Number(priceEuros) * 100 : null;
   }
 
   return payload;

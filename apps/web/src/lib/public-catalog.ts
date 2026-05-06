@@ -60,6 +60,8 @@ export interface PublicSofaRecord {
   id: string;
   length_cm?: number | null;
   manual_public_order?: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description?: string | null;
   public_name: string;
   public_slug: string;
@@ -126,6 +128,11 @@ export interface PublicTagResponse {
   slug: string;
 }
 
+export interface PublicPriceResponse {
+  amount_cents: number;
+  currency: "EUR";
+}
+
 export interface PublicCatalogItemResponse {
   default_fabric_id: string;
   default_render_url: string;
@@ -138,6 +145,7 @@ export interface PublicCatalogItemResponse {
     length_cm: number | null;
   };
   id: string;
+  price: PublicPriceResponse | null;
   public_description: string | null;
   public_name: string;
   public_slug: string;
@@ -172,6 +180,7 @@ export interface PublicSofaDetailResponse {
   sofa: {
     dimensions: PublicCatalogItemResponse["dimensions"];
     id: string;
+    price: PublicPriceResponse | null;
     public_description: string | null;
     public_name: string;
     public_slug: string;
@@ -612,6 +621,7 @@ function shapeCatalogItemResponse(
     default_visual_position_id: state.defaultVisualPosition.id,
     dimensions: shapeDimensions(state.sofa),
     id: state.sofa.id,
+    price: shapePrice(state.sofa),
     public_description: state.sofa.public_description ?? null,
     public_name: state.sofa.public_name,
     public_slug: state.sofa.public_slug,
@@ -652,6 +662,7 @@ function shapeSofaDetailResponse(
     sofa: {
       dimensions: shapeDimensions(state.sofa),
       id: state.sofa.id,
+      price: shapePrice(state.sofa),
       public_description: state.sofa.public_description ?? null,
       public_name: state.sofa.public_name,
       public_slug: state.sofa.public_slug,
@@ -673,6 +684,20 @@ function shapeDimensions(sofa: PublicSofaRecord) {
     footprint_type: stringOrNull(sofa.footprint_type),
     height_cm: numberOrNull(sofa.height_cm),
     length_cm: numberOrNull(sofa.length_cm),
+  };
+}
+
+function shapePrice(sofa: PublicSofaRecord): PublicPriceResponse | null {
+  const amountCents = numberOrNull(sofa.price_cents);
+  const currency = stringOrNull(sofa.price_currency);
+
+  if (!amountCents || currency !== "EUR") {
+    return null;
+  }
+
+  return {
+    amount_cents: amountCents,
+    currency: "EUR",
   };
 }
 
@@ -745,6 +770,8 @@ function shapeSofaRecord(
     id: record.id,
     length_cm: numberOrNull(record.length_cm),
     manual_public_order: numberOrNull(record.manual_public_order),
+    price_cents: numberOrNull(record.price_cents),
+    price_currency: stringOrNull(record.price_currency),
     public_description: stringOrNull(record.public_description),
     public_name: record.public_name,
     public_slug: record.public_slug,

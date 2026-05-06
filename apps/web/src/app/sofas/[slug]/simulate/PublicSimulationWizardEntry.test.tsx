@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет первый экран публичной симуляции для выбранного дивана.
+RU: Во время проверки видны выбранный диван, ткань, вид, загрузка фото комнаты и кнопка продолжения.
+RU: Проверки помогают убедиться, что посетитель может продолжить симуляцию с сохраненным выбором.
+FR: Ce fichier verifie le premier ecran de la simulation publique pour le canape choisi.
+FR: Pendant les tests, on voit le canape choisi, le tissu, la vue, l'envoi de photo de piece et le bouton pour continuer.
+FR: Les tests aident a verifier que le visiteur peut continuer la simulation avec son choix garde.
+*/
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +51,8 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
+// RU: Эти данные дают проверке публичный диван, готовый для симуляции.
+// FR: Ces donnees donnent a la verification un canape public pret pour la simulation.
 const detail: PublicSofaDetailResponse = {
   defaults: { fabric_id: "fabric-boucle", visual_position_id: "front" },
   fabrics: [
@@ -63,6 +74,7 @@ const detail: PublicSofaDetailResponse = {
       length_cm: null
     },
     id: "sofa-rivoli",
+    price: null,
     public_description: null,
     public_name: "Canapé Rivoli",
     public_slug: "canape-rivoli",

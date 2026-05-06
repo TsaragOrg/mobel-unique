@@ -37,6 +37,8 @@ const sofaRecord = {
   internal_name: "Internal sofa",
   lifecycle_state: "draft",
   manual_public_order: 2,
+  price_cents: 129900,
+  price_currency: "EUR",
   provider_key: "must-not-leak",
   public_description: "Public description",
   public_name: "Public sofa",
@@ -234,6 +236,7 @@ describe("admin catalog validation", () => {
       internal_name: "  Internal sofa  ",
       length_cm: 220,
       manual_public_order: 1,
+      price_cents: 129900,
       public_name: "  Public sofa  ",
       tag_ids: ["00000000-0000-4000-8000-000000000201"],
     });
@@ -246,6 +249,7 @@ describe("admin catalog validation", () => {
         internal_name: "Internal sofa",
         length_cm: 220,
         manual_public_order: 1,
+        price_cents: 129900,
         public_name: "Public sofa",
         tag_ids: ["00000000-0000-4000-8000-000000000201"],
       },
@@ -304,6 +308,26 @@ describe("admin catalog validation", () => {
       ok: false,
       status: 400,
     });
+  });
+
+  it("rejects invalid sofa price cents", () => {
+    for (const price_cents of [0, -1, 1299.5]) {
+      expect(
+        validateSofaCreatePayload({
+          internal_name: "Internal sofa",
+          price_cents,
+        }),
+      ).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: ["price_cents"],
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
   });
 
   it("validates tag labels and generates customer-facing slugs", () => {
@@ -633,6 +657,8 @@ describe("admin catalog response shaping", () => {
       internal_name: "Internal sofa",
       lifecycle_state: "draft",
       manual_public_order: 2,
+      price_cents: 129900,
+      price_currency: "EUR",
       public_description: "Public description",
       public_name: "Public sofa",
       public_slug: "public-sofa",

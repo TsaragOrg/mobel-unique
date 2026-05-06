@@ -16,6 +16,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000401",
     length_cm: 240,
     manual_public_order: 2,
+    price_cents: 129900,
+    price_currency: "EUR",
     public_description: "Un canapé modulable pour le salon.",
     public_name: "Canapé Rivoli",
     public_slug: "canape-rivoli",
@@ -30,6 +32,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000402",
     length_cm: 210,
     manual_public_order: 1,
+    price_cents: null,
+    price_currency: "EUR",
     public_description: "Une ligne compacte.",
     public_name: "Canapé Marais",
     public_slug: "canape-marais",
@@ -44,6 +48,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000403",
     length_cm: null,
     manual_public_order: null,
+    price_cents: null,
+    price_currency: "EUR",
     public_description: "Incomplete sofa should stay hidden.",
     public_name: "Canapé Incomplet",
     public_slug: "canape-incomplet",
@@ -258,6 +264,10 @@ describe("public catalog route handlers", () => {
     expect(body.data.items[0]).toMatchObject({
       default_fabric_id: fabrics[0].id,
       default_visual_position_id: visualPositions[0].id,
+      price: {
+        amount_cents: 129900,
+        currency: "EUR",
+      },
       public_name: "Canapé Rivoli",
       public_slug: "canape-rivoli",
       tags: [
@@ -311,6 +321,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     const body = await response.json();
 
     expect(body.data.defaults).toEqual({
@@ -327,6 +338,10 @@ describe("public catalog route handlers", () => {
     expect(body.data.renders[0].render_url).toContain(
       "/storage/v1/object/public/catalog-public-assets/",
     );
+    expect(body.data.sofa.price).toEqual({
+      amount_cents: 129900,
+      currency: "EUR",
+    });
     expect(JSON.stringify(body)).not.toContain("render_cell_id");
     expect(JSON.stringify(body)).not.toContain("object_path");
     expect(JSON.stringify(body)).not.toContain("service_role");

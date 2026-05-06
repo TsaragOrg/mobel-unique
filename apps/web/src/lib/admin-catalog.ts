@@ -65,6 +65,8 @@ export interface AdminSofaRecord {
   internal_name: string;
   lifecycle_state: string;
   manual_public_order?: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description?: string | null;
   public_name?: string | null;
   public_slug?: string | null;
@@ -431,6 +433,7 @@ export interface SofaMutationInput {
   height_cm?: number | null;
   internal_name: string;
   manual_public_order?: number | null;
+  price_cents?: number | null;
   public_description?: string | null;
   public_name?: string | null;
   shopify_order_url?: string | null;
@@ -531,6 +534,7 @@ const SOFA_FIELDS = [
   "length_cm",
   "depth_cm",
   "height_cm",
+  "price_cents",
   "footprint_type",
   "footprint_measurements",
   "manual_public_order",
@@ -1158,6 +1162,8 @@ export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
     internal_name: stringOrNull(record.internal_name),
     lifecycle_state: stringOrNull(record.lifecycle_state),
     manual_public_order: numberOrNull(record.manual_public_order),
+    price_cents: numberOrNull(record.price_cents),
+    price_currency: stringOrNull(record.price_currency),
     public_description: stringOrNull(record.public_description),
     public_name: stringOrNull(record.public_name),
     public_slug: stringOrNull(record.public_slug),
@@ -2713,6 +2719,38 @@ export function createSupabaseAdminCatalogStore(
       }
 
       if (existing.lifecycle_state !== "draft") {
+        if (existing.lifecycle_state === "published") {
+          const publishedUpdate = buildPublishedSofaLiveUpdatePayload(
+            existing,
+            input,
+          );
+
+          if (!publishedUpdate.ok) {
+            throw new AdminCatalogOperationError({
+              code: "SOFA_CONFLICT",
+              details: {
+                fields: publishedUpdate.fields,
+              },
+              message:
+                "Only price can be changed while the sofa is published. Unpublish the sofa to edit other basics.",
+              status: 409,
+            });
+          }
+
+          if (Object.keys(publishedUpdate.value).length > 0) {
+            const { error } = await client
+              .from("sofas")
+              .update(publishedUpdate.value)
+              .eq("id", sofaId);
+
+            if (error) {
+              throw mapSupabaseError(error);
+            }
+          }
+
+          return fetchSofaWithTags(client, sofaId);
+        }
+
         throw new AdminCatalogOperationError({
           code: "SOFA_CONFLICT",
           message: "Only draft sofas can be edited in this API slice.",
@@ -3000,6 +3038,8 @@ const SOFA_SELECT = [
   "length_cm",
   "depth_cm",
   "height_cm",
+  "price_cents",
+  "price_currency",
   "footprint_type",
   "footprint_measurements",
   "manual_public_order",
@@ -3208,6 +3248,16 @@ function validateSofaPayload(
     value.manual_public_order = manualOrder.value;
   }
 
+  const priceCents = readPositiveNumberField(payload, "price_cents", {
+    integer: true,
+  });
+
+  if (!priceCents.ok) {
+    fields.push("price_cents");
+  } else if (priceCents.present) {
+    value.price_cents = priceCents.value;
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, "footprint_measurements")) {
     const measurements = payload.footprint_measurements;
 
@@ -3237,6 +3287,93 @@ function validateSofaPayload(
     ok: true,
     value,
   };
+}
+
+function buildPublishedSofaLiveUpdatePayload(
+  existing: AdminSofaRecord,
+  input: Partial<SofaMutationInput>,
+):
+  | {
+      fields: string[];
+      ok: false;
+      value?: never;
+    }
+  | {
+      fields?: never;
+      ok: true;
+      value: JsonObject;
+    } {
+  const { tag_ids: tagIds, ...sofaInput } = input;
+  const blockedFields: string[] = [];
+  const value: JsonObject = {};
+
+  for (const [field, nextValue] of Object.entries(
+    removeUndefinedValues(sofaInput),
+  )) {
+    if (field === "price_cents") {
+      if (!sameCatalogValue(existing.price_cents ?? null, nextValue)) {
+        value.price_cents = nextValue;
+      }
+
+      continue;
+    }
+
+    if (!sameCatalogValue(existing[field as keyof AdminSofaRecord], nextValue)) {
+      blockedFields.push(field);
+    }
+  }
+
+  if (
+    tagIds &&
+    !sameTagIdSet(
+      (existing.tags ?? []).map((tag) => tag.id),
+      tagIds,
+    )
+  ) {
+    blockedFields.push("tag_ids");
+  }
+
+  if (blockedFields.length > 0) {
+    return {
+      fields: blockedFields,
+      ok: false,
+    };
+  }
+
+  return {
+    ok: true,
+    value,
+  };
+}
+
+function sameTagIdSet(current: string[], next: string[]) {
+  if (current.length !== next.length) {
+    return false;
+  }
+
+  const currentSet = new Set(current);
+
+  return next.every((tagId) => currentSet.has(tagId));
+}
+
+function sameCatalogValue(current: unknown, next: unknown) {
+  if (Object.is(current, next)) {
+    return true;
+  }
+
+  if (current === undefined && next === null) {
+    return true;
+  }
+
+  if (current === null && next === undefined) {
+    return true;
+  }
+
+  if (typeof current === "object" || typeof next === "object") {
+    return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+  }
+
+  return false;
 }
 
 function validateFabricPayload(
