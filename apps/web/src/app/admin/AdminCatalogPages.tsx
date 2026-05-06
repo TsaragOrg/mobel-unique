@@ -194,18 +194,6 @@ const RENDER_CELL_STATUS_ORDER: RenderCellDisplayStatus[] = [
   "failed",
 ];
 
-// RU: Эти короткие знаки помогают отличать ячейки без опоры только на цвет.
-// FR: Ces signes courts aident a distinguer les cases sans compter seulement sur la couleur.
-const RENDER_CELL_STATUS_MARKERS: Record<RenderCellDisplayStatus, string> = {
-  blocked: "B",
-  candidate: "C",
-  failed: "F",
-  missing: "M",
-  processing: "P",
-  queued: "Q",
-  ready: "R",
-};
-
 export interface AdminCatalogVisualMatrixColumn {
   admin_label: string | null;
   created_at: string;
@@ -4153,9 +4141,6 @@ function getSofaEditTabLabel(tab: SofaEditTabKey) {
 function RenderStatusChip({ status }: { status: RenderCellDisplayStatus }) {
   return (
     <span className={`admin-status-chip admin-status-chip-${status}`}>
-      <span aria-hidden="true" className="admin-status-chip-marker">
-        {RENDER_CELL_STATUS_MARKERS[status]}
-      </span>
       {getRenderCellStatusLabel(status)}
     </span>
   );
