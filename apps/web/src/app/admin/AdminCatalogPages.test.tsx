@@ -2163,6 +2163,24 @@ describe("Admin catalog pages", () => {
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
+    for (const [label, marker] of [
+      ["Ready", "R"],
+      ["Missing", "M"],
+      ["Candidate", "C"],
+      ["Blocked", "B"],
+      ["Queued", "Q"],
+      ["Processing", "P"],
+      ["Failed", "F"],
+    ]) {
+      const chip = screen
+        .getAllByText(label)
+        .find((node) => node.closest(".admin-status-chip"))
+        ?.closest(".admin-status-chip");
+
+      expect(chip).not.toBeUndefined();
+      expect(chip).toHaveTextContent(new RegExp(`^${label}$`));
+      expect(chip).not.toHaveTextContent(`${marker}${label}`);
+    }
 
     const cellButton = screen.getByRole("button", {
       name: /Boucle ivoire, Front: Missing/i,

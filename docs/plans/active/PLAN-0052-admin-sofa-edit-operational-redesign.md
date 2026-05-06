@@ -241,6 +241,9 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: Admin modal close actions now use compact close icons, and
   render candidate previous/next controls now use arrow icons while preserving
   accessible button names.
+- Follow-up fix: Sofa edit render status chips now show only status text,
+  removing the previous one-letter markers from render cells, the status key,
+  and the render cell sheet.
 
 ## Acceptance Criteria
 

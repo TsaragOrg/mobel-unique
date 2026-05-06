@@ -3705,16 +3705,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.admin-status-chip-marker {
-  align-items: center;
-  border-radius: 999px;
-  display: inline-flex;
-  font-size: 0.6875rem;
-  height: 16px;
-  justify-content: center;
-  width: 16px;
-}
-
 .admin-status-chip-ready {
   background: #e9f6ef;
   border-color: #99c9ad;
