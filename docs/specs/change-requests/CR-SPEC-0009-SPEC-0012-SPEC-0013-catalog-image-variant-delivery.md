@@ -23,6 +23,11 @@ assets and already define upload limits and render input normalization. This
 change does not replace those rules. It adds explicit image delivery variants so
 each screen uses image bytes that match the visible size.
 
+The product decision is to avoid Supabase's paid Storage Image Transformations
+feature for catalog image delivery. Catalog performance must come from
+first-party generated and stored variants whose behavior, cost, cacheability,
+local development support, and failure modes are controlled by this application.
+
 ## Definitions
 
 `original` means the canonical stored image accepted by the existing upload,
@@ -40,10 +45,12 @@ cards where image quality matters but full-size inspection is not needed.
 `stored variant` means a separate Supabase Storage object and `storage_assets`
 row derived from an `original` asset.
 
-`transformed variant` means an image produced by Supabase Storage Image
-Transformations from an existing object. A transformed variant may be used as a
-generation mechanism or fallback, but UI code must not build ad hoc transform
-URLs itself.
+`variant processor` means the first-party server-side image pipeline that reads
+an original image, validates it, generates required derivative bytes, uploads
+those bytes to Supabase Storage as normal objects, and records the derivative
+metadata in application tables. The processor must not use Supabase Storage
+Image Transformations, Supabase `render/image` URLs, SDK `transform` options, or
+Supabase-managed `imgproxy`.
 
 ## Proposed Change
 
@@ -55,9 +62,8 @@ Update `SPEC-0009` so catalog render images support explicit delivery variants:
   catalog UI must have `original`, `small`, and `medium` delivery semantics;
 - `original` is the existing canonical `storage_assets` row for the accepted
   private or public render asset;
-- `small` and `medium` should be represented as durable variant records tied to
-  the original asset, unless an implementation plan explicitly chooses a
-  Supabase transformed URL adapter for a specific public read path;
+- `small` and `medium` must be represented as durable variant records tied to
+  the original asset;
 - stored variants must have their own `storage_assets` rows, dimensions, byte
   size, content type, visibility, lifecycle state, and object paths;
 - variant relationships must be queryable from the original asset id without
@@ -86,25 +92,62 @@ implementation, but the implementation should prefer a modern browser-friendly
 format for generated preview variants when doing so does not break supported
 clients.
 
-### Supabase Image Transformation Usage
+### Internal Variant Processor
 
-Supabase Storage Image Transformations may be used as part of this feature, but
-they must sit behind a server-side adapter:
+All catalog image variant generation must use a first-party implementation
+owned by this repository.
 
-- the implementation may use Supabase transformations to create `small` and
-  `medium` bytes from an original object, then store those bytes as durable
-  variants;
-- the implementation may use Supabase transformed public URLs for a public read
-  path only if the implementation plan confirms DEV and PROD plan support,
-  billing expectations, cache behavior, and local test behavior;
-- browser code must not assemble raw Supabase transformation URLs from private
-  paths;
-- private admin preview delivery must continue to use a first-party protected
+Rules:
+
+- Supabase Storage Image Transformations must not be used for catalog image
+  variant generation, preview fallback, public image delivery, backfill, tests,
+  or local fixture setup;
+- browser code must never assemble Supabase Storage transformation URLs or pass
+  transformation parameters for catalog images;
+- server-side code must not call Supabase `render/image` endpoints or SDK
+  `transform` options for catalog image delivery;
+- local, DEV, and PROD environments must use the same logical variant processor
+  contract, with deterministic test doubles allowed only in tests that do not
+  assert image encoder behavior;
+- the implementation plan must choose and pin the concrete image processing
+  dependency or service that is compatible with the chosen runtime;
+- the processor must expose a small internal API that accepts an original asset
+  id and required variant kinds, then returns or records durable variant asset
+  ids;
+- the processor must be idempotent and safe to retry after partial failure;
+- the processor must not expose service-role keys, private bucket paths, signed
+  URLs, raw image bytes, or processor stack traces to browser-facing responses;
+- private admin preview delivery must continue through a first-party protected
   admin API boundary unless a later accepted change request replaces that
-  boundary;
-- if Supabase transformations are unavailable in local development, tests and
-  local fixture setup must use an implementation-approved local adapter or
-  deterministic fixture variant generator.
+  boundary.
+
+Recommended processor behavior:
+
+- read originals from Supabase Storage using server-side credentials only;
+- decode supported source image types through a maintained library or internal
+  service chosen during implementation;
+- honor image orientation metadata when the selected decoder exposes it;
+- reject unsupported, corrupt, decompression-bomb-like, or unexpectedly large
+  inputs with safe operational errors;
+- preserve aspect ratio for `small` and `medium` render variants;
+- avoid crop, pad, stretch, rotation, watermarking, background replacement, or
+  visual reframing unless a later accepted spec defines a variant that needs it;
+- avoid upscaling when the original is already smaller than the target longest
+  edge;
+- strip unnecessary metadata from public variants unless a later operational
+  requirement keeps specific metadata;
+- record width, height, byte size, content type, checksum when available, source
+  original id, variant kind, generation status, and timestamps;
+- upload completed variant objects with cache-friendly metadata appropriate to
+  their visibility and lifecycle;
+- write variant rows only after the object upload and metadata validation have
+  completed, or mark partial state clearly enough for cleanup and retry.
+
+Implementation plans must define the concrete processor runtime. If the
+selected Supabase Edge Function runtime cannot support the required image
+library reliably, the plan must route variant generation through a controlled
+first-party worker or server-side tool instead of falling back to Supabase
+Storage Image Transformations.
 
 ### Variant Creation Points
 
@@ -169,13 +212,17 @@ Update `SPEC-0012` public catalog behavior:
 - public image URLs should remain cache-friendly and should include immutable
   asset or version components so stale browser and CDN cache issues are avoided.
 
+The public catalog must use stored public variant object URLs, not Supabase
+transformation URLs. Public image URLs may rely on Supabase Storage and CDN for
+delivery of already-generated objects, but resizing and optimization must have
+already happened before the URL is returned to the browser.
+
 ### Data And API Shape
 
 Implementation plans should define the exact schema, but the accepted contract
 must support:
 
 - looking up a variant by original `storage_assets.id` and variant kind;
-- knowing whether a variant is stored or transformed;
 - preserving dimensions and content type for each returned image URL;
 - returning admin preview bytes by `(asset_id, variant_kind)` through an
   authorized first-party admin route;
@@ -205,6 +252,9 @@ must support:
 - Changing customer simulation room-photo retention or simulation output
   retention.
 - Making `catalog-private-assets` public.
+- Using Supabase Storage Image Transformations, Supabase `render/image` URLs,
+  SDK `transform` options, or Supabase-managed `imgproxy` for catalog image
+  variants.
 - Replacing the existing admin authentication and trusted-device boundary.
 - Changing the AI provider prompt or generation quality.
 - Reworking fabric swatch crop behavior beyond what public catalog image
@@ -213,12 +263,11 @@ must support:
 
 ## Impact
 
-- Data model: a durable asset variant relationship is needed, or an equivalent
-  server-side variant adapter with the same behavior must be specified.
+- Data model: a durable asset variant relationship is needed.
 - Supabase Storage: private and public variant object paths need deterministic,
   cleanup-friendly conventions.
 - API: admin preview routes need variant-aware reads; public catalog routes need
-  medium catalog URLs and original detail URLs.
+  stored medium catalog URLs and stored original detail URLs.
 - Worker: generated candidate success needs variant creation or a follow-up
   service step before the candidate is preview-ready.
 - Publication: public render copy creation needs public variant creation and
@@ -246,16 +295,17 @@ must support:
 - Private storage paths and service credentials are never exposed to the
   browser.
 - Public catalog image URLs are generated from database state or an approved
-  server-side URL builder, not guessed in client code.
+  server-side URL builder for stored objects, not guessed in client code.
 - Variant generation is idempotent and safe to retry.
 - Existing assets can be backfilled without replacing accepted originals.
 - Publication cannot make a sofa visible with missing required public render
   variants.
+- Supabase Storage Image Transformations are not required, enabled, or used by
+  the catalog image variant pipeline.
 
 ## Approval Note
 
-Pending review. The selected direction is a hybrid model: stored variants are
-the main product contract for predictable admin and public delivery, while
-Supabase Storage Image Transformations may be used behind server-side adapters
-to generate or serve variants when the implementation plan confirms plan,
-billing, cache, and local-development behavior.
+Pending review. The selected direction is a fully first-party variant model:
+stored variants are the product contract for predictable admin and public image
+delivery, and Supabase Storage Image Transformations are intentionally excluded
+from catalog image generation and delivery.
