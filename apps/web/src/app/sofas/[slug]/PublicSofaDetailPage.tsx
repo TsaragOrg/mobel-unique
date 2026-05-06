@@ -7,6 +7,8 @@ RU: Здесь можно выбрать ткань и вид, открыть с
 FR: Ce fichier sert a la page d'un canape sur le site public.
 FR: A l'ecran, le visiteur voit le canape, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
 FR: Ici, on peut choisir le tissu et la vue, ouvrir la simulation, aller vers la commande et verifier les donnees principales du canape.
+RU: Картинку дивана можно открыть большим окном, чтобы рассмотреть ее ближе.
+FR: L'image du canape peut s'ouvrir en grand pour mieux la regarder.
 */
 
 import { useEffect, useMemo, useState } from "react";
@@ -41,6 +43,9 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     useState<string | null>(null);
   const [staleSelection, setStaleSelection] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  // RU: Это значение показывает, открыто ли большое окно с картинкой.
+  // FR: Cette valeur indique si la grande fenetre avec l'image est ouverte.
+  const [isImageViewerOpen, setImageViewerOpen] = useState(false);
 
   // RU: Этот автоматический блок получает данные дивана при открытии страницы.
   // FR: Ce bloc automatique prend les donnees du canape quand la page s'ouvre.
@@ -112,6 +117,30 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  // RU: Этот автоматический блок закрывает большое окно клавишей Escape и останавливает прокрутку страницы.
+  // FR: Ce bloc automatique ferme la grande fenetre avec Escape et arrete le defilement de la page.
+  useEffect(() => {
+    if (!isImageViewerOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setImageViewerOpen(false);
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isImageViewerOpen]);
+
   // RU: Эти данные находят выбранную ткань, выбранный вид, нужную картинку и готовность кнопки симуляции.
   // FR: Ces donnees trouvent le tissu choisi, la vue choisie, la bonne image et le bouton de simulation pret.
   const selectedFabric = useMemo(
@@ -141,25 +170,41 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       selectedRender &&
       !staleSelection,
   );
+  // RU: Этот текст описывает выбранную картинку дивана для читателей экрана.
+  // FR: Ce texte decrit l'image choisie du canape pour les lecteurs d'ecran.
+  const selectedImageAlt = detail
+    ? `${detail.sofa.public_name} en ${selectedFabric?.public_name ?? "tissu sélectionné"}, ${selectedVisualPosition?.public_label ?? "vue sélectionnée"}`
+    : "";
+  // RU: Эта проверка говорит, можно ли открыть выбранную картинку большим окном.
+  // FR: Cette verification dit si l'image choisie peut s'ouvrir en grand.
+  const canOpenImageViewer = Boolean(selectedRender && !imageFailed);
 
   // RU: Это действие выбирает ткань и снова показывает картинку.
   // FR: Cette action choisit le tissu et montre de nouveau l'image.
+  // RU: Если большое окно открыто, оно закрывается.
+  // FR: Si la grande fenetre est ouverte, elle se ferme.
   function chooseFabric(fabricId: string) {
     setSelectedFabricId(fabricId);
     setStaleSelection(false);
     setImageFailed(false);
+    setImageViewerOpen(false);
   }
 
   // RU: Это действие выбирает вид дивана и снова показывает картинку.
   // FR: Cette action choisit la vue du canape et montre de nouveau l'image.
+  // RU: Если большое окно открыто, оно закрывается.
+  // FR: Si la grande fenetre est ouverte, elle se ferme.
   function chooseVisualPosition(visualPositionId: string) {
     setSelectedVisualPositionId(visualPositionId);
     setStaleSelection(false);
     setImageFailed(false);
+    setImageViewerOpen(false);
   }
 
   // RU: Это действие возвращает первый доступный выбор.
   // FR: Cette action remet le premier choix disponible.
+  // RU: Если большое окно открыто, оно закрывается.
+  // FR: Si la grande fenetre est ouverte, elle se ferme.
   function resetToDefaults() {
     if (!detail) {
       return;
@@ -169,6 +214,36 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     setSelectedVisualPositionId(detail.defaults.visual_position_id);
     setStaleSelection(false);
     setImageFailed(false);
+    setImageViewerOpen(false);
+  }
+
+  // RU: Это действие открывает выбранную картинку большим окном.
+  // FR: Cette action ouvre l'image choisie en grand.
+  function openImageViewer() {
+    if (canOpenImageViewer) {
+      setImageViewerOpen(true);
+    }
+  }
+
+  // RU: Это действие закрывает большое окно с картинкой.
+  // FR: Cette action ferme la grande fenetre avec l'image.
+  function closeImageViewer() {
+    setImageViewerOpen(false);
+  }
+
+  // RU: Это действие закрывает большое окно, когда нажимают на темный фон.
+  // FR: Cette action ferme la grande fenetre quand on appuie sur le fond sombre.
+  function closeImageViewerFromBackdrop(event: React.MouseEvent<HTMLDivElement>) {
+    if (event.target === event.currentTarget) {
+      closeImageViewer();
+    }
+  }
+
+  // RU: Это действие показывает, что картинка не загрузилась, и закрывает большое окно.
+  // FR: Cette action indique que l'image ne charge pas et ferme la grande fenetre.
+  function handleSelectedImageError() {
+    setImageFailed(true);
+    setImageViewerOpen(false);
   }
 
   // RU: Это действие запоминает выбор перед открытием симуляции.
@@ -227,11 +302,21 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
               {imageFailed || !selectedRender ? (
                 <span>Image indisponible</span>
               ) : (
-                <img
-                  alt={`${detail.sofa.public_name} en ${selectedFabric?.public_name ?? "tissu sélectionné"}, ${selectedVisualPosition?.public_label ?? "vue sélectionnée"}`}
-                  onError={() => setImageFailed(true)}
-                  src={selectedRender.render_url}
-                />
+                <button
+                  aria-label="Agrandir l'image du canapé"
+                  className="sofa-detail-image-button"
+                  onClick={openImageViewer}
+                  type="button"
+                >
+                  <img
+                    alt={selectedImageAlt}
+                    onError={handleSelectedImageError}
+                    src={selectedRender.render_url}
+                  />
+                  <span className="sofa-detail-image-viewer-icon">
+                    <PublicExpandIcon />
+                  </span>
+                </button>
               )}
             </div>
           </section>
@@ -339,9 +424,67 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
               modèle, le tissu et les dimensions avant de finaliser votre achat.
             </p>
           </section>
+          {/* RU: Это большое окно показывает картинку дивана почти на весь экран. */}
+          {/* FR: Cette grande fenetre montre l'image du canape presque sur tout l'ecran. */}
+          {isImageViewerOpen && selectedRender ? (
+            <div
+              className="sofa-image-viewer-backdrop"
+              onClick={closeImageViewerFromBackdrop}
+            >
+              <section
+                aria-label="Image du canapé"
+                aria-modal="true"
+                className="sofa-image-viewer-dialog"
+                role="dialog"
+              >
+                <header className="sofa-image-viewer-header">
+                  <button
+                    aria-label="Fermer l'image"
+                    autoFocus
+                    className="sofa-image-viewer-close"
+                    onClick={closeImageViewer}
+                    type="button"
+                  >
+                    <PublicCloseIcon />
+                  </button>
+                </header>
+                <div className="sofa-image-viewer-frame">
+                  <img
+                    alt={selectedImageAlt}
+                    onError={handleSelectedImageError}
+                    src={selectedRender.render_url}
+                  />
+                </div>
+              </section>
+            </div>
+          ) : null}
         </article>
       ) : null}
     </PublicShell>
+  );
+}
+
+function PublicExpandIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="sofa-detail-expand-icon"
+      viewBox="0 0 24 24"
+    >
+      <path d="M8 3H3v5h2V6.41l4.3 4.3 1.4-1.42L6.41 5H8V3Zm8 0v2h1.59l-4.3 4.29 1.42 1.42 4.29-4.3V8h2V3h-5ZM9.29 13.29 5 17.59V16H3v5h5v-2H6.41l4.3-4.29-1.42-1.42Zm5.42 0-1.42 1.42 4.3 4.29H16v2h5v-5h-2v1.59l-4.29-4.3Z" />
+    </svg>
+  );
+}
+
+function PublicCloseIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="sofa-image-viewer-close-icon"
+      viewBox="0 0 24 24"
+    >
+      <path d="m6.4 5 5.6 5.59L17.6 5 19 6.4 13.41 12 19 17.6 17.6 19 12 13.41 6.4 19 5 17.6 10.59 12 5 6.4 6.4 5Z" />
+    </svg>
   );
 }
 
