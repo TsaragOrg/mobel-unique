@@ -1,18 +1,29 @@
+/*
+RU: Этот файл нужен для главной страницы Mobel Unique. Пользователь видит бренд, видео с диваном, путь симуляции и полезные факты. Здесь можно сменить цвет дивана и открыть каталог через основную кнопку.
+FR: Ce fichier sert a la page d'accueil Mobel Unique. L'utilisateur voit la marque, la video du canape, le chemin de simulation et les points utiles. Ici, il peut changer la couleur du canape et ouvrir le catalogue avec le bouton principal.
+*/
+
 import type { Metadata } from "next";
 import { HomeHeroVideo } from "./home-hero-video";
 
+// RU: Эти данные задают заголовок вкладки и описание страницы для поиска.
+// FR: Ces donnees donnent le titre de l'onglet et le texte court pour la recherche.
 export const metadata: Metadata = {
   description:
     "Découvrez les canapés MÖBEL UNIQUE et visualisez-les chez vous avec une simulation assistée par IA.",
   title: "MÖBEL UNIQUE | Simulez nos canapés chez vous",
 };
 
+// RU: Эти строки показывают короткий путь от выбора дивана до результата.
+// FR: Ces lignes montrent le chemin court du choix du canape au resultat.
 const steps = [
   "Choisissez un canapé",
   "Lancez la simulation",
   "Découvrez le rendu chez vous",
 ];
 
+// RU: Эти данные показывают три причины попробовать симуляцию.
+// FR: Ces donnees montrent trois raisons d'essayer la simulation.
 const benefits = [
   {
     description: "Visualisez le canapé dans votre pièce en un instant.",
@@ -34,26 +45,16 @@ const benefits = [
 export default function Home() {
   return (
     <main className="home-shell">
+      {/* RU: Верхняя часть оставляет только бренд, без ссылок справа.
+      FR: La partie du haut garde seulement la marque, sans liens a droite. */}
       <header className="home-header" aria-label="Accueil public">
         <a className="home-brand" href="/">
           MÖBEL UNIQUE
         </a>
-        <nav className="home-header-nav" aria-label="Navigation publique">
-          <a href="/catalog">Collections</a>
-          <a href="#process">À propos</a>
-          <a href="#limits">Simulation</a>
-        </nav>
-        <a
-          className="home-menu-link"
-          href="/catalog"
-          aria-label="Voir les collections"
-        >
-          <span aria-hidden="true" />
-          <span aria-hidden="true" />
-          <span aria-hidden="true" />
-        </a>
       </header>
 
+      {/* RU: Главная зона показывает видео, шаги и основную кнопку каталога.
+      FR: La zone principale montre la video, les etapes et le bouton du catalogue. */}
       <section
         className="home-hero"
         id="simulation-preview"
@@ -88,6 +89,8 @@ export default function Home() {
         </div>
       </section>
 
+      {/* RU: Этот ряд кратко объясняет пользу симуляции.
+      FR: Cette ligne explique vite l'interet de la simulation. */}
       <section
         className="home-benefits"
         aria-label="Bénéfices de la simulation"
