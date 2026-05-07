@@ -13,8 +13,13 @@ Affected packages:
 - `scripts/seed-simulation-test-data.mjs` (new)
 - `scripts/seed-simulation-test-data.test.mjs` (new)
 - `package.json` (new `seed:simulation-test` script)
+- `scripts/seed-local-admin-fixtures.mjs`
+- `scripts/seed-local-admin-fixtures.test.mjs`
+- `fixtures/local-admin-catalog`
+- `docs/local-supabase-worker-development.md`
 - `docs/roadmap/supabase.md`
 - `docs/roadmap/web.md`
+- `docs/roadmap/workflow.md`
 
 ## Goal
 
@@ -134,6 +139,13 @@ touch prompts, providers, or the validated v003 pipeline.
       API-level publishability checks do not require the bucket
       objects to exist.
 - [x] Add `seed:simulation-test` to `package.json` scripts.
+- [x] Make `pnpm supabase:reset` restore a complete local test base by
+      running `seed:simulation-test:local-fixtures` after the admin
+      fixture seed. The admin fixture seed now generates deterministic
+      local images for missing files and applies default lifecycle/render
+      coverage scenarios to local manifests: one published complete sofa,
+      one draft complete sofa, one archived complete sofa, one source-only
+      draft, and one no-image draft.
 - [x] Document the seed script in
       `docs/local-supabase-worker-development.md`.
 
@@ -143,6 +155,11 @@ touch prompts, providers, or the validated v003 pipeline.
       `docs/roadmap/workflow.md`, and `docs/roadmap/web.md` as later
       local browser smoke support also documents the public API's worker
       pump environment variables.
+- [x] Run `pnpm vitest run scripts/seed-local-admin-fixtures.test.mjs scripts/in-home-simulation-seed-catalog-migration.test.mjs`.
+- [x] Run `pnpm supabase:reset` locally and verify Postgres has
+      published, draft, and archived sofas; public catalog rows; complete
+      and incomplete render-cell coverage; generated storage assets; and
+      simulation-test storage copies.
 - [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check origin/dev`
       — all green locally; CI re-validates on the PR.
 - [ ] Worker behavior parity check (manual, by Ahmed): run the

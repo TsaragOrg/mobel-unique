@@ -59,19 +59,24 @@ Reset the local database and reapply migrations:
 pnpm supabase:reset
 ```
 
-This also runs `pnpm supabase:realtime:local-compat` and
-`pnpm seed:local:admin-fixtures` after the Supabase SQL seed. The Realtime
-compatibility step keeps local Postgres change subscriptions working with the
-current Supabase CLI stack. The fixture seed loads local admin catalog data
-into the local database and Storage:
+This also runs `pnpm supabase:realtime:local-compat`,
+`pnpm seed:local:admin-fixtures`, and
+`pnpm seed:simulation-test:local-fixtures` after the Supabase SQL seed. The
+Realtime compatibility step keeps local Postgres change subscriptions working
+with the current Supabase CLI stack. The fixture seeds load local admin catalog
+data, deterministic public simulation sofas, and the Storage objects needed for
+browser smoke testing:
 
 - at least three fabrics;
-- at least two sofas;
-- source photos for each seeded sofa;
-- render cells that make the non-source fabrics eligible for `Generate all`.
+- published, draft, and archived sofa states;
+- complete public render coverage for at least one published sofa;
+- complete private render coverage for at least one draft sofa;
+- source-only and no-image draft sofas for incomplete catalog testing;
+- two public `simulation-test-*` sofas for the in-home simulation wizard.
 
-The seed uses built-in placeholder PNGs by default. To use real local images,
-copy `fixtures/local-admin-catalog/manifest.example.json` to
+The seed generates deterministic local fixture images when referenced image
+files are missing. To use real local images, copy
+`fixtures/local-admin-catalog/manifest.example.json` to
 `fixtures/local-admin-catalog/manifest.json`, then place the referenced images
 under `fixtures/local-admin-catalog/images/`. Supported formats are PNG, JPEG,
 and WebP. The local `manifest.json` and `images/` directory are ignored by Git.
@@ -164,9 +169,15 @@ Do not commit provider keys or any other real secrets.
 
 ## SPEC-0015 Test Catalog Seed
 
-Once the local Supabase stack is running, seed the deterministic
-two-sofa test catalog (one straight back-wall sofa, one
-corner-tagged sofa) the public simulation wizard exercises:
+`pnpm supabase:reset` already seeds the deterministic two-sofa test catalog
+from local admin fixture storage. To refresh only that public simulation test
+catalog after the local Supabase stack is running, use:
+
+```bash
+pnpm seed:simulation-test:local-fixtures
+```
+
+To seed only the catalog rows without copying local fixture bytes, run:
 
 ```bash
 pnpm seed:simulation-test
@@ -175,10 +186,10 @@ pnpm seed:simulation-test
 
 The script calls the `seed_simulation_test_catalog` SQL function
 added by migration `20260502000800` and is idempotent — safe to
-re-run. Real placeholder bytes for the prepared sofa renders
-referenced by the seeded catalog rows are uploaded by PLAN-0042's
-manual production-launch preparation (see
-`scripts/seed-simulation-test-data/fixtures/README.md`).
+re-run. The `seed:simulation-test:local-fixtures` wrapper passes source
+paths from `fixtures/local-admin-catalog` so the public render, medium
+render, prepared-sofa, fabric swatch, and AI-reference Storage objects are
+present locally.
 
 ## In-Home Simulation Stage 1 Local Loop
 
