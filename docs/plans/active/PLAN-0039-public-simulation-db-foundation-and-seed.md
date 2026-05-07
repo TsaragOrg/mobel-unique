@@ -120,6 +120,12 @@ touch prompts, providers, or the validated v003 pipeline.
     sofa storage asset.
   Every insert uses `on conflict do nothing` or `do update` so
   the script is safe to re-run.
+- [x] Tighten the seed regression after local browser smoke testing:
+      assert every deterministic UUID constant is syntactically valid,
+      seed medium render variants required by the public catalog view,
+      seed private prepared-sofa assets required by public job creation,
+      and copy source fixture bytes into original, medium, swatch,
+      AI-reference, and prepared-sofa storage paths.
 - [x] Add `scripts/seed-simulation-test-data/fixtures/README.md`
       documenting the storage paths the seed expects and noting
       that real placeholder bytes are uploaded by PLAN-0042. The
@@ -134,11 +140,9 @@ touch prompts, providers, or the validated v003 pipeline.
 ### Verification
 
 - [x] Update `docs/roadmap/supabase.md`, `docs/roadmap/image-worker.md`,
-      and `docs/roadmap/workflow.md`. `docs/roadmap/web.md` is not
-      touched in this plan because PLAN-0039 ships only Supabase /
-      worker changes; the web-facing rate-limit and idempotency
-      consumers land in PLAN-0040 and update `docs/roadmap/web.md`
-      then.
+      `docs/roadmap/workflow.md`, and `docs/roadmap/web.md` as later
+      local browser smoke support also documents the public API's worker
+      pump environment variables.
 - [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check origin/dev`
       — all green locally; CI re-validates on the PR.
 - [ ] Worker behavior parity check (manual, by Ahmed): run the

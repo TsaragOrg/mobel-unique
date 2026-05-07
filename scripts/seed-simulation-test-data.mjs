@@ -83,11 +83,39 @@ const STORAGE_COPY_TARGETS = [
     label: "Straight sofa render"
   },
   {
+    flag: "source-straight-render-path",
+    sourceBucket: "catalog-public-assets",
+    targetBucket: "catalog-public-assets",
+    targetPath: "seed/simulation-test/sofa-straight-render-medium.png",
+    label: "Straight sofa medium render"
+  },
+  {
+    flag: "source-straight-render-path",
+    sourceBucket: "catalog-public-assets",
+    targetBucket: "catalog-private-assets",
+    targetPath: "seed/simulation-test/sofa-straight-prepared.png",
+    label: "Straight prepared sofa"
+  },
+  {
     flag: "source-corner-render-path",
     sourceBucket: "catalog-public-assets",
     targetBucket: "catalog-public-assets",
     targetPath: "seed/simulation-test/sofa-corner-render.png",
     label: "Corner sofa render"
+  },
+  {
+    flag: "source-corner-render-path",
+    sourceBucket: "catalog-public-assets",
+    targetBucket: "catalog-public-assets",
+    targetPath: "seed/simulation-test/sofa-corner-render-medium.png",
+    label: "Corner sofa medium render"
+  },
+  {
+    flag: "source-corner-render-path",
+    sourceBucket: "catalog-public-assets",
+    targetBucket: "catalog-private-assets",
+    targetPath: "seed/simulation-test/sofa-corner-prepared.png",
+    label: "Corner prepared sofa"
   },
   {
     flag: "source-fabric-swatch-path",
