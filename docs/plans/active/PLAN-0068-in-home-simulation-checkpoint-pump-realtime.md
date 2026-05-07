@@ -86,7 +86,7 @@ The target architecture is:
       foreground refresh, offline handling, and signed-URL refresh through the
       status endpoint.
 - [x] Implement database checkpoint state and public progress surface.
-- [ ] Implement worker pump mode.
+- [x] Implement worker pump mode.
 - [x] Implement checkpoint claim RPCs.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization

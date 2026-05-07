@@ -46,12 +46,47 @@ import {
 } from "./lib/cost-meter.ts";
 import { supabaseFetchWithTimeout } from "./lib/supabase-fetch.ts";
 
+declare const EdgeRuntime:
+  | { waitUntil?: (promise: Promise<unknown>) => void }
+  | undefined;
+
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
+
+type WorkerMode = "legacy_queue" | "pump" | "checkpoint";
+
+type SimulationCheckpointKey =
+  | "room_validation"
+  | "room_cleaning"
+  | "room_corners"
+  | "dimension_guide"
+  | "awaiting_dimensions"
+  | "placement_generation"
+  | "placement_measurement"
+  | "placement_finalize"
+  | "completed"
+  | "failed"
+  | "expired";
+
+type ParsedWorkerRequest =
+  | { mode: "legacy_queue" }
+  | { mode: "pump" }
+  | {
+      mode: "checkpoint";
+      checkpointKey?: SimulationCheckpointKey;
+      jobId?: string;
+    };
 
 type WorkerResponse = {
   status: StageOutcome;
   function_name: string;
   stage: "stage_1" | "stage_2" | "unknown";
+  active_processing?: number;
+  checkpoint_id?: string;
+  checkpoint_key?: SimulationCheckpointKey;
+  job_id?: string;
+  job_status?: string;
+  max_active_checkpoints?: number;
+  mode?: WorkerMode;
   processed: number;
   results?: Array<{
     job_id?: string;
@@ -60,6 +95,9 @@ type WorkerResponse = {
     job_status?: string;
     error?: string;
   }>;
+  started_count?: number;
+  worker_paused?: boolean;
+  queued?: number;
   error?: string;
 };
 
@@ -99,6 +137,46 @@ type PlacementClaimRow = {
   claim_expires_at: string;
 };
 
+type CheckpointClaimRow = {
+  checkpoint_id: string;
+  job_id: string;
+  checkpoint_key: SimulationCheckpointKey;
+  attempt_number: number;
+  max_attempts: number;
+  generation_index: number | null;
+  storage_prefix: string;
+  customer_room_original_path: string | null;
+  room_geometry_mode: "back_wall" | "corner" | null;
+  room_cleaned_path: string | null;
+  room_geometry_points: Record<string, unknown> | null;
+  supplied_dimensions: Record<string, number> | null;
+  prepared_sofa_asset_id: string | null;
+  prepared_sofa_path: string | null;
+  reserved_generation_index: number | null;
+  generated_output_count: number;
+  retention_deadline: string;
+  claim_expires_at: string;
+};
+
+type CheckpointPumpStatus = {
+  active_processing?: number;
+  available_slots?: number;
+  max_active_checkpoints?: number;
+  queued?: number;
+  status?: string;
+  worker_paused?: boolean;
+};
+
+type CheckpointCompletion =
+  | { kind: "legacy_queue"; queueName: string }
+  | {
+      kind: "checkpoint";
+      checkpointId: string;
+      nextCheckpointKey: SimulationCheckpointKey;
+      progressStepOrdinal?: number;
+      progressTotalSteps?: number;
+    };
+
 const FUNCTION_NAME = "in-home-simulation-worker";
 const STORAGE_BUCKET = "simulation-private-artifacts";
 // PLAN-0057: 180s claim TTL gives the watchdog cron enough margin
@@ -108,6 +186,7 @@ const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_CLAIM_TTL_SECONDS = 180;
 const DEFAULT_QUEUE_NAME = "local_in_home_simulation_jobs";
 const DEFAULT_BATCH_SIZE = 1;
+const DEFAULT_MAX_ACTIVE_CHECKPOINTS = 1;
 
 function jsonResponse(body: WorkerResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -127,6 +206,86 @@ function failedEnvelope(error: string, status = 500): Response {
     },
     status
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSimulationCheckpointKey(
+  value: unknown
+): value is SimulationCheckpointKey {
+  return value === "room_validation" ||
+    value === "room_cleaning" ||
+    value === "room_corners" ||
+    value === "dimension_guide" ||
+    value === "awaiting_dimensions" ||
+    value === "placement_generation" ||
+    value === "placement_measurement" ||
+    value === "placement_finalize" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "expired";
+}
+
+async function parseWorkerRequestBody(
+  request: Request
+): Promise<ParsedWorkerRequest | Response> {
+  let text: string;
+  try {
+    text = await request.text();
+  } catch {
+    return failedEnvelope("In-home simulation worker request body is invalid", 400);
+  }
+
+  if (text.trim().length === 0) {
+    return { mode: "legacy_queue" };
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return failedEnvelope(
+      "In-home simulation worker request body must be JSON",
+      400
+    );
+  }
+
+  if (!isRecord(body)) {
+    return failedEnvelope(
+      "In-home simulation worker request body must be an object",
+      400
+    );
+  }
+
+  const mode = body.mode;
+  if (mode === undefined || mode === null) {
+    return { mode: "legacy_queue" };
+  }
+
+  if (mode === "pump") {
+    return { mode: "pump" };
+  }
+
+  if (mode === "checkpoint") {
+    const parsed: ParsedWorkerRequest = { mode: "checkpoint" };
+    if (typeof body.job_id === "string" && body.job_id.trim().length > 0) {
+      parsed.jobId = body.job_id.trim();
+    }
+    if (body.checkpoint_key !== undefined && body.checkpoint_key !== null) {
+      if (!isSimulationCheckpointKey(body.checkpoint_key)) {
+        return failedEnvelope(
+          "In-home simulation worker checkpoint_key is invalid",
+          400
+        );
+      }
+      parsed.checkpointKey = body.checkpoint_key;
+    }
+    return parsed;
+  }
+
+  return failedEnvelope("In-home simulation worker mode is invalid", 400);
 }
 
 function parsePositiveInt(name: string, fallback: number): number {
@@ -284,6 +443,108 @@ async function claimSpecificPlacementJob(
   return rows[0];
 }
 
+async function readCheckpointPumpStatus(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  maxActiveCheckpoints: number
+): Promise<CheckpointPumpStatus> {
+  return await callRpc<CheckpointPumpStatus>(
+    supabaseUrl,
+    serviceRoleKey,
+    "in_home_simulation_checkpoint_pump_status",
+    { p_max_active_checkpoints: maxActiveCheckpoints }
+  );
+}
+
+async function claimCheckpointJob(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claimTtlSeconds: number,
+  maxActiveCheckpoints: number,
+  options: {
+    checkpointKey?: SimulationCheckpointKey;
+    jobId?: string;
+  } = {}
+): Promise<CheckpointClaimRow | null> {
+  const rpcName = options.jobId || options.checkpointKey
+    ? "claim_specific_in_home_simulation_checkpoint"
+    : "claim_in_home_simulation_checkpoint";
+  const body = options.jobId || options.checkpointKey
+    ? {
+        p_simulation_job_id: options.jobId ?? null,
+        p_checkpoint_key: options.checkpointKey ?? null,
+        p_worker_identifier: workerIdentifier,
+        p_claim_ttl_seconds: claimTtlSeconds,
+        p_max_active_checkpoints: maxActiveCheckpoints
+      }
+    : {
+        p_worker_identifier: workerIdentifier,
+        p_claim_ttl_seconds: claimTtlSeconds,
+        p_max_active_checkpoints: maxActiveCheckpoints
+      };
+  const rows = await callRpc<CheckpointClaimRow[] | null>(
+    supabaseUrl,
+    serviceRoleKey,
+    rpcName,
+    body
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows[0];
+}
+
+async function completeCheckpointClaim(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  input: {
+    checkpointId: string;
+    nextCheckpointKey: SimulationCheckpointKey;
+    progressStepOrdinal?: number;
+    progressTotalSteps?: number;
+  }
+): Promise<void> {
+  await callRpc<unknown>(
+    supabaseUrl,
+    serviceRoleKey,
+    "complete_in_home_simulation_checkpoint_claim",
+    {
+      p_checkpoint_id: input.checkpointId,
+      p_worker_identifier: workerIdentifier,
+      p_next_checkpoint_key: input.nextCheckpointKey,
+      p_next_generation_index: null,
+      p_progress_step_key: input.nextCheckpointKey,
+      p_progress_step_ordinal: input.progressStepOrdinal ?? null,
+      p_progress_total_steps: input.progressTotalSteps ?? null
+    }
+  );
+}
+
+async function releaseCheckpointClaim(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  input: {
+    checkpointId: string;
+    retryable: boolean;
+    safeErrorCode: string;
+    safeErrorMessage: string;
+  }
+): Promise<void> {
+  await callRpc<unknown>(
+    supabaseUrl,
+    serviceRoleKey,
+    "release_in_home_simulation_checkpoint_claim",
+    {
+      p_checkpoint_id: input.checkpointId,
+      p_worker_identifier: workerIdentifier,
+      p_safe_error_code: input.safeErrorCode,
+      p_safe_error_message: input.safeErrorMessage,
+      p_retryable: input.retryable
+    }
+  );
+}
+
 async function downloadStorageObject(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -315,6 +576,7 @@ async function uploadStorageObject(
   bytes: Uint8Array,
   contentType: string
 ): Promise<void> {
+  const body: ArrayBuffer = new Uint8Array(bytes).buffer;
   const response = await supabaseFetchWithTimeout(
     `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`,
     {
@@ -324,7 +586,7 @@ async function uploadStorageObject(
         "Content-Type": contentType,
         "x-upsert": "true"
       },
-      body: bytes
+      body
     }
   );
   if (!response.ok) {
@@ -618,7 +880,7 @@ async function processClaimedJob(
       serviceRoleKey,
       workerIdentifier,
       claim,
-      queueName
+      { kind: "legacy_queue", queueName }
     );
     return "stage_1_validate_checkpoint_advanced";
   }
@@ -630,7 +892,7 @@ async function processClaimedJob(
       workerIdentifier,
       claim,
       checkpoint,
-      queueName
+      { kind: "legacy_queue", queueName }
     );
     return "stage_1_cleaning_checkpoint_advanced";
   }
@@ -650,7 +912,7 @@ async function runValidateCheckpoint(
   serviceRoleKey: string,
   workerIdentifier: string,
   claim: RoomPrepClaimRow,
-  queueName: string
+  completion: CheckpointCompletion
 ): Promise<void> {
   if (!claim.customer_room_original_path) {
     throw new Error(
@@ -819,28 +1081,37 @@ async function runValidateCheckpoint(
       }
     );
 
-    // Hand the job back to the queue so the next cron tick runs the
-    // cleaning checkpoint with a fresh wall-clock budget.
-    await callRpc<void>(
-      supabaseUrl,
-      serviceRoleKey,
-      "release_in_home_simulation_room_prep_claim",
-      {
-        job_id: claim.job_id,
-        worker_identifier: workerIdentifier,
-        error_code: null,
-        error_message: null
-      }
-    );
-    await callRpc<number>(
-      supabaseUrl,
-      serviceRoleKey,
-      "enqueue_in_home_simulation_room_prep_message",
-      {
-        job_id: claim.job_id,
-        queue_name: queueName
-      }
-    );
+    if (completion.kind === "legacy_queue") {
+      // Hand the job back to the queue so the next cron tick runs the
+      // cleaning checkpoint with a fresh wall-clock budget.
+      await callRpc<void>(
+        supabaseUrl,
+        serviceRoleKey,
+        "release_in_home_simulation_room_prep_claim",
+        {
+          job_id: claim.job_id,
+          worker_identifier: workerIdentifier,
+          error_code: null,
+          error_message: null
+        }
+      );
+      await callRpc<number>(
+        supabaseUrl,
+        serviceRoleKey,
+        "enqueue_in_home_simulation_room_prep_message",
+        {
+          job_id: claim.job_id,
+          queue_name: completion.queueName
+        }
+      );
+    } else {
+      await completeCheckpointClaim(
+        supabaseUrl,
+        serviceRoleKey,
+        workerIdentifier,
+        completion
+      );
+    }
 
     await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
       job_type: IN_HOME_SIMULATION_JOB_TYPE,
@@ -866,7 +1137,7 @@ async function runCleaningCheckpoint(
   workerIdentifier: string,
   claim: RoomPrepClaimRow,
   checkpoint: InHomeSimulationJobCheckpointRow,
-  queueName: string
+  completion: CheckpointCompletion
 ): Promise<void> {
   if (!checkpoint.room_compressed_path) {
     throw new Error(
@@ -986,28 +1257,37 @@ async function runCleaningCheckpoint(
       { roomCleanedPath: cleanedPath }
     );
 
-    // Hand the job back to the queue so the next cron tick runs the
-    // corners checkpoint.
-    await callRpc<void>(
-      supabaseUrl,
-      serviceRoleKey,
-      "release_in_home_simulation_room_prep_claim",
-      {
-        job_id: claim.job_id,
-        worker_identifier: workerIdentifier,
-        error_code: null,
-        error_message: null
-      }
-    );
-    await callRpc<number>(
-      supabaseUrl,
-      serviceRoleKey,
-      "enqueue_in_home_simulation_room_prep_message",
-      {
-        job_id: claim.job_id,
-        queue_name: queueName
-      }
-    );
+    if (completion.kind === "legacy_queue") {
+      // Hand the job back to the queue so the next cron tick runs the
+      // corners checkpoint.
+      await callRpc<void>(
+        supabaseUrl,
+        serviceRoleKey,
+        "release_in_home_simulation_room_prep_claim",
+        {
+          job_id: claim.job_id,
+          worker_identifier: workerIdentifier,
+          error_code: null,
+          error_message: null
+        }
+      );
+      await callRpc<number>(
+        supabaseUrl,
+        serviceRoleKey,
+        "enqueue_in_home_simulation_room_prep_message",
+        {
+          job_id: claim.job_id,
+          queue_name: completion.queueName
+        }
+      );
+    } else {
+      await completeCheckpointClaim(
+        supabaseUrl,
+        serviceRoleKey,
+        workerIdentifier,
+        completion
+      );
+    }
 
     await recordWorkerEvent(supabaseUrl, serviceRoleKey, {
       job_type: IN_HOME_SIMULATION_JOB_TYPE,
@@ -1031,7 +1311,8 @@ async function runCornersCheckpoint(
   serviceRoleKey: string,
   workerIdentifier: string,
   claim: RoomPrepClaimRow,
-  checkpoint: InHomeSimulationJobCheckpointRow
+  checkpoint: InHomeSimulationJobCheckpointRow,
+  completion?: Extract<CheckpointCompletion, { kind: "checkpoint" }>
 ): Promise<void> {
   if (!checkpoint.room_cleaned_path) {
     throw new Error(
@@ -1206,6 +1487,15 @@ async function runCornersCheckpoint(
         room_geometry_confidence: sceneConfidence
       }
     );
+
+    if (completion) {
+      await completeCheckpointClaim(
+        supabaseUrl,
+        serviceRoleKey,
+        workerIdentifier,
+        completion
+      );
+    }
   } finally {
     await removeScratchDir(scratchDir);
   }
@@ -1242,7 +1532,8 @@ async function processPlacementJob(
   supabaseUrl: string,
   serviceRoleKey: string,
   workerIdentifier: string,
-  claim: PlacementClaimRow
+  claim: PlacementClaimRow,
+  completion?: Extract<CheckpointCompletion, { kind: "checkpoint" }>
 ): Promise<void> {
   if (!claim.room_cleaned_path) {
     throw new Error(
@@ -1457,9 +1748,370 @@ async function processPlacementJob(
         prepared_sofa_path: claim.prepared_sofa_path
       }
     );
+    if (completion) {
+      await completeCheckpointClaim(
+        supabaseUrl,
+        serviceRoleKey,
+        workerIdentifier,
+        completion
+      );
+    }
   } finally {
     await removeScratchDir(scratchDir);
   }
+}
+
+function roomPrepClaimFromCheckpoint(
+  claim: CheckpointClaimRow
+): RoomPrepClaimRow {
+  if (claim.room_geometry_mode !== "back_wall" && claim.room_geometry_mode !== "corner") {
+    throw new Error(
+      `checkpoint ${claim.checkpoint_id} has invalid room_geometry_mode`
+    );
+  }
+  return {
+    job_id: claim.job_id,
+    storage_prefix: claim.storage_prefix,
+    customer_room_original_path: claim.customer_room_original_path,
+    room_geometry_mode: claim.room_geometry_mode,
+    retention_deadline: claim.retention_deadline,
+    room_prep_attempt_count: claim.attempt_number,
+    max_attempts_per_stage: claim.max_attempts,
+    claim_expires_at: claim.claim_expires_at
+  };
+}
+
+function placementClaimFromCheckpoint(
+  claim: CheckpointClaimRow
+): PlacementClaimRow {
+  if (claim.room_geometry_mode !== "back_wall" && claim.room_geometry_mode !== "corner") {
+    throw new Error(
+      `checkpoint ${claim.checkpoint_id} has invalid room_geometry_mode`
+    );
+  }
+  return {
+    job_id: claim.job_id,
+    storage_prefix: claim.storage_prefix,
+    room_cleaned_path: claim.room_cleaned_path,
+    room_geometry_mode: claim.room_geometry_mode,
+    room_geometry_points: claim.room_geometry_points,
+    supplied_dimensions: claim.supplied_dimensions,
+    prepared_sofa_asset_id: claim.prepared_sofa_asset_id,
+    prepared_sofa_path: claim.prepared_sofa_path,
+    reserved_generation_index: claim.reserved_generation_index,
+    generated_output_count: claim.generated_output_count,
+    retention_deadline: claim.retention_deadline,
+    placement_attempt_count: claim.attempt_number,
+    max_attempts_per_stage: claim.max_attempts,
+    claim_expires_at: claim.claim_expires_at
+  };
+}
+
+function stageForCheckpoint(
+  checkpointKey: SimulationCheckpointKey
+): "stage_1" | "stage_2" {
+  return checkpointKey.startsWith("placement_") ? "stage_2" : "stage_1";
+}
+
+async function processClaimedCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: CheckpointClaimRow
+): Promise<string> {
+  if (claim.checkpoint_key === "room_validation") {
+    await runValidateCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      roomPrepClaimFromCheckpoint(claim),
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "room_cleaning",
+        progressStepOrdinal: 1,
+        progressTotalSteps: 4
+      }
+    );
+    return "room_validation_completed";
+  }
+
+  if (claim.checkpoint_key === "room_cleaning") {
+    const checkpoint = await fetchInHomeSimulationJobRow(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id
+    );
+    await runCleaningCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      roomPrepClaimFromCheckpoint(claim),
+      checkpoint,
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "room_corners",
+        progressStepOrdinal: 2,
+        progressTotalSteps: 4
+      }
+    );
+    return "room_cleaning_completed";
+  }
+
+  if (claim.checkpoint_key === "room_corners") {
+    const checkpoint = await fetchInHomeSimulationJobRow(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id
+    );
+    await runCornersCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      roomPrepClaimFromCheckpoint(claim),
+      checkpoint,
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "awaiting_dimensions",
+        progressStepOrdinal: 3,
+        progressTotalSteps: 4
+      }
+    );
+    return "room_corners_completed";
+  }
+
+  if (claim.checkpoint_key === "placement_generation") {
+    await processPlacementJob(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      placementClaimFromCheckpoint(claim),
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "completed",
+        progressStepOrdinal: 4,
+        progressTotalSteps: 4
+      }
+    );
+    return "placement_generation_completed";
+  }
+
+  throw new Error(`unsupported checkpoint ${claim.checkpoint_key}`);
+}
+
+async function handlePumpMode(input: {
+  claimTtlSeconds: number;
+  serviceRoleKey: string;
+  supabaseUrl: string;
+}): Promise<Response> {
+  void input.claimTtlSeconds;
+  const maxActiveCheckpoints = parsePositiveInt(
+    "IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS",
+    DEFAULT_MAX_ACTIVE_CHECKPOINTS
+  );
+  const pumpStatus = await readCheckpointPumpStatus(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    maxActiveCheckpoints
+  );
+  const queued = typeof pumpStatus.queued === "number" ? pumpStatus.queued : 0;
+  const availableSlots = typeof pumpStatus.available_slots === "number"
+    ? pumpStatus.available_slots
+    : 0;
+  const startedCount = Math.min(queued, availableSlots);
+
+  for (let index = 0; index < startedCount; index += 1) {
+    deferWorkerInvocation(
+      invokeWorkerCheckpoint({ supabaseUrl: input.supabaseUrl })
+    );
+  }
+
+  return jsonResponse({
+    active_processing: pumpStatus.active_processing ?? 0,
+    function_name: FUNCTION_NAME,
+    max_active_checkpoints: maxActiveCheckpoints,
+    mode: "pump",
+    processed: startedCount,
+    queued,
+    stage: "stage_1",
+    started_count: startedCount,
+    status: startedCount > 0 ? "claimed" : "noop",
+    worker_paused: pumpStatus.worker_paused ?? false
+  });
+}
+
+async function handleCheckpointMode(input: {
+  checkpointKey?: SimulationCheckpointKey;
+  claimTtlSeconds: number;
+  jobId?: string;
+  serviceRoleKey: string;
+  supabaseUrl: string;
+  workerIdentifier: string;
+}): Promise<Response> {
+  const maxActiveCheckpoints = parsePositiveInt(
+    "IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS",
+    DEFAULT_MAX_ACTIVE_CHECKPOINTS
+  );
+  const claim = await claimCheckpointJob(
+    input.supabaseUrl,
+    input.serviceRoleKey,
+    input.workerIdentifier,
+    input.claimTtlSeconds,
+    maxActiveCheckpoints,
+    {
+      checkpointKey: input.checkpointKey,
+      jobId: input.jobId
+    }
+  );
+
+  if (!claim) {
+    return jsonResponse({
+      function_name: FUNCTION_NAME,
+      mode: "checkpoint",
+      processed: 0,
+      stage: "stage_1",
+      status: "noop"
+    });
+  }
+
+  try {
+    await processClaimedCheckpoint(
+      input.supabaseUrl,
+      input.serviceRoleKey,
+      input.workerIdentifier,
+      claim
+    );
+    return jsonResponse({
+      checkpoint_id: claim.checkpoint_id,
+      checkpoint_key: claim.checkpoint_key,
+      function_name: FUNCTION_NAME,
+      job_id: claim.job_id,
+      mode: "checkpoint",
+      processed: 1,
+      stage: stageForCheckpoint(claim.checkpoint_key),
+      status: "completed"
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stage = stageForCheckpoint(claim.checkpoint_key);
+    const action = message.startsWith("unsupported checkpoint ")
+      ? { kind: "fail" as const, reason: "unsupported_checkpoint" }
+      : decideStageFailureAction(error, {
+          stage,
+          attemptCount: claim.attempt_number,
+          maxAttempts: claim.max_attempts
+        });
+    const retryable = action.kind === "release";
+    try {
+      await releaseCheckpointClaim(
+        input.supabaseUrl,
+        input.serviceRoleKey,
+        input.workerIdentifier,
+        {
+          checkpointId: claim.checkpoint_id,
+          retryable,
+          safeErrorCode: retryable ? "transient" : "checkpoint_failed",
+          safeErrorMessage: message
+        }
+      );
+    } catch (_releaseError) { /* fall through */ }
+
+    return jsonResponse({
+      checkpoint_id: claim.checkpoint_id,
+      checkpoint_key: claim.checkpoint_key,
+      error: retryable ? `retryable (${action.reason}): ${message}` : message,
+      function_name: FUNCTION_NAME,
+      job_id: claim.job_id,
+      mode: "checkpoint",
+      processed: 0,
+      stage,
+      status: "failed"
+    });
+  } finally {
+    deferWorkerInvocation(
+      invokeWorkerPump({ supabaseUrl: input.supabaseUrl })
+    );
+  }
+}
+
+async function invokeWorkerPump(input: {
+  supabaseUrl: string;
+}): Promise<void> {
+  await invokeWorker({
+    mode: "pump",
+    supabaseUrl: input.supabaseUrl
+  });
+}
+
+async function invokeWorkerCheckpoint(input: {
+  supabaseUrl: string;
+}): Promise<void> {
+  await invokeWorker({
+    mode: "checkpoint",
+    supabaseUrl: input.supabaseUrl
+  });
+}
+
+async function invokeWorker(input: {
+  mode: Extract<WorkerMode, "pump" | "checkpoint">;
+  supabaseUrl: string;
+}): Promise<void> {
+  const response = await supabaseFetchWithTimeout(
+    resolveWorkerFunctionUrl(input.supabaseUrl),
+    {
+      body: JSON.stringify({ mode: input.mode }),
+      headers: buildWorkerInvocationHeaders(),
+      method: "POST"
+    }
+  );
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `in-home-simulation-worker ${input.mode} invocation returned HTTP ${response.status}: ${responseText}`
+    );
+  }
+}
+
+function resolveWorkerFunctionUrl(supabaseUrl: string): string {
+  return (
+    Deno.env.get("IN_HOME_SIMULATION_WORKER_FUNCTION_URL") ??
+    `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/in-home-simulation-worker`
+  );
+}
+
+function buildWorkerInvocationHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  const invocationSecret = Deno.env.get(
+    "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET"
+  );
+
+  if (invocationSecret) {
+    headers["x-in-home-simulation-worker-secret"] = invocationSecret;
+  }
+
+  return headers;
+}
+
+function deferWorkerInvocation(promise: Promise<void>): void {
+  const handledPromise = promise.catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+  });
+
+  if (
+    typeof EdgeRuntime !== "undefined" &&
+    typeof EdgeRuntime.waitUntil === "function"
+  ) {
+    EdgeRuntime.waitUntil(handledPromise);
+    return;
+  }
+
+  void handledPromise;
 }
 
 function aggregateOutcome(
@@ -1510,6 +2162,39 @@ Deno.serve(async (request) => {
     DEFAULT_BATCH_SIZE
   );
   const workerIdentifier = buildWorkerIdentifier();
+  const parsedRequest = await parseWorkerRequestBody(request);
+  if (parsedRequest instanceof Response) {
+    return parsedRequest;
+  }
+
+  if (parsedRequest.mode === "pump") {
+    try {
+      return await handlePumpMode({
+        claimTtlSeconds,
+        serviceRoleKey,
+        supabaseUrl
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return failedEnvelope(message, 502);
+    }
+  }
+
+  if (parsedRequest.mode === "checkpoint") {
+    try {
+      return await handleCheckpointMode({
+        checkpointKey: parsedRequest.checkpointKey,
+        claimTtlSeconds,
+        jobId: parsedRequest.jobId,
+        serviceRoleKey,
+        supabaseUrl,
+        workerIdentifier
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return failedEnvelope(message, 502);
+    }
+  }
 
   let messages: DequeuedMessage[];
   try {

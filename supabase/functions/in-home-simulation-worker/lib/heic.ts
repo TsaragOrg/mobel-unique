@@ -152,14 +152,20 @@ export async function convertHeicBytesToJpeg(
     );
   }
 
-  const rgbaCanvas = {
-    data: new Uint8ClampedArray(width * height * 4),
+  const rgbaCanvas: {
+    data: Uint8ClampedArray<ArrayBuffer>;
+    width: number;
+    height: number;
+  } = {
+    data: new Uint8ClampedArray(new ArrayBuffer(width * height * 4)),
     width,
     height
   };
 
   const display = await new Promise<typeof rgbaCanvas | null>((resolve) => {
-    primary.display(rgbaCanvas, (result) => resolve(result));
+    primary.display(rgbaCanvas, (result) =>
+      resolve(result as typeof rgbaCanvas | null)
+    );
   });
 
   if (!display || display.data.length !== width * height * 4) {

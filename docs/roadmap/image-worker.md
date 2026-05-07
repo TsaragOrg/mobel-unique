@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                                                            |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active | SPEC-0007 | PLAN-0068 | In-home simulation worker now accepts explicit `pump` and `checkpoint` modes while preserving legacy pgmq consumption as the no-mode fallback; pump mode reads durable checkpoint capacity and self-invokes bounded checkpoint workers, checkpoint mode claims one durable checkpoint, advances split room checkpoints with the new success RPCs, and re-invokes pump after completion or retryable release. |
 | Active | SPEC-0006 | PLAN-0067 | Fabric render worker output now uploads the accepted candidate original plus stored small and medium private variants before marking the job succeeded, passes variant metadata into the success RPC, and cleans up partial uploads when variant generation or upload fails. |
 | Done   | SPEC-0001 | PLAN-0001 | Minimal worker foundation and heartbeat configuration.                                                                                                          |
 | Done   | SPEC-0008 | PLAN-0008 | Local worker environment examples align with local Supabase worker development.                                                                                 |
