@@ -1,3 +1,8 @@
+/*
+RU: Этот файл проверяет главную страницу. Пользователь видит бренд, видео, шаги и кнопку выбора дивана. Здесь можно сменить цвет дивана и открыть каталог.
+FR: Ce fichier verifie la page d'accueil. L'utilisateur voit la marque, la video, les etapes et le bouton pour choisir un canape. Ici, il peut changer la couleur du canape et ouvrir le catalogue.
+*/
+
 import {
   cleanup,
   fireEvent,
@@ -66,6 +71,12 @@ describe("Home page", () => {
       screen.getByRole("button", { name: "Changer la couleur du canapé" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Changer la couleur")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Navigation publique" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Voir les collections" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Déposez votre photo")).not.toBeInTheDocument();
     expect(
       screen.queryByText("ou cliquez pour importer"),

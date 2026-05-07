@@ -33,6 +33,7 @@ from green to white.
 
 - `pnpm --filter @mobel-unique/web test -- src/app/page.test.tsx`
 - `pnpm --filter @mobel-unique/web typecheck`
+- `pnpm spec:check`
 
 ## Roadmap
 
@@ -56,3 +57,7 @@ from green to white.
   upload-oriented hero copy. The headline now presents the broader sofa
   collection, and the color-change control sits at the lower side of the sofa
   visual on desktop and mobile.
+- Follow-up on 2026-05-07: the public home header now keeps only the MÖBEL
+  UNIQUE brand mark at the top. The previous right-side public navigation links
+  and compact collection link were removed because the page already explains the
+  simulation path and the primary catalog action remains in the hero.
