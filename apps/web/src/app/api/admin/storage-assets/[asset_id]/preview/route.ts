@@ -15,16 +15,18 @@ interface StorageAssetPreviewRouteContext {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: StorageAssetPreviewRouteContext,
 ) {
   try {
     const adminInput = await readAdminInput();
     const { asset_id: assetId } = await context.params;
+    const variant = new URL(request.url).searchParams.get("variant");
 
     return handleGetStorageAssetPreviewRequest({
       ...adminInput,
       assetId,
+      variant,
     });
   } catch {
     return handleAdminAuthUnavailableRequest();

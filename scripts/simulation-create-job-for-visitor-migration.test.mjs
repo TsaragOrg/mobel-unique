@@ -5,7 +5,7 @@ const PATH =
   "supabase/migrations/20260502001100_create_in_home_simulation_job_for_visitor.sql";
 
 describe("SPEC-0015 PLAN-0040 production create-job RPC", () => {
-  const sql = readFileSync(PATH, "utf8");
+  const sql = readFileSync(PATH, "utf8").replace(/\r\n/g, "\n");
 
   it("creates create_in_home_simulation_job_for_visitor with the expected signature", () => {
     expect(sql).toContain(

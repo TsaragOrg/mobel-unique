@@ -38,6 +38,8 @@ describe("local admin fixture seed workflow", () => {
     expect(scriptSource).toContain("Refusing to seed non-local Supabase URL");
     expect(scriptSource).toContain("catalog-public-assets");
     expect(scriptSource).toContain("catalog-private-assets");
+    expect(scriptSource).toContain("generateImageVariants");
+    expect(scriptSource).toContain("storage_asset_variants");
     expect(scriptSource).toContain("fabric_swatch_public");
     expect(scriptSource).toContain("fabric_ai_reference");
     expect(scriptSource).toContain("sofa_source_photo");

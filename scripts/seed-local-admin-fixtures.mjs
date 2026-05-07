@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  BACKFILL_VARIANT_KINDS,
+  buildVariantObjectPath,
+  generateImageVariants,
+} from "./backfill-catalog-image-variants.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
@@ -26,6 +31,12 @@ const PLACEHOLDER_IMAGE = {
   heightPx: 1,
   widthPx: 1,
 };
+const VARIANT_SOURCE_ASSET_KINDS = new Set([
+  "sofa_source_photo",
+  "manual_render",
+  "fabric_render_candidate",
+  "published_sofa_render",
+]);
 const NOW = new Date().toISOString();
 
 loadEnvFile(resolve(REPO_ROOT, ".env.local"));
@@ -593,7 +604,82 @@ async function upsertImageAsset({
     ],
   );
 
+  if (VARIANT_SOURCE_ASSET_KINDS.has(assetKind)) {
+    await upsertImageAssetVariants({
+      asset,
+      image,
+    });
+  }
+
   return asset;
+}
+
+async function upsertImageAssetVariants({ asset, image }) {
+  const variants = await generateImageVariants({
+    bytes: image.bytes,
+    contentType: image.contentType,
+  });
+
+  for (const variantKind of BACKFILL_VARIANT_KINDS) {
+    const existingLink = await selectSingle(
+      `/rest/v1/storage_asset_variants?original_asset_id=eq.${asset.id}&variant_kind=eq.${variantKind}&select=variant_asset_id`,
+    );
+
+    if (existingLink?.variant_asset_id) {
+      continue;
+    }
+
+    const generatedVariant = variants[variantKind];
+    const variantAssetId = randomUUID();
+    const objectPath = buildVariantObjectPath({
+      contentType: generatedVariant.contentType,
+      originalAssetId: asset.id,
+      variantAssetId,
+      variantKind,
+    });
+
+    await uploadStorageObject(
+      asset.bucket_id,
+      objectPath,
+      generatedVariant.bytes,
+      generatedVariant.contentType,
+    );
+
+    const [variantAsset] = await upsertRows(
+      "storage_assets",
+      ["bucket_id", "object_path"],
+      [
+        {
+          asset_kind: `${asset.asset_kind}_variant`,
+          bucket_id: asset.bucket_id,
+          byte_size: generatedVariant.bytes.byteLength,
+          checksum_sha256: sha256(generatedVariant.bytes),
+          content_type: generatedVariant.contentType,
+          height_px: generatedVariant.heightPx,
+          id: variantAssetId,
+          lifecycle_state: "active",
+          object_path: objectPath,
+          purged_at: null,
+          deleted_at: null,
+          visibility: asset.visibility,
+          width_px: generatedVariant.widthPx,
+        },
+      ],
+    );
+
+    await upsertRows(
+      "storage_asset_variants",
+      ["original_asset_id", "variant_kind"],
+      [
+        {
+          generation_kind: "stored",
+          original_asset_id: asset.id,
+          variant_asset_id: variantAsset.id,
+          variant_kind: variantKind,
+        },
+      ],
+    );
+  }
 }
 
 async function uploadStorageObject(bucketId, objectPath, bytes, contentType) {

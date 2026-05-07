@@ -1360,6 +1360,91 @@ describe("admin catalog route handlers", () => {
     );
   });
 
+  it("passes original, small, and medium preview variants to the admin facade", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const assetId = "00000000-0000-4000-8000-000000000902";
+    const previewSpy = vi
+      .spyOn(store, "getStorageAssetPreview")
+      .mockImplementation(async (requestedAssetId, variant = "original") => ({
+        body: new NodeBlob([`preview:${requestedAssetId}:${variant}`], {
+          type: "image/jpeg",
+        }) as unknown as Blob,
+        content_type: "image/jpeg",
+      }));
+
+    for (const variant of ["original", "small", "medium"] as const) {
+      const response = await handleGetStorageAssetPreviewRequest({
+        ...input,
+        assetId,
+        variant,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      await expect(response.text()).resolves.toBe(
+        `preview:${assetId}:${variant}`,
+      );
+    }
+
+    expect(previewSpy).toHaveBeenNthCalledWith(1, assetId, "original");
+    expect(previewSpy).toHaveBeenNthCalledWith(2, assetId, "small");
+    expect(previewSpy).toHaveBeenNthCalledWith(3, assetId, "medium");
+  });
+
+  it("returns a safe validation error for unsupported preview variants", async () => {
+    const store = createFakeStore();
+    const previewSpy = vi.spyOn(store, "getStorageAssetPreview");
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...createInput(store),
+      assetId: "00000000-0000-4000-8000-000000000902",
+      variant: "large",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "INVALID_STORAGE_ASSET_VARIANT",
+      },
+    });
+    expect(previewSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns safe not-found for missing preview variants without using original bytes", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const assetId = "00000000-0000-4000-8000-000000000902";
+    const previewSpy = vi
+      .spyOn(store, "getStorageAssetPreview")
+      .mockImplementation(async (requestedAssetId, variant = "original") => {
+        if (variant !== "original") {
+          return null;
+        }
+
+        return {
+          body: new NodeBlob([`preview:${requestedAssetId}:original`], {
+            type: "image/jpeg",
+          }) as unknown as Blob,
+          content_type: "image/jpeg",
+        };
+      });
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...input,
+      assetId,
+      variant: "small",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "STORAGE_ASSET_NOT_FOUND",
+      },
+    });
+    expect(previewSpy).toHaveBeenCalledWith(assetId, "small");
+  });
+
   it("does not serve public or unsupported assets through the private preview endpoint", async () => {
     const store = createFakeStore();
     const input = createInput(store);

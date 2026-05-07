@@ -39,4 +39,39 @@ describe("admin catalog dependencies", () => {
       }),
     ).rejects.toThrow("A tag with this label or slug already exists.");
   });
+
+  it("builds protected admin preview URLs with the requested variant", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Blob(["preview"], { type: "image/png" }), {
+          headers: {
+            "Content-Type": "image/png",
+          },
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...globalThis.URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+    });
+
+    const dependencies = createDefaultAdminCatalogDependencies(
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await dependencies.createStorageAssetPreviewUrl(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000907",
+      "small",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview?variant=small",
+      expect.objectContaining({
+        cache: "no-store",
+      }),
+    );
+  });
 });

@@ -17,3 +17,4 @@ Every active plan must reference a registered spec id from `docs/specs/manifest.
 | PLAN-0052 | SPEC-0014 | active | web | Sofa edit operational redesign for sober admin UX, clearer tab hierarchy, quieter controls, richer render cells, larger cell detail, and export relocation. |
 | PLAN-0059 | SPEC-0014 | active | web | Transaction-safe View Columns source fabric reassignment when an existing source image changes fabric line without upload. |
 | PLAN-0061 | SPEC-0009 | active | workflow | Manual DEV-only catalog snapshot export, validation, and apply workflow for local sofa catalog data. |
+| PLAN-0067 | SPEC-0009 | active | supabase | Durable stored small and medium catalog image variants for admin render review, public catalog cards, publication, worker output, and backfill. |

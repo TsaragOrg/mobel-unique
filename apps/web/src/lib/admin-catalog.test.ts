@@ -229,6 +229,31 @@ describe("admin catalog validation", () => {
     expect(source).not.toContain("fabric_render_admin_enqueue_job");
   });
 
+  it("publishes public render originals and variants through one cleanup-aware flow", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("ensurePublicRenderAssetVariantsForPublication");
+    expect(source).toContain("variant_object_paths");
+    expect(source).toContain("variant_asset_ids");
+    expect(source).toContain("removeUploadedPublicRenderCopies");
+    expect(source).toContain("storage_asset_variants");
+  });
+
+  it("cleans public render originals and variants when unpublishing or archiving", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("collectPublicRenderAssetsForSofa");
+    expect(source).toContain("deactivateAndRemovePublicRenderAssets");
+    expect(source).toContain("admin_unpublish_sofa");
+    expect(source).toContain("admin_archive_sofa");
+  });
+
   it("validates a draft sofa create payload", () => {
     const result = validateSofaCreatePayload({
       depth_cm: 95,
@@ -664,6 +689,7 @@ describe("admin catalog response shaping", () => {
       public_slug: "public-sofa",
       shopify_order_url: "https://shopify.example/products/public-sofa",
       source_photo_count: 0,
+      source_photo_preview_asset_id: null,
       source_photo_preview_url: null,
       tags: [
         {
@@ -679,6 +705,21 @@ describe("admin catalog response shaping", () => {
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");
     expect(serialized).not.toContain("private_table");
+  });
+
+  it("returns the source photo preview asset id for protected sofa list previews", () => {
+    const previewAssetId = "00000000-0000-4000-8000-000000000904";
+    const response = shapeSofaResponse({
+      ...sofaRecord,
+      source_photo_count: 1,
+      source_photo_preview_asset_id: previewAssetId,
+      source_photo_preview_url: null,
+    });
+    const serialized = JSON.stringify(response);
+
+    expect(response.source_photo_preview_asset_id).toBe(previewAssetId);
+    expect(serialized).not.toContain("catalog-private-assets");
+    expect(serialized).not.toContain("service_role");
   });
 
   it("returns only admin-safe fabric and asset fields", () => {
@@ -791,7 +832,7 @@ describe("admin catalog response shaping", () => {
           id: "00000000-0000-4000-8000-000000000904",
           visibility: "private",
         },
-        preview_url: "https://storage.example/signed/source-photo-preview",
+        preview_url: null,
       },
       id: visualMatrixColumnRecord.id,
       sequence: 1,
@@ -812,6 +853,7 @@ describe("admin catalog response shaping", () => {
       },
     });
     expect(serialized).not.toContain("service_role");
+    expect(serialized).not.toContain("signed/source-photo-preview");
     expect(serialized).not.toContain("object_path");
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");

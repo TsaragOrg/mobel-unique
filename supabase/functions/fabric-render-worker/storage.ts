@@ -30,6 +30,10 @@ export type StorageUploadInput = StorageRequestInput & {
   contentType: string;
 };
 
+export type StorageRemoveInput = StorageRequestInput & {
+  objectPaths: string[];
+};
+
 export class StorageObjectError extends Error {
   retryable = false;
 
@@ -83,6 +87,30 @@ export async function uploadStorageObject(
     throw new StorageObjectError(
       `Storage upload failed with HTTP ${response.status}: ${await response.text()}`
     );
+  }
+}
+
+export async function removeStorageObjects(
+  input: StorageRemoveInput
+): Promise<void> {
+  for (const objectPath of [...new Set(input.objectPaths)]) {
+    const response = await input.fetchImpl(
+      buildStorageObjectUrl({
+        bucketId: input.bucketId,
+        objectPath,
+        supabaseUrl: input.supabaseUrl
+      }),
+      {
+        headers: serviceRoleHeaders(input.serviceRoleKey),
+        method: "DELETE"
+      }
+    );
+
+    if (!response.ok) {
+      throw new StorageObjectError(
+        `Storage remove failed with HTTP ${response.status}: ${await response.text()}`
+      );
+    }
   }
 }
 

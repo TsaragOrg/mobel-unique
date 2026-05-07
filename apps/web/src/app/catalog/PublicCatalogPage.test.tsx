@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет публичную страницу каталога диванов.
+RU: В проверках видны карточки диванов, фильтры, ткани, картинки и переход к странице дивана.
+RU: Проверки помогают убедиться, что посетитель может фильтровать каталог, менять ткань в карточке и открыть выбранный диван.
+FR: Ce fichier verifie la page publique du catalogue de canapes.
+FR: Dans les controles, on voit les cartes, les filtres, les tissus, les images et le lien vers la page du canape.
+FR: Les controles aident a verifier que le visiteur peut filtrer, changer le tissu dans une carte et ouvrir le canape choisi.
+*/
+
 import {
   cleanup,
   fireEvent,
@@ -8,9 +17,16 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicCatalogPage } from "./PublicCatalogPage";
 
+// RU: Эти данные дают каталогу два дивана с картинками разных размеров.
+// FR: Ces donnees donnent au catalogue deux canapes avec des images de tailles differentes.
 const rivoli = {
   default_fabric_id: "fabric-boucle",
-  default_render_url: "https://assets.example/rivoli/boucle-face.png",
+  default_render_medium_content_type: "image/jpeg",
+  default_render_medium_height_px: 960,
+  default_render_medium_url:
+    "https://assets.example/rivoli/boucle-face-medium.jpg",
+  default_render_medium_width_px: 1280,
+  default_render_url: "https://assets.example/rivoli/boucle-face-original.png",
   default_visual_position_id: "front",
   dimensions: {
     depth_cm: 96,
@@ -47,7 +63,8 @@ const rivoli = {
 const marais = {
   ...rivoli,
   default_fabric_id: "fabric-lin",
-  default_render_url: "https://assets.example/marais/lin-face.png",
+  default_render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
+  default_render_url: "https://assets.example/marais/lin-face-original.png",
   id: "sofa-marais",
   public_name: "Canapé Marais",
   public_slug: "canape-marais",
@@ -105,14 +122,22 @@ const rivoliDetail = {
     {
       fabric_id: "fabric-boucle",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/boucle-face.png",
+      render_medium_url:
+        "https://assets.example/rivoli/boucle-face-medium.jpg",
+      render_original_url:
+        "https://assets.example/rivoli/boucle-face-original.png",
+      render_url: "https://assets.example/rivoli/boucle-face-original.png",
       visual_position_id: "front",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-sauge",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/sauge-face.png",
+      render_medium_url:
+        "https://assets.example/rivoli/sauge-face-medium.jpg",
+      render_original_url:
+        "https://assets.example/rivoli/sauge-face-original.png",
+      render_url: "https://assets.example/rivoli/sauge-face-original.png",
       visual_position_id: "front",
       width_px: 1600,
     },
@@ -154,7 +179,10 @@ const maraisDetail = {
     {
       fabric_id: "fabric-lin",
       height_px: 1200,
-      render_url: "https://assets.example/marais/lin-face.png",
+      render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
+      render_original_url:
+        "https://assets.example/marais/lin-face-original.png",
+      render_url: "https://assets.example/marais/lin-face-original.png",
       visual_position_id: "front",
       width_px: 1600,
     },
@@ -392,7 +420,7 @@ describe("PublicCatalogPage", () => {
 
     expect(rivoliImage).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/boucle-face.png",
+      "https://assets.example/rivoli/boucle-face-medium.jpg",
     );
 
     expect(await screen.findByRole("button", { name: "Velours sauge" })).toBeInTheDocument();
@@ -405,11 +433,11 @@ describe("PublicCatalogPage", () => {
 
     expect(rivoliImage).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/sauge-face.png",
+      "https://assets.example/rivoli/sauge-face-medium.jpg",
     );
     expect(maraisImage).toHaveAttribute(
       "src",
-      "https://assets.example/marais/lin-face.png",
+      "https://assets.example/marais/lin-face-medium.jpg",
     );
 
     const detailLink = screen.getByRole("link", {

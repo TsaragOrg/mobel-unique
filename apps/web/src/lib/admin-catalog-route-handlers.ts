@@ -30,6 +30,7 @@ import {
   type AdminFabricRenderJobBatchRecord,
   type AdminFabricRenderResumeRecord,
 } from "./admin-catalog";
+import type { CatalogImageDeliveryVariant } from "./catalog-image-variants";
 
 export type { AdminCatalogStore } from "./admin-catalog";
 
@@ -52,6 +53,7 @@ type SofaInput = BaseInput & {
 
 type StorageAssetInput = BaseInput & {
   assetId: string;
+  variant?: string | null;
 };
 
 type RenderExportInput = BaseInput & {
@@ -383,7 +385,16 @@ export async function handleGetStorageAssetPreviewRequest(
   input: StorageAssetInput,
 ) {
   return withAuthorizedStore(input, async (store) => {
-    const preview = await store.getStorageAssetPreview(input.assetId);
+    const variant = parseStorageAssetPreviewVariant(input.variant);
+
+    if (!variant.ok) {
+      return validationResponse(variant);
+    }
+
+    const preview = await store.getStorageAssetPreview(
+      input.assetId,
+      variant.value,
+    );
 
     if (!preview) {
       return notFoundResponse(
@@ -1239,6 +1250,47 @@ function validationResponse(input: {
     },
     input.status,
   );
+}
+
+function parseStorageAssetPreviewVariant(input: string | null | undefined):
+  | {
+      ok: true;
+      value: CatalogImageDeliveryVariant;
+    }
+  | {
+      error: {
+        code: string;
+        details: Record<string, unknown>;
+        message: string;
+      };
+      ok: false;
+      status: 400;
+    } {
+  if (!input) {
+    return {
+      ok: true,
+      value: "original",
+    };
+  }
+
+  if (input === "original" || input === "small" || input === "medium") {
+    return {
+      ok: true,
+      value: input,
+    };
+  }
+
+  return {
+    error: {
+      code: "INVALID_STORAGE_ASSET_VARIANT",
+      details: {
+        variant: input,
+      },
+      message: "Storage asset preview variant is not supported.",
+    },
+    ok: false,
+    status: 400,
+  };
 }
 
 function notFoundResponse(code: string, message: string) {

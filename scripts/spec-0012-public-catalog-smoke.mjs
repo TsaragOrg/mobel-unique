@@ -118,6 +118,8 @@ for (const requiredField of [
   "public_name",
   "default_fabric_id",
   "default_visual_position_id",
+  "default_render_medium_content_type",
+  "default_render_medium_url",
   "default_render_url",
 ]) {
   if (!firstItem?.[requiredField]) {
@@ -125,8 +127,20 @@ for (const requiredField of [
   }
 }
 
-if (!String(firstItem.default_render_url).includes("/storage/v1/object/public/")) {
-  fail(`catalog default render is not a public storage URL: ${JSON.stringify(firstItem)}`);
+if (firstItem.default_render_url !== firstItem.default_render_medium_url) {
+  fail(
+    `catalog default render compatibility alias does not point at medium delivery: ${JSON.stringify(firstItem)}`,
+  );
+}
+
+if (
+  !String(firstItem.default_render_medium_url).includes(
+    "/storage/v1/object/public/",
+  )
+) {
+  fail(
+    `catalog medium render is not a public storage URL: ${JSON.stringify(firstItem)}`,
+  );
 }
 
 if (catalogBody.data.next_cursor) {
@@ -164,6 +178,37 @@ if (
   fail(`sofa detail is missing public selection state: ${JSON.stringify(sofaBody)}`);
 }
 
+const defaultDetailRender = sofaBody.data.renders.find(
+  (render) =>
+    render.fabric_id === sofaBody.data.defaults.fabric_id &&
+    render.visual_position_id === sofaBody.data.defaults.visual_position_id,
+);
+
+if (
+  !defaultDetailRender?.render_original_url ||
+  !defaultDetailRender.render_original_content_type
+) {
+  fail(
+    `sofa detail default render is missing original delivery fields: ${JSON.stringify(sofaBody)}`,
+  );
+}
+
+if (defaultDetailRender.render_url !== defaultDetailRender.render_original_url) {
+  fail(
+    `sofa detail render compatibility alias does not point at original delivery: ${JSON.stringify(defaultDetailRender)}`,
+  );
+}
+
+if (
+  !String(defaultDetailRender.render_original_url).includes(
+    "/storage/v1/object/public/",
+  )
+) {
+  fail(
+    `sofa detail original render is not a public storage URL: ${JSON.stringify(defaultDetailRender)}`,
+  );
+}
+
 console.log(
-  `PASS SPEC-0012 public catalog smoke: read catalog and sofa detail for ${firstItem.public_slug}`,
+  `PASS SPEC-0012 public catalog smoke: read medium catalog render and original sofa detail render for ${firstItem.public_slug}`,
 );

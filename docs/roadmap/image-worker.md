@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                                                            |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active | SPEC-0006 | PLAN-0067 | Fabric render worker output now uploads the accepted candidate original plus stored small and medium private variants before marking the job succeeded, passes variant metadata into the success RPC, and cleans up partial uploads when variant generation or upload fails. |
 | Done   | SPEC-0001 | PLAN-0001 | Minimal worker foundation and heartbeat configuration.                                                                                                          |
 | Done   | SPEC-0008 | PLAN-0008 | Local worker environment examples align with local Supabase worker development.                                                                                 |
 | Done   | SPEC-0006 | PLAN-0006 | Locally testable fabric render worker foundation with mock output and optional Gemini smoke verification.                                                       |

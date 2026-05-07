@@ -44,6 +44,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   UNSUPPORTED_MEDIA_TYPE: "Request body must be JSON.",
   UPLOAD_FAILED: "The image upload failed. Please try again.",
   UPLOAD_NOT_FOUND: "Upload was not found or has expired.",
+  UPLOAD_VARIANTS_FAILED:
+    "The image was uploaded, but preview sizes could not be created. Please try again.",
   VALIDATION_FAILED: "Some entered data is missing or invalid.",
   VISUAL_MATRIX_COLUMN_CONFLICT:
     "Another view column already uses these details.",

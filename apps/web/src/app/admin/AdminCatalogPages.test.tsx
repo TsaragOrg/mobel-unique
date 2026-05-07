@@ -358,7 +358,8 @@ function createDependencies(
               : "ai-reference-upload",
     })),
     createStorageAssetPreviewUrl: vi.fn(
-      async (_accessToken, assetId) => `blob:admin-preview/${assetId}`,
+      async (_accessToken, assetId, _variant = "original") =>
+        `blob:admin-preview/${assetId}`,
     ),
     createFabricRenderJob: vi.fn(async (_accessToken, input) => ({
       attempt_count: 0,
@@ -793,6 +794,59 @@ describe("Admin catalog pages", () => {
     expect(screen.getByText("1 source photo")).toBeInTheDocument();
     expect(screen.getByText("1 299 €")).toBeInTheDocument();
     expect(dependencies.listSofas).toHaveBeenCalledWith("admin-token");
+  });
+
+  it("loads sofa list source previews through the small protected preview", async () => {
+    // RU: Эти данные дают дивану закрытое фото и старую временную ссылку.
+    // FR: Ces donnees donnent au canape une photo privee et un ancien lien temporaire.
+    const sourcePhotoAssetId = "00000000-0000-4000-8000-000000000904";
+    const dependencies = createDependencies({
+      createStorageAssetPreviewUrl: vi.fn(
+        async (_accessToken, assetId, variant = "original") =>
+          `blob:admin-preview/${assetId}/${variant}`,
+      ),
+      listSofas: vi.fn(async () => [
+        {
+          archived_at: null,
+          created_at: "2026-04-28T10:00:00.000Z",
+          depth_cm: null,
+          footprint_measurements: null,
+          footprint_type: null,
+          height_cm: null,
+          id: "00000000-0000-4000-8000-000000000701",
+          internal_name: "Manual test sofa",
+          lifecycle_state: "draft",
+          manual_public_order: null,
+          price_cents: 129900,
+          price_currency: "EUR",
+          public_description: null,
+          public_name: "Canape test",
+          public_slug: null,
+          shopify_order_url: null,
+          source_photo_count: 1,
+          source_photo_preview_asset_id: sourcePhotoAssetId,
+          source_photo_preview_url:
+            "https://storage.example/original-source-photo",
+          tags: [],
+          updated_at: "2026-04-28T10:00:00.000Z",
+          length_cm: null,
+        },
+      ]),
+    });
+
+    render(<AdminSofasPage dependencies={dependencies} />);
+
+    expect(
+      await screen.findByRole("img", { name: "Source photo for Canape test" }),
+    ).toHaveAttribute(
+      "src",
+      `blob:admin-preview/${sourcePhotoAssetId}/small`,
+    );
+    expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+      "admin-token",
+      sourcePhotoAssetId,
+      "small",
+    );
   });
 
   it("hides archived sofas until the archive list toggle is enabled", async () => {
@@ -2778,6 +2832,7 @@ describe("Admin catalog pages", () => {
       expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
         "admin-token",
         visualColumn.current_source_photo.asset_id,
+        "medium",
       );
     });
     expect(
@@ -2945,6 +3000,7 @@ describe("Admin catalog pages", () => {
       expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
         "admin-token",
         "00000000-0000-4000-8000-000000000909",
+        "medium",
       );
       expect(
         within(dialog).getByRole("img", { name: "Current render preview" }),
@@ -3390,6 +3446,10 @@ describe("Admin catalog pages", () => {
       updated_at: "2026-04-28T10:00:00.000Z",
     };
     const dependencies = createDependencies({
+      createStorageAssetPreviewUrl: vi.fn(
+        async (_accessToken, assetId, variant = "original") =>
+          `blob:admin-preview/${assetId}/${variant}`,
+      ),
       listSofaFabrics: vi.fn(async () => [assignedFabric, reassignedFabric]),
       listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
     });
@@ -3404,9 +3464,19 @@ describe("Admin catalog pages", () => {
       screen.getByText("Configures positions. Renders shows coverage."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Source ready")).not.toBeInTheDocument();
-    expect(
-      document.querySelector(".admin-visual-matrix-source-preview img"),
-    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    await waitFor(() => {
+      expect(
+        document.querySelector(".admin-visual-matrix-source-preview img"),
+      ).toHaveAttribute(
+        "src",
+        `blob:admin-preview/${visualColumn.current_source_photo.asset_id}/small`,
+      );
+    });
+    expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+      "admin-token",
+      visualColumn.current_source_photo.asset_id,
+      "small",
+    );
     const sourceImageButton = screen.getByRole("button", {
       name: "Edit source image column 1",
     });
@@ -3438,9 +3508,19 @@ describe("Admin catalog pages", () => {
     expect(within(dialog).getByLabelText("Source fabric 1")).toHaveValue(
       assignedFabric.fabric_id,
     );
-    expect(
-      dialog.querySelector(".admin-view-column-source-preview img"),
-    ).toHaveAttribute("src", "https://storage.example/source-photo-preview");
+    await waitFor(() => {
+      expect(
+        dialog.querySelector(".admin-view-column-source-preview img"),
+      ).toHaveAttribute(
+        "src",
+        `blob:admin-preview/${visualColumn.current_source_photo.asset_id}/medium`,
+      );
+    });
+    expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+      "admin-token",
+      visualColumn.current_source_photo.asset_id,
+      "medium",
+    );
 
     fireEvent.change(within(dialog).getByLabelText("Source fabric 1"), {
       target: { value: reassignedFabric.fabric_id },
@@ -4800,6 +4880,7 @@ describe("Admin catalog pages", () => {
       expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
         "admin-token",
         renderCell.current_private_asset_id,
+        "medium",
       );
     });
     // RU: Эта картинка нужна, чтобы проверить открытие большого просмотра по клику.
@@ -4813,6 +4894,13 @@ describe("Admin catalog pages", () => {
     );
 
     fireEvent.click(currentRenderPreview);
+    await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        renderCell.current_private_asset_id,
+        "original",
+      );
+    });
     const currentImageDialog = screen.getByRole("dialog", {
       name: /Large image: Current render/i,
     });
@@ -4881,6 +4969,11 @@ describe("Admin catalog pages", () => {
         "Candidate preview 00000000-0000-4000-8000-000000000909",
       ),
     ).toBeInTheDocument();
+    expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+      "admin-token",
+      newCandidate.asset_id,
+      "small",
+    );
     const candidateGenerationGroup = within(cellDialog).getByRole("group", {
       name: "Generate action",
     });
@@ -4960,6 +5053,18 @@ describe("Admin catalog pages", () => {
     const compareDialog = screen.getByRole("dialog", {
       name: /Compare render candidate/i,
     });
+    await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        visualColumn.current_source_photo.asset_id,
+        "medium",
+      );
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        newCandidate.asset_id,
+        "medium",
+      );
+    });
     const previousCandidateButton = within(compareDialog).getByRole("button", {
       name: "Previous candidate",
     });
@@ -4989,6 +5094,13 @@ describe("Admin catalog pages", () => {
         name: "Candidate preview 00000000-0000-4000-8000-000000000909",
       }),
     );
+    await waitFor(() => {
+      expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
+        "admin-token",
+        newCandidate.asset_id,
+        "original",
+      );
+    });
     const candidateImageDialog = screen.getByRole("dialog", {
       name: /Large image: Candidate/i,
     });
@@ -5406,7 +5518,9 @@ describe("Admin catalog pages", () => {
         }
 
         if (
-          requestUrl.endsWith(`/api/admin/storage-assets/${assetId}/preview`)
+          requestUrl.endsWith(
+            `/api/admin/storage-assets/${assetId}/preview?variant=original`,
+          )
         ) {
           return new Response(new Blob(["preview"], { type: "image/png" }), {
             headers: {
@@ -5905,7 +6019,7 @@ describe("Admin catalog pages", () => {
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/candidates",
       "/api/admin/render-candidates/00000000-0000-4000-8000-000000000908/use-as-current",
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/manual-render",
-      "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview",
+      "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview?variant=original",
     ]);
     expect(calledUrls.join("\n")).not.toContain("supabase");
     expect(calledUrls.join("\n")).not.toContain("functions");

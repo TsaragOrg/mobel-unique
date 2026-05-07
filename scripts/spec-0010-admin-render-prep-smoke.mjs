@@ -22,10 +22,15 @@ const REQUEST_TIMEOUT_MS = Number(
   process.env.SPEC_0010_ADMIN_RENDER_PREP_SMOKE_TIMEOUT_MS ?? 5000,
 );
 const PNG_BYTES = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4XgEFAPr/AP////8J+wP9ecBupQAAACt0RVh0Q3JlYXRpb24gVGltZQBUaHUsIDA3IE1heSAyMDI2IDA5OjUyOjU1IEdNVMGQOCMAAAAtdEVYdFNvZnR3YXJlAGdpdGh1Yi5jb20vbWF0bWVuL0ltYWdlU2NyaXB0IHYxLjMuMW/Br2AAAAAASUVORK5CYII=",
   "base64",
 );
 const PNG_CONTENT_TYPE = "image/png";
+const ADMIN_PREVIEW_VARIANTS = [
+  { query: "variant=small", variant: "small" },
+  { query: "variant=medium", variant: "medium" },
+  { query: "variant=original", variant: "original" },
+];
 
 function skip(message) {
   console.log(`SKIP SPEC-0010 admin render prep smoke: ${message}`);
@@ -197,6 +202,54 @@ async function adminJsonResponse(
   };
 }
 
+async function assertProtectedPreviewVariants(
+  accessToken,
+  trustedDeviceCookie,
+  assetId,
+  label,
+) {
+  for (const { query, variant } of ADMIN_PREVIEW_VARIANTS) {
+    let response;
+
+    try {
+      response = await fetch(
+        `${WEB_URL}/api/admin/storage-assets/${encodeURIComponent(
+          assetId,
+        )}/preview?${query}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Cookie: trustedDeviceCookie,
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+      );
+    } catch (error) {
+      if (
+        (isLocalUrl(WEB_URL) || isLocalUrl(SUPABASE_URL)) &&
+        isConnectionFailure(error)
+      ) {
+        skip(
+          `local services are not reachable. Run \`pnpm supabase:start\` and \`pnpm dev:web\`.`,
+        );
+      }
+
+      fail(error instanceof Error ? error.message : String(error));
+    }
+
+    if (!response.ok) {
+      fail(
+        `${label} ${variant} preview returned HTTP ${response.status}.`,
+      );
+    }
+
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      fail(`${label} ${variant} preview did not return image bytes.`);
+    }
+  }
+}
+
 async function uploadAdminAsset({
   accessToken,
   trustedDeviceCookie,
@@ -340,7 +393,7 @@ const { visual_matrix_column: visualMatrixColumn } = await adminJson(
   },
 );
 
-await uploadAdminAsset({
+const sourcePhotoAsset = await uploadAdminAsset({
   accessToken,
   extraPayload: {
     original_fabric_id: sourceFabric.id,
@@ -350,6 +403,12 @@ await uploadAdminAsset({
   purpose: "sofa_source_photo",
   trustedDeviceCookie,
 });
+await assertProtectedPreviewVariants(
+  accessToken,
+  trustedDeviceCookie,
+  sourcePhotoAsset.id,
+  "source photo",
+);
 
 const { render_coverage: renderCoverage } = await adminJson(
   accessToken,
@@ -444,6 +503,12 @@ const candidate = candidates[0];
 if (!candidate?.id || !candidate.preview_url) {
   fail(`render candidate is incomplete: ${JSON.stringify(candidate)}`);
 }
+await assertProtectedPreviewVariants(
+  accessToken,
+  trustedDeviceCookie,
+  candidate.asset_id,
+  "render candidate",
+);
 
 const { render_candidate: selectedCandidate } = await adminJson(
   accessToken,
@@ -468,6 +533,12 @@ const manualRenderAsset = await uploadAdminAsset({
   purpose: "manual_render",
   trustedDeviceCookie,
 });
+await assertProtectedPreviewVariants(
+  accessToken,
+  trustedDeviceCookie,
+  manualRenderAsset.id,
+  "manual render",
+);
 
 const { render_cell: manualRenderCell } = await adminJson(
   accessToken,
@@ -492,5 +563,5 @@ if (
 }
 
 console.log(
-  `PASS SPEC-0010 admin render prep smoke: source cell ${sourceRenderCell.id} blocked, selected candidate ${candidate.id}, and manual render ${manualRenderAsset.id} for sofa ${sofa.id}`,
+  `PASS SPEC-0010 admin render prep smoke: source cell ${sourceRenderCell.id} blocked, selected candidate ${candidate.id}, manual render ${manualRenderAsset.id}, and preview variants small, medium, original for sofa ${sofa.id}`,
 );

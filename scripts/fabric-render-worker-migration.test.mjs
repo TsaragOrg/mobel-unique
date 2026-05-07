@@ -21,6 +21,8 @@ const manualPumpRealtimeMigrationPath =
   "supabase/migrations/20260430000300_manual_fabric_render_pump_realtime.sql";
 const globalCapacityMigrationPath =
   "supabase/migrations/20260501000100_fabric_render_worker_global_capacity.sql";
+const catalogImageVariantsMigrationPath =
+  "supabase/migrations/20260507000100_catalog_image_variants.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -209,5 +211,16 @@ it("adds an admin sofa unarchive helper that restores draft state", async () => 
     expect(sql).toContain("grant execute on function public.fabric_render_worker_request_status(uuid, text)");
     expect(sql).toContain("grant execute on function public.fabric_render_worker_claim_one_for_request");
     expect(sql).toContain("grant execute on function public.fabric_render_worker_next_queued_request_id(uuid)");
+  });
+
+  it("requires worker success to persist small and medium output variants", async () => {
+    const sql = await readFile(catalogImageVariantsMigrationPath, "utf8");
+
+    expect(sql).toContain("p_output_variants jsonb");
+    expect(sql).toContain("p_output_variants must include small and medium variants");
+    expect(sql).toContain("jsonb_array_elements(p_output_variants)");
+    expect(sql).toContain("variant_asset_id");
+    expect(sql).toContain("storage_asset_variants");
+    expect(sql).toContain("'fabric_render_candidate_variant'");
   });
 });

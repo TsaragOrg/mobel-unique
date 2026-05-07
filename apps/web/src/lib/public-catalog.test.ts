@@ -3,7 +3,10 @@ import {
   buildPublicStorageUrl,
   decodeCatalogCursor,
   encodeCatalogCursor,
+  getPublicSofaDetail,
+  listPublicCatalog,
   parseCatalogListQuery,
+  type PublicCatalogStore,
 } from "./public-catalog";
 
 describe("public catalog helpers", () => {
@@ -61,4 +64,115 @@ describe("public catalog helpers", () => {
       "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/canape%20angle/front%20render.png",
     );
   });
+
+  it("shapes catalog cards with explicit medium render delivery fields", async () => {
+    const result = await listPublicCatalog(createDeliveryStore(), {
+      cursor: null,
+      limit: 12,
+      tags: [],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      default_render_medium_content_type: "image/jpeg",
+      default_render_medium_height_px: 960,
+      default_render_medium_width_px: 1280,
+    });
+    expect(result.items[0].default_render_medium_url).toContain(
+      "front-medium.jpg",
+    );
+    expect(result.items[0].default_render_url).toBe(
+      result.items[0].default_render_medium_url,
+    );
+    expect(JSON.stringify(result)).not.toContain("catalog-private-assets");
+  });
+
+  it("shapes sofa detail renders with explicit original delivery fields", async () => {
+    const result = await getPublicSofaDetail(
+      createDeliveryStore(),
+      "canape-test",
+    );
+
+    expect(result.renders[0]).toMatchObject({
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_width_px: 1280,
+      render_original_content_type: "image/png",
+      render_original_height_px: 1200,
+      render_original_width_px: 1600,
+    });
+    expect(result.renders[0].render_medium_url).toContain("front-medium.jpg");
+    expect(result.renders[0].render_original_url).toContain("front.png");
+    expect(result.renders[0].render_original_url).not.toContain(
+      "front-medium.jpg",
+    );
+    expect(result.renders[0].render_url).toBe(
+      result.renders[0].render_original_url,
+    );
+  });
 });
+
+function createDeliveryStore(): PublicCatalogStore {
+  return {
+    publicAssetBaseUrl: "http://127.0.0.1:54321",
+    async findUnavailableSofaBySlug() {
+      return null;
+    },
+    async listPublicFabrics() {
+      return [
+        {
+          id: "00000000-0000-4000-8000-000000000501",
+          is_premium: false,
+          public_name: "Fabric",
+          public_order: 1,
+          public_swatch_object_path: "catalog/fabrics/fabric/swatch.png",
+          sofa_id: "00000000-0000-4000-8000-000000000401",
+        },
+      ];
+    },
+    async listPublicRenderCells() {
+      return [
+        {
+          fabric_id: "00000000-0000-4000-8000-000000000501",
+          public_render_content_type: "image/jpeg",
+          public_render_height_px: 960,
+          public_render_object_path: "catalog/sofas/test/front-medium.jpg",
+          public_render_width_px: 1280,
+          render_cell_id: "00000000-0000-4000-8000-000000000701",
+          render_medium_content_type: "image/jpeg",
+          render_medium_height_px: 960,
+          render_medium_object_path: "catalog/sofas/test/front-medium.jpg",
+          render_medium_width_px: 1280,
+          render_original_content_type: "image/png",
+          render_original_height_px: 1200,
+          render_original_object_path: "catalog/sofas/test/front.png",
+          render_original_width_px: 1600,
+          sofa_id: "00000000-0000-4000-8000-000000000401",
+          visual_matrix_column_id: "00000000-0000-4000-8000-000000000601",
+        },
+      ];
+    },
+    async listPublicSofaTags() {
+      return [];
+    },
+    async listPublicSofas() {
+      return [
+        {
+          created_at: "2026-04-28T10:00:00.000Z",
+          id: "00000000-0000-4000-8000-000000000401",
+          public_name: "Canape test",
+          public_slug: "canape-test",
+        },
+      ];
+    },
+    async listPublicVisualPositions() {
+      return [
+        {
+          id: "00000000-0000-4000-8000-000000000601",
+          public_label: "Front",
+          sequence: 1,
+          sofa_id: "00000000-0000-4000-8000-000000000401",
+        },
+      ];
+    },
+  };
+}

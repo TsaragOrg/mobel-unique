@@ -4,6 +4,7 @@ import { deflateSync } from "node:zlib";
 import {
   buildStorageObjectUrl,
   downloadStorageObject,
+  removeStorageObjects,
   uploadStorageObject,
   base64ToUint8Array,
   uint8ArrayToBase64,
@@ -19,6 +20,10 @@ import {
 } from "../supabase/functions/fabric-render-worker/scratch.ts";
 import { readImageDimensions } from "../supabase/functions/fabric-render-worker/image-metadata.ts";
 import { normalizeGeneratedOutput } from "../supabase/functions/fabric-render-worker/image-normalization.ts";
+import {
+  buildFabricRenderCandidateVariantObjectPath,
+  generateFabricRenderCandidateImageVariants,
+} from "../supabase/functions/fabric-render-worker/image-variants.ts";
 
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -176,6 +181,34 @@ describe("fabric render storage and scratch helpers", () => {
     expect(calls[0].init.headers["x-upsert"]).toBe("true");
   });
 
+  it("removes generated output objects with private service-role headers", async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ init, url });
+      return createFetchResponse(new Uint8Array([]));
+    };
+
+    await removeStorageObjects({
+      bucketId: "catalog-private-assets",
+      fetchImpl,
+      objectPaths: [
+        "renders/sofa/fabric/column/candidates/job/output.png",
+        "renders/sofa/fabric/column/candidates/job/variants/small/asset.jpg",
+      ],
+      serviceRoleKey: "service-key",
+      supabaseUrl: "http://127.0.0.1:54321",
+    });
+
+    expect(calls.map((call) => call.init.method)).toEqual([
+      "DELETE",
+      "DELETE",
+    ]);
+    expect(calls[0].url).toContain(
+      "/storage/v1/object/catalog-private-assets/renders/sofa/fabric/column/candidates/job/output.png",
+    );
+    expect(calls[0].init.headers.Authorization).toBe("Bearer service-key");
+  });
+
   it("converts bytes to and from base64", () => {
     const base64 = uint8ArrayToBase64(new Uint8Array([1, 2, 3, 254]));
 
@@ -191,6 +224,64 @@ describe("fabric render storage and scratch helpers", () => {
         visualMatrixColumnId: "column-id",
       }),
     ).toBe("renders/sofa-id/fabric-id/column-id/candidates/job-id/output.png");
+  });
+
+  it("builds private candidate variant paths with immutable variant asset ids", () => {
+    expect(
+      buildFabricRenderCandidateVariantObjectPath({
+        contentType: "image/jpeg",
+        outputPath:
+          "renders/sofa-id/fabric-id/column-id/candidates/job-id/output.png",
+        variantAssetId: "small-asset-id",
+        variantKind: "small",
+      }),
+    ).toBe(
+      "renders/sofa-id/fabric-id/column-id/candidates/job-id/variants/small/small-asset-id.jpg",
+    );
+  });
+
+  it("generates small and medium private candidate variant metadata without cropping", async () => {
+    const outputBytes = createSolidRgbaPng(640, 320, [20, 40, 60, 255]);
+    const variants = await generateFabricRenderCandidateImageVariants({
+      createVariantAssetId: (variantKind) => `${variantKind}-asset-id`,
+      outputBytes,
+      outputContentType: "image/png",
+      outputPath:
+        "renders/sofa-id/fabric-id/column-id/candidates/job-id/output.png",
+    });
+
+    expect(variants.map((variant) => variant.variant_kind)).toEqual([
+      "small",
+      "medium",
+    ]);
+    expect(variants.map((variant) => variant.variant_asset_id)).toEqual([
+      "small-asset-id",
+      "medium-asset-id",
+    ]);
+    expect(variants[0]).toMatchObject({
+      content_type: "image/jpeg",
+      height_px: 160,
+      object_path:
+        "renders/sofa-id/fabric-id/column-id/candidates/job-id/variants/small/small-asset-id.jpg",
+      variant_kind: "small",
+      width_px: 320,
+    });
+    expect(variants[1]).toMatchObject({
+      content_type: "image/jpeg",
+      height_px: 320,
+      object_path:
+        "renders/sofa-id/fabric-id/column-id/candidates/job-id/variants/medium/medium-asset-id.jpg",
+      variant_kind: "medium",
+      width_px: 640,
+    });
+    expect(
+      variants.map((variant) =>
+        readImageDimensions(variant.bytes, variant.content_type),
+      ),
+    ).toEqual([
+      { heightPx: 160, widthPx: 320 },
+      { heightPx: 320, widthPx: 640 },
+    ]);
   });
 
   it("rejects invalid source metadata as non-retryable job metadata", () => {

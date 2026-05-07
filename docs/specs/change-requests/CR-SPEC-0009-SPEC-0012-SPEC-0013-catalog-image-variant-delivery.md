@@ -2,7 +2,7 @@
 
 Target spec ids: SPEC-0009, SPEC-0012, SPEC-0013
 Related spec ids: SPEC-0005, SPEC-0006, SPEC-0010, SPEC-0011, SPEC-0014
-Status: draft
+Status: accepted
 
 ## Reason For Change
 
@@ -305,7 +305,7 @@ must support:
 
 ## Approval Note
 
-Pending review. The selected direction is a fully first-party variant model:
-stored variants are the product contract for predictable admin and public image
-delivery, and Supabase Storage Image Transformations are intentionally excluded
-from catalog image generation and delivery.
+Accepted after review. The selected direction is a fully first-party variant
+model: stored variants are the product contract for predictable admin and
+public image delivery, and Supabase Storage Image Transformations are
+intentionally excluded from catalog image generation and delivery.

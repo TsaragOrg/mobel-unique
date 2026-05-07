@@ -281,14 +281,24 @@ function isConnectionFailure(stderr) {
   );
 }
 
-const child = spawn(
-  PSQL_BIN,
-  [DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A", "-c", smokeSql],
-  {
+function spawnCommand(bin, args) {
+  const isNodeShim = /\.(cjs|js|mjs)$/i.test(bin);
+  return spawn(isNodeShim ? process.execPath : bin, isNodeShim ? [bin, ...args] : args, {
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"]
-  }
-);
+  });
+}
+
+const child = spawnCommand(PSQL_BIN, [
+  DB_URL,
+  "-v",
+  "ON_ERROR_STOP=1",
+  "-q",
+  "-t",
+  "-A",
+  "-c",
+  smokeSql
+]);
 
 let stdout = "";
 let stderr = "";
