@@ -76,9 +76,9 @@ The target architecture is:
       and pump chaining.
 - [ ] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
-- [ ] Add API tests proving create, dimensions, and regeneration invoke the
+- [x] Add API tests proving create, dimensions, and regeneration invoke the
       worker pump as best effort after durable state is persisted.
-- [ ] Add API tests proving pump invocation failure leaves recoverable queued
+- [x] Add API tests proving pump invocation failure leaves recoverable queued
       work rather than an invisible broken visitor flow.
 - [ ] Add Realtime access tests proving one visitor cannot subscribe to another
       visitor's progress.

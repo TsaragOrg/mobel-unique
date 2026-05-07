@@ -22,7 +22,8 @@ import type {
   SimulationQueueEnqueuer,
   SimulationRegenerationStore,
   SimulationStorageSigner,
-  SimulationStorageUploader
+  SimulationStorageUploader,
+  SimulationWorkerPumpInvoker
 } from "./simulation-public-route-handlers";
 import {
   createSupabaseSimulationIdempotencyStore,
@@ -41,6 +42,7 @@ const DEFAULT_RATE_LIMIT_IP_PER_DAY = 3;
 const DEFAULT_RATE_LIMIT_EMAIL_PER_DAY = 2;
 const DEFAULT_CORNER_TAG_SLUG = "corner";
 const DEFAULT_RETENTION_HOURS = 24;
+const DEFAULT_WORKER_PUMP_TIMEOUT_MS = 1500;
 
 const SIMULATION_PRIVATE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_SIMULATION_QUEUE_NAME = "local_in_home_simulation_jobs";
@@ -67,7 +69,7 @@ export function createDefaultSimulationDimensionsHandlerDeps(): SimulationPublic
     accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
     jobReader: createSupabaseSimulationJobReader(client),
     dimensionsStore: createSupabaseSimulationDimensionsStore(client),
-    queueName: readSimulationQueueName()
+    pumpInvoker: createSimulationWorkerPumpInvoker()
   };
 }
 
@@ -77,7 +79,7 @@ export function createDefaultSimulationRegenerationHandlerDeps(): SimulationPubl
     accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
     jobReader: createSupabaseSimulationJobReader(client),
     regenerationStore: createSupabaseSimulationRegenerationStore(client),
-    queueName: readSimulationQueueName()
+    pumpInvoker: createSimulationWorkerPumpInvoker()
   };
 }
 
@@ -85,25 +87,23 @@ export function createSupabaseSimulationDimensionsStore(
   client: SupabaseClient
 ): SimulationDimensionsStore {
   return {
-    async submit({ jobId, suppliedDimensions, queueName }) {
+    async submit({ jobId, suppliedDimensions }) {
       const { data, error } = await client.rpc(
-        "submit_in_home_simulation_dimensions",
+        "submit_in_home_simulation_dimensions_checkpoint_pump",
         {
-          job_id: jobId,
-          supplied_dimensions: suppliedDimensions,
-          queue_name: queueName
+          p_job_id: jobId,
+          p_supplied_dimensions: suppliedDimensions
         }
       );
       if (error) {
         throw error;
       }
-      const msgId = typeof data === "number" ? data : Number(data);
-      if (!Number.isFinite(msgId)) {
+      if (typeof data !== "string" || data.length === 0) {
         throw new Error(
-          "submit_in_home_simulation_dimensions returned a non-numeric msg_id"
+          "submit_in_home_simulation_dimensions_checkpoint_pump returned no checkpoint id"
         );
       }
-      return { msgId };
+      return { checkpointId: data };
     }
   };
 }
@@ -112,25 +112,23 @@ export function createSupabaseSimulationRegenerationStore(
   client: SupabaseClient
 ): SimulationRegenerationStore {
   return {
-    async request({ jobId, queueName }) {
+    async request({ jobId }) {
       const { data, error } = await client.rpc(
-        "request_in_home_simulation_regeneration",
+        "request_in_home_simulation_regeneration_checkpoint_pump",
         {
-          job_id: jobId,
-          supplied_dimensions: null,
-          queue_name: queueName
+          p_job_id: jobId,
+          p_supplied_dimensions: null
         }
       );
       if (error) {
         throw error;
       }
-      const msgId = typeof data === "number" ? data : Number(data);
-      if (!Number.isFinite(msgId)) {
+      if (typeof data !== "string" || data.length === 0) {
         throw new Error(
-          "request_in_home_simulation_regeneration returned a non-numeric msg_id"
+          "request_in_home_simulation_regeneration_checkpoint_pump returned no checkpoint id"
         );
       }
-      return { msgId };
+      return { checkpointId: data };
     }
   };
 }
@@ -158,7 +156,6 @@ export function createDefaultSimulationCreateHandlerDeps(): SimulationPublicCrea
     ),
     cornerTagSlug:
       process.env.SIMULATION_CORNER_TAG_SLUG ?? DEFAULT_CORNER_TAG_SLUG,
-    queueName: readSimulationQueueName(),
     retentionHours: readPositiveInt(
       "SIMULATION_RETENTION_HOURS",
       DEFAULT_RETENTION_HOURS
@@ -168,7 +165,7 @@ export function createDefaultSimulationCreateHandlerDeps(): SimulationPublicCrea
     catalogStore: createSupabaseSimulationCatalogStore(client),
     storageUploader: createSupabaseSimulationStorageUploader(client),
     createJobStore: createSupabaseSimulationCreateJobStore(client),
-    queueEnqueuer: createSupabaseSimulationQueueEnqueuer(client),
+    pumpInvoker: createSimulationWorkerPumpInvoker(),
     jobReader: createSupabaseSimulationJobReader(client)
   };
 }
@@ -232,7 +229,7 @@ export function createSupabaseSimulationCreateJobStore(
   return {
     async create(input) {
       const { data, error } = await client.rpc(
-        "create_in_home_simulation_job_for_visitor",
+        "create_in_home_simulation_job_for_visitor_checkpoint_pump",
         {
           p_verification_request_id: input.verificationRequestId,
           p_sofa_slug: input.sofaSlug,
@@ -267,6 +264,46 @@ export function createSupabaseSimulationCreateJobStore(
         retentionDeadline: new Date(row.out_retention_deadline),
         storagePrefix: row.out_storage_prefix
       };
+    }
+  };
+}
+
+export function createSimulationWorkerPumpInvoker(input: {
+  fetchImpl?: typeof fetch;
+  functionUrl?: string;
+  invokeSecret?: string;
+  timeoutMs?: number;
+} = {}): SimulationWorkerPumpInvoker {
+  const functionUrl =
+    input.functionUrl ?? requiredEnv("IN_HOME_SIMULATION_WORKER_FUNCTION_URL");
+  const invokeSecret =
+    input.invokeSecret ?? requiredEnv("IN_HOME_SIMULATION_WORKER_INVOKE_SECRET");
+  const timeoutMs = input.timeoutMs ?? DEFAULT_WORKER_PUMP_TIMEOUT_MS;
+  const fetchImpl = input.fetchImpl ?? fetch;
+
+  return {
+    async invokePump() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetchImpl(functionUrl, {
+          body: JSON.stringify({ mode: "pump" }),
+          headers: {
+            "Content-Type": "application/json",
+            "x-in-home-simulation-worker-secret": invokeSecret
+          },
+          method: "POST",
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(
+            `in-home simulation worker pump returned HTTP ${response.status}: ${body}`
+          );
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
     }
   };
 }

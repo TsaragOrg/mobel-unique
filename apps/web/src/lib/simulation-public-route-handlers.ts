@@ -95,22 +95,24 @@ export interface SimulationDimensionsStore {
   submit(input: {
     jobId: string;
     suppliedDimensions: BackWallSuppliedDimensions | CornerSuppliedDimensions;
-    queueName: string;
-  }): Promise<{ msgId: number }>;
+  }): Promise<{ checkpointId: string }>;
 }
 
 export interface SimulationRegenerationStore {
   request(input: {
     jobId: string;
-    queueName: string;
-  }): Promise<{ msgId: number }>;
+  }): Promise<{ checkpointId: string }>;
+}
+
+export interface SimulationWorkerPumpInvoker {
+  invokePump(): Promise<void>;
 }
 
 export interface SimulationPublicDimensionsHandlerDeps {
   accessTokenSecret: string;
   jobReader: SimulationJobReader;
   dimensionsStore: SimulationDimensionsStore;
-  queueName: string;
+  pumpInvoker: SimulationWorkerPumpInvoker;
   now?: () => Date;
 }
 
@@ -118,7 +120,7 @@ export interface SimulationPublicRegenerationHandlerDeps {
   accessTokenSecret: string;
   jobReader: SimulationJobReader;
   regenerationStore: SimulationRegenerationStore;
-  queueName: string;
+  pumpInvoker: SimulationWorkerPumpInvoker;
   now?: () => Date;
 }
 
@@ -174,14 +176,13 @@ export interface SimulationPublicCreateHandlerDeps {
   rateLimitIpPerDay: number;
   rateLimitEmailPerDay: number;
   cornerTagSlug: string;
-  queueName: string;
   retentionHours: number;
   rateLimitStore: SimulationRateLimitStore;
   idempotencyStore: SimulationIdempotencyStore;
   catalogStore: SimulationCatalogStore;
   storageUploader: SimulationStorageUploader;
   createJobStore: SimulationCreateJobStore;
-  queueEnqueuer: SimulationQueueEnqueuer;
+  pumpInvoker: SimulationWorkerPumpInvoker;
   jobReader: SimulationJobReader;
   generateJobId?: () => string;
   now?: () => Date;
@@ -346,9 +347,9 @@ export async function handleSubmitDimensionsRequest(input: {
 
   await input.deps.dimensionsStore.submit({
     jobId: job.jobId,
-    suppliedDimensions: dimensionsResult.dimensions,
-    queueName: input.deps.queueName
+    suppliedDimensions: dimensionsResult.dimensions
   });
+  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -395,9 +396,9 @@ export async function handleRequestRegenerationRequest(input: {
   }
 
   await input.deps.regenerationStore.request({
-    jobId: job.jobId,
-    queueName: input.deps.queueName
+    jobId: job.jobId
   });
+  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -565,26 +566,13 @@ export async function handleCreateSimulationRequest(input: {
   }
 
   try {
-    await input.deps.queueEnqueuer.enqueueRoomPrep({
-      jobId: createResult.jobId,
-      queueName: input.deps.queueName
-    });
-  } catch (error) {
-    console.error("[simulations] queueEnqueuer.enqueueRoomPrep failed:", error);
-    return errorResponse(
-      "INTERNAL_ERROR",
-      "Simulation queued partially; please refresh.",
-      500
-    );
-  }
-
-  try {
     await input.deps.idempotencyStore.finalize(keyHash, createResult.jobId);
   } catch {
     // Non-fatal: subsequent duplicate retries will see acquired=false with
     // null simulation_job_id and surface IDEMPOTENCY_IN_PROGRESS until the
     // row is finalized by a later request or cleaned up by retention.
   }
+  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -597,6 +585,16 @@ export async function handleCreateSimulationRequest(input: {
     },
     201
   );
+}
+
+async function invokeWorkerPumpBestEffort(
+  pumpInvoker: SimulationWorkerPumpInvoker
+): Promise<void> {
+  try {
+    await pumpInvoker.invokePump();
+  } catch (error) {
+    console.error("[simulations] worker pump invocation failed:", error);
+  }
 }
 
 async function safeDeleteUploadedPhoto(

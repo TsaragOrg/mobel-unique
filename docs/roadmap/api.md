@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                        |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Active | SPEC-0007 | PLAN-0068 | Public simulation create, dimensions, and regeneration handlers now use checkpoint-pump RPCs and invoke the in-home worker pump as best effort after durable state is persisted; legacy pgmq enqueue is no longer part of the public create path. |
 | Done   | SPEC-0001 | PLAN-0001 | Minimal Express API foundation and health endpoint.                                                                         |
 | Done   | SPEC-0008 | PLAN-0008 | Local API environment examples align with local Supabase worker development.                                                |
 | Done   | SPEC-0011 | PLAN-0011 | First-party Next.js admin API facade for session validation with canonical admin claim and trusted device checks.           |

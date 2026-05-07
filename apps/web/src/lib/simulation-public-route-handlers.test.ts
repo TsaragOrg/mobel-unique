@@ -605,33 +605,44 @@ describe("handleSubmitDimensionsRequest", () => {
     };
   }
 
-  function createDeps(job: SimulationJobView | null) {
+  function createDeps(
+    job: SimulationJobView | null,
+    options: { pumpThrows?: boolean } = {}
+  ) {
     const jobReader: SimulationJobReader = {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
     const dimensionsStore: SimulationDimensionsStore = {
-      submit: vi.fn().mockResolvedValue({ msgId: 42 })
+      submit: vi.fn().mockResolvedValue({
+        checkpointId: "00000000-0000-4000-8000-000000000042"
+      })
+    };
+    const pumpInvoker = {
+      invokePump: options.pumpThrows
+        ? vi.fn().mockRejectedValue(new Error("pump boom"))
+        : vi.fn().mockResolvedValue(undefined)
     };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         dimensionsStore,
-        queueName: QUEUE,
+        pumpInvoker,
         now: NOW
       },
       jobReader,
-      dimensionsStore
+      dimensionsStore,
+      pumpInvoker
     };
   }
 
   it("returns 200 + placement_queued on a valid back_wall payload", async () => {
-    const { deps, dimensionsStore } = createDeps(makeJobView());
+    const ctx = createDeps(makeJobView());
     const response = await handleSubmitDimensionsRequest({
       jobId: JOB_ID,
       token: makeValidToken(),
       body: { wall_width: 4.2, wall_height: 2.7, room_depth: 5 },
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -639,19 +650,19 @@ describe("handleSubmitDimensionsRequest", () => {
     };
     expect(body.data.simulation_job_id).toBe(JOB_ID);
     expect(body.data.status).toBe("placement_queued");
-    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+    expect(ctx.dimensionsStore.submit).toHaveBeenCalledWith({
       jobId: JOB_ID,
       suppliedDimensions: {
         wall_width: 4.2,
         wall_height: 2.7,
         room_depth: 5
-      },
-      queueName: QUEUE
+      }
     });
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
   });
 
   it("returns 200 + placement_queued on a valid corner payload", async () => {
-    const { deps, dimensionsStore } = createDeps(
+    const ctx = createDeps(
       makeJobView({ roomGeometryMode: "corner" })
     );
     const response = await handleSubmitDimensionsRequest({
@@ -663,19 +674,38 @@ describe("handleSubmitDimensionsRequest", () => {
         room_height: 2.7,
         room_depth: 5
       },
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
-    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+    expect(ctx.dimensionsStore.submit).toHaveBeenCalledWith({
       jobId: JOB_ID,
       suppliedDimensions: {
         left_wall_width: 3.4,
         right_wall_width: 4.0,
         room_height: 2.7,
         room_depth: 5
-      },
-      queueName: QUEUE
+      }
     });
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns 200 when the best-effort pump invocation fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = createDeps(makeJobView(), { pumpThrows: true });
+    const response = await handleSubmitDimensionsRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      body: { wall_width: 4.2, wall_height: 2.7, room_depth: 5 },
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(200);
+    expect(ctx.dimensionsStore.submit).toHaveBeenCalled();
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[simulations] worker pump invocation failed:",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
   });
 
   it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
@@ -810,34 +840,45 @@ describe("handleRequestRegenerationRequest", () => {
     };
   }
 
-  function createDeps(job: SimulationJobView | null) {
+  function createDeps(
+    job: SimulationJobView | null,
+    options: { pumpThrows?: boolean } = {}
+  ) {
     const jobReader: SimulationJobReader = {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
     const regenerationStore: SimulationRegenerationStore = {
-      request: vi.fn().mockResolvedValue({ msgId: 99 })
+      request: vi.fn().mockResolvedValue({
+        checkpointId: "00000000-0000-4000-8000-000000000099"
+      })
+    };
+    const pumpInvoker = {
+      invokePump: options.pumpThrows
+        ? vi.fn().mockRejectedValue(new Error("pump boom"))
+        : vi.fn().mockResolvedValue(undefined)
     };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         regenerationStore,
-        queueName: QUEUE,
+        pumpInvoker,
         now: NOW
       },
       jobReader,
-      regenerationStore
+      regenerationStore,
+      pumpInvoker
     };
   }
 
   it("returns 200 + placement_queued for a succeeded job under the cap", async () => {
-    const { deps, regenerationStore } = createDeps(
+    const ctx = createDeps(
       makeJobView({ generatedOutputCount: 1 })
     );
     const response = await handleRequestRegenerationRequest({
       jobId: JOB_ID,
       token: makeValidToken(),
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -845,10 +886,30 @@ describe("handleRequestRegenerationRequest", () => {
     };
     expect(body.data.simulation_job_id).toBe(JOB_ID);
     expect(body.data.status).toBe("placement_queued");
-    expect(regenerationStore.request).toHaveBeenCalledWith({
-      jobId: JOB_ID,
-      queueName: QUEUE
+    expect(ctx.regenerationStore.request).toHaveBeenCalledWith({
+      jobId: JOB_ID
     });
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns 200 when regeneration pump invocation fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = createDeps(makeJobView({ generatedOutputCount: 1 }), {
+      pumpThrows: true
+    });
+    const response = await handleRequestRegenerationRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(200);
+    expect(ctx.regenerationStore.request).toHaveBeenCalled();
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[simulations] worker pump invocation failed:",
+      expect.any(Error)
+    );
+    errorSpy.mockRestore();
   });
 
   it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
@@ -994,6 +1055,7 @@ describe("handleCreateSimulationRequest", () => {
     uploadThrows?: boolean;
     enqueueThrows?: boolean;
     finalizeThrows?: boolean;
+    pumpThrows?: boolean;
     existingJob?: SimulationJobView | null;
   } = {}) {
     const rateLimitStore: SimulationRateLimitStore = {
@@ -1066,6 +1128,12 @@ describe("handleCreateSimulationRequest", () => {
       findOwnedJob: vi.fn().mockResolvedValue(options.existingJob ?? null)
     };
 
+    const pumpInvoker = {
+      invokePump: options.pumpThrows
+        ? vi.fn().mockRejectedValue(new Error("pump boom"))
+        : vi.fn().mockResolvedValue(undefined)
+    };
+
     return {
       deps: {
         accessTokenSecret: SECRET,
@@ -1081,6 +1149,7 @@ describe("handleCreateSimulationRequest", () => {
         storageUploader,
         createJobStore,
         queueEnqueuer,
+        pumpInvoker,
         jobReader,
         generateJobId: () => NEW_JOB_ID,
         now: NOW
@@ -1091,6 +1160,7 @@ describe("handleCreateSimulationRequest", () => {
       storageUploader,
       createJobStore,
       queueEnqueuer,
+      pumpInvoker,
       jobReader
     };
   }
@@ -1132,10 +1202,8 @@ describe("handleCreateSimulationRequest", () => {
         retentionHours: 24
       })
     );
-    expect(ctx.queueEnqueuer.enqueueRoomPrep).toHaveBeenCalledWith({
-      jobId: NEW_JOB_ID,
-      queueName: QUEUE
-    });
+    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
     expect(ctx.idempotencyStore.finalize).toHaveBeenCalledWith(
       expect.any(String),
       NEW_JOB_ID
@@ -1374,7 +1442,7 @@ describe("handleCreateSimulationRequest", () => {
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
   });
 
-  it("returns 500 without rollback when only the enqueue throws (job already exists)", async () => {
+  it("does not call the legacy pgmq enqueuer after creating the durable job", async () => {
     const ctx = createDeps({ enqueueThrows: true });
     const response = await handleCreateSimulationRequest({
       formData: makeFormData(),
@@ -1382,8 +1450,10 @@ describe("handleCreateSimulationRequest", () => {
       clientIp: "203.0.113.7",
       deps: ctx.deps
     });
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(201);
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
+    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
   });
 
   it("logs the underlying error when uploadRoomPhoto throws", async () => {
@@ -1418,17 +1488,20 @@ describe("handleCreateSimulationRequest", () => {
     errorSpy.mockRestore();
   });
 
-  it("logs the underlying error when queueEnqueuer.enqueueRoomPrep throws", async () => {
+  it("still returns 201 when the best-effort pump invocation fails", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const ctx = createDeps({ enqueueThrows: true });
-    await handleCreateSimulationRequest({
+    const ctx = createDeps({ pumpThrows: true });
+    const response = await handleCreateSimulationRequest({
       formData: makeFormData(),
       headers: makeHeaders(),
       clientIp: "203.0.113.7",
       deps: ctx.deps
     });
+    expect(response.status).toBe(201);
+    expect(ctx.createJobStore.create).toHaveBeenCalled();
+    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith(
-      "[simulations] queueEnqueuer.enqueueRoomPrep failed:",
+      "[simulations] worker pump invocation failed:",
       expect.any(Error)
     );
     errorSpy.mockRestore();
