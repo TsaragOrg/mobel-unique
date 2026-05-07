@@ -6,7 +6,7 @@ import type { SuppliedDimensionsBody } from "../../../lib/simulation-public-api"
 
 type SubmitFn = (
   jobId: string,
-  body: SuppliedDimensionsBody
+  body: SuppliedDimensionsBody,
 ) => Promise<{ ok: true } | { ok: false; code?: string; message?: string }>;
 
 afterEach(cleanup);
@@ -18,7 +18,7 @@ const baseProps = {
   visualPositionLabel: "Vue de face",
   guideImageUrl: "https://signed.example/guide.png",
   onGuideImageError: vi.fn(),
-  onSubmitted: vi.fn()
+  onSubmitted: vi.fn(),
 };
 
 function makeOkSubmit() {
@@ -32,17 +32,19 @@ describe("Screen3Dimensions", () => {
         {...baseProps}
         geometryMode="back_wall"
         submit={makeOkSubmit()}
-      />
+      />,
     );
 
-    expect(screen.getByLabelText(/Largeur du mur \(rouge\)/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Hauteur du mur \(bleu\)/)).toBeInTheDocument();
     expect(
-      screen.getByLabelText(/Profondeur de la pièce \(vert\)/)
+      screen.getByLabelText(/Largeur du mur \(rouge\)/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByLabelText(/Mur gauche/)
-    ).not.toBeInTheDocument();
+      screen.getByLabelText(/Hauteur du mur \(bleu\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Profondeur de la pièce \(vert\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Mur gauche/)).not.toBeInTheDocument();
   });
 
   it("renders four numeric fields when the geometry mode is corner", () => {
@@ -51,20 +53,18 @@ describe("Screen3Dimensions", () => {
         {...baseProps}
         geometryMode="corner"
         submit={makeOkSubmit()}
-      />
+      />,
     );
 
     expect(screen.getByLabelText(/Mur gauche \(rouge\)/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Mur droit \(rouge\)/)).toBeInTheDocument();
     expect(
-      screen.getByLabelText(/Hauteur de la pièce \(bleu\)/)
+      screen.getByLabelText(/Hauteur de la pièce \(bleu\)/),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText(/Profondeur de la pièce \(vert\)/)
+      screen.getByLabelText(/Profondeur de la pièce \(vert\)/),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(/Largeur du mur/)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Largeur du mur/)).not.toBeInTheDocument();
   });
 
   it("triggers the onGuideImageError callback when the guide image fails to load", () => {
@@ -75,7 +75,7 @@ describe("Screen3Dimensions", () => {
         onGuideImageError={onGuideImageError}
         geometryMode="back_wall"
         submit={makeOkSubmit()}
-      />
+      />,
     );
 
     const guide = screen.getByAltText(/lignes colorées/i);
@@ -84,40 +84,40 @@ describe("Screen3Dimensions", () => {
     expect(onGuideImageError).toHaveBeenCalledTimes(1);
   });
 
-  it("disables the Continue button until every field has a positive number under 20", () => {
+  it("disables the Continue button until every field has a centimetre value in range", () => {
     render(
       <Screen3Dimensions
         {...baseProps}
         geometryMode="back_wall"
         submit={makeOkSubmit()}
-      />
+      />,
     );
 
     const continueButton = screen.getByRole("button", { name: /continuer/i });
     expect(continueButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/Largeur du mur/), {
-      target: { value: "4.2" }
+      target: { value: "420" },
     });
     expect(continueButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/Hauteur du mur/), {
-      target: { value: "2.7" }
+      target: { value: "270" },
     });
     expect(continueButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/Profondeur de la pièce/), {
-      target: { value: "5" }
+      target: { value: "500" },
     });
     expect(continueButton).not.toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/Profondeur de la pièce/), {
-      target: { value: "25" }
+      target: { value: "2500" },
     });
     expect(continueButton).toBeDisabled();
   });
 
-  it("posts the back_wall payload shape on submit and notifies the parent", async () => {
+  it("converts back_wall centimetres to metres on submit and notifies the parent", async () => {
     const submit = makeOkSubmit();
     const onSubmitted = vi.fn();
     render(
@@ -126,17 +126,17 @@ describe("Screen3Dimensions", () => {
         onSubmitted={onSubmitted}
         geometryMode="back_wall"
         submit={submit}
-      />
+      />,
     );
 
     fireEvent.change(screen.getByLabelText(/Largeur du mur/), {
-      target: { value: "4.2" }
+      target: { value: "420" },
     });
     fireEvent.change(screen.getByLabelText(/Hauteur du mur/), {
-      target: { value: "2.7" }
+      target: { value: "270" },
     });
     fireEvent.change(screen.getByLabelText(/Profondeur de la pièce/), {
-      target: { value: "5" }
+      target: { value: "500" },
     });
     fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
 
@@ -147,7 +147,7 @@ describe("Screen3Dimensions", () => {
     expect(submit.mock.calls[0]?.[1]).toEqual({
       wall_width: 4.2,
       wall_height: 2.7,
-      room_depth: 5
+      room_depth: 5,
     });
     expect(onSubmitted).toHaveBeenCalledTimes(1);
   });
@@ -159,20 +159,20 @@ describe("Screen3Dimensions", () => {
         {...baseProps}
         geometryMode="corner"
         submit={submit}
-      />
+      />,
     );
 
     fireEvent.change(screen.getByLabelText(/Mur gauche/), {
-      target: { value: "3.4" }
+      target: { value: "340" },
     });
     fireEvent.change(screen.getByLabelText(/Mur droit/), {
-      target: { value: "4" }
+      target: { value: "400" },
     });
     fireEvent.change(screen.getByLabelText(/Hauteur de la pièce/), {
-      target: { value: "2.7" }
+      target: { value: "270" },
     });
     fireEvent.change(screen.getByLabelText(/Profondeur de la pièce/), {
-      target: { value: "5" }
+      target: { value: "500" },
     });
     fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
 
@@ -182,7 +182,7 @@ describe("Screen3Dimensions", () => {
       left_wall_width: 3.4,
       right_wall_width: 4,
       room_height: 2.7,
-      room_depth: 5
+      room_depth: 5,
     });
   });
 });

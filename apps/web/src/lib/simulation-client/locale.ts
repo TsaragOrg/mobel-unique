@@ -8,7 +8,7 @@
 
 export const SIMULATION_LOCALE = {
   contextStrip: {
-    separator: " · "
+    separator: " · ",
   },
 
   screen0EmailGate: {
@@ -40,11 +40,10 @@ export const SIMULATION_LOCALE = {
     errorInvalidCode:
       "Ce code n'est pas valide ou a expiré. Demandez un nouveau code.",
     // TODO: FR native review — generic rate-limited error.
-    errorRateLimited:
-      "Trop de tentatives. Réessayez dans quelques minutes.",
+    errorRateLimited: "Trop de tentatives. Réessayez dans quelques minutes.",
     // TODO: FR native review — generic verification error fallback.
     errorGeneric:
-      "La vérification n'a pas abouti. Réessayez dans quelques instants."
+      "La vérification n'a pas abouti. Réessayez dans quelques instants.",
   },
 
   screen1PhotoUpload: {
@@ -68,40 +67,40 @@ export const SIMULATION_LOCALE = {
     uploadFailedTitle: "L'envoi n'a pas pu aboutir",
     uploadFailedInstruction:
       "Vérifiez votre connexion puis réessayez. Si le problème persiste, choisissez une autre photo.",
-    uploadFailedRetryButton: "Réessayer l'envoi"
+    uploadFailedRetryButton: "Réessayer l'envoi",
   },
 
   screen2RoomPrep: {
     eyebrow: "Préparation",
     title: "Préparation de votre simulation",
-    reassurance: "Cela prend environ une minute. Merci de patienter."
+    reassurance: "Cela prend environ une minute. Merci de patienter.",
   },
 
   screen3Dimensions: {
     eyebrow: "Étape 2 sur 3 — Dimensions",
     title: "Mesurez votre pièce",
     instruction:
-      "Indiquez les dimensions de votre pièce en mètres, en suivant les lignes colorées affichées sur l'image.",
+      "Indiquez les dimensions de votre pièce en centimètres, en suivant les lignes colorées affichées sur l'image.",
     guideImageAlt:
       "Aperçu de votre pièce avec des lignes colorées indiquant les dimensions à renseigner",
     guideImageUnavailable: "Aperçu temporairement indisponible.",
-    fieldUnitSuffix: "m",
+    fieldUnitSuffix: "cm",
     fields: {
       backWall: {
         wallWidth: "Largeur du mur (rouge)",
         wallHeight: "Hauteur du mur (bleu)",
-        roomDepth: "Profondeur de la pièce (vert)"
+        roomDepth: "Profondeur de la pièce (vert)",
       },
       corner: {
         leftWallWidth: "Mur gauche (rouge)",
         rightWallWidth: "Mur droit (rouge)",
         roomHeight: "Hauteur de la pièce (bleu)",
-        roomDepth: "Profondeur de la pièce (vert)"
-      }
+        roomDepth: "Profondeur de la pièce (vert)",
+      },
     },
     validationOutOfRange:
-      "Chaque dimension doit être un nombre positif inférieur à 20 mètres.",
-    continueButton: "Continuer"
+      "Chaque dimension doit être comprise entre 50 et 2000 cm.",
+    continueButton: "Continuer",
   },
 
   screen4Placement: {
@@ -109,7 +108,7 @@ export const SIMULATION_LOCALE = {
     titleInitial: "Mise en place de votre canapé",
     titleRegeneration: "Nouvelle génération en cours",
     reassuranceInitial: "Cela prend environ une minute. Merci de patienter.",
-    reassuranceRegeneration: "Patientez quelques instants."
+    reassuranceRegeneration: "Patientez quelques instants.",
   },
 
   screen5Result: {
@@ -119,10 +118,11 @@ export const SIMULATION_LOCALE = {
     regenerateButton: "Lancer une nouvelle génération",
     backToSofaLink: "Retour au canapé",
     // TODO: FR native review — retention notice quotes the 24h window.
-    retentionNotice: "Cette image sera supprimée automatiquement dans 24 heures.",
+    retentionNotice:
+      "Cette image sera supprimée automatiquement dans 24 heures.",
     // TODO: FR native review — inline error after a failed regeneration.
     regenerationFailedNotice:
-      "La nouvelle génération n'a pas abouti. Le résultat précédent reste affiché."
+      "La nouvelle génération n'a pas abouti. Le résultat précédent reste affiché.",
   },
 
   screen6ErrorOrExpired: {
@@ -133,20 +133,20 @@ export const SIMULATION_LOCALE = {
       instruction:
         "Veuillez réessayer avec une autre photo. Si le problème persiste, revenez plus tard.",
       restartButton: "Recommencer la simulation",
-      backToSofaLink: "Retour au canapé"
+      backToSofaLink: "Retour au canapé",
     },
     expired: {
       eyebrow: "Simulation expirée",
       title: "Cette simulation n'est plus disponible",
       // TODO: FR native review — expiration notice quotes the 24h window.
       notice: "Les images sont automatiquement supprimées après 24 heures.",
-      backToCatalogLink: "Retour au catalogue"
-    }
+      backToCatalogLink: "Retour au catalogue",
+    },
   },
 
   shared: {
-    backLinkLabel: "Retour"
-  }
+    backLinkLabel: "Retour",
+  },
 } as const;
 
 export type SimulationLocale = typeof SIMULATION_LOCALE;
