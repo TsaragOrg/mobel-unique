@@ -66,10 +66,10 @@ The target architecture is:
 
 ## Tasks
 
-- [ ] Accept or revise the related change request before editing accepted specs.
-- [ ] Update `SPEC-0007`, `SPEC-0009`, `SPEC-0010`, `SPEC-0012`, and
+- [x] Accept or revise the related change request before editing accepted specs.
+- [x] Update `SPEC-0007`, `SPEC-0009`, `SPEC-0010`, `SPEC-0012`, and
       `SPEC-0015` according to the accepted change request.
-- [ ] Add migration tests for checkpoint state, claim indexes, capacity
+- [x] Add migration tests for checkpoint state, claim indexes, capacity
       locking, public progress state, Realtime publication, and RLS boundaries.
 - [ ] Add worker source tests for pump mode, one-checkpoint job mode, claim
       capacity, retryable checkpoint failure, non-retryable checkpoint failure,
@@ -85,7 +85,7 @@ The target architecture is:
 - [ ] Add frontend tests for Realtime progress rendering, fallback polling,
       foreground refresh, offline handling, and signed-URL refresh through the
       status endpoint.
-- [ ] Implement database checkpoint state and public progress surface.
+- [x] Implement database checkpoint state and public progress surface.
 - [ ] Implement worker pump mode and checkpoint claim RPCs.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
@@ -97,7 +97,7 @@ The target architecture is:
 - [ ] Update purge behavior if checkpoint or progress rows need redaction when
       a simulation expires.
 - [ ] Update roadmaps for `api`, `supabase`, `image-worker`, `web`, and
-      `workflow`.
+      `workflow` as each implementation slice lands.
 - [ ] Run the narrow tests first, then `pnpm spec:check`, package typechecks,
       `pnpm test`, and `pnpm build` as the change approaches completion.
 

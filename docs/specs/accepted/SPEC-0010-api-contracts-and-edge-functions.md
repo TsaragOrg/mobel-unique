@@ -30,6 +30,8 @@ This spec also incorporates the accepted change requests that affect API behavio
 - `CR-SPEC-0003 Visual Matrix And Render Publication Alignment`;
 - `CR-SPEC-0004-SPEC-0005 MVP Catalog Metadata Scope`;
 - `CR-SPEC-0009 Resolve Open Questions`.
+- `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
+  Pump And Realtime Progress`.
 
 ## Goal
 
@@ -243,6 +245,10 @@ The implementation should organize Edge Functions by security boundary:
 - internal cleanup and worker-control functions must require scheduler or service authorization;
 - worker functions must use service-side credentials and must not be invoked by public UI;
 - fabric render worker functions should be invoked by service-side orchestration after explicit admin actions, not by scheduler-first pickup.
+- in-home simulation worker functions should be invoked by service-side
+  orchestration immediately after public simulation create, dimension submit,
+  and regeneration actions, with scheduler invocation reserved for recovery and
+  backlog pickup.
 
 The final function names may differ from the logical route groups if an implementation plan documents the mapping. The logical contracts in this spec remain the product-facing contract.
 
@@ -497,7 +503,14 @@ Response:
 }
 ```
 
-The API must enqueue the durable simulation job for worker processing. The queue message must contain only the minimum information required to find the durable job row and intended stage.
+The API must make the durable simulation job claimable for worker processing
+and invoke the in-home simulation worker pump immediately as best effort after
+the database state is written. Queue messages may be used as wake-up hints, but
+the durable job and checkpoint state remain authoritative. If immediate pump
+invocation fails after durable state has been written, the job must remain
+recoverably queued so the scheduler backstop can process it later. The browser
+must not receive worker function names, queue ids, or service invocation
+details.
 
 ### `GET /api/public/simulations/{simulation_job_id}`
 
@@ -557,6 +570,12 @@ The API must return short-lived signed URLs for private simulation guide and res
 
 If a regeneration fails after at least one successful output exists, the response must keep the latest successful result available while retained and may include a readable regeneration error.
 
+The status response may include Realtime subscription metadata or point the
+client to a dedicated Realtime access endpoint. Realtime metadata must be scoped
+to the current simulation job and verified session and must not contain private
+storage paths, signed URLs, service credentials, worker function names, or queue
+identifiers.
+
 ### `POST /api/public/simulations/{simulation_job_id}/dimensions`
 
 Submits dimensions for a job in `awaiting_dimensions`.
@@ -592,7 +611,9 @@ Rules:
 - the submitted geometry mode must match the job's detected mode;
 - all required dimensions for the mode must be present and positive;
 - extra dimension fields must be rejected for MVP unless a later spec adds them;
-- successful submission must transition the job toward placement processing and enqueue the placement stage.
+- successful submission must transition the job toward placement processing,
+  make the placement checkpoint claimable, and invoke the in-home simulation
+  worker pump immediately as best effort.
 
 Response:
 
@@ -614,6 +635,8 @@ Rules:
 - the total successful output count must not exceed three for the MVP;
 - failed regeneration must not increment successful output count;
 - regeneration must not require re-uploading the room photo or re-entering dimensions while retained.
+- successful regeneration request must make the placement checkpoint claimable
+  and invoke the in-home simulation worker pump immediately as best effort.
 
 Response:
 
@@ -622,6 +645,33 @@ Response:
   "simulation_job_id": "opaque-job-id",
   "status": "placement_queued",
   "reserved_generation_index": 1
+}
+```
+
+### `POST /api/public/simulations/{simulation_job_id}/realtime-token`
+
+Optional implementation endpoint for Realtime progress access. An
+implementation may instead include equivalent metadata in the status endpoint.
+
+Rules:
+
+- the job must belong to the verified simulation session;
+- the response must authorize only the visitor-safe simulation progress surface
+  for this one job;
+- the token or channel metadata must expire no later than the simulation access
+  session or retention deadline;
+- the response must not expose private storage paths, signed URLs, service-role
+  credentials, provider keys, worker function names, raw table names when they
+  weaken access control, queue ids, or another visitor's state.
+
+Response example:
+
+```json
+{
+  "simulation_job_id": "opaque-job-id",
+  "channel": "simulation-progress",
+  "topic": "job-scoped-topic-or-table-filter",
+  "expires_at": "2026-05-07T12:00:00Z"
 }
 ```
 

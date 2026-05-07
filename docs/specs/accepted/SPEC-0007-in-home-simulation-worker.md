@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0004
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004
 Areas: api, supabase
-Implementation Plans: PLAN-0010 (room preparation), PLAN-0011 (sofa placement), PLAN-0012 (resilience and purge)
+Implementation Plans: PLAN-0010 (room preparation), PLAN-0011 (sofa placement), PLAN-0012 (resilience and purge), PLAN-0068 (checkpoint pump and realtime progress)
 Last Reviewed: 2026-04-30
 
 ## Traceability
@@ -36,6 +36,11 @@ admin-driven fabric render generation job using the same Supabase Edge
 Functions, Supabase Queues, storage, and observability conventions. The two job
 types have distinct inputs, retention rules, visibility rules, and failure
 handling.
+
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
+Pump And Realtime Progress` updates this worker contract so cron is a recovery
+backstop rather than the normal product latency path, and so expensive provider
+work is split into durable checkpoints.
 
 A future domain-level `In-Home Simulation Flow` spec may emerge later to
 consolidate wizard rules, validation rules, dimension semantics, regeneration
@@ -292,6 +297,45 @@ The implementation may add internal transition metadata, but it must
 enforce that no generated output reaches the visitor while the job is in
 any non-`succeeded` state.
 
+### Checkpoint Progress
+
+The public status values above are intentionally coarse. The worker must also
+track an internal checkpoint so the system can resume safely after timeouts and
+so the visitor can see progress without exposing worker internals.
+
+The minimum checkpoint set is:
+
+- `room_validation`;
+- `room_cleaning`;
+- `room_corners`;
+- `dimension_guide`;
+- `awaiting_dimensions`;
+- `placement_generation`;
+- `placement_measurement`, only when the feedback loop is active;
+- `placement_finalize`;
+- `completed`;
+- `failed`;
+- `expired`.
+
+Checkpoint names are operational identifiers. Visitor-facing UI may map them
+to safe progress labels, but must not expose provider names, prompt versions,
+raw worker errors, queue ids, storage paths, or service identifiers.
+
+Each checkpoint attempt must be durable enough to support recovery:
+
+- checkpoint key;
+- checkpoint status;
+- attempt number and maximum attempts;
+- worker claim owner and claim expiration;
+- started and completed timestamps;
+- retryable versus non-retryable failure classification;
+- safe error code when failure is visible to the API;
+- the next checkpoint to make claimable when the attempt succeeds.
+
+The worker must publish safe progress changes whenever a checkpoint becomes
+claimable, is claimed, succeeds, is retried, fails terminally, or moves the job
+into a visitor-action or terminal state.
+
 ### Regeneration
 
 A regeneration is a new placement attempt for the same job after a
@@ -464,15 +508,40 @@ that returns control to the visitor through the public wizard.
 The first production implementation must run as Supabase Edge Functions written
 in TypeScript on the Deno runtime.
 
-Supabase Queues must provide durable job queueing. Stage 1 room preparation,
-stage 2 sofa placement, and placement regenerations must be queued as explicit
-work messages so each stage remains retryable, observable, and claimable on its
-own.
+Supabase Queues may provide durable wake-up messages, but queue messages are
+not the source of truth for simulation progress. The durable database job row
+and checkpoint state are authoritative for status, attempts, claims, retention,
+and recovery.
+
+The worker must support a pump mode and a checkpoint job mode:
+
+- pump mode is short-lived orchestration. It inspects database state, respects
+  global provider capacity and cost-meter pause state, starts bounded
+  one-checkpoint worker invocations, and exits quickly. It must not call AI
+  providers or perform image generation.
+- checkpoint job mode atomically claims one eligible checkpoint for one job,
+  performs only that checkpoint's bounded work, persists artifacts and progress,
+  and invokes pump again when another checkpoint can proceed.
+
+Public API actions that create the initial job, submit dimensions, or request a
+regeneration must invoke the pump immediately as best effort after durable
+state has been written. Cron or scheduler invocation remains required as a
+watchdog and backlog backstop, but it must not be the normal latency path for
+new visitor work.
+
+A job that is `queued` or `placement_queued` but has no live queue message must
+still be discoverable and processable by pump or recovery logic.
 
 The queue consumer function may process more than one queued message per
 invocation, but it must respect a configurable concurrency limit based on the
 active AI provider rate limits, Supabase Edge Function execution limits, and the
 operational needs of the MVP.
+
+Each checkpoint invocation should make at most one expensive image-generation
+or vision provider call. Multi-attempt AI loops must be represented as
+persisted checkpoint attempts instead of several long provider calls inside one
+Edge Function invocation, unless a later accepted spec explicitly approves a
+bounded exception.
 
 The local Python bench must remain a behavior reference only. The production
 runtime must not depend on Python or a long-running external worker process for

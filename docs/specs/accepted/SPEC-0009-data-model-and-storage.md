@@ -28,6 +28,11 @@ This spec is expected to feed later specs and plans for:
 - environment and deployment;
 - Supabase migrations, RLS policies, and storage policies.
 
+This spec also incorporates
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint Pump
+And Realtime Progress`, which adds durable in-home simulation checkpoint state
+and a public-safe Realtime progress surface.
+
 Accepted specs already define the product behavior. This spec defines the storage shape needed to support that behavior without approving API route names, UI layouts, provider prompts, or final privacy wording.
 
 ## Goal
@@ -149,6 +154,12 @@ The first production migration must define these logical enum sets, either as Po
 - `fabric_render_job_status`: `queued`, `processing`, `succeeded`, `failed`, `canceled`.
 - `simulation_job_status`: `queued`, `room_prep_processing`, `awaiting_dimensions`, `placement_queued`, `placement_processing`, `succeeded`, `failed`, `canceled`, `expired`.
 - `room_geometry_mode`: `back_wall`, `corner`.
+- `simulation_checkpoint_key`: `room_validation`, `room_cleaning`,
+  `room_corners`, `dimension_guide`, `awaiting_dimensions`,
+  `placement_generation`, `placement_measurement`, `placement_finalize`,
+  `completed`, `failed`, `expired`.
+- `simulation_checkpoint_status`: `queued`, `processing`, `succeeded`,
+  `retrying`, `failed`, `canceled`, `expired`.
 - `consent_type`: `email_verification_required`, `commercial_contact_optional`, `analytics_optional`.
 - `consent_decision`: `granted`, `rejected`, `revoked`.
 - `worker_job_type`: `fabric_render_generation`, `in_home_simulation`.
@@ -664,6 +675,12 @@ Fields:
 - `claimed_by` text;
 - `claimed_at` timestamp;
 - `claim_expires_at` timestamp;
+- current checkpoint key;
+- current checkpoint status;
+- current progress step key;
+- progress step ordinal;
+- progress total steps;
+- progress updated timestamp;
 - `last_error_code` text;
 - `last_error_message` text;
 - `last_regeneration_error_message` text;
@@ -704,6 +721,91 @@ Rules:
 - when a job expires, private artifact paths must be cleared, redacted, or made operationally useless after purge so retained metadata does not reference private image content;
 - abandoned `awaiting_dimensions` jobs remain recoverable until `retention_deadline`;
 - only successfully persisted outputs increment `generated_output_count`.
+
+### `in_home_simulation_checkpoints`
+
+`in_home_simulation_checkpoints` stores durable checkpoint attempts for the
+checkpoint-based worker pump defined by `SPEC-0007`.
+
+Fields:
+
+- `id` uuid primary key;
+- `in_home_simulation_job_id` uuid reference to `in_home_simulation_jobs`;
+- `checkpoint_key` with values from `simulation_checkpoint_key`;
+- `status` with values from `simulation_checkpoint_status`;
+- `attempt_number` integer;
+- `max_attempts` integer;
+- `generation_index` integer nullable for placement checkpoints;
+- `claimed_by` text nullable;
+- `claimed_at` timestamp nullable;
+- `claim_expires_at` timestamp nullable;
+- `started_at` timestamp nullable;
+- `completed_at` timestamp nullable;
+- `retryable` boolean nullable;
+- `safe_error_code` text nullable;
+- `safe_error_message` text nullable;
+- `metadata` jsonb;
+- `created_at` timestamp;
+- `updated_at` timestamp.
+
+Required constraints and indexes:
+
+- unique or server-side guard ensuring only one active row for the same job,
+  checkpoint key, and generation index when the checkpoint is not terminal;
+- index on `(status, created_at)` for claimable checkpoint pickup;
+- partial index on `claim_expires_at` where `status = 'processing'`;
+- index on `in_home_simulation_job_id`;
+- check constraints preventing non-positive attempt counts and invalid
+  generation indexes.
+
+Rules:
+
+- checkpoint rows are operational and must not be directly readable by public
+  visitors;
+- the durable job row remains the source of truth for public status and
+  retention;
+- queue messages may reference checkpoint work, but losing a queue message must
+  not make a claimable checkpoint undiscoverable;
+- expired checkpoint claims must be recoverable by scheduler or pump logic;
+- retryable checkpoint failures may create or update a later attempt row until
+  attempts are exhausted;
+- non-retryable terminal checkpoint failure must update the owning simulation
+  job according to `SPEC-0007` failure and regeneration rules.
+
+### `simulation_public_progress`
+
+`simulation_public_progress` is the public-safe Realtime projection for one
+visitor's simulation progress. It may be a table maintained by API and worker
+transactions, or an equivalent Realtime-safe projection if the implementation
+documents the same privacy guarantees.
+
+Fields:
+
+- `simulation_job_id` uuid primary key or unique reference to
+  `in_home_simulation_jobs`;
+- `simulation_session_id` uuid reference to `simulation_sessions`;
+- `status` with values from `simulation_job_status`;
+- `progress_step_key` text;
+- `progress_step_ordinal` integer;
+- `progress_total_steps` integer;
+- `visitor_action_required` boolean;
+- `guide_available` boolean;
+- `latest_result_available` boolean;
+- `regeneration_available` boolean;
+- `retention_deadline` timestamp;
+- `updated_at` timestamp.
+
+Rules:
+
+- public visitors may subscribe only to rows authorized by their verified
+  simulation session capability;
+- the row must not contain private storage paths, signed URLs, provider
+  metadata, prompt versions, raw worker errors, queue ids, service identifiers,
+  or another visitor's state;
+- signed guide and result URLs remain available only through authorized API
+  status responses;
+- when a simulation expires, the projection must stop indicating that guide or
+  result artifacts are available.
 
 ### `simulation_generated_outputs`
 

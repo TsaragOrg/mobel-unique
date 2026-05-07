@@ -2,7 +2,7 @@
 
 Target spec ids: SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012, SPEC-0015
 Related spec ids: SPEC-0003, SPEC-0004, SPEC-0006
-Status: proposed
+Status: accepted
 
 ## Reason For Change
 
@@ -321,8 +321,8 @@ The wizard must:
 
 ## Approval Note
 
-Pending approval. This change request captures the intended direction after
-architecture review of the in-home simulation timeout and queue behavior. The
-goal is to keep the public visitor flow responsive while making the worker
-pipeline resilient to queue gaps, provider timeouts, Edge Function wall-clock
-limits, browser disconnects, and scheduler delays.
+Accepted after architecture review of the in-home simulation timeout and queue
+behavior. The public visitor flow should be responsive without relying on cron
+as the normal latency path, and the worker pipeline must be resilient to queue
+gaps, provider timeouts, Edge Function wall-clock limits, browser disconnects,
+and scheduler delays.

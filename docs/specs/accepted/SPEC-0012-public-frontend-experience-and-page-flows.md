@@ -23,6 +23,11 @@ It follows:
 
 This spec is expected to feed public web implementation plans, route structure, component planning, frontend tests, and QA scenarios.
 
+This spec also incorporates
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint Pump
+And Realtime Progress`, which makes Realtime the preferred simulation progress
+observation path and keeps HTTP status polling as a fallback.
+
 ## Goal
 
 Define the MVP public frontend route map and page-by-page user flow so that a visitor can:
@@ -517,7 +522,7 @@ On success:
 
 - store or retain the simulation access state;
 - navigate to `/simulations/[simulation_job_id]`;
-- begin polling.
+- begin Realtime progress observation, with status polling as fallback.
 
 If the upload or job creation fails:
 
@@ -527,9 +532,9 @@ If the upload or job creation fails:
 
 ### Step 6: Room Preparation Processing
 
-The page polls:
-
-- `GET /api/public/simulations/{simulation_job_id}`.
+The page observes progress through the job-scoped Realtime progress surface
+when available. It uses `GET /api/public/simulations/{simulation_job_id}` as
+the fallback and as the authoritative refresh path for signed URLs.
 
 For `queued` and `room_prep_processing`:
 
@@ -538,7 +543,9 @@ For `queued` and `room_prep_processing`:
 - avoid implying the order is being placed;
 - avoid progress percentages unless backed by real state.
 
-When the API returns `awaiting_dimensions`, the page must stop stage-1 waiting and show the dimension guide.
+When Realtime or the API reports `awaiting_dimensions`, the page must stop
+stage-1 waiting, refetch the status endpoint for a fresh signed guide URL, and
+show the dimension guide.
 
 ### Step 7: Dimension Guide And Dimension Entry
 
@@ -579,9 +586,9 @@ For `placement_queued` and `placement_processing`:
 - keep the latest successful result visible when this is a regeneration and one exists;
 - avoid destructive full-screen loading that hides a retained previous result.
 
-The page continues polling:
-
-- `GET /api/public/simulations/{simulation_job_id}`.
+The page continues Realtime progress observation and falls back to bounded HTTP
+polling when Realtime is unavailable. The status endpoint remains the only
+source for signed result URLs.
 
 ### Step 9: Result
 
@@ -630,7 +637,9 @@ Let the visitor continue or view an already-created simulation job within the re
 The page must:
 
 - require the implementation-approved simulation access token or session state;
-- poll `GET /api/public/simulations/{simulation_job_id}`;
+- subscribe to job-scoped Realtime progress when available;
+- use `GET /api/public/simulations/{simulation_job_id}` for initial state,
+  fallback polling, action-state refresh, and signed URL refresh;
 - render the correct state for `awaiting_dimensions`, `placement_queued`, `placement_processing`, `succeeded`, `failed`, `canceled`, or `expired`;
 - show a safe unavailable or expired state when access state is missing or invalid;
 - provide a path to `/catalog`.
@@ -648,23 +657,32 @@ The frontend must map API status values as follows:
 
 | API Status             | Frontend State                                                             |
 | ---------------------- | -------------------------------------------------------------------------- |
-| `queued`               | Room preparation waiting state.                                            |
-| `room_prep_processing` | Room preparation processing state.                                         |
+| `queued`               | Room preparation waiting or progress state.                                |
+| `room_prep_processing` | Room preparation progress state.                                           |
 | `awaiting_dimensions`  | Dimension guide and input state.                                           |
-| `placement_queued`     | Final placement waiting state.                                             |
-| `placement_processing` | Final placement processing state.                                          |
+| `placement_queued`     | Final placement waiting or progress state.                                 |
+| `placement_processing` | Final placement progress state.                                            |
 | `succeeded`            | Result state.                                                              |
 | `failed`               | Safe failure state with retry guidance only when allowed by current state. |
 | `canceled`             | Safe canceled state with catalog return.                                   |
 | `expired`              | Expired state with catalog return and no restart action in the MVP.        |
 
-Polling rules:
+Observation rules:
 
-- polling must stop when the job reaches `awaiting_dimensions`, `succeeded`, `failed`, `canceled`, or `expired`;
+- Realtime is the preferred progress channel after a simulation job exists;
+- HTTP polling is the fallback when Realtime is unavailable, disconnected, or
+  unsupported;
+- polling must stop when the job reaches `awaiting_dimensions`, `succeeded`,
+  `failed`, `canceled`, or `expired`;
 - polling may resume after dimension submission or regeneration request;
-- polling must avoid aggressive intervals that create unnecessary load;
-- if the browser goes offline, the UI should pause or soften polling and retry when connectivity returns;
-- signed guide and result URLs must be treated as short-lived and refreshed through the status endpoint when needed.
+- polling must avoid aggressive intervals and use bounded backoff;
+- if the browser goes offline, the UI should pause or soften observation and
+  retry when connectivity returns;
+- when the page becomes visible again, the UI should refresh status once;
+- signed guide and result URLs must be treated as short-lived and refreshed
+  through the status endpoint when needed;
+- Realtime payloads must not contain signed URLs, private storage paths,
+  provider details, raw worker errors, or simulation access tokens.
 
 ## Frontend API Boundary
 

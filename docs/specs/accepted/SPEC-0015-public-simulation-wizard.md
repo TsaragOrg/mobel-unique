@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0012
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012
 Areas: web, supabase
-Implementation Plans: none yet
+Implementation Plans: PLAN-0068
 
 ## Traceability
 
@@ -33,6 +33,9 @@ This spec consumes:
   rules.
 - `CR-SPEC-0012-allow-room-depth-in-mvp` to override the MVP dimension
   restriction.
+- `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
+  Pump And Realtime Progress` to replace fixed polling as the nominal progress
+  path with job-scoped Realtime progress and bounded polling fallback.
 
 This spec produces the implementation plans that build the simulation wizard
 pages, the supporting public API endpoints, the test catalog seeding tooling,
@@ -56,7 +59,8 @@ The following work is in scope:
   delivery of the catalog and email-verification work owned by another team
   member.
 - The simulation continuation page at `/simulations/[simulation_job_id]` that
-  resumes polling, dimension entry, processing, and result states.
+  resumes Realtime progress observation, fallback polling, dimension entry,
+  processing, and result states.
 - Five public API endpoints in `apps/web` route handlers that proxy authorized
   visitor actions to Supabase RPCs and Storage:
     - `POST /api/public/simulation/email-verifications` (stub)
@@ -172,17 +176,20 @@ The end-to-end flow consumed by the wizard is:
 3. The visitor uploads or captures a room photo. The browser compresses the
    image and `POST`s it together with the sofa context as
    `multipart/form-data` with an `Idempotency-Key` header.
-4. The server creates the simulation job, enqueues it for the worker, and
-   returns the job id. The browser navigates to `/simulations/{job_id}` using
-   `router.replace` so browser back returns to the sofa detail page.
-5. The continuation page polls `GET /api/public/simulations/{job_id}` every
-   2 seconds. While the status is `queued` or `room_prep_processing`, a
-   minimal processing screen is shown.
+4. The server creates the simulation job, makes the first worker checkpoint
+   claimable, invokes the worker pump as best effort, and returns the job id.
+   The browser navigates to `/simulations/{job_id}` using `router.replace` so
+   browser back returns to the sofa detail page.
+5. The continuation page observes job-scoped Realtime progress with bounded
+   HTTP status polling as fallback. While the status is `queued` or
+   `room_prep_processing`, a processing screen with safe step progress is
+   shown.
 6. When the status reaches `awaiting_dimensions`, the dimension entry screen
    is shown with the signed guide image and the input fields appropriate to
    the geometry mode. The visitor enters dimensions in metres and submits.
-7. Polling resumes for `placement_queued` and `placement_processing`. If a
-   previous successful result exists from a regeneration cycle, it remains
+7. Realtime progress observation resumes for `placement_queued` and
+   `placement_processing`, with fallback polling when Realtime is unavailable.
+   If a previous successful result exists from a regeneration cycle, it remains
    visible behind a translucent veil with a small "new generation" indicator.
 8. When the status reaches `succeeded`, the result screen is shown with the
    signed result image, a regeneration call-to-action when available, and a
@@ -269,8 +276,11 @@ Visible elements:
 
 Behavior:
 
-- The continuation page polls the status endpoint every 2 seconds.
-- No progress percentage is shown.
+- The continuation page observes job-scoped Realtime progress and uses the
+  status endpoint as fallback.
+- Step-based progress may be shown when the backend provides safe progress
+  keys and ordinals.
+- No progress percentage is shown unless backed by defensible backend state.
 - No cancel button is shown.
 
 ### Screen 3: Dimension Entry
@@ -319,7 +329,8 @@ progress):
 
 Behavior:
 
-- Polling continues every 2 seconds.
+- Realtime progress observation continues with bounded fallback polling.
+- The status endpoint remains the only source for signed result URLs.
 - The destructive full-screen loading pattern is forbidden when a previous
   result exists.
 
@@ -575,7 +586,10 @@ Server behavior:
   `retention_deadline = now() + interval '24 hours'`,
   `room_geometry_mode` set as above, and the public-catalog references
   recorded.
-- Enqueue the room-prep work message in the pgmq queue.
+- Make the first room-preparation checkpoint claimable and enqueue a wake-up
+  message when the implementation uses pgmq for worker wake-up.
+- Invoke the in-home simulation worker pump immediately as best effort after
+  durable state is persisted.
 - Insert the `idempotency_keys` row pointing at the new `simulation_job_id`.
 - Increment the rate-limit counters.
 
@@ -614,6 +628,8 @@ additions specific to this spec:
 - The signed URL for the latest `output-{n}.png` is included when status is
   `succeeded` or when a previous result remains visible during a
   regeneration.
+- Optional Realtime subscription metadata may be included, but signed URLs must
+  still be fetched through this status endpoint.
 
 ### `POST /api/public/simulations/{simulation_job_id}/dimensions`
 
@@ -647,7 +663,9 @@ Server behavior:
 - Reject if any value is non-positive or above the configured upper bound.
 - Persist into `supplied_dimensions` and transition the job to
   `placement_queued`.
-- Enqueue the placement message.
+- Make the placement checkpoint claimable, enqueue a wake-up message when the
+  implementation uses pgmq for worker wake-up, and invoke the worker pump
+  immediately as best effort.
 
 ### `POST /api/public/simulations/{simulation_job_id}/regenerations`
 
@@ -660,7 +678,9 @@ Server behavior:
 - Reject if `generated_output_count` has reached three successes.
 - Reserve the next `reserved_generation_index` and transition status to
   `placement_queued`.
-- Enqueue the placement message with the regeneration intent.
+- Make the placement checkpoint claimable, enqueue a wake-up message when the
+  implementation uses pgmq for worker wake-up, and invoke the worker pump
+  immediately as best effort.
 
 ## Worker Jobs
 
