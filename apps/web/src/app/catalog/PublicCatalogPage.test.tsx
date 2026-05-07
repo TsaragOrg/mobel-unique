@@ -15,7 +15,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PublicCatalogPage } from "./PublicCatalogPage";
+import {
+  PublicCatalogPage,
+  getMobileOneLineFilterLimit,
+  getOneLineFilterLimit,
+} from "./PublicCatalogPage";
 
 // RU: Эти данные дают каталогу два дивана с картинками разных размеров.
 // FR: Ces donnees donnent au catalogue deux canapes avec des images de tailles differentes.
@@ -75,6 +79,28 @@ const marais = {
     },
   ],
 };
+
+// RU: Эти данные дают длинный список меток, чтобы проверить короткий и полный вид фильтров.
+// FR: Ces donnees donnent une longue liste d'etiquettes pour verifier la vue courte et la vue complete des filtres.
+const manyTags = Array.from({ length: 10 }, (_, index) => {
+  const number = String(index + 1).padStart(3, "0");
+
+  return {
+    public_label: `Visual Test Tag ${number}`,
+    slug: `visual-test-tag-${number}`,
+  };
+});
+
+// RU: Эти данные дают карточке много меток, чтобы проверить две строки внизу карточки.
+// FR: Ces donnees donnent beaucoup d'etiquettes a la carte pour verifier deux lignes en bas.
+const manyCardTags = Array.from({ length: 20 }, (_, index) => {
+  const number = String(index + 1).padStart(2, "0");
+
+  return {
+    public_label: `Card Tag ${number}`,
+    slug: `card-tag-${number}`,
+  };
+});
 
 const rivoliDetail = {
   defaults: {
@@ -224,14 +250,79 @@ function tagsEnvelope(items: unknown[]) {
   };
 }
 
+// RU: Эта помощь задает ширину окна для проверок фильтров.
+// FR: Cette aide fixe la largeur de la fenetre pour les controles des filtres.
+function setCatalogViewport(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: width,
+  });
+  vi.stubGlobal("matchMedia", (query: string) => {
+    return {
+      addEventListener: vi.fn(),
+      addListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      matches: query === "(max-width: 680px)" ? width <= 680 : false,
+      media: query,
+      onchange: null,
+      removeEventListener: vi.fn(),
+      removeListener: vi.fn(),
+    } as unknown as MediaQueryList;
+  });
+}
+
+// RU: Эта помощь задает размеры фильтров, чтобы проверить мобильную строку с разной длиной текста.
+// FR: Cette aide fixe les tailles des filtres pour verifier la ligne mobile avec des textes differents.
+function mockFilterMeasurements(input: {
+  containerWidth: number;
+  fallbackTagWidth: number;
+  tagWidths?: Record<string, number>;
+  toggleWidth?: number;
+}) {
+  const baseRect = (width: number) =>
+    ({
+      bottom: 0,
+      height: 42,
+      left: 0,
+      right: width,
+      toJSON: () => ({}),
+      top: 0,
+      width,
+      x: 0,
+      y: 0,
+    }) as DOMRect;
+
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.classList.contains("catalog-filters")) {
+      return baseRect(input.containerWidth);
+    }
+
+    if (this.getAttribute("data-filter-measure") === "toggle") {
+      return baseRect(input.toggleWidth ?? 96);
+    }
+
+    if (this.getAttribute("data-filter-measure") === "tag") {
+      const label = this.textContent?.trim() ?? "";
+
+      return baseRect(input.tagWidths?.[label] ?? input.fallbackTagWidth);
+    }
+
+    return baseRect(0);
+  });
+}
+
 describe("PublicCatalogPage", () => {
   beforeEach(() => {
+    setCatalogViewport(390);
     window.history.replaceState({}, "", "/catalog");
     window.sessionStorage.clear();
   });
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.sessionStorage.clear();
   });
@@ -259,6 +350,171 @@ describe("PublicCatalogPage", () => {
     expect(screen.queryByRole("group", { name: "Filtres de catalogue" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog/tags");
     expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog?limit=12");
+  });
+
+  it("keeps the remaining catalog card tag count inside the two-line tag list", async () => {
+    const sofaWithManyTags = {
+      ...rivoli,
+      tags: manyCardTags,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope([])));
+      }
+
+      if (url === "/api/public/sofas/canape-rivoli") {
+        return Promise.resolve(jsonResponse({ data: rivoliDetail, meta: {} }));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([sofaWithManyTags])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<PublicCatalogPage />);
+
+    await screen.findByRole("heading", { name: sofaWithManyTags.public_name });
+    const card = container.querySelector(".catalog-card") as HTMLElement;
+    const tagList = card.querySelector(".public-tag-list") as HTMLElement;
+
+    expect(tagList).toBeInTheDocument();
+    expect(tagList).toContainElement(screen.getByText("+17 tag"));
+    expect(Array.from(tagList.children).map((child) => child.textContent)).toEqual([
+      "Card Tag 01",
+      "Card Tag 02",
+      "Card Tag 03",
+      "+17 tag",
+    ]);
+    expect(
+      Array.from(card.querySelector(".catalog-card-body")?.children ?? []).some(
+        (child) =>
+          child.classList.contains("catalog-more-tags") &&
+          child.textContent?.trim() === "+17 tag",
+      ),
+    ).toBe(false);
+  });
+
+  it("fits mobile filters by measured label width and opens every filter in a popup", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope(manyTags)));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mockFilterMeasurements({
+      containerWidth: 390,
+      fallbackTagWidth: 170,
+    });
+
+    render(<PublicCatalogPage />);
+
+    expect(await screen.findByRole("button", { name: "Visual Test Tag 001" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Visual Test Tag 002" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Visual Test Tag 003" })).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: /Voir plus \(\+\d+\)/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Voir plus" }));
+
+    expect(screen.getByRole("dialog", { name: "Tous les filtres" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Visual Test Tag 003" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Visual Test Tag 010" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fermer les filtres" }));
+
+    expect(screen.queryByRole("dialog", { name: "Tous les filtres" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Visual Test Tag 003" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a selected hidden filter visible while other filters stay in the popup", async () => {
+    window.history.replaceState({}, "", "/catalog?tag=visual-test-tag-010");
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope(manyTags)));
+      }
+
+      if (url.includes("tag=visual-test-tag-010")) {
+        return Promise.resolve(jsonResponse(catalogEnvelope([])));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([rivoli])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mockFilterMeasurements({
+      containerWidth: 390,
+      fallbackTagWidth: 110,
+    });
+
+    render(<PublicCatalogPage />);
+
+    expect(await screen.findByRole("button", { name: "Visual Test Tag 010" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByRole("button", { name: "Visual Test Tag 009" })).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: /Voir plus \(\+\d+\)/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Voir plus" }));
+
+    expect(screen.getByRole("dialog", { name: "Tous les filtres" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Visual Test Tag 009" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fermer les filtres" }));
+
+    expect(screen.getByRole("button", { name: "Visual Test Tag 010" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByRole("button", { name: "Visual Test Tag 009" })).not.toBeInTheDocument();
+  });
+
+  it("calculates a desktop filter limit that leaves room for Voir plus on one line", () => {
+    expect(
+      getOneLineFilterLimit({
+        containerWidth: 500,
+        gap: 10,
+        tagWidths: [100, 100, 100, 100, 100],
+        toggleWidth: 80,
+      }),
+    ).toBe(3);
+    expect(
+      getOneLineFilterLimit({
+        containerWidth: 600,
+        gap: 10,
+        tagWidths: [100, 100, 100],
+        toggleWidth: 80,
+      }),
+    ).toBe(3);
+  });
+
+  it("calculates a mobile filter limit from label widths without reserving Voir plus", () => {
+    expect(
+      getMobileOneLineFilterLimit({
+        containerWidth: 390,
+        gap: 8,
+        tagWidths: [140, 120, 90, 80],
+      }),
+    ).toBe(3);
+    expect(
+      getMobileOneLineFilterLimit({
+        containerWidth: 390,
+        gap: 8,
+        tagWidths: [360, 60, 60],
+      }),
+    ).toBe(1);
+    expect(
+      getMobileOneLineFilterLimit({
+        containerWidth: 390,
+        gap: 8,
+        tagWidths: [90, 80],
+      }),
+    ).toBe(2);
   });
 
   it("uses repeated tag query parameters for AND filtering and keeps browser history", async () => {
@@ -291,6 +547,10 @@ describe("PublicCatalogPage", () => {
       return Promise.resolve(jsonResponse(catalogEnvelope([rivoli, marais])));
     });
     vi.stubGlobal("fetch", fetchMock);
+    mockFilterMeasurements({
+      containerWidth: 390,
+      fallbackTagWidth: 110,
+    });
 
     render(<PublicCatalogPage />);
 

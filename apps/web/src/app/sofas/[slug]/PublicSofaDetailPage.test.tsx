@@ -123,6 +123,17 @@ const detail = {
   ],
 };
 
+// RU: Эти данные дают странице много меток, чтобы проверить короткий и полный вид меток.
+// FR: Ces donnees donnent beaucoup d'etiquettes pour verifier la vue courte et la vue complete.
+const manySofaTags = Array.from({ length: 10 }, (_, index) => {
+  const number = String(index + 1).padStart(2, "0");
+
+  return {
+    public_label: `Étiquette ${number}`,
+    slug: `etiquette-${number}`,
+  };
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: {
@@ -151,6 +162,11 @@ describe("PublicSofaDetailPage", () => {
     mockDetailResponse();
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
 
+    expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
+      "href",
+      "/catalog",
+    );
     expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
     expect(screen.getByText("Un canapé modulable pour le salon.")).toBeInTheDocument();
     expect(screen.getByText("1 299 €")).toBeInTheDocument();
@@ -183,6 +199,35 @@ describe("PublicSofaDetailPage", () => {
       cache: "no-store",
     });
     expect(screen.getByText(/Le rendu IA reste une estimation visuelle/i)).toBeInTheDocument();
+  });
+
+  it("keeps sofa detail tags compact until the visitor opens the full list", async () => {
+    const detailWithManyTags = {
+      ...detail,
+      sofa: {
+        ...detail.sofa,
+        tags: manySofaTags,
+      },
+    };
+    mockDetailResponse({ data: detailWithManyTags, meta: {} });
+
+    render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    await screen.findByRole("heading", { name: detailWithManyTags.sofa.public_name });
+    const tagGroup = screen.getByRole("list", { name: "Étiquettes du canapé" });
+
+    expect(within(tagGroup).getByText("Étiquette 01")).toBeInTheDocument();
+    expect(within(tagGroup).getByText("Étiquette 02")).toBeInTheDocument();
+    expect(within(tagGroup).getByText("Étiquette 03")).toBeInTheDocument();
+    expect(within(tagGroup).queryByText("Étiquette 04")).not.toBeInTheDocument();
+
+    fireEvent.click(within(tagGroup).getByRole("button", { name: "Voir plus" }));
+
+    expect(within(tagGroup).getByText("Étiquette 10")).toBeInTheDocument();
+    expect(within(tagGroup).getByRole("button", { name: "Voir moins" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("restores a valid internal catalog preview fabric from session storage", async () => {

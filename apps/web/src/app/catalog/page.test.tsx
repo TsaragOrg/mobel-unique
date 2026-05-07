@@ -15,10 +15,7 @@ describe("Catalog page", () => {
       "href",
       "/",
     );
-    expect(screen.getByRole("link", { name: "Catalogue" })).toHaveAttribute(
-      "href",
-      "/catalog",
-    );
+    expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/panier|checkout|prix|stock/i)).not.toBeInTheDocument();
   });
