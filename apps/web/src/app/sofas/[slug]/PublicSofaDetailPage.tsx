@@ -17,6 +17,9 @@ import type { PublicSofaDetailResponse } from "../../../lib/public-catalog";
 
 const CATALOG_SELECTION_PREFIX = "mobel-unique:catalog-selection:";
 const SIMULATION_CONTEXT_PREFIX = "mobel-unique:simulation-context:";
+// RU: Это число ограничивает короткий список меток дивана двумя строками.
+// FR: Ce nombre limite la liste courte des etiquettes du canape a deux lignes.
+const SOFA_DETAIL_COLLAPSED_TAG_LIMIT = 3;
 
 type DetailStatus = "idle" | "loading" | "ready" | "error" | "unavailable";
 
@@ -46,6 +49,9 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   // RU: Это значение показывает, открыто ли большое окно с картинкой.
   // FR: Cette valeur indique si la grande fenetre avec l'image est ouverte.
   const [isImageViewerOpen, setImageViewerOpen] = useState(false);
+  // RU: Это значение показывает, открыт ли полный список меток дивана.
+  // FR: Cette valeur indique si la liste complete des etiquettes du canape est ouverte.
+  const [sofaTagsExpanded, setSofaTagsExpanded] = useState(false);
 
   // RU: Этот автоматический блок получает данные дивана при открытии страницы.
   // FR: Ce bloc automatique prend les donnees du canape quand la page s'ouvre.
@@ -87,6 +93,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         );
 
         setDetail(body.data);
+        setSofaTagsExpanded(false);
         setStaleSelection(hasStaleFabric || hasStaleVisualPosition);
         setSelectedFabricId(
           hasStaleFabric
@@ -182,6 +189,13 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   // RU: Эта проверка говорит, можно ли открыть выбранную картинку большим окном.
   // FR: Cette verification dit si l'image choisie peut s'ouvrir en grand.
   const canOpenImageViewer = Boolean(selectedRenderOriginalUrl && !imageFailed);
+  // RU: Эти данные готовят короткий или полный список меток дивана.
+  // FR: Ces donnees preparent la liste courte ou complete des etiquettes du canape.
+  const sofaTags = detail?.sofa.tags ?? [];
+  const visibleSofaTags = sofaTagsExpanded
+    ? sofaTags
+    : sofaTags.slice(0, SOFA_DETAIL_COLLAPSED_TAG_LIMIT);
+  const showSofaTagToggle = sofaTags.length > SOFA_DETAIL_COLLAPSED_TAG_LIMIT;
 
   // RU: Это действие выбирает ткань и снова показывает картинку.
   // FR: Cette action choisit le tissu et montre de nouveau l'image.
@@ -248,6 +262,12 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   function handleSelectedImageError() {
     setImageFailed(true);
     setImageViewerOpen(false);
+  }
+
+  // RU: Это действие открывает или снова сокращает список меток дивана.
+  // FR: Cette action ouvre ou raccourcit la liste des etiquettes du canape.
+  function toggleSofaTags() {
+    setSofaTagsExpanded((isExpanded) => !isExpanded);
   }
 
   // RU: Это действие запоминает выбор перед открытием симуляции.
@@ -412,12 +432,31 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 <DimensionList dimensions={detail.sofa.dimensions} />
               </div>
               {detail.sofa.tags.length > 0 ? (
-                <div>
+                <div className="sofa-tags-panel">
                   <h2>Étiquettes</h2>
-                  <ul className="public-tag-list public-tag-list-full">
-                    {detail.sofa.tags.map((tag) => (
+                  {/* RU: Эта область показывает метки дивана коротко или полностью. */}
+                  {/* FR: Cette zone montre les etiquettes du canape en version courte ou complete. */}
+                  <ul
+                    aria-label="Étiquettes du canapé"
+                    className={`public-tag-list public-tag-list-full sofa-tag-list${
+                      sofaTagsExpanded ? " sofa-tag-list-expanded" : ""
+                    }`}
+                  >
+                    {visibleSofaTags.map((tag) => (
                       <li key={tag.slug}>{tag.public_label}</li>
                     ))}
+                    {showSofaTagToggle ? (
+                      <li className="sofa-tag-list-toggle-item">
+                        <button
+                          aria-expanded={sofaTagsExpanded}
+                          className="sofa-tag-list-toggle"
+                          onClick={toggleSofaTags}
+                          type="button"
+                        >
+                          {sofaTagsExpanded ? "Voir moins" : "Voir plus"}
+                        </button>
+                      </li>
+                    ) : null}
                   </ul>
                 </div>
               ) : null}

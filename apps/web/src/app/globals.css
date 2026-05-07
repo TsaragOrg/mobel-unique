@@ -697,13 +697,15 @@ button:disabled {
   align-items: center;
   border-bottom: 1px solid var(--public-line);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+  overflow: hidden;
   padding: 22px clamp(22px, 5vw, 70px);
 }
 
 .catalog-filter-button,
 .sofa-view-button,
+.catalog-filter-toggle,
 .public-secondary-button {
   background: #ffffff;
   border: 1px solid var(--public-line);
@@ -711,10 +713,30 @@ button:disabled {
 }
 
 .catalog-filter-button,
-.sofa-view-button {
+.sofa-view-button,
+.catalog-filter-toggle {
+  align-items: center;
   border-radius: 999px;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1.2;
+  max-width: 100%;
   min-height: 42px;
   padding: 9px 15px;
+  text-align: center;
+  white-space: normal;
+}
+
+.catalog-filter-toggle {
+  background: #ffffff;
+  color: var(--public-ink);
+  flex-shrink: 0;
+}
+
+.catalog-filter-toggle:hover {
+  background: var(--public-ink);
+  border-color: var(--public-ink);
+  color: #ffffff;
 }
 
 .catalog-filter-button[aria-pressed="true"],
@@ -722,6 +744,99 @@ button:disabled {
   background: var(--public-ink);
   border-color: var(--public-ink);
   color: #ffffff;
+}
+
+.catalog-filters .catalog-filter-button,
+.catalog-filters .catalog-filter-toggle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-filter-measure {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  height: 0;
+  left: -10000px;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.catalog-filter-measure .catalog-filter-button,
+.catalog-filter-measure .catalog-filter-toggle {
+  white-space: nowrap;
+}
+
+.catalog-filter-dialog-backdrop {
+  align-items: center;
+  background: rgba(8, 8, 8, 0.46);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 70;
+}
+
+.catalog-filter-dialog {
+  background: var(--public-paper);
+  border: 1px solid var(--public-line);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.18);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: min(720px, calc(100vh - 44px));
+  overflow: hidden;
+  width: min(680px, 100%);
+}
+
+.catalog-filter-dialog-header {
+  align-items: center;
+  border-bottom: 1px solid var(--public-line);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.catalog-filter-dialog h2 {
+  color: var(--public-ink);
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.catalog-filter-dialog-close {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--public-line);
+  border-radius: 999px;
+  color: var(--public-ink);
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0;
+  width: 44px;
+}
+
+.catalog-filter-dialog-list {
+  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow: auto;
+  padding: 20px;
+}
+
+.catalog-filter-dialog-button {
+  overflow-wrap: anywhere;
 }
 
 .public-status-panel {
@@ -859,6 +974,12 @@ button:disabled {
   padding: 0;
 }
 
+.catalog-card .public-tag-list {
+  align-items: flex-start;
+  max-height: 66px;
+  overflow: hidden;
+}
+
 .public-tag-list li,
 .catalog-more-tags {
   border: 1px solid var(--public-line);
@@ -867,6 +988,15 @@ button:disabled {
   font-size: 0.8rem;
   line-height: 1;
   padding: 7px 10px;
+}
+
+.catalog-card .public-tag-list li {
+  box-sizing: border-box;
+  max-width: calc((100% - 8px) / 2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .catalog-card-preview {
@@ -1121,6 +1251,54 @@ button:disabled {
 
 .public-tag-list-full li {
   font-size: 0.86rem;
+}
+
+.sofa-tags-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.sofa-tag-list {
+  align-items: flex-start;
+  max-height: 68px;
+  overflow: hidden;
+}
+
+.sofa-tag-list-expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.sofa-tag-list li {
+  box-sizing: border-box;
+  max-width: calc((100% - 8px) / 2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sofa-tag-list .sofa-tag-list-toggle-item {
+  display: inline-flex;
+  padding: 0;
+}
+
+.sofa-tag-list-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--public-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  justify-content: center;
+  min-height: 0;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.sofa-tag-list-toggle:hover {
+  color: var(--public-ink);
 }
 
 .sofa-limits {
@@ -1728,6 +1906,69 @@ button:disabled {
   .public-page-hero h1,
   .sofa-detail h1 {
     font-size: 2.55rem;
+  }
+
+  .catalog-filter-dialog-backdrop {
+    align-items: flex-end;
+    padding: 0 12px 12px;
+  }
+
+  .catalog-filter-dialog {
+    border-radius: 8px 8px 0 0;
+    max-height: 82vh;
+  }
+
+  .catalog-filter-dialog-header {
+    padding: 14px 14px 12px;
+  }
+
+  .catalog-filters {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+    overflow: visible;
+    padding: 14px clamp(22px, 5vw, 70px) 16px;
+  }
+
+  .catalog-filter-button,
+  .catalog-filter-toggle {
+    border-radius: 999px;
+    flex: 0 1 auto;
+    justify-content: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: normal;
+    padding: 9px 15px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: auto;
+  }
+
+  .catalog-filters .catalog-filter-button {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+
+  .catalog-filters .catalog-filter-toggle {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+
+  .catalog-filter-dialog-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: 14px;
+  }
+
+  .catalog-filter-dialog-button {
+    max-width: 100%;
+    justify-content: center;
+    width: fit-content;
   }
 
   .catalog-grid {
