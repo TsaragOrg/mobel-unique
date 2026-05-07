@@ -50,12 +50,12 @@ describe("local admin fixture seed workflow", () => {
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
     ).toContain(
-      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-01/published/beige-dotted/position-1.png",
+      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-01/published/beige-textured/position-1.png",
     );
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
     ).toContain(
-      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-01/published/grey-soft/position-1.png",
+      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-02/published/beige-dotted/position-1.png",
     );
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
@@ -79,12 +79,13 @@ describe("local admin fixture seed workflow", () => {
     expect(scriptSource).toContain("fabric_ai_reference");
     expect(scriptSource).toContain("sofa_source_photo");
     expect(scriptSource).toContain("generateDeterministicFixtureImage");
+    expect(scriptSource).toContain("sourceImage ??");
   });
 
   it("documents the fixture contract and provides enough sample data", () => {
     expect(fixtureReadme).toContain("at least 3 fabrics");
     expect(fixtureReadme).toContain("5 sofas");
-    expect(fixtureReadme).toContain("published, draft, and archived");
+    expect(fixtureReadme).toContain("published sofas plus draft and archived");
     expect(fixtureReadme).toContain("source-only");
     expect(fixtureReadme).toContain("no source or render images");
     expect(fixtureReadme).toContain("PNG, JPEG, and WebP");
@@ -120,7 +121,9 @@ describe("local admin fixture seed workflow", () => {
     expect(localSupabaseGuide).toContain("pnpm supabase:reset");
     expect(localSupabaseGuide).toContain("seed:local:admin-fixtures");
     expect(localSupabaseGuide).toContain("seed:simulation-test:local-fixtures");
-    expect(localSupabaseGuide).toContain("published, draft, and archived");
+    expect(localSupabaseGuide).toContain(
+      "published sofas plus draft and archived",
+    );
     expect(localSupabaseGuide).toContain("deterministic local fixture images");
     expect(localSupabaseGuide).toContain("fixtures/local-admin-catalog");
   });

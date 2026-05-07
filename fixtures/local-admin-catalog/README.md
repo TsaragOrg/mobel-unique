@@ -13,7 +13,7 @@ generated images:
 
 - 3 fabrics;
 - 5 sofas;
-- published, draft, and archived lifecycle states;
+- multiple published sofas plus draft and archived lifecycle states;
 - complete public render coverage for the published sofa;
 - complete private render coverage for one draft sofa;
 - source-only render coverage for one draft sofa, so `Generate all` has work to do;
@@ -24,6 +24,9 @@ place the referenced images under `images/`. Both `manifest.json` and `images/`
 are ignored by Git so local product images do not get committed accidentally.
 If a referenced file is missing, the seed script generates a deterministic local
 image for that asset instead of failing the reset.
+When a complete render scenario has a source photo, the seed reuses that sofa
+photo for the generated fabric render cells so local public thumbnails stay
+visually sofa-like instead of falling back to geometric placeholders.
 
 The current clean local image layout is:
 

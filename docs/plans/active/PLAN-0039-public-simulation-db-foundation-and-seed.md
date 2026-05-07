@@ -88,7 +88,7 @@ touch prompts, providers, or the validated v003 pipeline.
       cents. The accompanying SQL migration
       `20260502000700_simulation_cost_meter_record_charge.sql`
       adds the `simulation_cost_meter_record_charge(charge_cents,
-      cap_cents)` RPC the helper invokes.
+  cap_cents)` RPC the helper invokes.
 - [x] Wire `chargeMeter(role)` into the worker dispatch path
       after each successful validation, cleaning, corners, and
       placement provider call. Telemetry failures are swallowed
@@ -123,8 +123,8 @@ touch prompts, providers, or the validated v003 pipeline.
   - one visual matrix column per sofa with sequence 1; and
   - one render cell per sofa pointing at a placeholder prepared
     sofa storage asset.
-  Every insert uses `on conflict do nothing` or `do update` so
-  the script is safe to re-run.
+    Every insert uses `on conflict do nothing` or `do update` so
+    the script is safe to re-run.
 - [x] Tighten the seed regression after local browser smoke testing:
       assert every deterministic UUID constant is syntactically valid,
       seed medium render variants required by the public catalog view,
@@ -149,6 +149,13 @@ touch prompts, providers, or the validated v003 pipeline.
 - [x] Correct `seed:simulation-test:local-fixtures` to copy published sofa
       render bytes from the local admin fixture seed into the simulation-test
       render paths instead of copying fabric swatch bytes as sofa renders.
+- [x] Keep complete local render scenarios sofa-like by reusing available
+      source sofa photos for manual render cells before falling back to
+      generated placeholders, and use two different published local sofa
+      renders as the simulation-test straight/corner sources.
+- [x] Publish the first three local sofas by default when a local manifest
+      omits explicit lifecycle states, while keeping later scenario rows for
+      archived and no-image draft coverage.
 - [x] Document the seed script in
       `docs/local-supabase-worker-development.md`.
 

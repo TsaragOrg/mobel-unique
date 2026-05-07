@@ -68,7 +68,7 @@ data, deterministic public simulation sofas, and the Storage objects needed for
 browser smoke testing:
 
 - at least three fabrics;
-- published, draft, and archived sofa states;
+- multiple published sofas plus draft and archived sofa states;
 - complete public render coverage for at least one published sofa;
 - complete private render coverage for at least one draft sofa;
 - source-only and no-image draft sofas for incomplete catalog testing;
@@ -80,6 +80,9 @@ files are missing. To use real local images, copy
 `fixtures/local-admin-catalog/manifest.json`, then place the referenced images
 under `fixtures/local-admin-catalog/images/`. Supported formats are PNG, JPEG,
 and WebP. The local `manifest.json` and `images/` directory are ignored by Git.
+For complete local render scenarios, the seed reuses the available sofa source
+photo bytes for render cells so public catalog thumbnails look like sofas even
+when fabric-specific AI renders have not been generated.
 
 If you need to reset only the database and skip admin fixtures, run:
 

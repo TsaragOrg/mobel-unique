@@ -640,10 +640,12 @@ async function seedVisualMatrixForSofa({
           sourcePhotoId = sourcePhoto?.id ?? null;
         } else {
           sourceType = "manual_upload";
-          renderImage = await generateDeterministicFixtureImage(
-            `sofa ${definition.publicSlug} fabric ${fabric.fixture_slug} position ${position.sequence} private render`,
-            "render",
-          );
+          renderImage =
+            sourceImage ??
+            (await generateDeterministicFixtureImage(
+              `sofa ${definition.publicSlug} fabric ${fabric.fixture_slug} position ${position.sequence} private render`,
+              "render",
+            ));
           privateAsset = await upsertImageAsset({
             assetKind: "manual_render",
             bucketId: "catalog-private-assets",
@@ -1553,11 +1555,11 @@ function slugify(value) {
 }
 
 function defaultSofaLifecycleState(index) {
-  if (index === 0) {
+  if (index <= 2) {
     return "published";
   }
 
-  if (index === 2) {
+  if (index === 3) {
     return "archived";
   }
 
