@@ -12,10 +12,12 @@ FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer un
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  type CSSProperties,
   type ChangeEvent,
   FormEvent,
   ReactNode,
   type PointerEvent as ReactPointerEvent,
+  type UIEvent as ReactUIEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -7027,6 +7029,26 @@ function SofaForm({
   // FR: Cette valeur garde le texte que l'admin ecrit pour chercher une etiquette.
   const [tagSearch, setTagSearch] = useState("");
 
+  // RU: Это значение задает место и размер маленькой палочки под выбранными тегами.
+  // FR: Cette valeur fixe la place et la taille de la petite barre sous les etiquettes choisies.
+  const [tagRailScrollbar, setTagRailScrollbar] = useState({
+    isVisible: false,
+    leftPercent: 0,
+    widthPercent: 40,
+  });
+
+  // RU: Это место указывает на ряд выбранных тегов, чтобы измерить его ширину.
+  // FR: Cet endroit pointe vers la ligne des etiquettes choisies pour mesurer sa largeur.
+  const tagRailRef = useRef<HTMLDivElement | null>(null);
+
+  // RU: Это место помнит, откуда админ начал тянуть ряд выбранных тегов.
+  // FR: Cet endroit garde le depart quand l'admin tire la ligne des etiquettes choisies.
+  const tagRailDragRef = useRef<{
+    pointerId: number;
+    scrollLeft: number;
+    startX: number;
+  } | null>(null);
+
   // RU: Эти данные помогают быстро находить выбранные теги и не показывать их в подсказках.
   // FR: Ces donnees aident a retrouver les etiquettes choisies et a les cacher des suggestions.
   const selectedTagIdSet = useMemo(
@@ -7096,6 +7118,151 @@ function SofaForm({
     onSelectedTagIdsChange(selectedTagIds.filter((id) => id !== tagId));
   }
 
+  // RU: Эта команда обновляет маленькую палочку под рядом выбранных тегов.
+  // FR: Cette action met a jour la petite barre sous la ligne des etiquettes choisies.
+  function updateTagRailScrollbar(rail = tagRailRef.current) {
+    if (!rail) {
+      setTagRailScrollbar((currentValue) => ({
+        ...currentValue,
+        isVisible: false,
+      }));
+      return;
+    }
+
+    const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
+
+    if (maxScrollLeft <= 1) {
+      setTagRailScrollbar((currentValue) => ({
+        ...currentValue,
+        isVisible: false,
+        leftPercent: 0,
+        widthPercent: 40,
+      }));
+      return;
+    }
+
+    const widthPercent = clampNumber(
+      (rail.clientWidth / rail.scrollWidth) * 100,
+      24,
+      70,
+    );
+    const maxLeftPercent = 100 - widthPercent;
+    const leftPercent =
+      (clampNumber(rail.scrollLeft, 0, maxScrollLeft) / maxScrollLeft) *
+      maxLeftPercent;
+
+    setTagRailScrollbar({
+      isVisible: true,
+      leftPercent: Math.round(leftPercent * 100) / 100,
+      widthPercent: Math.round(widthPercent * 100) / 100,
+    });
+  }
+
+  // RU: Эта команда берет точку по ширине экрана для движения ряда тегов.
+  // FR: Cette action prend le point horizontal pour deplacer la ligne des etiquettes.
+  function readTagRailPointerX(event: ReactPointerEvent<HTMLDivElement>) {
+    return Number.isFinite(event.clientX) ? event.clientX : event.pageX;
+  }
+
+  // RU: Эта команда начинает движение ряда тегов мышкой или пальцем.
+  // FR: Cette action commence le deplacement de la ligne avec la souris ou le doigt.
+  function handleTagRailPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (event.pointerType !== "touch" && event.button > 0) {
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button")
+    ) {
+      return;
+    }
+
+    const rail = event.currentTarget;
+
+    tagRailDragRef.current = {
+      pointerId: event.pointerId,
+      scrollLeft: rail.scrollLeft,
+      startX: readTagRailPointerX(event),
+    };
+    rail.dataset.dragging = "true";
+
+    if (typeof rail.setPointerCapture === "function") {
+      rail.setPointerCapture(event.pointerId);
+    }
+  }
+
+  // RU: Эта команда двигает ряд вслед за рукой или мышкой.
+  // FR: Cette action deplace la ligne avec la main ou la souris.
+  function handleTagRailPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag = tagRailDragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.scrollLeft =
+      drag.scrollLeft - (readTagRailPointerX(event) - drag.startX);
+    updateTagRailScrollbar(event.currentTarget);
+  }
+
+  // RU: Эта команда завершает движение ряда тегов.
+  // FR: Cette action termine le deplacement de la ligne des etiquettes.
+  function handleTagRailPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = tagRailDragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    tagRailDragRef.current = null;
+    delete event.currentTarget.dataset.dragging;
+
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  // RU: Эта команда двигает маленькую палочку, когда ряд тегов прокручен.
+  // FR: Cette action deplace la petite barre quand la ligne des etiquettes glisse.
+  function handleTagRailScroll(event: ReactUIEvent<HTMLDivElement>) {
+    updateTagRailScrollbar(event.currentTarget);
+  }
+
+  // RU: Этот автоматический блок подгоняет маленькую палочку при изменении выбранных тегов или ширины ряда.
+  // FR: Ce bloc automatique ajuste la petite barre quand les etiquettes choisies ou la largeur changent.
+  useEffect(() => {
+    const rail = tagRailRef.current;
+
+    updateTagRailScrollbar(rail);
+
+    if (!rail || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateTagRailScrollbar(rail);
+    });
+
+    resizeObserver.observe(rail);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [selectedTags.length]);
+
+  // RU: Этот стиль двигает маленькую палочку под выбранными тегами.
+  // FR: Ce style deplace la petite barre sous les etiquettes choisies.
+  const tagRailScrollbarStyle = {
+    "--admin-tag-rail-thumb-left": `${tagRailScrollbar.leftPercent}%`,
+    "--admin-tag-rail-thumb-width": `${tagRailScrollbar.widthPercent}%`,
+  } as CSSProperties;
+
   return (
     <form className="admin-form admin-sofa-form" onSubmit={onSubmit}>
       {errorMessage ? (
@@ -7147,6 +7314,8 @@ function SofaForm({
       </section>
       {/* RU: Этот раздел дает поиск по тегам и показывает выбранные метки. */}
       {/* FR: Cette partie donne la recherche des etiquettes et montre les choix. */}
+      {/* RU: Выбранные теги идут в одну строку, чтобы длинный список не растягивал страницу вниз. */}
+      {/* FR: Les etiquettes choisies restent sur une ligne, afin qu'une longue liste n'allonge pas la page. */}
       <section
         className="admin-form-section admin-sofa-tags-section"
         aria-labelledby="sofa-tags"
@@ -7162,9 +7331,25 @@ function SofaForm({
             <div className="admin-selected-tags" aria-live="polite">
               <p className="admin-tag-picker-label">Selected tags</p>
               {selectedTags.length > 0 ? (
-                <div className="admin-tag-chip-list" aria-label="Selected tags">
+                <>
+                <div
+                  aria-label="Selected tags"
+                  className="admin-tag-chip-list admin-tag-chip-rail"
+                  onPointerCancel={handleTagRailPointerEnd}
+                  onPointerDown={handleTagRailPointerDown}
+                  onPointerMove={handleTagRailPointerMove}
+                  onPointerUp={handleTagRailPointerEnd}
+                  onScroll={handleTagRailScroll}
+                  ref={tagRailRef}
+                  role="list"
+                  tabIndex={0}
+                >
                   {selectedTags.map((tag) => (
-                    <span className="admin-tag-chip" key={tag.id}>
+                    <span
+                      className="admin-tag-chip"
+                      key={tag.id}
+                      role="listitem"
+                    >
                       <span>{tag.public_label}</span>
                       <button
                         aria-label={`Remove ${tag.public_label} tag`}
@@ -7177,6 +7362,18 @@ function SofaForm({
                     </span>
                   ))}
                 </div>
+                {/* RU: Эта маленькая палочка показывает, где админ находится в длинном ряду выбранных тегов. */}
+                {/* FR: Cette petite barre montre la place de l'admin dans la longue ligne des etiquettes choisies. */}
+                <div
+                  aria-hidden="true"
+                  className={`admin-tag-rail-scrollbar${
+                    tagRailScrollbar.isVisible
+                      ? ""
+                      : " admin-tag-rail-scrollbar-hidden"
+                  }`}
+                  style={tagRailScrollbarStyle}
+                />
+                </>
               ) : (
                 <p className="admin-tag-picker-empty">
                   No tags selected yet.
