@@ -110,6 +110,7 @@ Focused checks to create or update before implementation:
 pnpm vitest run scripts/in-home-simulation-checkpoint-pump-migration.test.mjs
 pnpm vitest run scripts/in-home-simulation-checkpoint-claim.test.mjs
 pnpm vitest run scripts/in-home-simulation-checkpoint-pump-status.test.mjs
+pnpm vitest run scripts/in-home-simulation-checkpoint-success.test.mjs
 pnpm vitest run scripts/in-home-simulation-worker-pump.test.mjs
 pnpm vitest run scripts/in-home-simulation-realtime-progress.test.mjs
 pnpm vitest run apps/web/src/lib/simulation-public-route-handlers.test.ts
