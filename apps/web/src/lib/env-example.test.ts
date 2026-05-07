@@ -15,12 +15,14 @@ describe("web environment example", () => {
 
     expect(envExample).not.toContain("NEXT_PUBLIC_SUPABASE_SERVICE_ROLE");
     expect(envExample).not.toContain("NEXT_PUBLIC_SERVICE_ROLE");
+    expect(envExample).not.toContain("NEXT_PUBLIC_SUPABASE_JWT_SECRET");
   });
 
   it("documents the SPEC-0015 PLAN-0040 public simulation server-side env names", () => {
     const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
 
     expect(envExample).toContain("SUPABASE_SERVICE_ROLE_KEY=");
+    expect(envExample).toContain("SUPABASE_JWT_SECRET=");
     expect(envExample).toContain("SIMULATION_ACCESS_TOKEN_SECRET=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_SUBJECT_SALT=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_IP_PER_DAY=");

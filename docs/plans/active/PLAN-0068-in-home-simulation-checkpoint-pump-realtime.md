@@ -91,8 +91,8 @@ The target architecture is:
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
       into bounded checkpoints.
-- [ ] Implement public API pump invocation and Realtime access contract.
-- [ ] Implement frontend Realtime subscription and fallback polling.
+- [x] Implement public API pump invocation and Realtime access contract.
+- [x] Implement frontend Realtime subscription and fallback polling.
 - [ ] Update recovery cron to recover checkpoint claims and invoke pump for
       backlog.
 - [ ] Update purge behavior if checkpoint or progress rows need redaction when

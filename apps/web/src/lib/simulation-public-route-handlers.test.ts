@@ -11,6 +11,7 @@ import {
   handleCreateEmailVerificationRequest,
   handleCreateSimulationRequest,
   handleGetSimulationStatusRequest,
+  handleGetSimulationRealtimeTokenRequest,
   handleRequestRegenerationRequest,
   handleSubmitDimensionsRequest,
   handleVerifyEmailVerificationRequest,
@@ -19,7 +20,9 @@ import {
   type SimulationDimensionsStore,
   type SimulationJobReader,
   type SimulationJobView,
+  type SimulationProgressAccessReader,
   type SimulationQueueEnqueuer,
+  type SimulationRealtimeTokenIssuer,
   type SimulationRegenerationStore,
   type SimulationStorageSigner,
   type SimulationStorageUploader
@@ -568,6 +571,102 @@ describe("handleGetSimulationStatusRequest", () => {
       deps
     });
     expect(response.headers.get("set-cookie")).toBe(null);
+  });
+});
+
+describe("handleGetSimulationRealtimeTokenRequest", () => {
+  const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
+  const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
+  const SESSION_ID = "00000000-0000-4000-8000-0000000000b2";
+  const NOW = fixedNow("2026-05-02T10:00:00Z");
+
+  function makeValidToken() {
+    return issueSimulationAccessToken({
+      verificationRequestId: VERIFICATION_REQUEST_ID,
+      secret: SECRET,
+      environment: "local",
+      now: NOW
+    }).token;
+  }
+
+  function createDeps(access: {
+    jobId: string;
+    simulationSessionId: string;
+    retentionDeadline: Date;
+  } | null) {
+    const progressAccessReader: SimulationProgressAccessReader = {
+      findOwnedProgressAccess: vi.fn().mockResolvedValue(access)
+    };
+    const realtimeTokenIssuer: SimulationRealtimeTokenIssuer = {
+      issueProgressToken: vi.fn().mockResolvedValue({
+        token: "progress.jwt",
+        expiresAt: new Date("2026-05-02T10:05:00Z")
+      })
+    };
+    return {
+      deps: {
+        accessTokenSecret: SECRET,
+        progressAccessReader,
+        realtimeTokenIssuer,
+        now: NOW
+      },
+      progressAccessReader,
+      realtimeTokenIssuer
+    };
+  }
+
+  it("returns a scoped Realtime token for an owned simulation job", async () => {
+    const ctx = createDeps({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { realtime_token: string; expires_at: string };
+    };
+    expect(body.data.realtime_token).toBe("progress.jwt");
+    expect(body.data.expires_at).toBe("2026-05-02T10:05:00.000Z");
+    expect(ctx.progressAccessReader.findOwnedProgressAccess).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      accessTokenHash: deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID)
+    });
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+  });
+
+  it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
+    const ctx = createDeps({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: null,
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(401);
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the job is not owned by the visitor", async () => {
+    const ctx = createDeps(null);
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(404);
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).not.toHaveBeenCalled();
   });
 });
 

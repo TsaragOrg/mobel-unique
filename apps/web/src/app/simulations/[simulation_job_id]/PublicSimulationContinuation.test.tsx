@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PublicSimulationContinuation } from "./PublicSimulationContinuation";
+import type { SubscribeToSimulationProgressArgs } from "../../../lib/simulation-client/realtime";
 import type {
   SimulationJobStatus,
   SimulationStatusResponse
@@ -176,5 +177,57 @@ describe("PublicSimulationContinuation", () => {
     expect(
       screen.getByRole("link", { name: /retour au canapé/i })
     ).toHaveAttribute("href", "/catalog");
+  });
+
+  it("refreshes the signed status payload when a Realtime progress event arrives", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(
+        snapshot("awaiting_dimensions", {
+          dimension_guide_overlay_url: "https://signed.example/guide.png"
+        })
+      );
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+    expect(subscribeProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "sim-1" })
+    );
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "awaiting_dimensions",
+        progress_step_key: "awaiting_dimensions",
+        progress_step_ordinal: 3,
+        progress_total_steps: 4,
+        visitor_action_required: true,
+        guide_available: true,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:01:00.000Z"
+      });
+    });
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(2));
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent(/mesurez votre pièce/i);
   });
 });

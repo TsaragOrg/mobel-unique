@@ -75,6 +75,25 @@ export interface SimulationStatusResponse {
   last_error?: string | null;
 }
 
+export interface SimulationRealtimeTokenResponse {
+  realtime_token: string;
+  expires_at: string;
+}
+
+export interface SimulationPublicProgressPayload {
+  simulation_job_id: string;
+  status: SimulationJobStatus;
+  progress_step_key: string | null;
+  progress_step_ordinal: number | null;
+  progress_total_steps: number | null;
+  visitor_action_required: boolean;
+  guide_available: boolean;
+  latest_result_available: boolean;
+  regeneration_available: boolean;
+  retention_deadline: string;
+  updated_at: string;
+}
+
 export type SimulationPublicErrorCode =
   | "AUTH_REQUIRED"
   | "AUTH_INVALID"

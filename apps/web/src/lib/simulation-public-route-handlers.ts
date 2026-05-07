@@ -34,6 +34,7 @@ import type {
   CreateEmailVerificationResponse,
   RoomGeometryMode,
   SimulationJobStatus,
+  SimulationRealtimeTokenResponse,
   SimulationPublicErrorBody,
   SimulationPublicErrorCode,
   SimulationStatusResponse,
@@ -88,6 +89,34 @@ export interface SimulationPublicStatusHandlerDeps {
   jobReader: SimulationJobReader;
   storageSigner: SimulationStorageSigner;
   signedUrlTtlSeconds?: number;
+  now?: () => Date;
+}
+
+export interface SimulationProgressAccessView {
+  jobId: string;
+  simulationSessionId: string;
+  retentionDeadline: Date;
+}
+
+export interface SimulationProgressAccessReader {
+  findOwnedProgressAccess(input: {
+    jobId: string;
+    accessTokenHash: string;
+  }): Promise<SimulationProgressAccessView | null>;
+}
+
+export interface SimulationRealtimeTokenIssuer {
+  issueProgressToken(input: {
+    jobId: string;
+    simulationSessionId: string;
+    retentionDeadline: Date;
+  }): Promise<{ token: string; expiresAt: Date }>;
+}
+
+export interface SimulationPublicRealtimeTokenHandlerDeps {
+  accessTokenSecret: string;
+  progressAccessReader: SimulationProgressAccessReader;
+  realtimeTokenIssuer: SimulationRealtimeTokenIssuer;
   now?: () => Date;
 }
 
@@ -308,6 +337,41 @@ export async function handleGetSimulationStatusRequest(input: {
   });
 
   return jsonResponse({ data: responseBody }, 200);
+}
+
+export async function handleGetSimulationRealtimeTokenRequest(input: {
+  jobId: string;
+  token: string | null;
+  deps: SimulationPublicRealtimeTokenHandlerDeps;
+}): Promise<Response> {
+  const auth = authorizeSimulationAccess({
+    jobId: input.jobId,
+    token: input.token,
+    accessTokenSecret: input.deps.accessTokenSecret,
+    now: input.deps.now
+  });
+  if ("response" in auth) {
+    return auth.response;
+  }
+
+  const access = await input.deps.progressAccessReader.findOwnedProgressAccess({
+    jobId: input.jobId,
+    accessTokenHash: auth.accessTokenHash
+  });
+  if (!access) {
+    return notFoundResponse();
+  }
+
+  const issued = await input.deps.realtimeTokenIssuer.issueProgressToken({
+    jobId: access.jobId,
+    simulationSessionId: access.simulationSessionId,
+    retentionDeadline: access.retentionDeadline
+  });
+  const body: SimulationRealtimeTokenResponse = {
+    realtime_token: issued.token,
+    expires_at: issued.expiresAt.toISOString()
+  };
+  return jsonResponse({ data: body }, 200);
 }
 
 export async function handleSubmitDimensionsRequest(input: {
@@ -709,14 +773,39 @@ function authorizeAndResolveJob(input: {
 }):
   | { response: Response }
   | AuthorizedJobResolver {
+  const auth = authorizeSimulationAccess({
+    jobId: input.jobId,
+    token: input.token,
+    accessTokenSecret: input.deps.accessTokenSecret,
+    now: input.deps.now
+  });
+  if ("response" in auth) {
+    return auth;
+  }
+
+  return {
+    findJob: () =>
+      input.deps.jobReader.findOwnedJob({
+        jobId: input.jobId,
+        accessTokenHash: auth.accessTokenHash
+      })
+  };
+}
+
+function authorizeSimulationAccess(input: {
+  jobId: string;
+  token: string | null;
+  accessTokenSecret: string;
+  now?: () => Date;
+}): { response: Response } | { accessTokenHash: string } {
   if (!input.jobId || !UUID_REGEX.test(input.jobId)) {
     return { response: notFoundResponse() };
   }
 
   const validation = validateSimulationAccessToken({
     token: input.token,
-    secret: input.deps.accessTokenSecret,
-    now: input.deps.now
+    secret: input.accessTokenSecret,
+    now: input.now
   });
   if (!validation.valid) {
     if (validation.reason === "missing") {
@@ -741,13 +830,7 @@ function authorizeAndResolveJob(input: {
     validation.verificationRequestId
   );
 
-  return {
-    findJob: () =>
-      input.deps.jobReader.findOwnedJob({
-        jobId: input.jobId,
-        accessTokenHash
-      })
-  };
+  return { accessTokenHash };
 }
 
 export function defaultVerificationRequestIdGenerator(): string {

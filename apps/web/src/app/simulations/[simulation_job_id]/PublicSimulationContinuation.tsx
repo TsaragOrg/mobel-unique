@@ -13,6 +13,10 @@ import {
   useSimulationStatusPoll
 } from "../../../lib/simulation-client/poll";
 import {
+  subscribeToSimulationProgress,
+  type SubscribeToSimulationProgressArgs
+} from "../../../lib/simulation-client/realtime";
+import {
   clearJobContext,
   readJobContext,
   type SimulationJobContext
@@ -36,6 +40,9 @@ export interface PublicSimulationContinuationProps {
   jobId: string;
   fetchStatus?: (jobId: string) => Promise<SimulationStatusResponse>;
   loadJobContext?: (jobId: string) => SimulationJobContext | null;
+  subscribeProgress?: (
+    args: SubscribeToSimulationProgressArgs
+  ) => () => void;
 }
 
 export function PublicSimulationContinuation(
@@ -43,6 +50,8 @@ export function PublicSimulationContinuation(
 ) {
   const fetchStatus = props.fetchStatus ?? defaultFetchStatus;
   const loadJobContext = props.loadJobContext ?? readJobContext;
+  const subscribeProgress =
+    props.subscribeProgress ?? subscribeToSimulationProgress;
 
   const [context] = useState<SimulationJobContext>(
     () => loadJobContext(props.jobId) ?? FALLBACK_CONTEXT
@@ -52,6 +61,18 @@ export function PublicSimulationContinuation(
   const { snapshot, refresh } = useSimulationStatusPoll(props.jobId, {
     fetchStatus: () => fetchStatus(props.jobId)
   });
+
+  useEffect(() => {
+    return subscribeProgress({
+      jobId: props.jobId,
+      onError: (error) => {
+        console.error("[simulations] progress realtime failed:", error);
+      },
+      onProgress: () => refresh()
+    });
+    // Polling remains the fallback. Realtime only accelerates refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.jobId, subscribeProgress]);
 
   useEffect(() => {
     if (snapshot?.status === "succeeded" && snapshot.latest_output_url) {
