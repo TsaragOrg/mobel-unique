@@ -146,6 +146,9 @@ touch prompts, providers, or the validated v003 pipeline.
       coverage scenarios to local manifests: one published complete sofa,
       one draft complete sofa, one archived complete sofa, one source-only
       draft, and one no-image draft.
+- [x] Correct `seed:simulation-test:local-fixtures` to copy published sofa
+      render bytes from the local admin fixture seed into the simulation-test
+      render paths instead of copying fabric swatch bytes as sofa renders.
 - [x] Document the seed script in
       `docs/local-supabase-worker-development.md`.
 

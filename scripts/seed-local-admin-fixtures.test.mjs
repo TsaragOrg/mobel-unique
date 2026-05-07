@@ -50,12 +50,12 @@ describe("local admin fixture seed workflow", () => {
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
     ).toContain(
-      "local-admin-fixtures/mobel-local/fabrics/beige-dotted/swatch.png",
+      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-01/published/beige-dotted/position-1.png",
     );
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
     ).toContain(
-      "local-admin-fixtures/mobel-local/fabrics/grey-soft/swatch.png",
+      "local-admin-fixtures/mobel-local/sofas/mobel-sofa-01/published/grey-soft/position-1.png",
     );
     expect(
       packageJson.scripts["seed:simulation-test:local-fixtures"],
