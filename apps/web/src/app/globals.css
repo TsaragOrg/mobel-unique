@@ -4525,8 +4525,67 @@ button:disabled {
 
 .admin-tag-chip-list {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
+}
+
+.admin-tag-chip-rail {
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  user-select: none;
+}
+
+.admin-tag-chip-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tag-chip-rail[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.admin-tag-chip-rail:focus-visible {
+  outline: 2px solid var(--admin-focus, #0e5f50);
+  outline-offset: 3px;
+}
+
+.admin-tag-rail-scrollbar {
+  --admin-tag-rail-thumb-left: 0%;
+  --admin-tag-rail-thumb-width: 40%;
+  background: #d6dcda;
+  border: 0;
+  border-radius: 999px;
+  height: 3px;
+  margin: 2px auto 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: relative;
+  width: min(112px, 34%);
+}
+
+.admin-tag-rail-scrollbar::after {
+  background: var(--admin-ink, #0b0b0b);
+  border-radius: inherit;
+  content: "";
+  display: block;
+  height: 100%;
+  left: var(--admin-tag-rail-thumb-left);
+  position: absolute;
+  top: 0;
+  transition:
+    left 120ms ease,
+    width 120ms ease;
+  width: var(--admin-tag-rail-thumb-width);
+}
+
+.admin-tag-rail-scrollbar-hidden {
+  opacity: 0;
 }
 
 .admin-tag-chip {
@@ -4535,11 +4594,19 @@ button:disabled {
   border: 1px solid var(--admin-ink, #0b0b0b);
   color: var(--admin-ink, #0b0b0b);
   display: inline-flex;
+  flex: 0 0 auto;
   font-size: 0.88rem;
   font-weight: 650;
   gap: 8px;
+  max-width: min(18rem, 72vw);
   min-height: 34px;
   padding: 5px 5px 5px 11px;
+}
+
+.admin-tag-chip > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-app .admin-form .admin-tag-chip-remove {

@@ -16,6 +16,8 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareAdminImageUploadFile } from "../../lib/admin-image-upload";
@@ -1966,6 +1968,233 @@ describe("Admin catalog pages", () => {
 
     expect(screen.queryByText("Red sofa")).not.toBeInTheDocument();
     expect(screen.getByText("No tags selected yet.")).toBeInTheDocument();
+  });
+
+  it("keeps many selected sofa tags in one horizontal rail", async () => {
+    const tagFixtures = [
+      {
+        id: "00000000-0000-4000-8000-000000000811",
+        public_label: "Small spaces",
+        slug: "small-spaces",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000812",
+        public_label: "Corner lounge",
+        slug: "corner-lounge",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000813",
+        public_label: "Family sofa",
+        slug: "family-sofa",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000814",
+        public_label: "Premium fabric",
+        slug: "premium-fabric",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000815",
+        public_label: "Fast delivery",
+        slug: "fast-delivery",
+      },
+    ];
+    const dependencies = createDependencies({
+      listTags: vi.fn(async () => tagFixtures),
+    });
+
+    render(<AdminSofaCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create sofa" });
+    for (const tag of tagFixtures) {
+      fireEvent.change(await screen.findByLabelText("Search tags"), {
+        target: { value: tag.public_label },
+      });
+      fireEvent.click(
+        screen.getByRole("option", {
+          name: `Add ${tag.public_label} tag`,
+        }),
+      );
+    }
+
+    const selectedTags = screen.getByRole("list", { name: "Selected tags" });
+
+    expect(selectedTags).toHaveClass(
+      "admin-tag-chip-list",
+      "admin-tag-chip-rail",
+    );
+    expect(selectedTags).toHaveAttribute("tabindex", "0");
+    for (const tag of tagFixtures) {
+      expect(
+        within(selectedTags).getByText(tag.public_label),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("lets admins drag the selected sofa tag rail without grabbing a scrollbar", async () => {
+    const tagFixtures = [
+      {
+        id: "00000000-0000-4000-8000-000000000821",
+        public_label: "Small spaces",
+        slug: "small-spaces",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000822",
+        public_label: "Corner lounge",
+        slug: "corner-lounge",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000823",
+        public_label: "Family sofa",
+        slug: "family-sofa",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000824",
+        public_label: "Premium fabric",
+        slug: "premium-fabric",
+      },
+    ];
+    const dependencies = createDependencies({
+      listTags: vi.fn(async () => tagFixtures),
+    });
+
+    render(<AdminSofaCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create sofa" });
+    for (const tag of tagFixtures) {
+      fireEvent.change(await screen.findByLabelText("Search tags"), {
+        target: { value: tag.public_label },
+      });
+      fireEvent.click(
+        screen.getByRole("option", {
+          name: `Add ${tag.public_label} tag`,
+        }),
+      );
+    }
+
+    const selectedTags = screen.getByRole("list", {
+      name: "Selected tags",
+    }) as HTMLDivElement;
+
+    selectedTags.scrollLeft = 40;
+    firePointerCropEvent(selectedTags, "pointerdown", {
+      clientX: 240,
+      clientY: 20,
+      pointerId: 7,
+      pointerType: "mouse",
+    });
+    firePointerCropEvent(selectedTags, "pointermove", {
+      clientX: 160,
+      clientY: 20,
+      pointerId: 7,
+      pointerType: "mouse",
+    });
+    firePointerCropEvent(selectedTags, "pointerup", {
+      clientX: 160,
+      clientY: 20,
+      pointerId: 7,
+      pointerType: "mouse",
+    });
+
+    expect(selectedTags.scrollLeft).toBe(120);
+    expect(selectedTags).not.toHaveAttribute("data-dragging");
+  });
+
+  it("shows a short separate visual scrollbar for the selected sofa tag rail", async () => {
+    const tagFixtures = [
+      {
+        id: "00000000-0000-4000-8000-000000000831",
+        public_label: "Small spaces",
+        slug: "small-spaces",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000832",
+        public_label: "Corner lounge",
+        slug: "corner-lounge",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000833",
+        public_label: "Family sofa",
+        slug: "family-sofa",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000834",
+        public_label: "Premium fabric",
+        slug: "premium-fabric",
+      },
+    ];
+    const dependencies = createDependencies({
+      listTags: vi.fn(async () => tagFixtures),
+    });
+
+    render(<AdminSofaCreatePage dependencies={dependencies} />);
+
+    await screen.findByRole("heading", { name: "Create sofa" });
+    for (const tag of tagFixtures) {
+      fireEvent.change(await screen.findByLabelText("Search tags"), {
+        target: { value: tag.public_label },
+      });
+      fireEvent.click(
+        screen.getByRole("option", {
+          name: `Add ${tag.public_label} tag`,
+        }),
+      );
+    }
+
+    const selectedTags = screen.getByRole("list", {
+      name: "Selected tags",
+    }) as HTMLDivElement;
+    const visualScrollbar = selectedTags.parentElement?.querySelector(
+      ".admin-tag-rail-scrollbar",
+    ) as HTMLDivElement | null;
+
+    expect(visualScrollbar).toBeInTheDocument();
+    expect(visualScrollbar).toHaveAttribute("aria-hidden", "true");
+
+    Object.defineProperty(selectedTags, "clientWidth", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(selectedTags, "scrollWidth", {
+      configurable: true,
+      value: 500,
+    });
+    selectedTags.scrollLeft = 150;
+    fireEvent.scroll(selectedTags);
+
+    await waitFor(() => {
+      expect(visualScrollbar?.style.getPropertyValue("--admin-tag-rail-thumb-left")).toBe(
+        "30%",
+      );
+    });
+    expect(
+      visualScrollbar?.style.getPropertyValue("--admin-tag-rail-thumb-width"),
+    ).toBe("40%");
+  });
+
+  it("keeps selected sofa tag rail styles compact", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src/app/globals.css"),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /\.admin-tag-chip-rail\s*{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
+    );
+    expect(css).toMatch(
+      /\.admin-tag-chip-rail\s*{[^}]*cursor:\s*grab;[^}]*scrollbar-width:\s*none;[^}]*touch-action:\s*pan-x;/s,
+    );
+    expect(css).toMatch(
+      /\.admin-tag-chip-rail::-webkit-scrollbar\s*{[^}]*display:\s*none;/s,
+    );
+    expect(css).toMatch(
+      /\.admin-tag-rail-scrollbar\s*{[^}]*border:\s*0;[^}]*width:\s*min\(112px,\s*34%\);/s,
+    );
+    expect(css).toMatch(
+      /\.admin-tag-rail-scrollbar::after\s*{[^}]*left:\s*var\(--admin-tag-rail-thumb-left\);/s,
+    );
+    expect(css).toMatch(
+      /\.admin-tag-chip\s*{[^}]*flex:\s*0 0 auto;[^}]*max-width:/s,
+    );
   });
 
   it("edits sofa metadata and shows readiness blockers", async () => {
