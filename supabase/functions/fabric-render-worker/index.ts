@@ -7,6 +7,10 @@ import {
 import { readImageDimensions } from "./image-metadata.ts";
 import { normalizeGeneratedOutput } from "./image-normalization.ts";
 import {
+  generateFabricRenderCandidateImageVariants,
+  type FabricRenderCandidateImageVariant,
+} from "./image-variants.ts";
+import {
   buildFabricRenderCandidateOutputPath,
   validateFabricRenderJobInputs,
 } from "./job.ts";
@@ -17,6 +21,7 @@ import {
 import {
   base64ToUint8Array,
   downloadStorageObject,
+  removeStorageObjects,
   uint8ArrayToBase64,
   uploadStorageObject,
 } from "./storage.ts";
@@ -776,6 +781,7 @@ async function processClaimedJob(input: {
     },
   );
   const scratchDir = buildScratchDir(input.jobId);
+  const uploadedOutputObjectPaths: string[] = [];
 
   try {
     validateFabricRenderJobInputs({
@@ -866,6 +872,12 @@ async function processClaimedJob(input: {
       throw new Error("normalized output metadata did not match image bytes");
     }
 
+    const outputVariants = await generateFabricRenderCandidateImageVariants({
+      outputBytes: normalizedImage.outputBytes,
+      outputContentType: normalizedImage.contentType,
+      outputPath,
+    });
+
     await uploadStorageObject({
       body: normalizedImage.outputBytes,
       bucketId: GENERATED_BUCKET,
@@ -875,6 +887,20 @@ async function processClaimedJob(input: {
       serviceRoleKey: input.serviceRoleKey,
       supabaseUrl: input.supabaseUrl,
     });
+    uploadedOutputObjectPaths.push(outputPath);
+
+    for (const variant of outputVariants) {
+      await uploadStorageObject({
+        body: variant.bytes,
+        bucketId: GENERATED_BUCKET,
+        contentType: variant.content_type,
+        fetchImpl: (url, init) => fetch(url, init),
+        objectPath: variant.object_path,
+        serviceRoleKey: input.serviceRoleKey,
+        supabaseUrl: input.supabaseUrl,
+      });
+      uploadedOutputObjectPaths.push(variant.object_path);
+    }
 
     await callRpc(
       input.supabaseUrl,
@@ -887,6 +913,9 @@ async function processClaimedJob(input: {
         output_height_px: normalizedImage.normalizedHeightPx,
         output_path: outputPath,
         output_width_px: normalizedImage.normalizedWidthPx,
+        p_output_variants: outputVariants.map(
+          shapeFabricRenderOutputVariantRpcPayload,
+        ),
       },
     );
 
@@ -909,6 +938,18 @@ async function processClaimedJob(input: {
       errorMessage: message,
       fs: denoScratchFs,
       scratchDir,
+    });
+
+    await removeUploadedFabricRenderOutputObjects({
+      objectPaths: uploadedOutputObjectPaths,
+      serviceRoleKey: input.serviceRoleKey,
+      supabaseUrl: input.supabaseUrl,
+    }).catch((cleanupError) => {
+      console.error(
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError),
+      );
     });
 
     await callRpc(
@@ -945,6 +986,38 @@ async function downloadResolvedAsset(
     objectPath: asset.object_path,
     serviceRoleKey,
     supabaseUrl,
+  });
+}
+
+function shapeFabricRenderOutputVariantRpcPayload(
+  variant: FabricRenderCandidateImageVariant,
+) {
+  return {
+    byte_size: variant.byte_size,
+    content_type: variant.content_type,
+    height_px: variant.height_px,
+    object_path: variant.object_path,
+    variant_asset_id: variant.variant_asset_id,
+    variant_kind: variant.variant_kind,
+    width_px: variant.width_px,
+  };
+}
+
+async function removeUploadedFabricRenderOutputObjects(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  objectPaths: string[];
+}): Promise<void> {
+  if (input.objectPaths.length === 0) {
+    return;
+  }
+
+  await removeStorageObjects({
+    bucketId: GENERATED_BUCKET,
+    fetchImpl: (url, init) => fetch(url, init),
+    objectPaths: input.objectPaths,
+    serviceRoleKey: input.serviceRoleKey,
+    supabaseUrl: input.supabaseUrl,
   });
 }
 

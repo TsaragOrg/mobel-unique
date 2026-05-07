@@ -163,6 +163,10 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       ) ?? null,
     [detail?.renders, selectedFabricId, selectedVisualPositionId],
   );
+  // RU: Этот адрес показывает выбранную картинку дивана в исходном размере.
+  // FR: Cette adresse montre l'image choisie du canape en taille originale.
+  const selectedRenderOriginalUrl =
+    selectedRender?.render_original_url ?? selectedRender?.render_url ?? null;
   const canLaunchSimulation = Boolean(
     detail &&
       selectedFabric &&
@@ -177,7 +181,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     : "";
   // RU: Эта проверка говорит, можно ли открыть выбранную картинку большим окном.
   // FR: Cette verification dit si l'image choisie peut s'ouvrir en grand.
-  const canOpenImageViewer = Boolean(selectedRender && !imageFailed);
+  const canOpenImageViewer = Boolean(selectedRenderOriginalUrl && !imageFailed);
 
   // RU: Это действие выбирает ткань и снова показывает картинку.
   // FR: Cette action choisit le tissu et montre de nouveau l'image.
@@ -299,7 +303,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         <article className="sofa-detail">
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
-              {imageFailed || !selectedRender ? (
+              {imageFailed || !selectedRenderOriginalUrl ? (
                 <span>Image indisponible</span>
               ) : (
                 <button
@@ -311,7 +315,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   <img
                     alt={selectedImageAlt}
                     onError={handleSelectedImageError}
-                    src={selectedRender.render_url}
+                    src={selectedRenderOriginalUrl}
                   />
                   <span className="sofa-detail-image-viewer-icon">
                     <PublicExpandIcon />
@@ -426,7 +430,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
           </section>
           {/* RU: Это большое окно показывает картинку дивана почти на весь экран. */}
           {/* FR: Cette grande fenetre montre l'image du canape presque sur tout l'ecran. */}
-          {isImageViewerOpen && selectedRender ? (
+          {isImageViewerOpen && selectedRenderOriginalUrl ? (
             <div
               className="sofa-image-viewer-backdrop"
               onClick={closeImageViewerFromBackdrop}
@@ -452,7 +456,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   <img
                     alt={selectedImageAlt}
                     onError={handleSelectedImageError}
-                    src={selectedRender.render_url}
+                    src={selectedRenderOriginalUrl}
                   />
                 </div>
               </section>

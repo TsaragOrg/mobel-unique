@@ -97,6 +97,7 @@ export interface AdminCatalogSofa {
   public_slug: string | null;
   shopify_order_url: string | null;
   source_photo_count?: number | null;
+  source_photo_preview_asset_id?: string | null;
   source_photo_preview_url?: string | null;
   tags: AdminCatalogTag[];
   updated_at: string;
@@ -294,8 +295,17 @@ export interface AdminSofaRenderExport {
 
 type AdminLargeImagePreview = {
   alt: string;
+  assetId?: string;
   src: string;
   title: string;
+};
+
+type AdminStorageAssetPreviewVariant = "small" | "medium" | "original";
+
+type AdminStorageAssetPreviewRequest = {
+  assetId: string;
+  key: string;
+  variant: AdminStorageAssetPreviewVariant;
 };
 
 type AdminBadgeTone = "danger" | "muted" | "neutral" | "ready" | "warning";
@@ -469,6 +479,7 @@ export interface AdminCatalogPageDependencies {
   createStorageAssetPreviewUrl(
     accessToken: string,
     assetId: string,
+    variant?: AdminStorageAssetPreviewVariant,
   ): Promise<string>;
   createFabricRenderJob(
     accessToken: string,
@@ -831,9 +842,15 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.upload as AdminCatalogUpload;
     },
-    async createStorageAssetPreviewUrl(accessToken, assetId) {
+    async createStorageAssetPreviewUrl(
+      accessToken,
+      assetId,
+      variant = "original",
+    ) {
       const response = await fetch(
-        `/api/admin/storage-assets/${encodeURIComponent(assetId)}/preview`,
+        `/api/admin/storage-assets/${encodeURIComponent(
+          assetId,
+        )}/preview?variant=${encodeURIComponent(variant)}`,
         {
           cache: "no-store",
           credentials: "same-origin",
@@ -1362,6 +1379,33 @@ function SofaListContent({
       ? sofas
       : sofas.filter((sofa) => sofa.lifecycle_state !== "archived");
 
+  // RU: Эти адреса показывают маленькие закрытые фото диванов через защищенный путь.
+  // FR: Ces adresses montrent les petites photos privees des canapes par le chemin protege.
+  const [sourcePhotoPreviewUrls, setSourcePhotoPreviewUrls] = useState<
+    Record<string, string>
+  >({});
+  // RU: Этот список помогает закрывать старые адреса маленьких фото.
+  // FR: Cette liste aide a fermer les anciennes adresses des petites photos.
+  const sourcePhotoPreviewUrlsRef = useRef<Record<string, string>>({});
+
+  // RU: Эти данные говорят, какие маленькие фото нужны открытому списку диванов.
+  // FR: Ces donnees disent quelles petites photos sont utiles a la liste ouverte.
+  const sourcePhotoPreviewRequests = useMemo(() => {
+    const requests = visibleSofas
+      .map((sofa) =>
+        createStorageAssetPreviewRequest(
+          sofa.source_photo_preview_asset_id,
+          "small",
+        ),
+      )
+      .filter(
+        (request): request is AdminStorageAssetPreviewRequest =>
+          request !== null,
+      );
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [visibleSofas]);
+
   // RU: Этот автоматический блок загружает диваны при открытии списка.
   // FR: Ce bloc automatique charge les canapes a l'ouverture de la liste.
   useEffect(() => {
@@ -1392,6 +1436,73 @@ function SofaListContent({
       isCurrent = false;
     };
   }, [accessToken, dependencies]);
+
+  // RU: Этот автоматический блок загружает маленькие фото списка через защищенный путь.
+  // FR: Ce bloc automatique charge les petites photos de la liste par le chemin protege.
+  useEffect(() => {
+    let isCurrent = true;
+    const neededPreviewKeys = new Set(
+      sourcePhotoPreviewRequests.map((request) => request.key),
+    );
+    const currentUrls = sourcePhotoPreviewUrlsRef.current;
+    const nextUrls = { ...currentUrls };
+    let hasChanged = false;
+
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+        delete nextUrls[previewKey];
+        hasChanged = true;
+      }
+    }
+
+    if (hasChanged) {
+      sourcePhotoPreviewUrlsRef.current = nextUrls;
+      setSourcePhotoPreviewUrls(nextUrls);
+    }
+
+    for (const request of sourcePhotoPreviewRequests) {
+      if (nextUrls[request.key]) {
+        continue;
+      }
+
+      void dependencies
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
+        .then((url) => {
+          if (!isCurrent) {
+            dependencies.revokeStorageAssetPreviewUrl(url);
+            return;
+          }
+
+          sourcePhotoPreviewUrlsRef.current = {
+            ...sourcePhotoPreviewUrlsRef.current,
+            [request.key]: url,
+          };
+          setSourcePhotoPreviewUrls(sourcePhotoPreviewUrlsRef.current);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, sourcePhotoPreviewRequests]);
+
+  // RU: Этот автоматический блок закрывает маленькие фото, когда админ уходит со списка.
+  // FR: Ce bloc automatique ferme les petites photos quand l'admin quitte la liste.
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(sourcePhotoPreviewUrlsRef.current)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+      }
+
+      sourcePhotoPreviewUrlsRef.current = {};
+    };
+  }, [dependencies]);
 
   // RU: Это действие показывает или снова прячет архивные диваны в списке.
   // FR: Cette action affiche ou cache a nouveau les canapes archives dans la liste.
@@ -1482,8 +1593,18 @@ function SofaListContent({
       {visibleSofas.length > 0 ? (
         <div className="admin-sofa-list" role="list">
           {visibleSofas.map((sofa) => {
+            // RU: Эти данные выбирают имя, число фото и маленький адрес картинки для карточки.
+            // FR: Ces donnees choisissent le nom, le nombre de photos et la petite adresse pour la fiche.
             const sofaDisplayName = sofa.public_name ?? sofa.internal_name;
             const sourcePhotoCount = sofa.source_photo_count ?? 0;
+            const protectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+              sourcePhotoPreviewUrls,
+              sofa.source_photo_preview_asset_id,
+              "small",
+            );
+            const sourcePhotoPreviewUrl = sofa.source_photo_preview_asset_id
+              ? protectedSourcePhotoPreviewUrl
+              : (sofa.source_photo_preview_url ?? null);
 
             return (
               <article
@@ -1497,10 +1618,10 @@ function SofaListContent({
                   href={`/admin/sofas/${sofa.id}`}
                 >
                   <span className="admin-sofa-list-preview">
-                    {sofa.source_photo_preview_url ? (
+                    {sourcePhotoPreviewUrl ? (
                       <img
                         alt={`Source photo for ${sofaDisplayName}`}
-                        src={sofa.source_photo_preview_url}
+                        src={sourcePhotoPreviewUrl}
                       />
                     ) : (
                       <span>No source image</span>
@@ -3516,6 +3637,51 @@ function VisualMatrixSection({
     ? columns.find((column) => column.id === pendingDeleteColumnId)
     : null;
 
+  // RU: Эти адреса показывают закрытые фото колонок через защищенный путь.
+  // FR: Ces adresses montrent les photos privees des colonnes par le chemin protege.
+  const [sourcePhotoPreviewUrls, setSourcePhotoPreviewUrls] = useState<
+    Record<string, string>
+  >({});
+  // RU: Этот список помогает закрывать старые адреса фото колонок.
+  // FR: Cette liste aide a fermer les anciennes adresses des photos de colonnes.
+  const sourcePhotoPreviewUrlsRef = useRef<Record<string, string>>({});
+
+  // RU: Эти данные говорят, какие фото и размеры нужны списку колонок и открытому окну.
+  // FR: Ces donnees disent quelles photos et quelles tailles servent a la liste et a la fenetre ouverte.
+  const sourcePhotoPreviewRequests = useMemo(() => {
+    const requests: AdminStorageAssetPreviewRequest[] = [];
+
+    for (const column of columns) {
+      const request = createStorageAssetPreviewRequest(
+        column.current_source_photo?.asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
+      }
+    }
+
+    const activeColumnRequest =
+      activeColumnDrawerMode === "edit" && !selectedSourcePhotoPreviewUrl
+        ? createStorageAssetPreviewRequest(
+            activeColumn?.current_source_photo?.asset_id,
+            "medium",
+          )
+        : null;
+
+    if (activeColumnRequest) {
+      requests.push(activeColumnRequest);
+    }
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [
+    activeColumn?.current_source_photo?.asset_id,
+    activeColumnDrawerMode,
+    columns,
+    selectedSourcePhotoPreviewUrl,
+  ]);
+
   // RU: Этот автоматический блок убирает быстрый адрес фото, когда он уже не нужен.
   // FR: Ce bloc automatique retire l'adresse rapide de la photo quand elle n'est plus utile.
   useEffect(() => {
@@ -3525,6 +3691,73 @@ function VisualMatrixSection({
       }
     };
   }, [selectedSourcePhotoPreviewUrl]);
+
+  // RU: Этот автоматический блок загружает фото колонок в нужном размере через защищенный путь.
+  // FR: Ce bloc automatique charge les photos des colonnes a la bonne taille par le chemin protege.
+  useEffect(() => {
+    let isCurrent = true;
+    const neededPreviewKeys = new Set(
+      sourcePhotoPreviewRequests.map((request) => request.key),
+    );
+    const currentUrls = sourcePhotoPreviewUrlsRef.current;
+    const nextUrls = { ...currentUrls };
+    let hasChanged = false;
+
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+        delete nextUrls[previewKey];
+        hasChanged = true;
+      }
+    }
+
+    if (hasChanged) {
+      sourcePhotoPreviewUrlsRef.current = nextUrls;
+      setSourcePhotoPreviewUrls(nextUrls);
+    }
+
+    for (const request of sourcePhotoPreviewRequests) {
+      if (nextUrls[request.key]) {
+        continue;
+      }
+
+      void dependencies
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
+        .then((url) => {
+          if (!isCurrent) {
+            dependencies.revokeStorageAssetPreviewUrl(url);
+            return;
+          }
+
+          sourcePhotoPreviewUrlsRef.current = {
+            ...sourcePhotoPreviewUrlsRef.current,
+            [request.key]: url,
+          };
+          setSourcePhotoPreviewUrls(sourcePhotoPreviewUrlsRef.current);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, sourcePhotoPreviewRequests]);
+
+  // RU: Этот автоматический блок закрывает адреса фото колонок при уходе с экрана.
+  // FR: Ce bloc automatique ferme les adresses des photos de colonnes au depart.
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(sourcePhotoPreviewUrlsRef.current)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+      }
+
+      sourcePhotoPreviewUrlsRef.current = {};
+    };
+  }, [dependencies]);
 
   // RU: Это действие открывает центральное окно для колонки.
   // FR: Cette action ouvre la fenetre centrale pour une colonne.
@@ -3743,10 +3976,16 @@ function VisualMatrixSection({
   const activeOriginalFabricName = getFabricAssignmentName(
     activeOriginalFabricAssignment,
   );
+  const activeProtectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+    sourcePhotoPreviewUrls,
+    activeColumn?.current_source_photo?.asset_id,
+    "medium",
+  );
   const activeSourcePhotoPreviewUrl =
     selectedSourcePhotoPreviewUrl ??
-    activeColumn?.current_source_photo?.preview_url ??
-    null;
+    (activeColumn?.current_source_photo?.asset_id
+      ? activeProtectedSourcePhotoPreviewUrl
+      : (activeColumn?.current_source_photo?.preview_url ?? null));
 
   // RU: Это значение решает, где показывать сообщение: в окне или над списком.
   // FR: Cette valeur decide ou montrer le message: dans la fenetre ou au-dessus de la liste.
@@ -3790,12 +4029,20 @@ function VisualMatrixSection({
       {columns.length > 0 ? (
         <div className="admin-visual-matrix-list">
           {columns.map((column) => {
+            // RU: Эти данные выбирают ткань и маленькое фото для строки колонки.
+            // FR: Ces donnees choisissent le tissu et la petite photo pour la ligne de colonne.
             const originalFabricAssignment =
               getOriginalFabricAssignment(column);
             const originalFabric = originalFabricAssignment?.fabric ?? null;
             const originalFabricName = getOriginalFabricName(column);
-            const sourcePhotoPreviewUrl =
-              column.current_source_photo?.preview_url ?? null;
+            const protectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+              sourcePhotoPreviewUrls,
+              column.current_source_photo?.asset_id,
+              "small",
+            );
+            const sourcePhotoPreviewUrl = column.current_source_photo?.asset_id
+              ? protectedSourcePhotoPreviewUrl
+              : (column.current_source_photo?.preview_url ?? null);
 
             return (
               <article className="admin-visual-matrix-row" key={column.id}>
@@ -4303,11 +4550,41 @@ function isTerminalFabricRenderJobStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
+function storageAssetPreviewKey(
+  assetId: string,
+  variant: AdminStorageAssetPreviewVariant,
+) {
+  return `${assetId}:${variant}`;
+}
+
 function assetPreviewUrlFor(
   urls: Record<string, string>,
   assetId: string | null | undefined,
+  variant: AdminStorageAssetPreviewVariant = "original",
 ) {
-  return assetId ? (urls[assetId] ?? null) : null;
+  return assetId
+    ? (urls[storageAssetPreviewKey(assetId, variant)] ?? null)
+    : null;
+}
+
+function dedupeStorageAssetPreviewRequests(
+  requests: AdminStorageAssetPreviewRequest[],
+) {
+  return [...new Map(requests.map((request) => [request.key, request])).values()]
+    .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function createStorageAssetPreviewRequest(
+  assetId: string | null | undefined,
+  variant: AdminStorageAssetPreviewVariant,
+): AdminStorageAssetPreviewRequest | null {
+  return assetId
+    ? {
+        assetId,
+        key: storageAssetPreviewKey(assetId, variant),
+        variant,
+      }
+    : null;
 }
 
 function RenderCoverageSection({
@@ -4370,7 +4647,8 @@ function RenderCoverageSection({
   const [renderExport, setRenderExport] =
     useState<AdminSofaRenderExport | null>(null);
   // RU: Эти адреса показывают закрытые картинки без временных ссылок Supabase.
-  // FR: Ces adresses montrent les images privees sans liens temporaires Supabase.
+  // FR: Ces adresses montrent les images privees a la bonne taille sans liens temporaires Supabase.
+  // RU: Здесь ключ хранит номер картинки вместе с размером: small, medium или original.
   const [assetPreviewUrls, setAssetPreviewUrls] = useState<
     Record<string, string>
   >({});
@@ -4379,7 +4657,8 @@ function RenderCoverageSection({
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
   const isAliveRef = useRef(true);
   // RU: Этот список помогает закрывать старые адреса, когда картинка больше не нужна.
-  // FR: Cette liste aide a fermer les anciennes adresses quand l'image n'est plus utile.
+  // FR: Cette liste aide a fermer les anciennes adresses pour l'image et sa taille.
+  // RU: Здесь старые адреса закрываются отдельно для каждой картинки и каждого размера.
   const assetPreviewUrlsRef = useRef<Record<string, string>>({});
   // Return keyboard focus to the cell that opened the sheet after close.
   const renderCellOpenerRef = useRef<HTMLButtonElement | null>(null);
@@ -4482,45 +4761,108 @@ function RenderCoverageSection({
   const renderCells = coverage?.render_cells ?? [];
   // RU: Эти номера говорят, какие закрытые картинки нужны открытому экрану.
   // FR: Ces numeros disent quelles images privees sont utiles a l'ecran ouvert.
-  const previewAssetIds = useMemo(() => {
-    const assetIds = new Set<string>();
+  // RU: Эти записи говорят, какие закрытые картинки и размеры нужны открытому экрану.
+  // FR: Ces lignes disent quelles images privees et quelles tailles sont utiles a l'ecran ouvert.
+  const previewAssetRequests = useMemo(() => {
+    const requests: AdminStorageAssetPreviewRequest[] = [];
 
     for (const cell of renderCells) {
-      if (cell.current_private_asset_id) {
-        assetIds.add(cell.current_private_asset_id);
+      const request = createStorageAssetPreviewRequest(
+        cell.current_private_asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
       }
     }
 
-    for (const column of visualMatrixColumns) {
-      const sourceAssetId = column.current_source_photo?.asset_id;
+    const selectedPreviewCell =
+      selectedCellId === "__generate_all__"
+        ? null
+        : (renderCells.find((cell) => cell.id === selectedCellId) ?? null);
+    const selectedPreviewColumn = selectedPreviewCell
+      ? (visualMatrixColumns.find(
+          (column) =>
+            column.id === selectedPreviewCell.visual_matrix_column_id,
+        ) ?? null)
+      : null;
+    const selectedCellRequest = createStorageAssetPreviewRequest(
+      selectedPreviewCell?.current_private_asset_id,
+      "medium",
+    );
 
-      if (sourceAssetId) {
-        assetIds.add(sourceAssetId);
-      }
+    if (selectedCellRequest) {
+      requests.push(selectedCellRequest);
     }
 
     for (const candidate of reviewCandidates) {
-      if (candidate.asset_id) {
-        assetIds.add(candidate.asset_id);
+      const request = createStorageAssetPreviewRequest(
+        candidate.asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
       }
     }
 
-    return [...assetIds].sort();
-  }, [renderCells, reviewCandidates, visualMatrixColumns]);
+    const compareCandidateAssetId =
+      compareCandidateId === null
+        ? null
+        : (reviewCandidates.find(
+            (candidate) => candidate.id === compareCandidateId,
+          )?.asset_id ?? null);
+    const compareCandidateRequest = createStorageAssetPreviewRequest(
+      compareCandidateAssetId,
+      "medium",
+    );
+    const compareSourceRequest = createStorageAssetPreviewRequest(
+      compareCandidateId === null
+        ? null
+        : selectedPreviewColumn?.current_source_photo?.asset_id,
+      "medium",
+    );
+    const largeImageRequest = createStorageAssetPreviewRequest(
+      largeImagePreview?.assetId,
+      "original",
+    );
+
+    for (const request of [
+      compareCandidateRequest,
+      compareSourceRequest,
+      largeImageRequest,
+    ]) {
+      if (request) {
+        requests.push(request);
+      }
+    }
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [
+    compareCandidateId,
+    largeImagePreview?.assetId,
+    renderCells,
+    reviewCandidates,
+    selectedCellId,
+    visualMatrixColumns,
+  ]);
 
   // RU: Этот автоматический блок загружает закрытые картинки через защищенный путь.
   // FR: Ce bloc automatique charge les images privees par le chemin protege.
   useEffect(() => {
     let isCurrent = true;
-    const neededAssetIds = new Set(previewAssetIds);
+    const neededPreviewKeys = new Set(
+      previewAssetRequests.map((request) => request.key),
+    );
     const currentUrls = assetPreviewUrlsRef.current;
     const nextUrls = { ...currentUrls };
     let hasChanged = false;
 
-    for (const [assetId, url] of Object.entries(currentUrls)) {
-      if (!neededAssetIds.has(assetId)) {
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
         dependencies.revokeStorageAssetPreviewUrl(url);
-        delete nextUrls[assetId];
+        delete nextUrls[previewKey];
         hasChanged = true;
       }
     }
@@ -4530,13 +4872,17 @@ function RenderCoverageSection({
       setAssetPreviewUrls(nextUrls);
     }
 
-    for (const assetId of previewAssetIds) {
-      if (nextUrls[assetId]) {
+    for (const request of previewAssetRequests) {
+      if (nextUrls[request.key]) {
         continue;
       }
 
       void dependencies
-        .createStorageAssetPreviewUrl(accessToken, assetId)
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
         .then((url) => {
           if (!isCurrent) {
             dependencies.revokeStorageAssetPreviewUrl(url);
@@ -4545,7 +4891,7 @@ function RenderCoverageSection({
 
           assetPreviewUrlsRef.current = {
             ...assetPreviewUrlsRef.current,
-            [assetId]: url,
+            [request.key]: url,
           };
           setAssetPreviewUrls(assetPreviewUrlsRef.current);
         })
@@ -4555,7 +4901,7 @@ function RenderCoverageSection({
     return () => {
       isCurrent = false;
     };
-  }, [accessToken, dependencies, previewAssetIds]);
+  }, [accessToken, dependencies, previewAssetRequests]);
 
   // RU: Этот автоматический блок закрывает локальные адреса при уходе со страницы.
   // FR: Ce bloc automatique ferme les adresses locales au depart de la page.
@@ -4615,12 +4961,14 @@ function RenderCoverageSection({
   const selectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     selectedColumn?.current_source_photo?.asset_id,
+    "medium",
   );
   // RU: Этот адрес показывает текущую картинку выбранной ячейки.
   // FR: Cette adresse montre l'image actuelle de la case choisie.
   const selectedCellPreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     selectedCell?.current_private_asset_id,
+    "medium",
   );
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
@@ -4655,7 +5003,9 @@ function RenderCoverageSection({
     ? reviewCandidates.filter(
         (candidate) =>
           candidate.render_cell_id === selectedCell.id &&
-          Boolean(assetPreviewUrlFor(assetPreviewUrls, candidate.asset_id)),
+          Boolean(
+            assetPreviewUrlFor(assetPreviewUrls, candidate.asset_id, "small"),
+          ),
       )
     : [];
   const compareCandidate =
@@ -4664,10 +5014,33 @@ function RenderCoverageSection({
       : (comparableCandidates.find(
           (candidate) => candidate.id === compareCandidateId,
         ) ?? null);
+  // RU: Этот адрес показывает выбранный вариант в списке, пока большой размер еще грузится.
+  // FR: Cette adresse montre l'option choisie dans la liste pendant que la taille plus grande charge.
+  const compareCandidateSmallPreviewUrl = assetPreviewUrlFor(
+    assetPreviewUrls,
+    compareCandidate?.asset_id,
+    "small",
+  );
+  // RU: Этот адрес показывает выбранный вариант в сравнении, лучше в среднем размере, иначе маленьким.
+  // FR: Cette adresse montre l'option choisie dans la comparaison, en taille moyenne si possible, sinon petite.
   const compareCandidatePreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     compareCandidate?.asset_id,
+    "medium",
   );
+  // RU: Этот адрес нужен, чтобы окно сравнения не было пустым во время загрузки среднего размера.
+  // FR: Cette adresse evite une fenetre vide pendant le chargement de la taille moyenne.
+  const compareCandidateDisplayPreviewUrl =
+    compareCandidatePreviewUrl ?? compareCandidateSmallPreviewUrl;
+  // RU: Этот адрес показывает большую картинку в исходном размере, когда она уже загружена.
+  // FR: Cette adresse montre la grande image en taille originale quand elle est chargee.
+  const largeImagePreviewSrc = largeImagePreview?.assetId
+    ? (assetPreviewUrlFor(
+        assetPreviewUrls,
+        largeImagePreview.assetId,
+        "original",
+      ) ?? largeImagePreview.src)
+    : (largeImagePreview?.src ?? null);
   async function handleGenerateAll() {
     if (!coverage) {
       return;
@@ -4823,10 +5196,10 @@ function RenderCoverageSection({
     }
   }
 
-  // RU: Это действие открывает сравнение исходного фото и варианта после клика по фото.
-  // FR: Cette action ouvre la comparaison entre la photo source et l'option apres un clic sur l'image.
+  // RU: Это действие открывает сравнение, а нужные размеры картинок могут догрузиться сразу после клика.
+  // FR: Cette action ouvre la comparaison, et les bonnes tailles peuvent charger juste apres le clic.
   function handleCompareCandidate(candidate: AdminCatalogRenderCandidate) {
-    if (!selectedSourcePhotoPreviewUrl) {
+    if (!selectedColumn?.current_source_photo?.asset_id) {
       return;
     }
 
@@ -5035,7 +5408,7 @@ function RenderCoverageSection({
 
     if (
       status === "ready" &&
-      assetPreviewUrlFor(assetPreviewUrls, cell.current_private_asset_id)
+      assetPreviewUrlFor(assetPreviewUrls, cell.current_private_asset_id, "medium")
     ) {
       handleOpenCurrentRenderPreview();
       return;
@@ -5254,6 +5627,7 @@ function RenderCoverageSection({
                                 previewUrl={assetPreviewUrlFor(
                                   assetPreviewUrls,
                                   cell.current_private_asset_id,
+                                  "small",
                                 )}
                                 status={status}
                               />
@@ -5313,6 +5687,7 @@ function RenderCoverageSection({
                             previewUrl={assetPreviewUrlFor(
                               assetPreviewUrls,
                               cell.current_private_asset_id,
+                              "small",
                             )}
                             status={status}
                           />
@@ -5380,6 +5755,9 @@ function RenderCoverageSection({
                           onClick={() =>
                             handleOpenLargeImagePreview({
                               alt: "Current render preview",
+                              assetId:
+                                selectedCell.current_private_asset_id ??
+                                undefined,
                               src: selectedCellPreviewUrl,
                               title: "Current render",
                             })
@@ -5527,6 +5905,10 @@ function RenderCoverageSection({
                           const candidatePreviewUrl = assetPreviewUrlFor(
                             assetPreviewUrls,
                             candidate.asset_id,
+                            "small",
+                          );
+                          const canCompareCandidate = Boolean(
+                            selectedColumn?.current_source_photo?.asset_id,
                           );
 
                           return (
@@ -5537,7 +5919,7 @@ function RenderCoverageSection({
                             >
                               <div className="admin-candidate-media">
                                 {candidatePreviewUrl ? (
-                                  selectedSourcePhotoPreviewUrl ? (
+                                  canCompareCandidate ? (
                                     <button
                                       aria-label={`Open candidate preview ${candidate.id} in comparison`}
                                       className="admin-image-preview-button admin-candidate-compare-button"
@@ -5747,7 +6129,7 @@ function RenderCoverageSection({
               </aside>
               {/* RU: Это окно показывает выбранную картинку крупно по центру. */}
               {/* FR: Cette fenetre montre l'image choisie en grand au centre. */}
-              {largeImagePreview ? (
+              {largeImagePreview && largeImagePreviewSrc ? (
                 <section
                   aria-label={`Large image: ${largeImagePreview.title}`}
                   className="admin-alert-dialog admin-image-lightbox-dialog"
@@ -5772,7 +6154,7 @@ function RenderCoverageSection({
                     <img
                       alt={largeImagePreview.alt}
                       className="admin-image-lightbox-image"
-                      src={largeImagePreview.src}
+                      src={largeImagePreviewSrc}
                     />
                   </figure>
                 </section>
@@ -5810,6 +6192,8 @@ function RenderCoverageSection({
                       onClick={() =>
                         handleOpenLargeImagePreview({
                           alt: "Current render preview",
+                          assetId:
+                            selectedCell.current_private_asset_id ?? undefined,
                           src: selectedCellPreviewUrl,
                           title: "Current render",
                         })
@@ -5841,9 +6225,7 @@ function RenderCoverageSection({
                   ) : null}
                 </section>
               ) : null}
-              {compareCandidate &&
-              selectedSourcePhotoPreviewUrl &&
-              compareCandidatePreviewUrl ? (
+              {compareCandidate ? (
                 <section
                   aria-label={`Compare render candidate ${compareCandidate.id}`}
                   className="admin-alert-dialog admin-render-compare-dialog"
@@ -5869,45 +6251,65 @@ function RenderCoverageSection({
                   <div className="admin-render-compare-grid">
                     <figure className="admin-render-compare-frame">
                       <figcaption>Source photo</figcaption>
-                      <button
-                        aria-label="Open source photo preview larger"
-                        className="admin-image-preview-button"
-                        onClick={() =>
-                          handleOpenLargeImagePreview({
-                            alt: "Source photo preview",
-                            src: selectedSourcePhotoPreviewUrl,
-                            title: "Source photo",
-                          })
-                        }
-                        type="button"
-                      >
-                        <img
-                          alt="Source photo preview"
-                          className="admin-preview-image"
-                          src={selectedSourcePhotoPreviewUrl}
-                        />
-                      </button>
+                      {selectedSourcePhotoPreviewUrl ? (
+                        <button
+                          aria-label="Open source photo preview larger"
+                          className="admin-image-preview-button"
+                          onClick={() =>
+                            handleOpenLargeImagePreview({
+                              alt: "Source photo preview",
+                              assetId:
+                                selectedColumn?.current_source_photo
+                                  ?.asset_id ?? undefined,
+                              src: selectedSourcePhotoPreviewUrl,
+                              title: "Source photo",
+                            })
+                          }
+                          type="button"
+                        >
+                          <img
+                            alt="Source photo preview"
+                            className="admin-preview-image"
+                            src={selectedSourcePhotoPreviewUrl}
+                          />
+                        </button>
+                      ) : (
+                        <span className="admin-preview-image admin-preview-image-empty">
+                          {selectedColumn?.current_source_photo?.asset_id
+                            ? "Preview loading"
+                            : "No preview"}
+                        </span>
+                      )}
                     </figure>
                     <figure className="admin-render-compare-frame">
                       <figcaption>Candidate</figcaption>
-                      <button
-                        aria-label={`Open candidate preview ${compareCandidate.id} larger`}
-                        className="admin-image-preview-button"
-                        onClick={() =>
-                          handleOpenLargeImagePreview({
-                            alt: `Candidate preview ${compareCandidate.id}`,
-                            src: compareCandidatePreviewUrl,
-                            title: "Candidate",
-                          })
-                        }
-                        type="button"
-                      >
-                        <img
-                          alt={`Candidate preview ${compareCandidate.id}`}
-                          className="admin-preview-image"
-                          src={compareCandidatePreviewUrl}
-                        />
-                      </button>
+                      {compareCandidateDisplayPreviewUrl ? (
+                        <button
+                          aria-label={`Open candidate preview ${compareCandidate.id} larger`}
+                          className="admin-image-preview-button"
+                          onClick={() =>
+                            handleOpenLargeImagePreview({
+                              alt: `Candidate preview ${compareCandidate.id}`,
+                              assetId: compareCandidate.asset_id ?? undefined,
+                              src: compareCandidateDisplayPreviewUrl,
+                              title: "Candidate",
+                            })
+                          }
+                          type="button"
+                        >
+                          <img
+                            alt={`Candidate preview ${compareCandidate.id}`}
+                            className="admin-preview-image"
+                            src={compareCandidateDisplayPreviewUrl}
+                          />
+                        </button>
+                      ) : (
+                        <span className="admin-preview-image admin-preview-image-empty">
+                          {compareCandidate.asset_id
+                            ? "Preview loading"
+                            : "No preview"}
+                        </span>
+                      )}
                     </figure>
                   </div>
                   <footer className="admin-render-cell-sheet-footer">

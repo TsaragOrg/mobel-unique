@@ -1,5 +1,14 @@
 "use client";
 
+/*
+RU: Этот файл нужен для публичной страницы каталога диванов.
+RU: На экране посетитель видит карточки диванов, фильтры, ткани, картинки и ссылку на выбранный диван.
+RU: Здесь можно фильтровать каталог, менять ткань в карточке, догружать список и открыть страницу дивана.
+FR: Ce fichier sert a la page publique du catalogue de canapes.
+FR: A l'ecran, le visiteur voit les cartes de canapes, les filtres, les tissus, les images et le lien vers le canape choisi.
+FR: Ici, on peut filtrer le catalogue, changer le tissu dans une carte, charger la suite et ouvrir la page du canape.
+*/
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PublicShell } from "../PublicShell";
 import type {
@@ -8,6 +17,8 @@ import type {
   PublicTagResponse,
 } from "../../lib/public-catalog";
 
+// RU: Эти значения задают размер списка, ключ памяти и безопасный вид меток.
+// FR: Ces valeurs fixent la taille de la liste, la cle de memoire et la forme sure des etiquettes.
 const CATALOG_LIMIT = 12;
 const CATALOG_SELECTION_PREFIX = "mobel-unique:catalog-selection:";
 const VISIBLE_FABRIC_LIMIT = 4;
@@ -25,6 +36,8 @@ interface ApiEnvelope<T> {
 }
 
 export function PublicCatalogPage() {
+  // RU: Эти значения держат метки, выбранные фильтры, список диванов, страницу продолжения и сообщения загрузки.
+  // FR: Ces valeurs gardent les etiquettes, les filtres choisis, la liste des canapes, la suite et les messages de chargement.
   const [tagOptions, setTagOptions] = useState<PublicTagResponse[]>([]);
   const [tagsLoaded, setTagsLoaded] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -34,6 +47,8 @@ export function PublicCatalogPage() {
   const [loadMoreStatus, setLoadMoreStatus] = useState<CatalogStatus>("idle");
   const [loadMoreError, setLoadMoreError] = useState(false);
 
+  // RU: Это действие загружает первую страницу каталога и применяет фильтры из адреса.
+  // FR: Cette action charge la premiere page du catalogue et applique les filtres de l'adresse.
   const loadFirstPage = useCallback(
     async (inputTags: string[], options: { replaceHistory?: boolean } = {}) => {
       const uniqueInputTags = uniqueSafeTags(inputTags);
@@ -70,6 +85,8 @@ export function PublicCatalogPage() {
     [],
   );
 
+  // RU: Этот автоматический блок загружает каталог при открытии страницы и при движении по истории браузера.
+  // FR: Ce bloc automatique charge le catalogue a l'ouverture et quand l'historique du navigateur change.
   useEffect(() => {
     void loadFirstPage(readTagsFromLocation(), { replaceHistory: true });
 
@@ -82,11 +99,15 @@ export function PublicCatalogPage() {
     return () => window.removeEventListener("popstate", onPopState);
   }, [loadFirstPage]);
 
+  // RU: Эти данные решают, какие части каталога надо показать сейчас.
+  // FR: Ces donnees decident quelles parties du catalogue afficher maintenant.
   const hasSelectedFilters = selectedTags.length > 0;
   const showFilters = tagsLoaded && tagOptions.length > 0;
   const isEmpty = status === "ready" && items.length === 0 && !hasSelectedFilters;
   const isNoResults = status === "ready" && items.length === 0 && hasSelectedFilters;
 
+  // RU: Это действие применяет выбранные метки и обновляет адрес страницы.
+  // FR: Cette action applique les etiquettes choisies et met a jour l'adresse.
   function applyTags(tags: string[]) {
     const nextTags = uniqueSafeTags(tags).filter((tag) =>
       tagOptions.some((option) => option.slug === tag),
@@ -96,6 +117,8 @@ export function PublicCatalogPage() {
     void loadFirstPage(nextTags);
   }
 
+  // RU: Это действие включает или убирает одну метку фильтра.
+  // FR: Cette action ajoute ou retire une etiquette de filtre.
   function toggleTag(tag: string) {
     applyTags(
       selectedTags.includes(tag)
@@ -104,10 +127,14 @@ export function PublicCatalogPage() {
     );
   }
 
+  // RU: Это действие очищает все фильтры каталога.
+  // FR: Cette action efface tous les filtres du catalogue.
   function clearFilters() {
     applyTags([]);
   }
 
+  // RU: Это действие загружает следующую страницу диванов.
+  // FR: Cette action charge la page suivante de canapes.
   async function loadMore() {
     if (!nextCursor || loadMoreStatus === "loading") {
       return;
@@ -230,11 +257,15 @@ export function PublicCatalogPage() {
 }
 
 function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
+  // RU: Эти значения держат загрузку тканей, выбранную ткань и ошибку картинки в карточке.
+  // FR: Ces valeurs gardent le chargement des tissus, le tissu choisi et l'erreur d'image dans la carte.
   const [detailStatus, setDetailStatus] = useState<DetailStatus>("idle");
   const [detail, setDetail] = useState<PublicSofaDetailResponse | null>(null);
   const [selectedFabricId, setSelectedFabricId] = useState(item.default_fabric_id);
   const [imageFailed, setImageFailed] = useState(false);
 
+  // RU: Этот автоматический блок загружает ткани и картинки для смены ткани в карточке.
+  // FR: Ce bloc automatique charge les tissus et les images pour changer le tissu dans la carte.
   useEffect(() => {
     let isCurrent = true;
 
@@ -273,6 +304,8 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
     };
   }, [item.default_fabric_id, item.public_slug]);
 
+  // RU: Этот адрес показывает среднюю картинку выбранной ткани в карточке каталога.
+  // FR: Cette adresse montre l'image moyenne du tissu choisi dans la carte du catalogue.
   const activeRenderUrl = useMemo(() => {
     const render = detail?.renders.find(
       (candidate) =>
@@ -280,24 +313,36 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
         candidate.visual_position_id === item.default_visual_position_id,
     );
 
-    return render?.render_url ?? item.default_render_url;
+    return (
+      render?.render_medium_url ??
+      item.default_render_medium_url ??
+      render?.render_url ??
+      item.default_render_url
+    );
   }, [
     detail?.renders,
+    item.default_render_medium_url,
     item.default_render_url,
     item.default_visual_position_id,
     selectedFabricId,
   ]);
 
+  // RU: Эти данные показывают первые ткани и число скрытых тканей в карточке.
+  // FR: Ces donnees montrent les premiers tissus et le nombre de tissus caches dans la carte.
   const visibleFabrics = detail?.fabrics.slice(0, VISIBLE_FABRIC_LIMIT) ?? [];
   const hiddenFabricCount = detail
     ? Math.max(0, detail.fabrics.length - VISIBLE_FABRIC_LIMIT)
     : 0;
 
+  // RU: Это действие выбирает ткань в карточке и снова пробует показать картинку.
+  // FR: Cette action choisit un tissu dans la carte et essaie a nouveau d'afficher l'image.
   function selectFabric(fabricId: string) {
     setSelectedFabricId(fabricId);
     setImageFailed(false);
   }
 
+  // RU: Это действие запоминает выбранную ткань перед переходом к странице дивана.
+  // FR: Cette action garde le tissu choisi avant d'aller vers la page du canape.
   function rememberSelection() {
     if (selectedFabricId !== item.default_fabric_id) {
       writeSessionJson(`${CATALOG_SELECTION_PREFIX}${item.public_slug}`, {

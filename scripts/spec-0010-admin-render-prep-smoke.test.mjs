@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 const scriptPath = fileURLToPath(
   new URL("./spec-0010-admin-render-prep-smoke.mjs", import.meta.url),
 );
+const scriptSource = readFileSync(scriptPath, "utf8");
 
 function runSmoke(env, nodeArgs = []) {
   return new Promise((resolve) => {
@@ -89,6 +90,15 @@ globalThis.fetch = async (url, init = {}) => {
 
   if (requestUrl.startsWith("https://storage.example/")) {
     return json({ Key: "uploaded.png" });
+  }
+
+  if (requestUrl.includes("/api/admin/storage-assets/") && requestUrl.includes("/preview?variant=")) {
+    return new Response(new Uint8Array([1, 2, 3]), {
+      headers: {
+        "Content-Type": "image/png"
+      },
+      status: 200
+    });
   }
 
   if (requestUrl.endsWith("/api/admin/uploads") && method === "POST") {
@@ -324,6 +334,12 @@ function json(body, init = {}) {
 }
 
 describe("SPEC-0010 admin render prep smoke script", () => {
+  it("checks small, medium, and original protected preview variants", () => {
+    expect(scriptSource).toContain("variant=small");
+    expect(scriptSource).toContain("variant=medium");
+    expect(scriptSource).toContain("variant=original");
+  });
+
   it("skips when no local anon key is configured", async () => {
     const result = await runSmoke({
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "",

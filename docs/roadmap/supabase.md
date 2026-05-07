@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                       |
 | ------ | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Active | SPEC-0009 | PLAN-0067 | Catalog image variant delivery adds `storage_asset_variants`, active-original and active-variant public read filtering, lifecycle cleanup helpers, worker success variant metadata, public medium/original render fields, and DEV snapshot/backfill compatibility. |
 | Done   | SPEC-0013 | PLAN-0064 | Service-role-only admin unarchive RPC restores archived sofas to draft while leaving them unpublished. |
 | Done   | SPEC-0013 | PLAN-0063 | Service-role-only admin archive RPC moves a sofa to archived, clears publication state, and removes public render asset references atomically. |
 | Done   | SPEC-0001 | PLAN-0001 | Migration directory prepared.                                                                                              |

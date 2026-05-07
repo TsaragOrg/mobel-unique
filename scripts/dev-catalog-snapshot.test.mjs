@@ -23,6 +23,7 @@ describe("DEV catalog snapshot export", () => {
 
     expect(tableNames).toEqual([
       "storage_assets",
+      "storage_asset_variants",
       "public_tags",
       "fabrics",
       "sofas",
@@ -49,6 +50,70 @@ describe("DEV catalog snapshot export", () => {
         "sofa_source_photo",
       ]),
     );
+  });
+
+  it("exports variant rows after storage assets and deletes them before originals", () => {
+    const rowsByTable = new Map(
+      CATALOG_TABLES.map((table) => [table.name, []]),
+    );
+    rowsByTable.set("storage_assets", [
+      {
+        asset_kind: "published_sofa_render",
+        bucket_id: "catalog-public-assets",
+        byte_size: 100,
+        checksum_sha256: null,
+        content_type: "image/png",
+        created_at: "2026-05-04T00:00:00.000Z",
+        deleted_at: null,
+        height_px: 1200,
+        id: "00000000-0000-4000-8000-000000000101",
+        lifecycle_state: "active",
+        object_path: "catalog/original.png",
+        purged_at: null,
+        visibility: "public",
+        width_px: 1600,
+      },
+      {
+        asset_kind: "published_sofa_render_variant",
+        bucket_id: "catalog-public-assets",
+        byte_size: 80,
+        checksum_sha256: null,
+        content_type: "image/jpeg",
+        created_at: "2026-05-04T00:00:00.000Z",
+        deleted_at: null,
+        height_px: 960,
+        id: "00000000-0000-4000-8000-000000000102",
+        lifecycle_state: "active",
+        object_path: "variants/original/medium/variant.jpg",
+        purged_at: null,
+        visibility: "public",
+        width_px: 1280,
+      },
+    ]);
+    rowsByTable.set("storage_asset_variants", [
+      {
+        created_at: "2026-05-04T00:00:00.000Z",
+        generation_kind: "stored",
+        original_asset_id: "00000000-0000-4000-8000-000000000101",
+        updated_at: "2026-05-04T00:00:00.000Z",
+        variant_asset_id: "00000000-0000-4000-8000-000000000102",
+        variant_kind: "medium",
+      },
+    ]);
+
+    const sql = generateSnapshotSql(
+      rowsByTable,
+      new Date("2026-05-04T00:00:00.000Z"),
+    );
+
+    expect(sql).toContain("delete from public.storage_asset_variants;");
+    expect(sql.indexOf("delete from public.storage_asset_variants")).toBeLessThan(
+      sql.indexOf("delete from public.storage_assets"),
+    );
+    expect(sql.indexOf("insert into public.storage_assets")).toBeLessThan(
+      sql.indexOf("insert into public.storage_asset_variants"),
+    );
+    expect(sql).toContain("variant_kind, variant_asset_id, generation_kind");
   });
 
   it("generates SQL that defers cyclic catalog links until referenced rows exist", () => {
@@ -134,6 +199,42 @@ describe("DEV catalog snapshot validation", () => {
 
     expect(validateSnapshotFile(path).join("\n")).toContain(
       "snapshot path must stay inside the repository",
+    );
+  });
+
+  it("rejects variant rows that do not point at inserted storage assets", () => {
+    const errors = validateSnapshotText(
+      `
+      -- Mobel Unique DEV catalog snapshot
+      begin;
+      insert into public.storage_asset_variants (original_asset_id, variant_kind, variant_asset_id, generation_kind, created_at, updated_at) values
+        ('00000000-0000-4000-8000-000000000101', 'small', '00000000-0000-4000-8000-000000000102', 'stored', null, null);
+      commit;
+      `,
+      "supabase/catalog-snapshots/dev/catalog-data.sql",
+    );
+
+    expect(errors.join("\n")).toContain(
+      "storage_asset_variants references storage asset ids missing from the snapshot",
+    );
+  });
+
+  it("rejects variant rows that point an original asset at itself", () => {
+    const errors = validateSnapshotText(
+      `
+      -- Mobel Unique DEV catalog snapshot
+      begin;
+      insert into public.storage_assets (id) values
+        ('00000000-0000-4000-8000-000000000101');
+      insert into public.storage_asset_variants (original_asset_id, variant_kind, variant_asset_id, generation_kind, created_at, updated_at) values
+        ('00000000-0000-4000-8000-000000000101', 'small', '00000000-0000-4000-8000-000000000101', 'stored', null, null);
+      commit;
+      `,
+      "supabase/catalog-snapshots/dev/catalog-data.sql",
+    );
+
+    expect(errors.join("\n")).toContain(
+      "storage_asset_variants must not point an original asset at itself",
     );
   });
 });

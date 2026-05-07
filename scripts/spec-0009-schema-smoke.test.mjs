@@ -80,6 +80,18 @@ function runSmoke(env) {
 }
 
 describe("SPEC-0009 schema smoke script", () => {
+  it("checks the catalog image variant table and public medium render safety rules", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).toContain('"storage_asset_variants"');
+    expect(source).toContain('"storage_asset_variants_variant_asset_id_unique_idx"');
+    expect(source).toContain("missing storage asset variant uniqueness rule");
+    expect(source).toContain("render_medium_content_type");
+    expect(source).toContain("medium_variant.variant_kind = 'medium'");
+    expect(source).toContain("original_asset.lifecycle_state = 'active'");
+    expect(source).toContain("medium_asset.lifecycle_state = 'active'");
+  });
+
   it(
     "passes when psql returns no schema failures",
     async () => {

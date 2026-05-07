@@ -225,6 +225,37 @@ describe("fabric render worker Edge Function", () => {
     );
   });
 
+  it("uploads private candidate variants before marking the worker job succeeded", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const variantGenerationIndex = source.indexOf(
+      "generateFabricRenderCandidateImageVariants",
+    );
+    const outputUploadIndex = source.indexOf("objectPath: outputPath");
+    const succeedIndex = source.indexOf("fabric_render_worker_succeed");
+
+    expect(source).toContain("./image-variants.ts");
+    expect(variantGenerationIndex).toBeGreaterThan(-1);
+    expect(outputUploadIndex).toBeGreaterThan(-1);
+    expect(succeedIndex).toBeGreaterThan(outputUploadIndex);
+    expect(source).toContain("p_output_variants");
+    expect(source).toContain("variant_asset_id");
+    expect(source).toContain("variant_kind");
+    expect(source).toContain("variant.bytes");
+    expect(source).toContain("variant.object_path");
+  });
+
+  it("removes already uploaded private originals and variants when completion fails", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const uploadedPathsIndex = source.indexOf("uploadedOutputObjectPaths");
+    const cleanupIndex = source.indexOf("removeUploadedFabricRenderOutputObjects");
+    const failRpcIndex = source.indexOf("fabric_render_worker_fail");
+
+    expect(source).toContain("removeStorageObjects");
+    expect(uploadedPathsIndex).toBeGreaterThan(-1);
+    expect(cleanupIndex).toBeGreaterThan(uploadedPathsIndex);
+    expect(failRpcIndex).toBeGreaterThan(cleanupIndex);
+  });
+
   it("does not accept generated candidates or publish public assets from the worker", async () => {
     const source = await readFile(functionPath, "utf8");
 

@@ -77,7 +77,11 @@ globalThis.fetch = async (url) => {
         items: emptyCatalog ? [] : [
           {
             default_fabric_id: "00000000-0000-4000-8000-000000000501",
-            default_render_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front.png",
+            default_render_medium_content_type: "image/jpeg",
+            default_render_medium_height_px: 960,
+            default_render_medium_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front-medium.jpg",
+            default_render_medium_width_px: 1280,
+            default_render_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front-medium.jpg",
             default_visual_position_id: "00000000-0000-4000-8000-000000000601",
             dimensions: {
               depth_cm: 96,
@@ -125,6 +129,10 @@ globalThis.fetch = async (url) => {
           {
             fabric_id: "00000000-0000-4000-8000-000000000501",
             height_px: 1200,
+            render_original_content_type: "image/png",
+            render_original_height_px: 1200,
+            render_original_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front.png",
+            render_original_width_px: 1600,
             render_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front.png",
             visual_position_id: "00000000-0000-4000-8000-000000000601",
             width_px: 1600
@@ -216,6 +224,8 @@ describe("SPEC-0012 public catalog smoke script", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("PASS SPEC-0012 public catalog smoke");
+    expect(result.stdout).toContain("medium catalog render");
+    expect(result.stdout).toContain("original sofa detail render");
     expect(result.stdout).toContain("canape-rivoli");
   });
 });
