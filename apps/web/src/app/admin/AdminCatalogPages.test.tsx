@@ -1124,6 +1124,32 @@ describe("Admin catalog pages", () => {
     expect(screen.queryByText("SOFA_LIST_FAILED")).not.toBeInTheDocument();
   });
 
+  it("shows a newly created tag immediately when the list reload is stale", async () => {
+    // RU: Эти данные имитируют создание тега, когда новый список еще пришел старым.
+    // FR: Ces donnees imitent la creation d'une etiquette quand la nouvelle liste reste ancienne.
+    const dependencies = createDependencies({
+      createTag: vi.fn(async () => ({
+        id: "00000000-0000-4000-8000-000000000811",
+        public_label: "Angle premium",
+        slug: "angle-premium",
+      })),
+      listTags: vi.fn(async () => []),
+    });
+
+    render(<AdminTagsPage dependencies={dependencies} />);
+
+    await screen.findByText("No tags yet.");
+    fireEvent.change(screen.getByLabelText("New tag"), {
+      target: { value: "Angle premium" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create tag" }));
+
+    expect(
+      await screen.findByLabelText("Tag name for Angle premium"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Slug angle-premium")).toBeInTheDocument();
+  });
+
   it("creates, edits, and handles assigned-tag delete conflicts", async () => {
     const dependencies = createDependencies({
       deleteTag: vi.fn(async () => {
