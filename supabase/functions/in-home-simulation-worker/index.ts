@@ -26,12 +26,10 @@ import {
   formatErrorArtifactBody
 } from "./lib/error-artifact.ts";
 import {
-  buildStageTransitionEvent,
   buildSubStepEvent,
   IN_HOME_SIMULATION_JOB_TYPE,
   type WorkerJobEventRow
 } from "./lib/events.ts";
-import { runWithConcurrency } from "./lib/concurrency.ts";
 import {
   classifyDots,
   detectYellowDots,
@@ -52,7 +50,7 @@ declare const EdgeRuntime:
 
 type StageOutcome = "noop" | "claimed" | "completed" | "failed" | "mixed";
 
-type WorkerMode = "legacy_queue" | "pump" | "dispatch" | "checkpoint";
+type WorkerMode = "dispatch" | "checkpoint";
 
 type SimulationCheckpointKey =
   | "room_validation"
@@ -68,8 +66,6 @@ type SimulationCheckpointKey =
   | "expired";
 
 type ParsedWorkerRequest =
-  | { mode: "legacy_queue" }
-  | { mode: "pump" }
   | { mode: "dispatch" }
   | {
       mode: "checkpoint";
@@ -113,14 +109,6 @@ type RoomPrepClaimRow = {
   room_prep_attempt_count: number;
   max_attempts_per_stage: number;
   claim_expires_at: string;
-};
-
-type DequeuedMessage = {
-  msg_id: number;
-  read_ct: number;
-  enqueued_at: string;
-  vt: string;
-  message: { job_id?: string; type?: string; generation_index?: number };
 };
 
 type PlacementClaimRow = {
@@ -172,29 +160,18 @@ type CheckpointDispatchRow = {
   lock_expires_at: string;
 };
 
-type CheckpointPumpStatus = {
-  active_processing?: number;
-  available_slots?: number;
-  max_active_checkpoints?: number;
-  queued?: number;
-  status?: string;
-  worker_paused?: boolean;
-};
-
 type StorageAssetObjectRow = {
   bucket_id: string;
   object_path: string;
 };
 
-type CheckpointCompletion =
-  | { kind: "legacy_queue"; queueName: string }
-  | {
-      kind: "checkpoint";
-      checkpointId: string;
-      nextCheckpointKey: SimulationCheckpointKey;
-      progressStepOrdinal?: number;
-      progressTotalSteps?: number;
-    };
+type CheckpointCompletion = {
+  kind: "checkpoint";
+  checkpointId: string;
+  nextCheckpointKey: SimulationCheckpointKey;
+  progressStepOrdinal?: number;
+  progressTotalSteps?: number;
+};
 
 const FUNCTION_NAME = "in-home-simulation-worker";
 const STORAGE_BUCKET = "simulation-private-artifacts";
@@ -203,8 +180,6 @@ const STORAGE_BUCKET = "simulation-private-artifacts";
 // inside ~3-4 minutes. Was 600s in PLAN-0010, which left jobs
 // stranded for up to 11 minutes when the isolate died mid-fetch.
 const DEFAULT_CLAIM_TTL_SECONDS = 180;
-const DEFAULT_QUEUE_NAME = "local_in_home_simulation_jobs";
-const DEFAULT_BATCH_SIZE = 1;
 const DEFAULT_MAX_ACTIVE_CHECKPOINTS = 1;
 const DEFAULT_DISPATCH_BATCH_SIZE = 10;
 const DEFAULT_DISPATCH_LOCK_TTL_SECONDS = 60;
@@ -274,7 +249,7 @@ async function parseWorkerRequestBody(
   }
 
   if (text.trim().length === 0) {
-    return { mode: "legacy_queue" };
+    return { mode: "dispatch" };
   }
 
   let body: unknown;
@@ -296,11 +271,7 @@ async function parseWorkerRequestBody(
 
   const mode = body.mode;
   if (mode === undefined || mode === null) {
-    return { mode: "legacy_queue" };
-  }
-
-  if (mode === "pump") {
-    return { mode: "pump" };
+    return { mode: "dispatch" };
   }
 
   if (mode === "dispatch") {
@@ -404,95 +375,6 @@ async function callRpc<T>(
   const text = await response.text();
   if (!text) return null as T;
   return JSON.parse(text) as T;
-}
-
-async function dequeueRoomPrepMessages(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  queueName: string,
-  visibilitySeconds: number,
-  batchSize: number
-): Promise<DequeuedMessage[]> {
-  const rows = await callRpc<DequeuedMessage[] | null>(
-    supabaseUrl,
-    serviceRoleKey,
-    "dequeue_in_home_simulation_room_prep_messages",
-    {
-      queue_name: queueName,
-      visibility_seconds: visibilitySeconds,
-      batch_size: batchSize
-    }
-  );
-  return Array.isArray(rows) ? rows : [];
-}
-
-async function deleteRoomPrepMessage(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  queueName: string,
-  msgId: number
-): Promise<void> {
-  await callRpc<boolean>(
-    supabaseUrl,
-    serviceRoleKey,
-    "delete_in_home_simulation_room_prep_message",
-    { queue_name: queueName, msg_id: msgId }
-  );
-}
-
-async function claimSpecificRoomPrepJob(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  jobId: string,
-  workerIdentifier: string,
-  claimTtlSeconds: number
-): Promise<RoomPrepClaimRow | null> {
-  const rows = await callRpc<RoomPrepClaimRow[] | null>(
-    supabaseUrl,
-    serviceRoleKey,
-    "claim_specific_in_home_simulation_room_prep_job",
-    {
-      target_job_id: jobId,
-      worker_identifier: workerIdentifier,
-      claim_ttl_seconds: claimTtlSeconds
-    }
-  );
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  return rows[0];
-}
-
-async function claimSpecificPlacementJob(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  jobId: string,
-  workerIdentifier: string,
-  claimTtlSeconds: number
-): Promise<PlacementClaimRow | null> {
-  const rows = await callRpc<PlacementClaimRow[] | null>(
-    supabaseUrl,
-    serviceRoleKey,
-    "claim_specific_in_home_simulation_placement_job",
-    {
-      target_job_id: jobId,
-      worker_identifier: workerIdentifier,
-      claim_ttl_seconds: claimTtlSeconds
-    }
-  );
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  return rows[0];
-}
-
-async function readCheckpointPumpStatus(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  maxActiveCheckpoints: number
-): Promise<CheckpointPumpStatus> {
-  return await callRpc<CheckpointPumpStatus>(
-    supabaseUrl,
-    serviceRoleKey,
-    "in_home_simulation_checkpoint_pump_status",
-    { p_max_active_checkpoints: maxActiveCheckpoints }
-  );
 }
 
 async function claimCheckpointJob(
@@ -1017,74 +899,6 @@ async function removeScratchDir(jobDir: string): Promise<void> {
   }
 }
 
-type Stage1CheckpointOutcome =
-  | "stage_1_validate_checkpoint_advanced"
-  | "stage_1_cleaning_checkpoint_advanced"
-  | "stage_1_completed";
-
-async function processClaimedJob(
-  supabaseUrl: string,
-  serviceRoleKey: string,
-  workerIdentifier: string,
-  claim: RoomPrepClaimRow,
-  queueName: string
-): Promise<Stage1CheckpointOutcome> {
-  if (!claim.customer_room_original_path) {
-    throw new Error(
-      "customer_room_original_path is null on the claimed job; refusing to process"
-    );
-  }
-
-  // PLAN-0053 + PLAN-0058: Stage 1 is split into THREE checkpoints to
-  // fit each individual cron-tick under the Supabase Edge Functions
-  // 150-second wall-clock. The artifact paths persisted on the job
-  // row are the source of truth for which checkpoint already ran:
-  //   1. validate: decode + normalize + validate (gpt-5 vision) +
-  //      compress, persists `room_normalized_path` and
-  //      `room_compressed_path`.
-  //   2. cleaning: download compressed + cleanRoom (gpt-image-2),
-  //      persists `room_cleaned_path`.
-  //   3. corners: download cleaned + place dots + draw lines + final
-  //      complete-stage RPC.
-  const checkpoint = await fetchInHomeSimulationJobRow(
-    supabaseUrl,
-    serviceRoleKey,
-    claim.job_id
-  );
-
-  if (!checkpoint.room_normalized_path || !checkpoint.room_compressed_path) {
-    await runValidateCheckpoint(
-      supabaseUrl,
-      serviceRoleKey,
-      workerIdentifier,
-      claim,
-      { kind: "legacy_queue", queueName }
-    );
-    return "stage_1_validate_checkpoint_advanced";
-  }
-
-  if (!checkpoint.room_cleaned_path) {
-    await runCleaningCheckpoint(
-      supabaseUrl,
-      serviceRoleKey,
-      workerIdentifier,
-      claim,
-      checkpoint,
-      { kind: "legacy_queue", queueName }
-    );
-    return "stage_1_cleaning_checkpoint_advanced";
-  }
-
-  await runCornersCheckpoint(
-    supabaseUrl,
-    serviceRoleKey,
-    workerIdentifier,
-    claim,
-    checkpoint
-  );
-  return "stage_1_completed";
-}
-
 async function runValidateCheckpoint(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -1324,43 +1138,15 @@ async function runValidateCheckpoint(
       worker_identifier: workerIdentifier
     });
 
-    if (completion.kind === "legacy_queue") {
-      // Hand the job back to the queue so the next cron tick runs the
-      // cleaning checkpoint with a fresh wall-clock budget.
-      await callRpc<void>(
-        supabaseUrl,
-        serviceRoleKey,
-        "release_in_home_simulation_room_prep_claim",
-        {
-          job_id: claim.job_id,
-          worker_identifier: workerIdentifier,
-          error_code: null,
-          error_message: null
-        }
-      );
-      await callRpc<number>(
-        supabaseUrl,
-        serviceRoleKey,
-        "enqueue_in_home_simulation_room_prep_message",
-        {
-          job_id: claim.job_id,
-          queue_name: completion.queueName
-        }
-      );
-    } else {
-      await completeCheckpointClaim(
-        supabaseUrl,
-        serviceRoleKey,
-        workerIdentifier,
-        completion
-      );
-    }
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
     logWorkerStep("room_validation_next_checkpoint_ready", {
       job_id: claim.job_id,
-      next_checkpoint_key:
-        completion.kind === "checkpoint"
-          ? completion.nextCheckpointKey
-          : "legacy_queue",
+      next_checkpoint_key: completion.nextCheckpointKey,
       worker_identifier: workerIdentifier
     });
 
@@ -1558,43 +1344,15 @@ async function runCleaningCheckpoint(
       worker_identifier: workerIdentifier
     });
 
-    if (completion.kind === "legacy_queue") {
-      // Hand the job back to the queue so the next cron tick runs the
-      // corners checkpoint.
-      await callRpc<void>(
-        supabaseUrl,
-        serviceRoleKey,
-        "release_in_home_simulation_room_prep_claim",
-        {
-          job_id: claim.job_id,
-          worker_identifier: workerIdentifier,
-          error_code: null,
-          error_message: null
-        }
-      );
-      await callRpc<number>(
-        supabaseUrl,
-        serviceRoleKey,
-        "enqueue_in_home_simulation_room_prep_message",
-        {
-          job_id: claim.job_id,
-          queue_name: completion.queueName
-        }
-      );
-    } else {
-      await completeCheckpointClaim(
-        supabaseUrl,
-        serviceRoleKey,
-        workerIdentifier,
-        completion
-      );
-    }
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
     logWorkerStep("room_cleaning_next_checkpoint_ready", {
       job_id: claim.job_id,
-      next_checkpoint_key:
-        completion.kind === "checkpoint"
-          ? completion.nextCheckpointKey
-          : "legacy_queue",
+      next_checkpoint_key: completion.nextCheckpointKey,
       worker_identifier: workerIdentifier
     });
 
@@ -1621,7 +1379,7 @@ async function runCornersCheckpoint(
   workerIdentifier: string,
   claim: RoomPrepClaimRow,
   checkpoint: InHomeSimulationJobCheckpointRow,
-  completion?: Extract<CheckpointCompletion, { kind: "checkpoint" }>
+  completion: CheckpointCompletion
 ): Promise<void> {
   if (!checkpoint.room_cleaned_path) {
     throw new Error(
@@ -1859,17 +1617,15 @@ async function runCornersCheckpoint(
       worker_identifier: workerIdentifier
     });
 
-    if (completion) {
-      await completeCheckpointClaim(
-        supabaseUrl,
-        serviceRoleKey,
-        workerIdentifier,
-        completion
-      );
-    }
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
     logWorkerStep("room_corners_next_checkpoint_ready", {
       job_id: claim.job_id,
-      next_checkpoint_key: completion?.nextCheckpointKey ?? "legacy_complete",
+      next_checkpoint_key: completion.nextCheckpointKey,
       worker_identifier: workerIdentifier
     });
   } finally {
@@ -1909,7 +1665,7 @@ async function processPlacementJob(
   serviceRoleKey: string,
   workerIdentifier: string,
   claim: PlacementClaimRow,
-  completion?: Extract<CheckpointCompletion, { kind: "checkpoint" }>
+  completion: CheckpointCompletion
 ): Promise<void> {
   if (!claim.room_cleaned_path) {
     throw new Error(
@@ -2235,18 +1991,16 @@ async function processPlacementJob(
       provider_name: providers.placement.name,
       worker_identifier: workerIdentifier
     });
-    if (completion) {
-      await completeCheckpointClaim(
-        supabaseUrl,
-        serviceRoleKey,
-        workerIdentifier,
-        completion
-      );
-    }
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
     logWorkerStep("placement_next_checkpoint_ready", {
       generation_index: generationIndex,
       job_id: claim.job_id,
-      next_checkpoint_key: completion?.nextCheckpointKey ?? "legacy_complete",
+      next_checkpoint_key: completion.nextCheckpointKey,
       worker_identifier: workerIdentifier
     });
   } finally {
@@ -2401,58 +2155,6 @@ async function processClaimedCheckpoint(
   }
 
   throw new Error(`unsupported checkpoint ${claim.checkpoint_key}`);
-}
-
-async function handlePumpMode(input: {
-  claimTtlSeconds: number;
-  serviceRoleKey: string;
-  supabaseUrl: string;
-}): Promise<Response> {
-  void input.claimTtlSeconds;
-  const maxActiveCheckpoints = parsePositiveInt(
-    "IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS",
-    DEFAULT_MAX_ACTIVE_CHECKPOINTS
-  );
-  logWorkerStep("pump_mode_started", {
-    max_active_checkpoints: maxActiveCheckpoints
-  });
-  const pumpStatus = await readCheckpointPumpStatus(
-    input.supabaseUrl,
-    input.serviceRoleKey,
-    maxActiveCheckpoints
-  );
-  const queued = typeof pumpStatus.queued === "number" ? pumpStatus.queued : 0;
-  const availableSlots = typeof pumpStatus.available_slots === "number"
-    ? pumpStatus.available_slots
-    : 0;
-  const startedCount = Math.min(queued, availableSlots);
-  logWorkerStep("pump_mode_status_read", {
-    active_processing: pumpStatus.active_processing ?? 0,
-    available_slots: availableSlots,
-    max_active_checkpoints: maxActiveCheckpoints,
-    queued,
-    started_count: startedCount,
-    worker_paused: pumpStatus.worker_paused ?? false
-  });
-
-  for (let index = 0; index < startedCount; index += 1) {
-    deferWorkerInvocation(
-      invokeWorkerCheckpoint({ supabaseUrl: input.supabaseUrl })
-    );
-  }
-
-  return jsonResponse({
-    active_processing: pumpStatus.active_processing ?? 0,
-    function_name: FUNCTION_NAME,
-    max_active_checkpoints: maxActiveCheckpoints,
-    mode: "pump",
-    processed: startedCount,
-    queued,
-    stage: "stage_1",
-    started_count: startedCount,
-    status: startedCount > 0 ? "claimed" : "noop",
-    worker_paused: pumpStatus.worker_paused ?? false
-  });
 }
 
 async function dispatchCheckpointFromOutbox(input: {
@@ -2795,7 +2497,7 @@ async function invokeWorkerDispatch(input: {
 async function invokeWorker(input: {
   checkpointKey?: SimulationCheckpointKey;
   jobId?: string;
-  mode: Extract<WorkerMode, "pump" | "dispatch" | "checkpoint">;
+  mode: WorkerMode;
   supabaseUrl: string;
 }): Promise<WorkerResponse> {
   const response = await supabaseFetchWithTimeout(
@@ -2865,17 +2567,6 @@ function deferWorkerInvocation(promise: Promise<unknown>): void {
   void handledPromise;
 }
 
-function aggregateOutcome(
-  results: Array<{ outcome: "completed" | "failed" | "skipped" }>
-): StageOutcome {
-  if (results.length === 0) return "noop";
-  const allCompleted = results.every((r) => r.outcome === "completed");
-  if (allCompleted) return "completed";
-  const allFailed = results.every((r) => r.outcome === "failed");
-  if (allFailed) return "failed";
-  return "mixed";
-}
-
 Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return jsonResponse(
@@ -2906,12 +2597,6 @@ Deno.serve(async (request) => {
     "IN_HOME_SIMULATION_CLAIM_TTL_SECONDS",
     DEFAULT_CLAIM_TTL_SECONDS
   );
-  const queueName =
-    Deno.env.get("IN_HOME_SIMULATION_QUEUE_NAME") ?? DEFAULT_QUEUE_NAME;
-  const batchSize = parsePositiveInt(
-    "IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS",
-    DEFAULT_BATCH_SIZE
-  );
   const workerIdentifier = buildWorkerIdentifier();
   const parsedRequest = await parseWorkerRequestBody(request);
   if (parsedRequest instanceof Response) {
@@ -2922,19 +2607,6 @@ Deno.serve(async (request) => {
     mode: parsedRequest.mode,
     worker_identifier: workerIdentifier
   });
-
-  if (parsedRequest.mode === "pump") {
-    try {
-      return await handlePumpMode({
-        claimTtlSeconds,
-        serviceRoleKey,
-        supabaseUrl
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return failedEnvelope(message, 502);
-    }
-  }
 
   if (parsedRequest.mode === "dispatch") {
     try {
@@ -2965,308 +2637,5 @@ Deno.serve(async (request) => {
     }
   }
 
-  let messages: DequeuedMessage[];
-  try {
-    messages = await dequeueRoomPrepMessages(
-      supabaseUrl,
-      serviceRoleKey,
-      queueName,
-      claimTtlSeconds,
-      batchSize
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return failedEnvelope(message, 502);
-  }
-
-  if (messages.length === 0) {
-    return jsonResponse({
-      status: "noop",
-      function_name: FUNCTION_NAME,
-      stage: "stage_1",
-      processed: 0,
-      results: []
-    });
-  }
-
-  type MessageOutcome = {
-    job_id?: string;
-    msg_id?: number;
-    outcome: "completed" | "failed" | "skipped";
-    job_status?: string;
-    error?: string;
-  };
-
-  const processMessage = async (msg: DequeuedMessage): Promise<MessageOutcome> => {
-    const jobId = msg.message?.job_id;
-    if (!jobId) {
-      // Malformed message: drop it so it does not loop.
-      try {
-        await deleteRoomPrepMessage(
-          supabaseUrl,
-          serviceRoleKey,
-          queueName,
-          msg.msg_id
-        );
-      } catch (_error) { /* fall through */ }
-      return {
-        msg_id: msg.msg_id,
-        outcome: "skipped",
-        error: "queue message missing job_id"
-      };
-    }
-
-    const messageType = msg.message?.type;
-
-    if (messageType === "in_home_simulation_placement") {
-      let placementClaim: PlacementClaimRow | null;
-      try {
-        placementClaim = await claimSpecificPlacementJob(
-          supabaseUrl,
-          serviceRoleKey,
-          jobId,
-          workerIdentifier,
-          claimTtlSeconds
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "failed",
-          error: message
-        };
-      }
-
-      if (placementClaim === null) {
-        try {
-          await deleteRoomPrepMessage(
-            supabaseUrl,
-            serviceRoleKey,
-            queueName,
-            msg.msg_id
-          );
-        } catch (_error) { /* fall through */ }
-        return {
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "skipped",
-          error: "job is not in placement_queued state"
-        };
-      }
-
-      try {
-        await processPlacementJob(
-          supabaseUrl,
-          serviceRoleKey,
-          workerIdentifier,
-          placementClaim
-        );
-        await recordWorkerEvent(supabaseUrl, serviceRoleKey,
-          buildStageTransitionEvent({
-            jobId,
-            fromStatus: "placement_processing",
-            toStatus: "succeeded",
-            message: `worker ${workerIdentifier} completed Stage 2`
-          })
-        );
-        try {
-          await deleteRoomPrepMessage(
-            supabaseUrl,
-            serviceRoleKey,
-            queueName,
-            msg.msg_id
-          );
-        } catch (_error) { /* fall through */ }
-        return {
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "completed",
-          job_status: "succeeded"
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const action = decideStageFailureAction(error, {
-          stage: "stage_2",
-          attemptCount: placementClaim.placement_attempt_count,
-          maxAttempts: placementClaim.max_attempts_per_stage
-        });
-
-        if (action.kind === "release") {
-          try {
-            await callRpc<void>(
-              supabaseUrl,
-              serviceRoleKey,
-              "release_in_home_simulation_placement_claim",
-              {
-                job_id: placementClaim.job_id,
-                worker_identifier: workerIdentifier,
-                error_code: "transient",
-                error_message: message
-              }
-            );
-          } catch (_error) { /* fall through */ }
-          // Do not delete the pgmq message; the visibility timeout
-          // makes it visible again so a future invocation can retry.
-          return {
-            job_id: jobId,
-            msg_id: msg.msg_id,
-            outcome: "failed",
-            job_status: "placement_queued",
-            error: `retryable (${action.reason}): ${message}`
-          };
-        }
-
-        try {
-          await deleteRoomPrepMessage(
-            supabaseUrl,
-            serviceRoleKey,
-            queueName,
-            msg.msg_id
-          );
-        } catch (_error) { /* fall through */ }
-        return {
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "failed",
-          job_status: "failed",
-          error: message
-        };
-      }
-    }
-
-    let claim: RoomPrepClaimRow | null;
-    try {
-      claim = await claimSpecificRoomPrepJob(
-        supabaseUrl,
-        serviceRoleKey,
-        jobId,
-        workerIdentifier,
-        claimTtlSeconds
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        job_id: jobId,
-        msg_id: msg.msg_id,
-        outcome: "failed",
-        error: message
-      };
-    }
-
-    if (claim === null) {
-      // Job is not in queued state any more (already processing,
-      // succeeded, failed, or expired). Drop the message and move on
-      // per SPEC-0007 worker reload rule.
-      try {
-        await deleteRoomPrepMessage(
-          supabaseUrl,
-          serviceRoleKey,
-          queueName,
-          msg.msg_id
-        );
-      } catch (_error) { /* fall through */ }
-      return {
-        job_id: jobId,
-        msg_id: msg.msg_id,
-        outcome: "skipped",
-        error: "job is not in queued state"
-      };
-    }
-
-    try {
-      const checkpointOutcome = await processClaimedJob(
-        supabaseUrl,
-        serviceRoleKey,
-        workerIdentifier,
-        claim,
-        queueName
-      );
-      if (checkpointOutcome === "stage_1_completed") {
-        await recordWorkerEvent(supabaseUrl, serviceRoleKey,
-          buildStageTransitionEvent({
-            jobId,
-            fromStatus: "room_prep_processing",
-            toStatus: "awaiting_dimensions",
-            message: `worker ${workerIdentifier} completed Stage 1`
-          })
-        );
-      }
-      try {
-        await deleteRoomPrepMessage(
-          supabaseUrl,
-          serviceRoleKey,
-          queueName,
-          msg.msg_id
-        );
-      } catch (_error) { /* fall through */ }
-      return {
-        job_id: jobId,
-        msg_id: msg.msg_id,
-        outcome: "completed",
-        job_status:
-          checkpointOutcome === "stage_1_completed"
-            ? "awaiting_dimensions"
-            : "queued"
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const action = decideStageFailureAction(error, {
-        stage: "stage_1",
-        attemptCount: claim.room_prep_attempt_count,
-        maxAttempts: claim.max_attempts_per_stage
-      });
-
-      if (action.kind === "release") {
-        try {
-          await callRpc<void>(
-            supabaseUrl,
-            serviceRoleKey,
-            "release_in_home_simulation_room_prep_claim",
-            {
-              job_id: claim.job_id,
-              worker_identifier: workerIdentifier,
-              error_code: "transient",
-              error_message: message
-            }
-          );
-        } catch (_error) { /* fall through */ }
-        // Do not delete the pgmq message; the visibility timeout
-        // makes it visible again so a future invocation can retry.
-        return {
-          job_id: jobId,
-          msg_id: msg.msg_id,
-          outcome: "failed",
-          job_status: "queued",
-          error: `retryable (${action.reason}): ${message}`
-        };
-      }
-
-      try {
-        await deleteRoomPrepMessage(
-          supabaseUrl,
-          serviceRoleKey,
-          queueName,
-          msg.msg_id
-        );
-      } catch (_error) { /* fall through */ }
-      return {
-        job_id: jobId,
-        msg_id: msg.msg_id,
-        outcome: "failed",
-        job_status: "failed",
-        error: message
-      };
-    }
-  };
-
-  const results = await runWithConcurrency(messages, batchSize, processMessage);
-
-  return jsonResponse({
-    status: aggregateOutcome(results),
-    function_name: FUNCTION_NAME,
-    stage: "stage_1",
-    processed: results.filter((r) => r.outcome === "completed").length,
-    results
-  });
+  return failedEnvelope("In-home simulation worker mode is invalid", 400);
 });

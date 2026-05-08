@@ -22,7 +22,6 @@ import {
   type SimulationJobReader,
   type SimulationJobView,
   type SimulationProgressAccessReader,
-  type SimulationQueueEnqueuer,
   type SimulationRealtimeTokenIssuer,
   type SimulationRegenerationStore,
   type SimulationRoomPhotoNormalizer,
@@ -745,7 +744,6 @@ describe("handleGetSimulationRealtimeTokenRequest", () => {
 describe("handleSubmitDimensionsRequest", () => {
   const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
   const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
-  const QUEUE = "local_in_home_simulation_jobs";
   const NOW = fixedNow("2026-05-02T10:00:00Z");
 
   function makeValidToken() {
@@ -949,7 +947,6 @@ describe("handleSubmitDimensionsRequest", () => {
 describe("handleRequestRegenerationRequest", () => {
   const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
   const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
-  const QUEUE = "local_in_home_simulation_jobs";
   const NOW = fixedNow("2026-05-02T10:00:00Z");
 
   function makeValidToken() {
@@ -1089,7 +1086,6 @@ describe("handleCreateSimulationRequest", () => {
   const VISUAL_POSITION_ID = "00000000-0000-4000-8000-000000000bcd";
   const SOFA_SLUG = "test-sofa";
   const CORNER_TAG_SLUG = "corner";
-  const QUEUE = "local_in_home_simulation_jobs";
   const NEW_JOB_ID = "00000000-0000-4000-8000-000000000a01";
   const NOW = fixedNow("2026-05-02T10:00:00Z");
   const RATE_LIMIT_SALT = "salt";
@@ -1164,7 +1160,6 @@ describe("handleCreateSimulationRequest", () => {
     createOk?: boolean;
     createThrows?: boolean;
     uploadThrows?: boolean;
-    enqueueThrows?: boolean;
     finalizeThrows?: boolean;
     existingJob?: SimulationJobView | null;
     roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
@@ -1233,12 +1228,6 @@ describe("handleCreateSimulationRequest", () => {
           )
     };
 
-    const queueEnqueuer: SimulationQueueEnqueuer = {
-      enqueueRoomPrep: options.enqueueThrows
-        ? vi.fn().mockRejectedValue(new Error("enqueue boom"))
-        : vi.fn().mockResolvedValue({ msgId: 42 })
-    };
-
     const jobReader: SimulationJobReader = {
       findOwnedJob: vi.fn().mockResolvedValue(options.existingJob ?? null)
     };
@@ -1250,7 +1239,6 @@ describe("handleCreateSimulationRequest", () => {
         rateLimitIpPerDay: 3,
         rateLimitEmailPerDay: 2,
         cornerTagSlug: CORNER_TAG_SLUG,
-        queueName: QUEUE,
         retentionHours: 24,
         rateLimitStore,
         idempotencyStore,
@@ -1258,7 +1246,6 @@ describe("handleCreateSimulationRequest", () => {
         storageUploader,
         roomPhotoNormalizer,
         createJobStore,
-        queueEnqueuer,
         jobReader,
         generateJobId: () => NEW_JOB_ID,
         now: NOW
@@ -1269,7 +1256,6 @@ describe("handleCreateSimulationRequest", () => {
       storageUploader,
       roomPhotoNormalizer,
       createJobStore,
-      queueEnqueuer,
       jobReader
     };
   }
@@ -1311,7 +1297,6 @@ describe("handleCreateSimulationRequest", () => {
         retentionHours: 24
       })
     );
-    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
     expect(ctx.idempotencyStore.finalize).toHaveBeenCalledWith(
       expect.any(String),
       NEW_JOB_ID
@@ -1718,8 +1703,8 @@ describe("handleCreateSimulationRequest", () => {
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
   });
 
-  it("does not call the legacy pgmq enqueuer after creating the durable job", async () => {
-    const ctx = createDeps({ enqueueThrows: true });
+  it("creates the durable job without a legacy pgmq dependency", async () => {
+    const ctx = createDeps();
     const response = await handleCreateSimulationRequest({
       formData: makeFormData(),
       headers: makeHeaders(),
@@ -1728,7 +1713,6 @@ describe("handleCreateSimulationRequest", () => {
     });
     expect(response.status).toBe(201);
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
-    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
   });
 
   it("logs the underlying error when uploadRoomPhoto throws", async () => {

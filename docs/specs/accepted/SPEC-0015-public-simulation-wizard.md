@@ -177,7 +177,8 @@ The end-to-end flow consumed by the wizard is:
    image and `POST`s it together with the sofa context as
    `multipart/form-data` with an `Idempotency-Key` header.
 4. The server creates the simulation job, makes the first worker checkpoint
-   claimable, invokes the worker pump as best effort, and returns the job id.
+   claimable, records a transactional dispatch-outbox intent, and returns the
+   job id without invoking worker execution from the public request.
    The browser navigates to `/simulations/{job_id}` using `router.replace` so
    browser back returns to the sofa detail page.
 5. The continuation page observes job-scoped Realtime progress with bounded
@@ -186,7 +187,8 @@ The end-to-end flow consumed by the wizard is:
    shown.
 6. When the status reaches `awaiting_dimensions`, the dimension entry screen
    is shown with the signed guide image and the input fields appropriate to
-   the geometry mode. The visitor enters dimensions in metres and submits.
+   the geometry mode. The visitor enters dimensions in centimetres; the
+   browser submits the API contract in metres.
 7. Realtime progress observation resumes for `placement_queued` and
    `placement_processing`, with fallback polling when Realtime is unavailable.
    If a previous successful result exists from a regeneration cycle, it remains
@@ -404,7 +406,8 @@ Forbidden:
 - `in_home_simulation_jobs` is the durable job row keyed by `id`.
 - `simulation_generated_outputs` records each successful placement output.
 - `worker_job_events` logs every status transition.
-- The pgmq queue used for room-prep and placement messages.
+- `in_home_simulation_checkpoint_dispatches` records transactional dispatch
+  intents for claimable worker checkpoints.
 - The `simulation-private-artifacts` bucket holds per-job inputs, guides, and
   outputs. The public catalog bucket holds rendered sofa assets.
 
@@ -586,10 +589,8 @@ Server behavior:
   `retention_deadline = now() + interval '24 hours'`,
   `room_geometry_mode` set as above, and the public-catalog references
   recorded.
-- Make the first room-preparation checkpoint claimable and enqueue a wake-up
-  message when the implementation uses pgmq for worker wake-up.
-- Invoke the in-home simulation worker pump immediately as best effort after
-  durable state is persisted.
+- Make the first room-preparation checkpoint claimable and write the
+  checkpoint dispatch-outbox row in the same transaction.
 - Insert the `idempotency_keys` row pointing at the new `simulation_job_id`.
 - Increment the rate-limit counters.
 
@@ -663,9 +664,8 @@ Server behavior:
 - Reject if any value is non-positive or above the configured upper bound.
 - Persist into `supplied_dimensions` and transition the job to
   `placement_queued`.
-- Make the placement checkpoint claimable, enqueue a wake-up message when the
-  implementation uses pgmq for worker wake-up, and invoke the worker pump
-  immediately as best effort.
+- Make the placement checkpoint claimable and write the checkpoint
+  dispatch-outbox row in the same transaction.
 
 ### `POST /api/public/simulations/{simulation_job_id}/regenerations`
 
@@ -678,9 +678,8 @@ Server behavior:
 - Reject if `generated_output_count` has reached three successes.
 - Reserve the next `reserved_generation_index` and transition status to
   `placement_queued`.
-- Make the placement checkpoint claimable, enqueue a wake-up message when the
-  implementation uses pgmq for worker wake-up, and invoke the worker pump
-  immediately as best effort.
+- Make the placement checkpoint claimable and write the checkpoint
+  dispatch-outbox row in the same transaction.
 
 ## Worker Jobs
 
@@ -709,8 +708,8 @@ product decisions:
   usable interior. That provider is unchanged.
 
 The worker's rate-limit awareness is added by the new `simulation_cost_meter`
-check in the claim RPCs. When the meter is paused, the worker dequeues
-nothing and exits cleanly.
+check in the claim RPCs. When the meter is paused, the worker claims no
+checkpoints and exits cleanly.
 
 ## Environment Variables
 
@@ -722,14 +721,12 @@ Web application (`apps/web`):
   invocation when the public anon role is insufficient.
 - `NEXT_PUBLIC_SITE_URL` for token cookie scope and email-link generation
   when the catalog owner ships real verification.
-- `SIMULATION_QUEUE_NAME` consistent with the worker config.
 - `SIMULATION_RATE_LIMIT_IP_PER_DAY=3`.
 - `SIMULATION_RATE_LIMIT_EMAIL_PER_DAY=2`.
 
 In-home simulation worker (`supabase/functions/in-home-simulation-worker`):
 
 - `OPENAI_API_KEY` (required).
-- `IN_HOME_SIMULATION_QUEUE_NAME` (existing).
 - `IN_HOME_SIMULATION_MAX_EDGE_PX=720` (existing).
 - `MAX_PLACEMENT_ATTEMPTS=3` (existing).
 - `PLACEMENT_TOLERANCE_PCT=5` (existing).

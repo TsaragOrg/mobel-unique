@@ -1098,14 +1098,18 @@ Worker-specific configuration:
 - `IN_HOME_SIMULATION_FALLBACK_PROVIDER`: optional. Setting it to
   `gemini` activates the `FallbackPlacementProvider` wrapper around the
   OpenAI placement primary. Disabled when unset.
-- `IN_HOME_SIMULATION_QUEUE_NAME`: Supabase Queue name for in-home
-  simulation work messages;
 - `IN_HOME_SIMULATION_MAX_ATTEMPTS`: optional override for the
   per-stage attempt budget;
-- `IN_HOME_SIMULATION_MAX_CONCURRENT_JOBS`: optional concurrency limit
-  for one queue consumer invocation;
 - `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS`: optional override for the
-  worker claim TTL per stage, defaulting to 600 seconds;
+  worker claim TTL per checkpoint, defaulting to 180 seconds locally;
+- `IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS`: optional global capacity
+  limit for concurrently claimed in-home simulation checkpoints;
+- `IN_HOME_SIMULATION_DISPATCH_BATCH_SIZE`: optional dispatch-backstop
+  batch size for claimed outbox rows;
+- `IN_HOME_SIMULATION_DISPATCH_LOCK_TTL_SECONDS`: optional lock TTL for
+  dispatch-outbox claims;
+- `IN_HOME_SIMULATION_WORKER_INVOCATION_TIMEOUT_MS`: optional timeout for
+  internal checkpoint/dispatch worker self-invocations;
 - `IN_HOME_SIMULATION_MAX_EDGE_PX`: optional override for the maximum
   longest-edge size used during the compression sub-step of stage 1.
   Default 720. Lowering this reduces input-token cost at gpt-image-2.

@@ -23,7 +23,6 @@ import type {
   SimulationJobReader,
   SimulationJobView,
   SimulationRealtimeTokenIssuer,
-  SimulationQueueEnqueuer,
   SimulationRegenerationStore,
   SimulationStorageSigner,
   SimulationStorageUploader,
@@ -48,7 +47,6 @@ const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_REALTIME_TOKEN_TTL_SECONDS = 5 * 60;
 
 const SIMULATION_PRIVATE_BUCKET = "simulation-private-artifacts";
-const DEFAULT_SIMULATION_QUEUE_NAME = "local_in_home_simulation_jobs";
 
 export function createDefaultSimulationPublicEmailHandlerDeps(): SimulationPublicEmailHandlerDeps {
   return {
@@ -174,14 +172,6 @@ export function createSupabaseSimulationProgressAccessReader(
       };
     },
   };
-}
-
-function readSimulationQueueName(): string {
-  return (
-    process.env.SIMULATION_QUEUE_NAME ??
-    process.env.IN_HOME_SIMULATION_QUEUE_NAME ??
-    DEFAULT_SIMULATION_QUEUE_NAME
-  );
 }
 
 export function createDefaultSimulationCreateHandlerDeps(): SimulationPublicCreateHandlerDeps {
@@ -370,32 +360,6 @@ function base64UrlEncode(input: string | Buffer): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
-}
-
-export function createSupabaseSimulationQueueEnqueuer(
-  client: SupabaseClient,
-): SimulationQueueEnqueuer {
-  return {
-    async enqueueRoomPrep({ jobId, queueName }) {
-      const { data, error } = await client.rpc(
-        "enqueue_in_home_simulation_room_prep_message",
-        {
-          job_id: jobId,
-          queue_name: queueName,
-        },
-      );
-      if (error) {
-        throw error;
-      }
-      const msgId = typeof data === "number" ? data : Number(data);
-      if (!Number.isFinite(msgId)) {
-        throw new Error(
-          "enqueue_in_home_simulation_room_prep_message returned a non-numeric msg_id",
-        );
-      }
-      return { msgId };
-    },
-  };
 }
 
 function readPositiveInt(name: string, fallback: number): number {

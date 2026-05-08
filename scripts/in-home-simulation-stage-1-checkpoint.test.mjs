@@ -25,32 +25,30 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(source).toContain("async function runCornersCheckpoint(");
   });
 
-  it("processClaimedJob dispatches validate → cleaning → corners by checkpoint paths", async () => {
+  it("processClaimedCheckpoint dispatches validate, cleaning, and corners by explicit checkpoint key", async () => {
     const source = await readFile(workerPath, "utf8");
 
-    const dispatchIndex = source.indexOf("async function processClaimedJob(");
+    const dispatchIndex = source.indexOf("async function processClaimedCheckpoint(");
     expect(dispatchIndex).toBeGreaterThan(-1);
 
-    const validateIndex = source.indexOf(
-      "async function runValidateCheckpoint(",
+    const nextFnIndex = source.indexOf(
+      "\nasync function handleDispatchMode",
       dispatchIndex
     );
-    const dispatchSource = source.slice(dispatchIndex, validateIndex);
+    const dispatchSource = source.slice(dispatchIndex, nextFnIndex);
 
-    expect(dispatchSource).toContain("fetchInHomeSimulationJobRow");
-    expect(dispatchSource).toContain(
-      "!checkpoint.room_normalized_path"
-    );
-    expect(dispatchSource).toContain("if (!checkpoint.room_cleaned_path)");
+    expect(dispatchSource).toContain('claim.checkpoint_key === "room_validation"');
+    expect(dispatchSource).toContain('claim.checkpoint_key === "room_cleaning"');
+    expect(dispatchSource).toContain('claim.checkpoint_key === "room_corners"');
     expect(dispatchSource).toContain("runValidateCheckpoint");
     expect(dispatchSource).toContain("runCleaningCheckpoint");
     expect(dispatchSource).toContain("runCornersCheckpoint");
-    expect(dispatchSource).toContain("stage_1_validate_checkpoint_advanced");
-    expect(dispatchSource).toContain("stage_1_cleaning_checkpoint_advanced");
-    expect(dispatchSource).toContain("stage_1_completed");
+    expect(dispatchSource).toContain('nextCheckpointKey: "room_cleaning"');
+    expect(dispatchSource).toContain('nextCheckpointKey: "room_corners"');
+    expect(dispatchSource).toContain('nextCheckpointKey: "awaiting_dimensions"');
   });
 
-  it("validate checkpoint runs decode + normalize + validation + compress, persists normalized + compressed paths, releases the claim", async () => {
+  it("validate checkpoint runs decode + normalize + validation + compress, persists normalized + compressed paths, and completes the checkpoint claim", async () => {
     const source = await readFile(workerPath, "utf8");
 
     const validateIndex = source.indexOf(
@@ -70,10 +68,11 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(validateSource).toContain("room_compressed.jpg");
     expect(validateSource).toContain("persistValidateCheckpoint");
     expect(validateSource).not.toContain("cleanRoom");
-    expect(validateSource).toContain(
+    expect(validateSource).toContain("completeCheckpointClaim");
+    expect(validateSource).not.toContain(
       '"release_in_home_simulation_room_prep_claim"'
     );
-    expect(validateSource).toContain(
+    expect(validateSource).not.toContain(
       '"enqueue_in_home_simulation_room_prep_message"'
     );
     expect(validateSource).toContain(
@@ -81,7 +80,7 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     );
   });
 
-  it("cleaning checkpoint downloads the compressed bytes, runs only cleanRoom, persists cleaned path, re-enqueues", async () => {
+  it("cleaning checkpoint downloads the compressed bytes, runs only cleanRoom, persists cleaned path, and completes the checkpoint claim", async () => {
     const source = await readFile(workerPath, "utf8");
 
     const cleaningIndex = source.indexOf(
@@ -109,11 +108,11 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(cleaningSource).toContain("persistCleaningCheckpoint");
     expect(cleaningSource).toContain("roomCleanedPath");
 
-    // Releases claim and re-enqueues for next checkpoint.
-    expect(cleaningSource).toContain(
+    expect(cleaningSource).toContain("completeCheckpointClaim");
+    expect(cleaningSource).not.toContain(
       '"release_in_home_simulation_room_prep_claim"'
     );
-    expect(cleaningSource).toContain(
+    expect(cleaningSource).not.toContain(
       '"enqueue_in_home_simulation_room_prep_message"'
     );
 
@@ -169,23 +168,29 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(cornersSource).toContain("failJobNonRetryable");
   });
 
-  it("outer Deno.serve only emits the awaiting_dimensions transition when the corners checkpoint completes", async () => {
+  it("corners checkpoint advances through the checkpoint success RPC, not the legacy serve wrapper", async () => {
     const source = await readFile(workerPath, "utf8");
+    const cornersIndex = source.indexOf(
+      "async function runCornersCheckpoint("
+    );
+    const nextFnIndex = source.indexOf("\nasync function ", cornersIndex + 1);
+    const cornersSource = source.slice(
+      cornersIndex,
+      nextFnIndex > -1 ? nextFnIndex : source.length
+    );
 
-    expect(source).toContain(
+    expect(cornersSource).toContain("completeCheckpointClaim");
+    expect(source).toContain('nextCheckpointKey: "awaiting_dimensions"');
+    expect(source).not.toContain(
       'if (checkpointOutcome === "stage_1_completed") {'
     );
-    expect(source).toContain('toStatus: "awaiting_dimensions"');
-    // The cleaning checkpoint return is mapped to job_status: "queued" in
-    // the outer success envelope so the response body matches the actual
-    // row state.
-    expect(source).toContain('"awaiting_dimensions"');
-    expect(source).toContain('"queued"');
   });
 
-  it("processClaimedJob receives queueName so cleaning can re-enqueue", async () => {
+  it("does not keep the legacy processClaimedJob queue re-enqueue path", async () => {
     const source = await readFile(workerPath, "utf8");
 
-    expect(source).toMatch(/processClaimedJob\([\s\S]*?queueName[\s\S]*?\)/);
+    expect(source).not.toContain("async function processClaimedJob(");
+    expect(source).not.toContain('"enqueue_in_home_simulation_room_prep_message"');
+    expect(source).not.toContain('"release_in_home_simulation_room_prep_claim"');
   });
 });
