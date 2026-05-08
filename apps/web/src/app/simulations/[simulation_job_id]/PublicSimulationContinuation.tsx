@@ -14,6 +14,7 @@ import {
 } from "../../../lib/simulation-client/poll";
 import {
   subscribeToSimulationProgress,
+  type SimulationProgressConnectionState,
   type SubscribeToSimulationProgressArgs
 } from "../../../lib/simulation-client/realtime";
 import {
@@ -35,6 +36,10 @@ const FALLBACK_CONTEXT: SimulationJobContext = {
   fabricName: "",
   visualPositionLabel: ""
 };
+const REALTIME_CONNECTED_RECONCILE_POLL_MS = 30_000;
+const REALTIME_CONNECTING_POLL_MS = 10_000;
+const REALTIME_UNAVAILABLE_POLL_MS = 5_000;
+const STATUS_ERROR_BACKOFF_MS = [5_000, 10_000, 20_000, 30_000] as const;
 
 export interface PublicSimulationContinuationProps {
   jobId: string;
@@ -57,20 +62,31 @@ export function PublicSimulationContinuation(
     () => loadJobContext(props.jobId) ?? FALLBACK_CONTEXT
   );
   const [previousResultUrl, setPreviousResultUrl] = useState<string | null>(null);
+  const [realtimeConnection, setRealtimeConnection] =
+    useState<SimulationProgressConnectionState>("connecting");
 
   const { snapshot, refresh } = useSimulationStatusPoll(props.jobId, {
-    fetchStatus: () => fetchStatus(props.jobId)
+    errorBackoffMs: STATUS_ERROR_BACKOFF_MS,
+    fetchStatus: () => fetchStatus(props.jobId),
+    intervalMs:
+      realtimeConnection === "connected"
+        ? REALTIME_CONNECTED_RECONCILE_POLL_MS
+        : realtimeConnection === "unavailable"
+        ? REALTIME_UNAVAILABLE_POLL_MS
+        : REALTIME_CONNECTING_POLL_MS
   });
 
   useEffect(() => {
     return subscribeProgress({
       jobId: props.jobId,
+      onConnectionState: setRealtimeConnection,
       onError: (error) => {
         console.error("[simulations] progress realtime failed:", error);
       },
       onProgress: () => refresh()
     });
-    // Polling remains the fallback. Realtime only accelerates refresh.
+    // Realtime is the primary progress channel. The poller is retained as a
+    // slow reconciliation read so a missed Realtime event cannot strand the UI.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.jobId, subscribeProgress]);
 
@@ -182,6 +198,7 @@ function renderScreenForStatus(args: RenderScreenArgs) {
         <Screen6ErrorExpired
           backToSofaHref={backToSofaHref}
           context={stripContext}
+          errorDetail={snapshot.last_error ?? null}
           restartHref={restartHref}
           variant="error"
         />

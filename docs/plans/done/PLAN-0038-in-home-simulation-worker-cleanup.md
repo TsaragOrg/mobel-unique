@@ -2,7 +2,7 @@
 
 Plan: PLAN-0038
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -99,3 +99,7 @@ to the terminal-harness baseline after this plan ships.
   unit-testable surface (the prior migrations already cover the
   Stage 1 claim semantics). Quality-gate spec guard exempts this
   case via the `## Notes` explanation.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in worker code, tests, and roadmaps. The remaining parity sign-off is tracked by PLAN-0042.

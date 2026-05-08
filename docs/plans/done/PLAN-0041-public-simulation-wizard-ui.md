@@ -2,7 +2,7 @@
 
 Plan: PLAN-0041
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -178,3 +178,7 @@ submitted payload back to metres before calling the PLAN-0040 dimensions
 endpoint so the worker and database contract remain unchanged. Component
 tests cover the back-wall and corner conversions plus the disabled-state
 range gate.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in wizard routes, screen components, client helpers, tests, and roadmaps. The live parity gate remains a launch concern under PLAN-0042.

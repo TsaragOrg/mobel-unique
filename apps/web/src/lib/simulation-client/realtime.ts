@@ -17,11 +17,16 @@ export interface SubscribeToSimulationProgressArgs {
   jobId: string;
   fetchToken?: (jobId: string) => Promise<SimulationRealtimeTokenResponse>;
   getClient?: () => SupabaseClient;
+  onConnectionState?: (state: SimulationProgressConnectionState) => void;
   onError: (error: unknown) => void;
   onProgress: (payload: SimulationPublicProgressPayload) => void;
 }
 
 export type SimulationProgressUnsubscribe = () => void;
+export type SimulationProgressConnectionState =
+  | "connecting"
+  | "connected"
+  | "unavailable";
 
 export function subscribeToSimulationProgress(
   args: SubscribeToSimulationProgressArgs
@@ -30,6 +35,8 @@ export function subscribeToSimulationProgress(
   const getClient = args.getClient ?? getBrowserSupabaseClient;
   let closed = false;
   let channel: ReturnType<SupabaseClient["channel"]> | null = null;
+
+  args.onConnectionState?.("connecting");
 
   void fetchToken(args.jobId)
     .then((token) => {
@@ -54,13 +61,21 @@ export function subscribeToSimulationProgress(
           }
         )
         .subscribe((status) => {
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          if (status === "SUBSCRIBED") {
+            args.onConnectionState?.("connected");
+          } else if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            args.onConnectionState?.("unavailable");
             args.onError(new Error(`simulation progress realtime ${status}`));
           }
         });
     })
     .catch((error) => {
       if (!closed) {
+        args.onConnectionState?.("unavailable");
         args.onError(error);
       }
     });

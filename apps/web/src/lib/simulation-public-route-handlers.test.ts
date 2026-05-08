@@ -8,6 +8,7 @@ import {
 import {
   SIMULATION_CREATE_MAX_PHOTO_BYTES,
   VERIFICATION_REQUEST_TTL_SECONDS,
+  handleConvertSimulationRoomPhotoPreviewRequest,
   handleCreateEmailVerificationRequest,
   handleCreateSimulationRequest,
   handleGetSimulationStatusRequest,
@@ -24,6 +25,7 @@ import {
   type SimulationQueueEnqueuer,
   type SimulationRealtimeTokenIssuer,
   type SimulationRegenerationStore,
+  type SimulationRoomPhotoNormalizer,
   type SimulationStorageSigner,
   type SimulationStorageUploader
 } from "./simulation-public-route-handlers";
@@ -36,6 +38,34 @@ const SECRET = "test-secret";
 function fixedNow(iso: string) {
   const date = new Date(iso);
   return () => date;
+}
+
+const HEIC_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 104, 101, 105, 99, 0, 0, 0, 0
+]);
+const HEIF_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 109, 105, 102, 49, 0, 0, 0, 0
+]);
+const HEIC_COMPATIBLE_BRAND_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115,
+  111, 56, 104, 101, 105, 99
+]);
+const NORMALIZED_JPEG_BYTES = new Uint8Array([255, 216, 255, 217]);
+
+function makeRoomPhotoOnlyFormData(options: {
+  bytes?: Uint8Array;
+  contentType?: string;
+  filename?: string;
+} = {}): FormData {
+  const formData = new FormData();
+  const bytes = options.bytes ?? HEIC_BYTES;
+  const photoArrayBuffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(photoArrayBuffer).set(bytes);
+  const blob = new Blob([photoArrayBuffer], {
+    type: options.contentType ?? "application/octet-stream"
+  });
+  formData.append("room_photo", blob, options.filename ?? "room.heic");
+  return formData;
 }
 
 describe("handleCreateEmailVerificationRequest", () => {
@@ -126,6 +156,48 @@ describe("handleCreateEmailVerificationRequest", () => {
       deps: { accessTokenSecret: SECRET, environment: "local" }
     });
     expect(response.status).toBe(400);
+  });
+});
+
+describe("handleConvertSimulationRoomPhotoPreviewRequest", () => {
+  it("returns a JPEG response after normalizing a HEIC room photo", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => {
+        expect(photo.fileContentType).toBe("image/heic");
+        expect(photo.fileExtension).toBe("heic");
+        return {
+          fileBytes: NORMALIZED_JPEG_BYTES,
+          fileContentType: "image/jpeg",
+          fileExtension: "jpg"
+        };
+      })
+    };
+
+    const response = await handleConvertSimulationRoomPhotoPreviewRequest({
+      formData: makeRoomPhotoOnlyFormData(),
+      deps: { roomPhotoNormalizer }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      NORMALIZED_JPEG_BYTES
+    );
+  });
+
+  it("returns 400 when preview normalization cannot produce JPEG", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => photo)
+    };
+
+    const response = await handleConvertSimulationRoomPhotoPreviewRequest({
+      formData: makeRoomPhotoOnlyFormData(),
+      deps: { roomPhotoNormalizer }
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_FAILED");
   });
 });
 
@@ -704,10 +776,7 @@ describe("handleSubmitDimensionsRequest", () => {
     };
   }
 
-  function createDeps(
-    job: SimulationJobView | null,
-    options: { pumpThrows?: boolean } = {}
-  ) {
+  function createDeps(job: SimulationJobView | null) {
     const jobReader: SimulationJobReader = {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
@@ -716,22 +785,15 @@ describe("handleSubmitDimensionsRequest", () => {
         checkpointId: "00000000-0000-4000-8000-000000000042"
       })
     };
-    const pumpInvoker = {
-      invokePump: options.pumpThrows
-        ? vi.fn().mockRejectedValue(new Error("pump boom"))
-        : vi.fn().mockResolvedValue(undefined)
-    };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         dimensionsStore,
-        pumpInvoker,
         now: NOW
       },
       jobReader,
-      dimensionsStore,
-      pumpInvoker
+      dimensionsStore
     };
   }
 
@@ -757,7 +819,6 @@ describe("handleSubmitDimensionsRequest", () => {
         room_depth: 5
       }
     });
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
   });
 
   it("returns 200 + placement_queued on a valid corner payload", async () => {
@@ -785,26 +846,6 @@ describe("handleSubmitDimensionsRequest", () => {
         room_depth: 5
       }
     });
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
-  });
-
-  it("still returns 200 when the best-effort pump invocation fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const ctx = createDeps(makeJobView(), { pumpThrows: true });
-    const response = await handleSubmitDimensionsRequest({
-      jobId: JOB_ID,
-      token: makeValidToken(),
-      body: { wall_width: 4.2, wall_height: 2.7, room_depth: 5 },
-      deps: ctx.deps
-    });
-    expect(response.status).toBe(200);
-    expect(ctx.dimensionsStore.submit).toHaveBeenCalled();
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[simulations] worker pump invocation failed:",
-      expect.any(Error)
-    );
-    errorSpy.mockRestore();
   });
 
   it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
@@ -939,10 +980,7 @@ describe("handleRequestRegenerationRequest", () => {
     };
   }
 
-  function createDeps(
-    job: SimulationJobView | null,
-    options: { pumpThrows?: boolean } = {}
-  ) {
+  function createDeps(job: SimulationJobView | null) {
     const jobReader: SimulationJobReader = {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
@@ -951,22 +989,15 @@ describe("handleRequestRegenerationRequest", () => {
         checkpointId: "00000000-0000-4000-8000-000000000099"
       })
     };
-    const pumpInvoker = {
-      invokePump: options.pumpThrows
-        ? vi.fn().mockRejectedValue(new Error("pump boom"))
-        : vi.fn().mockResolvedValue(undefined)
-    };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         regenerationStore,
-        pumpInvoker,
         now: NOW
       },
       jobReader,
-      regenerationStore,
-      pumpInvoker
+      regenerationStore
     };
   }
 
@@ -988,27 +1019,6 @@ describe("handleRequestRegenerationRequest", () => {
     expect(ctx.regenerationStore.request).toHaveBeenCalledWith({
       jobId: JOB_ID
     });
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
-  });
-
-  it("still returns 200 when regeneration pump invocation fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const ctx = createDeps(makeJobView({ generatedOutputCount: 1 }), {
-      pumpThrows: true
-    });
-    const response = await handleRequestRegenerationRequest({
-      jobId: JOB_ID,
-      token: makeValidToken(),
-      deps: ctx.deps
-    });
-    expect(response.status).toBe(200);
-    expect(ctx.regenerationStore.request).toHaveBeenCalled();
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[simulations] worker pump invocation failed:",
-      expect.any(Error)
-    );
-    errorSpy.mockRestore();
   });
 
   it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
@@ -1135,7 +1145,9 @@ describe("handleCreateSimulationRequest", () => {
     if (overrides.photoBytes !== null) {
       const photoBytes =
         overrides.photoBytes ?? new Uint8Array([1, 2, 3, 4, 5]);
-      const blob = new Blob([photoBytes as BlobPart], {
+      const photoArrayBuffer = new ArrayBuffer(photoBytes.byteLength);
+      new Uint8Array(photoArrayBuffer).set(photoBytes);
+      const blob = new Blob([photoArrayBuffer], {
         type: overrides.photoContentType ?? "image/jpeg"
       });
       formData.append("room_photo", blob, overrides.photoFilename ?? "room.jpg");
@@ -1154,8 +1166,8 @@ describe("handleCreateSimulationRequest", () => {
     uploadThrows?: boolean;
     enqueueThrows?: boolean;
     finalizeThrows?: boolean;
-    pumpThrows?: boolean;
     existingJob?: SimulationJobView | null;
+    roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
   } = {}) {
     const rateLimitStore: SimulationRateLimitStore = {
       increment: vi.fn().mockResolvedValue({
@@ -1199,6 +1211,10 @@ describe("handleCreateSimulationRequest", () => {
         : vi.fn().mockResolvedValue(undefined),
       deleteUploadedRoomPhoto: vi.fn().mockResolvedValue(undefined)
     };
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer =
+      options.roomPhotoNormalizer ?? {
+        normalize: vi.fn(async (photo) => photo)
+      };
 
     const createJobStore: SimulationCreateJobStore = {
       create: options.createThrows
@@ -1227,12 +1243,6 @@ describe("handleCreateSimulationRequest", () => {
       findOwnedJob: vi.fn().mockResolvedValue(options.existingJob ?? null)
     };
 
-    const pumpInvoker = {
-      invokePump: options.pumpThrows
-        ? vi.fn().mockRejectedValue(new Error("pump boom"))
-        : vi.fn().mockResolvedValue(undefined)
-    };
-
     return {
       deps: {
         accessTokenSecret: SECRET,
@@ -1246,9 +1256,9 @@ describe("handleCreateSimulationRequest", () => {
         idempotencyStore,
         catalogStore,
         storageUploader,
+        roomPhotoNormalizer,
         createJobStore,
         queueEnqueuer,
-        pumpInvoker,
         jobReader,
         generateJobId: () => NEW_JOB_ID,
         now: NOW
@@ -1257,9 +1267,9 @@ describe("handleCreateSimulationRequest", () => {
       idempotencyStore,
       catalogStore,
       storageUploader,
+      roomPhotoNormalizer,
       createJobStore,
       queueEnqueuer,
-      pumpInvoker,
       jobReader
     };
   }
@@ -1302,7 +1312,6 @@ describe("handleCreateSimulationRequest", () => {
       })
     );
     expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
     expect(ctx.idempotencyStore.finalize).toHaveBeenCalledWith(
       expect.any(String),
       NEW_JOB_ID
@@ -1379,6 +1388,174 @@ describe("handleCreateSimulationRequest", () => {
       deps: ctx.deps
     });
     expect(response.status).toBe(400);
+  });
+
+  it("accepts HEIC when the browser sends a generic content-type", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerRoomOriginalPath: `simulations/${NEW_JOB_ID}/inputs/room.heic`
+      })
+    );
+  });
+
+  it("normalizes HEIC uploads to JPEG before storing and creating the job when configured", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => {
+        expect(photo.fileContentType).toBe("image/heic");
+        expect(photo.fileExtension).toBe("heic");
+        return {
+          fileBytes: NORMALIZED_JPEG_BYTES,
+          fileContentType: "image/jpeg",
+          fileExtension: "jpg"
+        };
+      })
+    };
+    const ctx = createDeps({ roomPhotoNormalizer });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+
+    expect(response.status).toBe(201);
+    expect(roomPhotoNormalizer.normalize).toHaveBeenCalledOnce();
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`,
+        bytes: NORMALIZED_JPEG_BYTES,
+        contentType: "image/jpeg"
+      })
+    );
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerRoomOriginalPath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`
+      })
+    );
+  });
+
+  it("returns a validation error when configured HEIC normalization fails", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn().mockRejectedValue(new Error("heic decode failed"))
+    };
+    const ctx = createDeps({ roomPhotoNormalizer });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_FAILED");
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
+    expect(ctx.createJobStore.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts HEIF when the browser sends an empty content-type", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIF_BYTES,
+        photoContentType: "",
+        photoFilename: "room.heif"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heif`,
+        contentType: "image/heif"
+      })
+    );
+  });
+
+  it("accepts HEIC by file signature when the filename has no image extension", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.bin"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+  });
+
+  it("accepts HEIC when the ftyp compatible brands identify the image", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_COMPATIBLE_BRAND_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.bin"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+  });
+
+  it("rejects generic uploads without a HEIC or HEIF file signature", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: new Uint8Array([1, 2, 3, 4]),
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.heic"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
   });
 
   it("returns 400 when room_photo is empty", async () => {
@@ -1552,7 +1729,6 @@ describe("handleCreateSimulationRequest", () => {
     expect(response.status).toBe(201);
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
     expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
   });
 
   it("logs the underlying error when uploadRoomPhoto throws", async () => {
@@ -1582,25 +1758,6 @@ describe("handleCreateSimulationRequest", () => {
     });
     expect(errorSpy).toHaveBeenCalledWith(
       "[simulations] createJobStore.create failed:",
-      expect.any(Error)
-    );
-    errorSpy.mockRestore();
-  });
-
-  it("still returns 201 when the best-effort pump invocation fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const ctx = createDeps({ pumpThrows: true });
-    const response = await handleCreateSimulationRequest({
-      formData: makeFormData(),
-      headers: makeHeaders(),
-      clientIp: "203.0.113.7",
-      deps: ctx.deps
-    });
-    expect(response.status).toBe(201);
-    expect(ctx.createJobStore.create).toHaveBeenCalled();
-    expect(ctx.pumpInvoker.invokePump).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[simulations] worker pump invocation failed:",
       expect.any(Error)
     );
     errorSpy.mockRestore();

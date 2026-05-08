@@ -7,9 +7,9 @@
 //
 // Detection uses the ISO base media file format `ftyp` box at offset 4
 // rather than the storage path extension, because uploaded files often
-// have mismatched extensions. The conversion uses libheif-js as a WASM
-// module loaded lazily so the worker only pays the load cost when an
-// HEIC photo actually arrives.
+// have mismatched extensions. The conversion uses the libheif-js WASM bundle
+// from jsDelivr because esm.sh does not expose the required libheif-js version
+// reliably in the local Supabase Edge runtime.
 
 export const HEIC_BRAND_ALLOWLIST = [
   "heic",
@@ -35,14 +35,35 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
   return out;
 }
 
+function readUint32(bytes: Uint8Array, offset: number): number {
+  if (bytes.length < offset + 4) return 0;
+  return (
+    ((bytes[offset] ?? 0) << 24) |
+    ((bytes[offset + 1] ?? 0) << 16) |
+    ((bytes[offset + 2] ?? 0) << 8) |
+    (bytes[offset + 3] ?? 0)
+  ) >>> 0;
+}
+
 export function detectHeicMagic(
   bytes: Uint8Array | null | undefined
 ): boolean {
   if (!bytes || bytes.length < BRAND_OFFSET + 4) return false;
   const ftyp = readAscii(bytes, FTYP_OFFSET, 4);
   if (ftyp !== "ftyp") return false;
-  const brand = readAscii(bytes, BRAND_OFFSET, 4).toLowerCase();
-  return (HEIC_BRAND_ALLOWLIST as readonly string[]).includes(brand);
+  const boxSize = readUint32(bytes, 0);
+  const scanEnd =
+    boxSize >= 16 && boxSize <= bytes.length
+      ? boxSize
+      : Math.min(bytes.length, 64);
+  for (let offset = BRAND_OFFSET; offset + 4 <= scanEnd; offset += 4) {
+    if (offset === 12) continue;
+    const brand = readAscii(bytes, offset, 4).toLowerCase();
+    if ((HEIC_BRAND_ALLOWLIST as readonly string[]).includes(brand)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function endsWithHeicExtension(path: string | null | undefined): boolean {
@@ -59,9 +80,6 @@ export function shouldConvertHeic(
   return endsWithHeicExtension(storagePath);
 }
 
-// Lazy-loaded libheif WASM. The import is deferred so the Edge Function
-// cold start does not pay the WASM compile cost on every invocation,
-// only when an HEIC photo is actually being processed.
 type LibheifImage = {
   get_width(): number;
   get_height(): number;
@@ -83,12 +101,16 @@ type LibheifModule = {
   HeifDecoder: new () => LibheifDecoder;
 };
 
+type LibheifModuleFactory = () => Promise<LibheifModule>;
+
 let libheifPromise: Promise<LibheifModule> | null = null;
 
 async function loadLibheif(): Promise<LibheifModule> {
   if (!libheifPromise) {
-    libheifPromise = import("https://esm.sh/libheif-js@1.18.1?bundle")
-      .then((mod) => (mod.default ?? mod) as LibheifModule)
+    libheifPromise = import(
+      "https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif-bundle.mjs"
+    )
+      .then((mod) => (mod.default as LibheifModuleFactory)())
       .catch((error) => {
         libheifPromise = null;
         throw error;

@@ -1,78 +1,118 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createSimulationWorkerPumpInvoker } from "./simulation-public-server";
+import {
+  createSupabaseSimulationCreateJobStore,
+  createSupabaseSimulationDimensionsStore,
+  createSupabaseSimulationRegenerationStore
+} from "./simulation-public-server";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-  vi.useRealTimers();
-});
+describe("public simulation Supabase stores", () => {
+  it("submits dimensions through the dispatch-outbox RPC", async () => {
+    const client = {
+      rpc: vi.fn().mockResolvedValue({
+        data: "00000000-0000-4000-8000-000000000111",
+        error: null
+      })
+    };
+    const store = createSupabaseSimulationDimensionsStore(client as never);
 
-describe("createSimulationWorkerPumpInvoker", () => {
-  it("posts the pump payload with the invocation secret", async () => {
-    const captured: Array<{
-      init: RequestInit;
-      url: string | URL | Request;
-    }> = [];
-    const fetchImpl = vi.fn(
-      async (url: string | URL | Request, init?: RequestInit) => {
-        captured.push({ url, init: init ?? {} });
-        return new Response("{}", { status: 200 });
-      },
-    );
-
-    const invoker = createSimulationWorkerPumpInvoker({
-      fetchImpl,
-      functionUrl:
-        "http://127.0.0.1:54321/functions/v1/in-home-simulation-worker",
-      invokeSecret: "local-secret",
+    await expect(
+      store.submit({
+        jobId: "00000000-0000-4000-8000-000000000001",
+        suppliedDimensions: {
+          wall_width: 4.2,
+          wall_height: 2.7,
+          room_depth: 5
+        }
+      })
+    ).resolves.toEqual({
+      checkpointId: "00000000-0000-4000-8000-000000000111"
     });
 
-    await invoker.invokePump();
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const seen = captured[0];
-    if (!seen) {
-      throw new Error("fetch was not captured");
-    }
-    expect(seen.url).toBe(
-      "http://127.0.0.1:54321/functions/v1/in-home-simulation-worker",
+    expect(client.rpc).toHaveBeenCalledWith(
+      "submit_in_home_simulation_dimensions_dispatch_outbox",
+      {
+        p_job_id: "00000000-0000-4000-8000-000000000001",
+        p_supplied_dimensions: {
+          wall_width: 4.2,
+          wall_height: 2.7,
+          room_depth: 5
+        }
+      }
     );
-    expect(seen.init.method).toBe("POST");
-    expect(seen.init.body).toBe(JSON.stringify({ mode: "pump" }));
-    expect(seen.init.headers).toEqual({
-      "Content-Type": "application/json",
-      "x-in-home-simulation-worker-secret": "local-secret",
-    });
   });
 
-  it("uses SIMULATION_WORKER_PUMP_TIMEOUT_MS for the abort timeout", async () => {
-    vi.useFakeTimers();
-    vi.stubEnv("SIMULATION_WORKER_PUMP_TIMEOUT_MS", "25");
-    const fetchImpl = vi.fn(
-      async (_url: string | URL | Request, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(
-              new DOMException("This operation was aborted", "AbortError"),
-            );
-          });
-        }),
-    );
+  it("requests regeneration through the dispatch-outbox RPC", async () => {
+    const client = {
+      rpc: vi.fn().mockResolvedValue({
+        data: "00000000-0000-4000-8000-000000000222",
+        error: null
+      })
+    };
+    const store = createSupabaseSimulationRegenerationStore(client as never);
 
-    const invoker = createSimulationWorkerPumpInvoker({
-      fetchImpl,
-      functionUrl:
-        "http://127.0.0.1:54321/functions/v1/in-home-simulation-worker",
-      invokeSecret: "local-secret",
+    await expect(
+      store.request({
+        jobId: "00000000-0000-4000-8000-000000000002"
+      })
+    ).resolves.toEqual({
+      checkpointId: "00000000-0000-4000-8000-000000000222"
     });
 
-    const result = invoker.invokePump();
-    const rejection = expect(result).rejects.toThrow(
-      "This operation was aborted",
+    expect(client.rpc).toHaveBeenCalledWith(
+      "request_in_home_simulation_regeneration_dispatch_outbox",
+      {
+        p_job_id: "00000000-0000-4000-8000-000000000002",
+        p_supplied_dimensions: null
+      }
     );
-    await vi.advanceTimersByTimeAsync(25);
+  });
 
-    await rejection;
+  it("creates jobs through the dispatch-outbox RPC", async () => {
+    const client = {
+      rpc: vi.fn().mockResolvedValue({
+        data: [
+          {
+            out_job_id: "00000000-0000-4000-8000-000000000003",
+            out_status: "queued",
+            out_created_at: "2026-05-08T00:00:00.000Z",
+            out_retention_deadline: "2026-05-09T00:00:00.000Z",
+            out_room_geometry_mode: "back_wall",
+            out_storage_prefix:
+              "simulations/00000000-0000-4000-8000-000000000003"
+          }
+        ],
+        error: null
+      })
+    };
+    const store = createSupabaseSimulationCreateJobStore(client as never);
+
+    await expect(
+      store.create({
+        verificationRequestId: "verify-1",
+        sofaSlug: "sofa-1",
+        fabricId: "00000000-0000-4000-8000-000000000004",
+        visualPositionId: "00000000-0000-4000-8000-000000000005",
+        customerRoomOriginalPath:
+          "simulations/00000000-0000-4000-8000-000000000003/inputs/room.jpg",
+        roomGeometryMode: "back_wall",
+        jobIdOverride: "00000000-0000-4000-8000-000000000003",
+        retentionHours: 24
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      jobId: "00000000-0000-4000-8000-000000000003",
+      status: "queued",
+      storagePrefix: "simulations/00000000-0000-4000-8000-000000000003"
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith(
+      "create_in_home_simulation_job_for_visitor_dispatch_outbox",
+      expect.objectContaining({
+        p_verification_request_id: "verify-1",
+        p_sofa_slug: "sofa-1",
+        p_job_id_override: "00000000-0000-4000-8000-000000000003"
+      })
+    );
   });
 });

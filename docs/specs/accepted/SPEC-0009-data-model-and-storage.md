@@ -725,7 +725,7 @@ Rules:
 ### `in_home_simulation_checkpoints`
 
 `in_home_simulation_checkpoints` stores durable checkpoint attempts for the
-checkpoint-based worker pump defined by `SPEC-0007`.
+database-dispatched checkpoint worker defined by `SPEC-0007`.
 
 Fields:
 
@@ -766,11 +766,64 @@ Rules:
   retention;
 - queue messages may reference checkpoint work, but losing a queue message must
   not make a claimable checkpoint undiscoverable;
-- expired checkpoint claims must be recoverable by scheduler or pump logic;
+- every worker-claimable checkpoint must have one durable dispatch outbox
+  intent that can be drained by a dispatcher or scheduler backstop;
+- expired checkpoint claims must be recoverable by scheduler or dispatch logic;
 - retryable checkpoint failures may create or update a later attempt row until
   attempts are exhausted;
 - non-retryable terminal checkpoint failure must update the owning simulation
   job according to `SPEC-0007` failure and regeneration rules.
+
+### `in_home_simulation_checkpoint_dispatch_outbox`
+
+`in_home_simulation_checkpoint_dispatch_outbox` stores the transactional handoff
+from durable checkpoint state to worker invocation. It is operational state and
+must be service-role-only.
+
+Fields:
+
+- `id` uuid primary key;
+- `checkpoint_id` uuid unique reference to `in_home_simulation_checkpoints`;
+- `in_home_simulation_job_id` uuid reference to `in_home_simulation_jobs`;
+- `checkpoint_key` with values from `simulation_checkpoint_key`;
+- `status` with values `pending`, `dispatching`, `dispatched`, `retrying`, and
+  `failed`;
+- `attempt_count` integer;
+- `max_attempts` integer;
+- `next_attempt_at` timestamp;
+- `last_attempt_at` timestamp nullable;
+- `dispatch_started_at` timestamp nullable;
+- `dispatched_at` timestamp nullable;
+- `locked_by` text nullable;
+- `lock_expires_at` timestamp nullable;
+- `last_error_code` text nullable;
+- `last_error_message` text nullable;
+- `reason` text;
+- `created_at` timestamp;
+- `updated_at` timestamp.
+
+Required constraints and indexes:
+
+- unique index on `checkpoint_id` so there is one dispatch intent per
+  checkpoint;
+- due-work index on `next_attempt_at`, `created_at`, and `id` for pending and
+  retrying rows;
+- stale-lock index on `lock_expires_at` for `dispatching` rows;
+- index on `in_home_simulation_job_id`;
+- check constraints for valid status, positive max attempts, non-negative
+  attempt count, non-blank reason, and required lock fields while dispatching.
+
+Rules:
+
+- the same transaction that makes a worker checkpoint claimable must insert or
+  upsert the dispatch outbox row;
+- `awaiting_dimensions`, `completed`, `failed`, and `expired` checkpoints must
+  not create worker dispatch intents;
+- dispatcher locks must be short-lived and reclaimable by the scheduler
+  backstop;
+- duplicate public API retries and duplicate dispatcher wake-ups must not create
+  more than one outbox row for the same checkpoint;
+- public visitors must never read dispatch outbox rows or receive dispatch ids.
 
 ### `simulation_public_progress`
 

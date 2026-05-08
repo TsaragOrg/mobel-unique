@@ -1472,6 +1472,28 @@ button:disabled {
   object-fit: contain;
 }
 
+.simulation-photo-upload-preview-placeholder {
+  background: #f4f4f4;
+  border: 1px solid var(--public-line);
+  color: var(--public-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(100%, 520px);
+  padding: 22px;
+}
+
+.simulation-photo-upload-preview-placeholder p {
+  color: var(--public-ink);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.simulation-photo-upload-preview-placeholder span {
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
 .simulation-photo-upload-preview button {
   align-self: flex-start;
 }
@@ -1502,6 +1524,18 @@ button:disabled {
 .simulation-photo-upload-failed h2 {
   font-size: clamp(1.5rem, 3vw, 2rem);
   margin: 0;
+}
+
+.simulation-photo-upload-diagnostic {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--public-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 12px 14px;
 }
 
 .simulation-status-screen {
@@ -1772,6 +1806,29 @@ button:disabled {
   color: var(--public-muted);
   margin: 0;
   max-width: 480px;
+}
+
+.simulation-terminal-body .simulation-terminal-diagnostic {
+  border: 1px solid var(--public-line);
+  color: var(--public-muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  max-width: 560px;
+  padding: 12px 14px;
+}
+
+.simulation-terminal-diagnostic strong {
+  color: var(--public-ink);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.simulation-terminal-diagnostic span {
+  display: block;
 }
 
 .simulation-terminal-icon {

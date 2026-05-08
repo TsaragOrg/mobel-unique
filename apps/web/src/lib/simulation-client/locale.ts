@@ -60,8 +60,10 @@ export const SIMULATION_LOCALE = {
     takePhotoButton: "Prendre une photo",
     chooseFileButton: "Choisir un fichier",
     previewAlt: "Aperçu de la photo de votre pièce",
+    previewUnavailableTitle: "Aperçu indisponible pour ce fichier",
     replaceLink: "Remplacer la photo",
     continueButton: "Continuer",
+    photoPreparationLabel: "Préparation de la photo",
     uploadProgressLabel: "Envoi de la photo",
     // TODO: FR native review — error wording shown after three upload failures.
     uploadFailedTitle: "L'envoi n'a pas pu aboutir",
@@ -132,6 +134,11 @@ export const SIMULATION_LOCALE = {
       // TODO: FR native review — generic instruction shown for any failure.
       instruction:
         "Veuillez réessayer avec une autre photo. Si le problème persiste, revenez plus tard.",
+      diagnosticPrefix: "Diagnostic",
+      heicDiagnostic:
+        "Le fichier HEIC/HEIF n'a pas pu être converti. Réessayez avec une photo JPEG ou désactivez le mode Haute efficacité de l'appareil photo.",
+      genericDiagnostic:
+        "Le traitement côté serveur a échoué après l'envoi de la photo.",
       restartButton: "Recommencer la simulation",
       backToSofaLink: "Retour au canapé",
     },

@@ -504,13 +504,14 @@ Response:
 ```
 
 The API must make the durable simulation job claimable for worker processing
-and invoke the in-home simulation worker pump immediately as best effort after
-the database state is written. Queue messages may be used as wake-up hints, but
-the durable job and checkpoint state remain authoritative. If immediate pump
-invocation fails after durable state has been written, the job must remain
-recoverably queued so the scheduler backstop can process it later. The browser
-must not receive worker function names, queue ids, or service invocation
-details.
+and write the transactional dispatch outbox intent in the same database
+mutation. Queue messages may be used as wake-up hints, but the durable job,
+checkpoint state, and dispatch outbox remain authoritative. If immediate
+dispatch is delayed after durable state has been written, the job must remain
+recoverably queued so the scheduler backstop can drain the same outbox later.
+The public route handler must not invoke or wait on the worker directly. The
+browser must not receive worker function names, queue ids, dispatch ids, or
+service invocation details.
 
 ### `GET /api/public/simulations/{simulation_job_id}`
 
@@ -612,8 +613,8 @@ Rules:
 - all required dimensions for the mode must be present and positive;
 - extra dimension fields must be rejected for MVP unless a later spec adds them;
 - successful submission must transition the job toward placement processing,
-  make the placement checkpoint claimable, and invoke the in-home simulation
-  worker pump immediately as best effort.
+  make the placement checkpoint claimable, and write the dispatch outbox intent
+  without waiting for worker acknowledgement.
 
 Response:
 
@@ -636,7 +637,8 @@ Rules:
 - failed regeneration must not increment successful output count;
 - regeneration must not require re-uploading the room photo or re-entering dimensions while retained.
 - successful regeneration request must make the placement checkpoint claimable
-  and invoke the in-home simulation worker pump immediately as best effort.
+  and write the dispatch outbox intent without waiting for worker
+  acknowledgement.
 
 Response:
 

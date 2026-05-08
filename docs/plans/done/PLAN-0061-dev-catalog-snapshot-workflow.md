@@ -2,7 +2,7 @@
 
 Plan: PLAN-0061
 Spec: SPEC-0009
-Status: active
+Status: done
 Owner area: workflow
 Change request: CR-SPEC-0009-dev-catalog-snapshot-workflow
 Depends on: SPEC-0001, SPEC-0009
@@ -61,3 +61,7 @@ The snapshot intentionally stores catalog `storage_assets` metadata but not
 Supabase Storage object bytes. If the matching bucket objects are absent from
 DEV Storage, image references can exist in the database while image rendering
 still fails until the storage objects are synchronized separately.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in snapshot export/validation scripts, GitHub workflow, committed snapshot docs, tests, and roadmaps.

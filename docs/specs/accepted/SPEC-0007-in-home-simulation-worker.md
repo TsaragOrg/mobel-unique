@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0004
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004
 Areas: api, supabase
-Implementation Plans: PLAN-0010 (room preparation), PLAN-0011 (sofa placement), PLAN-0012 (resilience and purge), PLAN-0068 (checkpoint pump and realtime progress)
+Implementation Plans: PLAN-0010 (room preparation), PLAN-0011 (sofa placement), PLAN-0012 (resilience and purge), PLAN-0068 (database-dispatched checkpoints and realtime progress)
 Last Reviewed: 2026-04-30
 
 ## Traceability
@@ -37,10 +37,10 @@ Functions, Supabase Queues, storage, and observability conventions. The two job
 types have distinct inputs, retention rules, visibility rules, and failure
 handling.
 
-`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
-Pump And Realtime Progress` updates this worker contract so cron is a recovery
-backstop rather than the normal product latency path, and so expensive provider
-work is split into durable checkpoints.
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Database-Dispatched Checkpoints And Realtime Progress`
+updates this worker contract so cron is a recovery backstop rather than the
+normal product latency path, and so expensive provider work is split into
+durable checkpoints.
 
 A future domain-level `In-Home Simulation Flow` spec may emerge later to
 consolidate wizard rules, validation rules, dimension semantics, regeneration
@@ -513,24 +513,25 @@ not the source of truth for simulation progress. The durable database job row
 and checkpoint state are authoritative for status, attempts, claims, retention,
 and recovery.
 
-The worker must support a pump mode and a checkpoint job mode:
+The worker must support a dispatch mode and a checkpoint job mode:
 
-- pump mode is short-lived orchestration. It inspects database state, respects
-  global provider capacity and cost-meter pause state, starts bounded
-  one-checkpoint worker invocations, and exits quickly. It must not call AI
-  providers or perform image generation.
+- dispatch mode is short-lived orchestration. It claims transactional dispatch
+  outbox rows, respects global provider capacity and cost-meter pause state,
+  starts bounded one-checkpoint worker invocations, and exits quickly. It must
+  not call AI providers or perform image generation.
 - checkpoint job mode atomically claims one eligible checkpoint for one job,
   performs only that checkpoint's bounded work, persists artifacts and progress,
-  and invokes pump again when another checkpoint can proceed.
+  and wakes dispatch mode when another checkpoint can proceed.
 
 Public API actions that create the initial job, submit dimensions, or request a
-regeneration must invoke the pump immediately as best effort after durable
-state has been written. Cron or scheduler invocation remains required as a
-watchdog and backlog backstop, but it must not be the normal latency path for
-new visitor work.
+regeneration must write a checkpoint and dispatch outbox row in the same
+database transaction. Public API handlers must not wait on worker acknowledgement
+or invoke the worker directly. Scheduler invocation remains required as a
+watchdog and backlog backstop, but it must drain the same outbox rows instead
+of being the normal latency path for new visitor work.
 
 A job that is `queued` or `placement_queued` but has no live queue message must
-still be discoverable and processable by pump or recovery logic.
+still be discoverable and processable by dispatch or recovery logic.
 
 The queue consumer function may process more than one queued message per
 invocation, but it must respect a configurable concurrency limit based on the

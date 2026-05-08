@@ -37,7 +37,9 @@ describe("web environment example", () => {
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_IP_PER_DAY=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_EMAIL_PER_DAY=");
     expect(envExample).toContain("SIMULATION_QUEUE_NAME=");
-    expect(envExample).toContain("SIMULATION_WORKER_PUMP_TIMEOUT_MS=");
+    expect(envExample).not.toContain("SIMULATION_WORKER_PUMP_TIMEOUT_MS=");
+    expect(envExample).not.toContain("IN_HOME_SIMULATION_WORKER_FUNCTION_URL=");
+    expect(envExample).not.toContain("IN_HOME_SIMULATION_WORKER_INVOKE_SECRET=");
     expect(envExample).toContain("SIMULATION_CORNER_TAG_SLUG=");
     expect(envExample).toContain("SIMULATION_RETENTION_HOURS=");
   });

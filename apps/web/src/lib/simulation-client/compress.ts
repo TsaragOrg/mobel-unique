@@ -13,6 +13,7 @@ export const COMPRESS_DEFAULT_MAX_EDGE_PX = 1600;
 export const COMPRESS_DEFAULT_JPEG_QUALITY = 0.85;
 export const COMPRESS_DEFAULT_MIN_BYTES = 200_000;
 const COMPRESSED_OUTPUT_MIME = "image/jpeg";
+const SERVER_HEIC_PREVIEW_URL = "/api/public/simulation/room-photo-preview";
 
 export interface CompressRoomPhotoOptions {
   maxEdgePx?: number;
@@ -39,6 +40,7 @@ export interface CompressDeps {
     blob: Blob,
     options?: ImageBitmapOptions
   ) => Promise<DecodedBitmap>;
+  convertHeicToJpeg?: (blob: Blob, quality: number) => Promise<Blob>;
   drawToBlob: (
     bitmap: DecodedBitmap,
     width: number,
@@ -56,18 +58,32 @@ export async function compressRoomPhotoWithDeps(
   const maxEdgePx = options.maxEdgePx ?? COMPRESS_DEFAULT_MAX_EDGE_PX;
   const jpegQuality = options.jpegQuality ?? COMPRESS_DEFAULT_JPEG_QUALITY;
   const minBytes = options.minBytesForCompression ?? COMPRESS_DEFAULT_MIN_BYTES;
+  const likelyHeic = isLikelyHeicPhoto(file);
 
-  if (file.size < minBytes) {
+  if (file.size < minBytes && !likelyHeic) {
     return originalPassthrough(file);
   }
 
   let bitmap: DecodedBitmap;
+  let sourceBlob: Blob = file;
   try {
-    bitmap = await deps.createImageBitmap(file, {
+    bitmap = await deps.createImageBitmap(sourceBlob, {
       imageOrientation: "from-image"
     });
   } catch {
-    return originalPassthrough(file);
+    if (!likelyHeic || !deps.convertHeicToJpeg) {
+      return originalPassthrough(file);
+    }
+    let convertedBlob: Blob;
+    try {
+      convertedBlob = await deps.convertHeicToJpeg(file, jpegQuality);
+      sourceBlob = convertedBlob;
+      bitmap = await deps.createImageBitmap(sourceBlob, {
+        imageOrientation: "from-image"
+      });
+    } catch {
+      return originalPassthrough(file);
+    }
   }
 
   try {
@@ -108,6 +124,21 @@ function originalPassthrough(file: File): CompressedPhoto {
   };
 }
 
+function isLikelyHeicPhoto(file: File): boolean {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return (
+    type === "image/heic" ||
+    type === "image/heif" ||
+    type === "image/heic-sequence" ||
+    type === "image/heif-sequence" ||
+    type === "image/x-heic" ||
+    type === "image/x-heif" ||
+    name.endsWith(".heic") ||
+    name.endsWith(".heif")
+  );
+}
+
 function scaleToFit(
   sourceWidth: number,
   sourceHeight: number,
@@ -126,9 +157,93 @@ function scaleToFit(
 
 function defaultDeps(): CompressDeps {
   return {
-    createImageBitmap: (blob, options) => globalThis.createImageBitmap(blob, options),
+    createImageBitmap: (blob, options) =>
+      globalThis.createImageBitmap(blob, options),
+    convertHeicToJpeg: convertHeicBlobToJpeg,
     drawToBlob: drawBitmapToBlob
   };
+}
+
+type Heic2Any = (options: {
+  blob: Blob;
+  toType?: string;
+  quality?: number;
+}) => Promise<Blob | Blob[]>;
+
+let heic2anyPromise: Promise<Heic2Any> | null = null;
+
+async function loadHeic2Any(): Promise<Heic2Any> {
+  if (!heic2anyPromise) {
+    heic2anyPromise = import("heic2any")
+      .then((mod) => mod.default as Heic2Any)
+      .catch((error) => {
+        heic2anyPromise = null;
+        throw error;
+      });
+  }
+  return heic2anyPromise;
+}
+
+async function convertHeicBlobToJpeg(
+  blob: Blob,
+  quality: number
+): Promise<Blob> {
+  try {
+    const heic2any = await loadHeic2Any();
+    const converted = await heic2any({
+      blob,
+      toType: COMPRESSED_OUTPUT_MIME,
+      quality
+    });
+    const output = Array.isArray(converted) ? converted[0] : converted;
+    if (!(output instanceof Blob)) {
+      throw new Error("HEIC conversion returned no JPEG blob");
+    }
+    return output;
+  } catch (error) {
+    return convertHeicBlobToJpegViaServer(blob, error);
+  }
+}
+
+async function convertHeicBlobToJpegViaServer(
+  blob: Blob,
+  localError: unknown
+): Promise<Blob> {
+  const formData = new FormData();
+  const filename =
+    blob instanceof File && blob.name.trim().length > 0
+      ? blob.name
+      : "room.heic";
+  formData.append("room_photo", blob, filename);
+
+  const response = await fetch(SERVER_HEIC_PREVIEW_URL, {
+    body: formData,
+    credentials: "include",
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(
+      `HEIC conversion failed locally (${formatHeicConversionError(
+        localError
+      )}) and server returned HTTP ${response.status}`
+    );
+  }
+
+  const converted = await response.blob();
+  const convertedType = converted.type.toLowerCase();
+  if (convertedType !== "image/jpeg" && convertedType !== "image/jpg") {
+    throw new Error(
+      `HEIC server conversion returned ${converted.type || "<unknown>"}`
+    );
+  }
+  return converted;
+}
+
+function formatHeicConversionError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function drawBitmapToBlob(

@@ -63,6 +63,31 @@ describe("Screen6ErrorExpired (error variant)", () => {
     expect(text).not.toMatch(/select |from |where |insert /i);
     expect(text).not.toMatch(/simulations\/[\w-]+\/inputs/i);
   });
+
+  it("shows an actionable HEIC diagnostic without exposing worker internals", () => {
+    render(
+      <Screen6ErrorExpired
+        variant="error"
+        context={{
+          sofaName: "X",
+          fabricName: "Y",
+          visualPositionLabel: "Z"
+        }}
+        errorDetail={
+          "Could not convert HEIC/HEIF input: libheif could not load: Module not found: https://esm.sh/libheif-js@1.18.1?bundle"
+        }
+        restartHref="/sofas/canape-rivoli/simulate"
+        backToSofaHref="/sofas/canape-rivoli"
+      />
+    );
+
+    const root = screen.getByTestId("simulation-screen-error");
+    const text = root.textContent ?? "";
+    expect(text).toMatch(/diagnostic/i);
+    expect(text).toMatch(/HEIC\/HEIF n'a pas pu être converti/i);
+    expect(text).toMatch(/photo JPEG/i);
+    expect(text).not.toMatch(/libheif|esm\.sh|https?:\/\//i);
+  });
 });
 
 describe("Screen6ErrorExpired (expired variant)", () => {

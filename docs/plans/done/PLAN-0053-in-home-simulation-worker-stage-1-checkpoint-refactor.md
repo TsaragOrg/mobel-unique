@@ -2,7 +2,7 @@
 
 Plan: PLAN-0053
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -155,3 +155,7 @@ This plan does **not** include:
   back-wall happy path. Stage 2 (placement) parity verification is
   the next remaining gate; if placement also exceeds 150s, a
   parallel PLAN-0054 splits it on the same checkpointing pattern.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in worker checkpoint dispatch and regression tests. Later durable checkpoint dispatch continues under PLAN-0068.

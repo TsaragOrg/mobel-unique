@@ -2,7 +2,7 @@
 
 Plan: PLAN-0056
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -197,3 +197,7 @@ queue contracts, or upstream/downstream flows:
 - The default `IN_HOME_SIMULATION_CLAIM_TTL_SECONDS` is left at 600.
   Operators who want faster recovery can lower it via env without
   touching code.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in OpenAI timeout helpers, start events, recovery cron migration, tests, and roadmaps. Recovery/dispatch refinements continue under PLAN-0068.

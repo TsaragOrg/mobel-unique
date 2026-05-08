@@ -2,7 +2,7 @@
 
 Plan: PLAN-0050
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -121,3 +121,7 @@ the stub bodies with real verification later; this UI stays.
   surfaces gracefully. PLAN-0042 may add an inline "verify first"
   hint to the wizard entry if telemetry shows direct hits there.
 - This plan does not touch the production worker or migrations.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in the email gate route, component, auth helpers, tests, and roadmaps. Production email delivery remains outside this stub UI plan.

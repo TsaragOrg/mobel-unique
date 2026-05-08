@@ -2,7 +2,7 @@
 
 Plan: PLAN-0059
 Spec: SPEC-0014
-Status: active
+Status: done
 Owner area: web
 Change request: CR-SPEC-0014-admin-sofa-source-fabric-reassignment-safety
 Depends on: PLAN-0023, PLAN-0052, SPEC-0005, SPEC-0009, SPEC-0010, SPEC-0013, SPEC-0014
@@ -223,3 +223,7 @@ Update:
 - Web typecheck and spec guard pass.
 - Manual verification confirms no hidden partial-save behavior in the View
   Columns workbench.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in the transaction RPC, admin store/UI behavior, tests, and roadmaps.

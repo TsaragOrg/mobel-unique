@@ -2,7 +2,7 @@
 
 Plan: PLAN-0058
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -218,3 +218,7 @@ ticks.
   sees this as "Préparation de votre simulation" for the duration
   before "Mesurez votre pièce" appears, exactly matching the
   SPEC-0015 Screen 2/3 transition.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in quality-low provider defaults, validate checkpoint split, tests, and roadmaps. Durable checkpoint orchestration continues under PLAN-0068.

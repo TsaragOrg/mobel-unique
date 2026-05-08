@@ -133,15 +133,10 @@ export interface SimulationRegenerationStore {
   }): Promise<{ checkpointId: string }>;
 }
 
-export interface SimulationWorkerPumpInvoker {
-  invokePump(): Promise<void>;
-}
-
 export interface SimulationPublicDimensionsHandlerDeps {
   accessTokenSecret: string;
   jobReader: SimulationJobReader;
   dimensionsStore: SimulationDimensionsStore;
-  pumpInvoker: SimulationWorkerPumpInvoker;
   now?: () => Date;
 }
 
@@ -149,8 +144,11 @@ export interface SimulationPublicRegenerationHandlerDeps {
   accessTokenSecret: string;
   jobReader: SimulationJobReader;
   regenerationStore: SimulationRegenerationStore;
-  pumpInvoker: SimulationWorkerPumpInvoker;
   now?: () => Date;
+}
+
+export interface SimulationPublicRoomPhotoPreviewHandlerDeps {
+  roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
 }
 
 export interface SimulationCatalogStore {
@@ -167,6 +165,18 @@ export interface SimulationStorageUploader {
     contentType: string;
   }): Promise<void>;
   deleteUploadedRoomPhoto(input: { storagePath: string }): Promise<void>;
+}
+
+export interface SimulationPreparedRoomPhoto {
+  fileBytes: Uint8Array;
+  fileContentType: string;
+  fileExtension: string;
+}
+
+export interface SimulationRoomPhotoNormalizer {
+  normalize(
+    input: SimulationPreparedRoomPhoto
+  ): Promise<SimulationPreparedRoomPhoto>;
 }
 
 export interface SimulationCreateJobStore {
@@ -210,8 +220,8 @@ export interface SimulationPublicCreateHandlerDeps {
   idempotencyStore: SimulationIdempotencyStore;
   catalogStore: SimulationCatalogStore;
   storageUploader: SimulationStorageUploader;
+  roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
   createJobStore: SimulationCreateJobStore;
-  pumpInvoker: SimulationWorkerPumpInvoker;
   jobReader: SimulationJobReader;
   generateJobId?: () => string;
   now?: () => Date;
@@ -226,8 +236,43 @@ export const SIMULATION_ALLOWED_PHOTO_CONTENT_TYPES: Readonly<
   "image/png": "png",
   "image/webp": "webp",
   "image/heic": "heic",
-  "image/heif": "heif"
+  "image/heif": "heif",
+  "image/heic-sequence": "heic",
+  "image/heif-sequence": "heif",
+  "image/x-heic": "heic",
+  "image/x-heif": "heif"
 };
+
+const SIMULATION_CANONICAL_PHOTO_CONTENT_TYPES: Readonly<
+  Record<string, string>
+> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif"
+};
+
+const SIMULATION_GENERIC_PHOTO_CONTENT_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream"
+]);
+
+const SIMULATION_HEIC_FILE_EXTENSIONS = new Set(["heic", "heif"]);
+const SIMULATION_HEIF_BRANDS = new Set(["mif1", "msf1"]);
+const SIMULATION_HEIC_BRAND_ALLOWLIST = new Set([
+  "heic",
+  "heix",
+  "heim",
+  "heis",
+  "mif1",
+  "msf1",
+  "hevc",
+  "hevx",
+  "hevm",
+  "hevs"
+]);
 
 export async function handleCreateEmailVerificationRequest(input: {
   body: unknown;
@@ -413,7 +458,6 @@ export async function handleSubmitDimensionsRequest(input: {
     jobId: job.jobId,
     suppliedDimensions: dimensionsResult.dimensions
   });
-  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -462,7 +506,6 @@ export async function handleRequestRegenerationRequest(input: {
   await input.deps.regenerationStore.request({
     jobId: job.jobId
   });
-  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -581,13 +624,31 @@ export async function handleCreateSimulationRequest(input: {
   }
 
   const jobId = (input.deps.generateJobId ?? randomUUID)();
-  const storagePath = `simulations/${jobId}/inputs/room.${parsed.body.fileExtension}`;
+  let roomPhoto: SimulationPreparedRoomPhoto;
+  try {
+    roomPhoto = await (
+      input.deps.roomPhotoNormalizer ?? defaultSimulationRoomPhotoNormalizer
+    ).normalize({
+      fileBytes: parsed.body.fileBytes,
+      fileContentType: parsed.body.fileContentType,
+      fileExtension: parsed.body.fileExtension
+    });
+  } catch (error) {
+    console.error("[simulations] room photo normalization failed:", error);
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "Could not convert HEIC/HEIF room_photo to JPEG.",
+      400
+    );
+  }
+
+  const storagePath = `simulations/${jobId}/inputs/room.${roomPhoto.fileExtension}`;
 
   try {
     await input.deps.storageUploader.uploadRoomPhoto({
       storagePath,
-      bytes: parsed.body.fileBytes,
-      contentType: parsed.body.fileContentType
+      bytes: roomPhoto.fileBytes,
+      contentType: roomPhoto.fileContentType
     });
   } catch (error) {
     console.error("[simulations] uploadRoomPhoto failed:", error);
@@ -636,7 +697,6 @@ export async function handleCreateSimulationRequest(input: {
     // null simulation_job_id and surface IDEMPOTENCY_IN_PROGRESS until the
     // row is finalized by a later request or cleaned up by retention.
   }
-  await invokeWorkerPumpBestEffort(input.deps.pumpInvoker);
 
   return jsonResponse(
     {
@@ -651,14 +711,52 @@ export async function handleCreateSimulationRequest(input: {
   );
 }
 
-async function invokeWorkerPumpBestEffort(
-  pumpInvoker: SimulationWorkerPumpInvoker
-): Promise<void> {
-  try {
-    await pumpInvoker.invokePump();
-  } catch (error) {
-    console.error("[simulations] worker pump invocation failed:", error);
+export async function handleConvertSimulationRoomPhotoPreviewRequest(input: {
+  formData: FormData;
+  deps?: SimulationPublicRoomPhotoPreviewHandlerDeps;
+}): Promise<Response> {
+  const parsedPhoto = await parseSimulationRoomPhotoBlob(
+    input.formData.get("room_photo")
+  );
+  if (!parsedPhoto.ok) {
+    return errorResponse("VALIDATION_FAILED", parsedPhoto.message, 400);
   }
+
+  let roomPhoto: SimulationPreparedRoomPhoto;
+  try {
+    roomPhoto = await (
+      input.deps?.roomPhotoNormalizer ?? defaultSimulationRoomPhotoNormalizer
+    ).normalize(parsedPhoto.body);
+  } catch (error) {
+    console.error(
+      "[simulations] room photo preview normalization failed:",
+      error
+    );
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "Could not convert HEIC/HEIF room_photo to JPEG.",
+      400
+    );
+  }
+
+  if (roomPhoto.fileContentType !== "image/jpeg") {
+    return errorResponse(
+      "VALIDATION_FAILED",
+      "room_photo preview conversion requires HEIC/HEIF input.",
+      400
+    );
+  }
+
+  const responseBuffer = new ArrayBuffer(roomPhoto.fileBytes.byteLength);
+  new Uint8Array(responseBuffer).set(roomPhoto.fileBytes);
+
+  return new Response(responseBuffer, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "image/jpeg"
+    },
+    status: 200
+  });
 }
 
 async function safeDeleteUploadedPhoto(
@@ -671,6 +769,27 @@ async function safeDeleteUploadedPhoto(
     // Orphan cleanup will pick it up later.
   }
 }
+
+export const defaultSimulationRoomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+  async normalize(input) {
+    if (!SIMULATION_HEIC_FILE_EXTENSIONS.has(input.fileExtension)) {
+      return input;
+    }
+
+    const heicConvertModule = await import("heic-convert");
+    const jpegBuffer = await heicConvertModule.default({
+      buffer: Buffer.from(input.fileBytes),
+      format: "JPEG",
+      quality: 0.9
+    });
+
+    return {
+      fileBytes: new Uint8Array(jpegBuffer),
+      fileContentType: "image/jpeg",
+      fileExtension: "jpg"
+    };
+  }
+};
 
 async function parseCreateSimulationFormData(
   formData: FormData
@@ -705,10 +824,33 @@ async function parseCreateSimulationFormData(
   ) {
     return { ok: false, message: "visual_position_id must be a UUID" };
   }
-  if (!isBlobLike(file)) {
+  const parsedPhoto = await parseSimulationRoomPhotoBlob(file);
+  if (!parsedPhoto.ok) return parsedPhoto;
+
+  return {
+    ok: true,
+    body: {
+      sofaSlug: sofaSlug.trim(),
+      fabricId,
+      visualPositionId,
+      fileBytes: parsedPhoto.body.fileBytes,
+      fileContentType: parsedPhoto.body.fileContentType,
+      fileExtension: parsedPhoto.body.fileExtension
+    }
+  };
+}
+
+async function parseSimulationRoomPhotoBlob(value: unknown): Promise<
+  | {
+      ok: true;
+      body: SimulationPreparedRoomPhoto;
+    }
+  | { ok: false; message: string }
+> {
+  if (!isBlobLike(value)) {
     return { ok: false, message: "room_photo file is required" };
   }
-  const blob = file;
+  const blob = value;
   if (blob.size === 0) {
     return { ok: false, message: "room_photo is empty" };
   }
@@ -718,26 +860,132 @@ async function parseCreateSimulationFormData(
       message: `room_photo exceeds ${SIMULATION_CREATE_MAX_PHOTO_BYTES} bytes`
     };
   }
-  const contentType = blob.type.toLowerCase();
-  const extension = SIMULATION_ALLOWED_PHOTO_CONTENT_TYPES[contentType];
-  if (!extension) {
+  const bytes = new Uint8Array(await readBlobBytes(blob));
+  const rawContentType = normalizeSimulationPhotoContentType(blob.type);
+  const photoType = resolveSimulationPhotoType({
+    contentType: rawContentType,
+    filename: getBlobFilename(blob),
+    bytes
+  });
+  if (!photoType) {
     return {
       ok: false,
-      message: `room_photo content-type ${contentType || "<unknown>"} is not supported`
+      message: `room_photo content-type ${rawContentType || "<unknown>"} is not supported`
     };
   }
-  const bytes = new Uint8Array(await readBlobBytes(blob));
   return {
     ok: true,
     body: {
-      sofaSlug: sofaSlug.trim(),
-      fabricId,
-      visualPositionId,
       fileBytes: bytes,
-      fileContentType: contentType,
-      fileExtension: extension
+      fileContentType: photoType.contentType,
+      fileExtension: photoType.extension
     }
   };
+}
+
+function resolveSimulationPhotoType(input: {
+  contentType: string;
+  filename: string | null;
+  bytes: Uint8Array;
+}): { contentType: string; extension: string } | null {
+  const extensionFromContentType =
+    SIMULATION_ALLOWED_PHOTO_CONTENT_TYPES[input.contentType];
+  if (extensionFromContentType) {
+    return {
+      contentType: canonicalSimulationPhotoContentType(extensionFromContentType),
+      extension: extensionFromContentType
+    };
+  }
+
+  const heicBrand = detectSimulationHeicBrand(input.bytes);
+  const extensionFromFilename = parseSimulationPhotoFilenameExtension(
+    input.filename
+  );
+  if (
+    heicBrand &&
+    extensionFromFilename &&
+    SIMULATION_HEIC_FILE_EXTENSIONS.has(extensionFromFilename) &&
+    SIMULATION_GENERIC_PHOTO_CONTENT_TYPES.has(input.contentType)
+  ) {
+    return {
+      contentType: canonicalSimulationPhotoContentType(extensionFromFilename),
+      extension: extensionFromFilename
+    };
+  }
+
+  if (
+    heicBrand &&
+    SIMULATION_GENERIC_PHOTO_CONTENT_TYPES.has(input.contentType)
+  ) {
+    const extension = SIMULATION_HEIF_BRANDS.has(heicBrand) ? "heif" : "heic";
+    return {
+      contentType: canonicalSimulationPhotoContentType(extension),
+      extension
+    };
+  }
+
+  return null;
+}
+
+function canonicalSimulationPhotoContentType(extension: string): string {
+  return (
+    SIMULATION_CANONICAL_PHOTO_CONTENT_TYPES[extension] ??
+    "application/octet-stream"
+  );
+}
+
+function normalizeSimulationPhotoContentType(contentType: string): string {
+  return contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function getBlobFilename(blob: Blob): string | null {
+  const filename = (blob as { name?: unknown }).name;
+  return typeof filename === "string" ? filename : null;
+}
+
+function parseSimulationPhotoFilenameExtension(
+  filename: string | null
+): string | null {
+  if (!filename) return null;
+  const extension = filename.split(".").pop()?.trim().toLowerCase();
+  return extension && extension !== filename.toLowerCase() ? extension : null;
+}
+
+function detectSimulationHeicBrand(bytes: Uint8Array): string | null {
+  if (readFourByteAscii(bytes, 4) !== "ftyp") return null;
+  const boxSize = readUint32(bytes, 0);
+  const scanEnd =
+    boxSize >= 16 && boxSize <= bytes.length
+      ? boxSize
+      : Math.min(bytes.length, 64);
+  for (let offset = 8; offset + 4 <= scanEnd; offset += 4) {
+    if (offset === 12) continue;
+    const brand = readFourByteAscii(bytes, offset);
+    if (brand && SIMULATION_HEIC_BRAND_ALLOWLIST.has(brand)) {
+      return brand;
+    }
+  }
+  return null;
+}
+
+function readFourByteAscii(bytes: Uint8Array, offset: number): string | null {
+  if (bytes.length < offset + 4) return null;
+  return String.fromCharCode(
+    bytes[offset] ?? 0,
+    bytes[offset + 1] ?? 0,
+    bytes[offset + 2] ?? 0,
+    bytes[offset + 3] ?? 0
+  ).toLowerCase();
+}
+
+function readUint32(bytes: Uint8Array, offset: number): number {
+  if (bytes.length < offset + 4) return 0;
+  return (
+    ((bytes[offset] ?? 0) << 24) |
+    ((bytes[offset + 1] ?? 0) << 16) |
+    ((bytes[offset + 2] ?? 0) << 8) |
+    (bytes[offset + 3] ?? 0)
+  ) >>> 0;
 }
 
 function isBlobLike(value: unknown): value is Blob {
@@ -753,7 +1001,27 @@ async function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
   if (typeof (blob as { arrayBuffer?: unknown }).arrayBuffer === "function") {
     return blob.arrayBuffer();
   }
+  if (typeof FileReader !== "undefined") {
+    return readBlobBytesWithFileReader(blob);
+  }
   return new Response(blob).arrayBuffer();
+}
+
+function readBlobBytesWithFileReader(blob: Blob): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Could not read room_photo bytes"));
+    };
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Could not read room_photo bytes"));
+    };
+    reader.readAsArrayBuffer(blob);
+  });
 }
 
 interface AuthorizedJobResolver {

@@ -2,7 +2,7 @@
 
 Plan: PLAN-0039
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -209,3 +209,7 @@ cap_cents)` RPC the helper invokes.
   the table + cleanup. The actual rate-limit logic lives in the API layer.
 - Migration timestamps follow the existing repo convention; check the
   highest committed timestamp before naming a new file to avoid collisions.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in migrations, seed scripts, tests, reset wiring, and roadmaps. Remaining launch verification is tracked by PLAN-0042.
