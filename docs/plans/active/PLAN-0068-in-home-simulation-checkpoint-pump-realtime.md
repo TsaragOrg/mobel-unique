@@ -159,3 +159,15 @@ Update these roadmaps as the implementation lands:
   added to `supabase_realtime`.
 - The public UI must not show provider names, prompt names, raw worker errors,
   storage paths, queue ids, or signed URLs.
+
+## Follow-up fix: public API pump timeout tuning (2026-05-08)
+
+Local front-driven OpenAI tests showed the public API's best-effort pump
+invocation could abort after the previous 1.5 second timeout while the local
+Supabase Edge runtime was still cold-starting or reading pump status. This did
+not corrupt durable job state, but it created noisy
+`worker pump invocation failed: AbortError` logs and made local progress depend
+on recovery/backlog behavior. The web pump invoker now defaults to a 10 second
+acknowledgement timeout and reads `SIMULATION_WORKER_PUMP_TIMEOUT_MS` so local
+and deployed environments can tune the short pump call separately from the
+long OpenAI provider timeout.
