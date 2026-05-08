@@ -2945,6 +2945,8 @@ function TagManagerContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения хранят сообщения, загрузку, отправку и список тегов на странице.
+  // FR: Ces valeurs gardent les messages, le chargement, l'envoi et la liste des etiquettes sur la page.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2954,6 +2956,8 @@ function TagManagerContent({
   const [submittingTagId, setSubmittingTagId] = useState<string | null>(null);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
+  // RU: Эта команда заново берет теги с сервера.
+  // FR: Cette action reprend les etiquettes depuis le serveur.
   async function loadTags() {
     setIsLoading(true);
 
@@ -2965,24 +2969,29 @@ function TagManagerContent({
     }
   }
 
+  // RU: Этот автоматический блок загружает теги при открытии страницы или смене доступа.
+  // FR: Ce bloc automatique charge les etiquettes quand la page s'ouvre ou quand l'acces change.
   useEffect(() => {
     void loadTags().catch((error) => setErrorMessage(readErrorMessage(error)));
   }, [accessToken, dependencies]);
 
+  // RU: Эта команда создает тег, чистит поле и сразу добавляет тег в список.
+  // FR: Cette action cree une etiquette, vide le champ et ajoute tout de suite l'etiquette a la liste.
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const publicLabel = String(formData.get("public_label") ?? "").trim();
 
     try {
-      await dependencies.createTag(accessToken, {
+      const createdTag = await dependencies.createTag(accessToken, {
         public_label: publicLabel,
       });
-      event.currentTarget.reset();
-      await loadTags();
+      form.reset();
+      setTags((currentTags) => mergeAdminTagList(currentTags, createdTag));
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2990,6 +2999,8 @@ function TagManagerContent({
     }
   }
 
+  // RU: Эта команда сохраняет новое имя тега.
+  // FR: Cette action enregistre le nouveau nom de l'etiquette.
   async function handleUpdate(tag: AdminCatalogTag, form: HTMLFormElement) {
     setErrorMessage(null);
     setSubmittingTagId(tag.id);
@@ -3008,6 +3019,8 @@ function TagManagerContent({
     }
   }
 
+  // RU: Эта команда удаляет тег после подтверждения.
+  // FR: Cette action supprime l'etiquette apres la confirmation.
   async function handleDelete(tag: AdminCatalogTag) {
     setErrorMessage(null);
     setSubmittingTagId(tag.id);
@@ -3039,6 +3052,8 @@ function TagManagerContent({
           {errorMessage}
         </p>
       ) : null}
+      {/* RU: Эта форма добавляет новый тег в каталог. */}
+      {/* FR: Cette partie ajoute une nouvelle etiquette au catalogue. */}
       <form
         aria-busy={isSubmitting}
         className="admin-inline-form admin-tag-create-form"
@@ -3065,6 +3080,8 @@ function TagManagerContent({
       {!isLoading && tags.length === 0 ? (
         <p className="admin-list-feedback">No tags yet.</p>
       ) : null}
+      {/* RU: Этот список показывает все теги и дает менять или удалять каждый тег. */}
+      {/* FR: Cette liste montre toutes les etiquettes et permet de changer ou supprimer chaque etiquette. */}
       {tags.length > 0 ? (
         <div className="admin-list admin-tag-list">
           {tags.map((tag) => {
@@ -3151,6 +3168,30 @@ function TagManagerContent({
         </div>
       ) : null}
     </section>
+  );
+}
+
+// RU: Эта помощь кладет новый тег в список один раз и держит порядок по имени.
+// FR: Cette aide met la nouvelle etiquette une seule fois et garde l'ordre par nom.
+function mergeAdminTagList(
+  tags: AdminCatalogTag[],
+  tag: AdminCatalogTag,
+): AdminCatalogTag[] {
+  const nextTags = tags.filter((currentTag) => currentTag.id !== tag.id);
+
+  nextTags.push(tag);
+  nextTags.sort(compareAdminTags);
+
+  return nextTags;
+}
+
+// RU: Эта помощь сравнивает теги по имени, потом по короткому адресу, потом по номеру.
+// FR: Cette aide compare les etiquettes par nom, puis par adresse courte, puis par numero.
+function compareAdminTags(first: AdminCatalogTag, second: AdminCatalogTag) {
+  return (
+    first.public_label.localeCompare(second.public_label) ||
+    first.slug.localeCompare(second.slug) ||
+    first.id.localeCompare(second.id)
   );
 }
 
