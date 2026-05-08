@@ -135,24 +135,33 @@ export function drawThickLine(
 }
 
 let cachedFont: Uint8Array | null = null;
-async function loadFont(): Promise<Uint8Array> {
+let fontLoadFailed = false;
+async function loadFont(): Promise<Uint8Array | null> {
   if (cachedFont) return cachedFont;
-  const response = await fetch(FONT_URL);
-  if (!response.ok) {
-    throw new Error(`could not load font: HTTP ${response.status}`);
+  if (fontLoadFailed) return null;
+  try {
+    const response = await fetch(FONT_URL);
+    if (!response.ok) {
+      fontLoadFailed = true;
+      return null;
+    }
+    const buffer = await response.arrayBuffer();
+    cachedFont = new Uint8Array(buffer);
+    return cachedFont;
+  } catch (_error) {
+    fontLoadFailed = true;
+    return null;
   }
-  const buffer = await response.arrayBuffer();
-  cachedFont = new Uint8Array(buffer);
-  return cachedFont;
 }
 
 async function drawLabel(
   image: Image,
-  font: Uint8Array,
+  font: Uint8Array | null,
   fontSize: number,
   text: string,
   anchor: Point
 ): Promise<void> {
+  if (!font) return;
   let textImage: Image;
   try {
     textImage = await Image.renderText(font, fontSize, text, LABEL_FG);

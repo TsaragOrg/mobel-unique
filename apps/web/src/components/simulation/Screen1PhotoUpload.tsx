@@ -16,6 +16,7 @@ import type { RoomGeometryMode } from "../../lib/simulation-public-api";
 import { SimulationContextStrip } from "./SimulationContextStrip";
 
 const SIMULATIONS_ENDPOINT = "/api/public/simulations";
+const ROOM_PHOTO_ACCEPT = "image/*,.heic,.heif";
 
 export interface Screen1PhotoUploadProps {
   sofaSlug: string;
@@ -45,72 +46,156 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prepareRequestRef = useRef(0);
 
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [preparedPhoto, setPreparedPhoto] = useState<CompressedPhoto | null>(
+    null
+  );
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  const [isPreparingPhoto, setIsPreparingPhoto] = useState(false);
   const [progress, setProgress] = useState<number>(0);
 
   const isTouch = useMemo(() => detectTouch(), [detectTouch]);
   const copy = SIMULATION_LOCALE.screen1PhotoUpload;
 
   useEffect(() => {
-    if (!pickedFile) {
+    if (!previewBlob) {
       setPreviewUrl(null);
       return;
     }
-    const url = URL.createObjectURL(pickedFile);
+    const url = URL.createObjectURL(previewBlob);
     setPreviewUrl(url);
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [pickedFile]);
+  }, [previewBlob]);
 
   function chooseFile(file: File | undefined) {
     if (!file) return;
+    const requestId = prepareRequestRef.current + 1;
+    prepareRequestRef.current = requestId;
     setPickedFile(file);
+    setPreparedPhoto(null);
+    setPreviewBlob(null);
     setIdempotencyKey(generateIdempotencyKey());
     setPhase("idle");
+    setFailureDetail(null);
+    setIsPreparingPhoto(true);
     setProgress(0);
+    void prepareSelectedPhoto(file, requestId);
   }
 
   function clearSelection() {
+    prepareRequestRef.current += 1;
     setPickedFile(null);
+    setPreparedPhoto(null);
+    setPreviewBlob(null);
     setIdempotencyKey(null);
     setPhase("idle");
+    setFailureDetail(null);
+    setIsPreparingPhoto(false);
     setProgress(0);
     if (cameraInputRef.current) cameraInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  async function submit(): Promise<void> {
-    if (!pickedFile || !idempotencyKey) return;
-    setPhase("uploading");
-    setProgress(0);
-    let compressed: CompressedPhoto;
+  async function prepareSelectedPhoto(
+    file: File,
+    requestId: number
+  ): Promise<void> {
     try {
-      compressed = await compress(pickedFile);
-    } catch {
+      const compressed = await compress(file);
+      if (prepareRequestRef.current !== requestId) return;
+      setPreparedPhoto(compressed);
+      setPreviewBlob(
+        isPreviewablePhotoMime(compressed.mimeType || compressed.blob.type)
+          ? compressed.blob
+          : null
+      );
+    } catch (error) {
+      if (prepareRequestRef.current !== requestId) return;
+      console.error("[simulations] room photo preparation failed:", {
+        error,
+        filename: file.name,
+        size: file.size,
+        type: file.type || "<unknown>"
+      });
+      setFailureDetail(formatPreparationFailureDetail(error));
+      setPhase("failed");
+    } finally {
+      if (prepareRequestRef.current === requestId) {
+        setIsPreparingPhoto(false);
+      }
+    }
+  }
+
+  async function submit(): Promise<void> {
+    if (!pickedFile || !idempotencyKey || !preparedPhoto) return;
+    setPhase("uploading");
+    setFailureDetail(null);
+    setProgress(0);
+    let result: UploadResult;
+    try {
+      result = await upload({
+        endpoint: SIMULATIONS_ENDPOINT,
+        sofaSlug: props.sofaSlug,
+        fabricId: props.fabricId,
+        visualPositionId: props.visualPositionId,
+        photoBlob: preparedPhoto.blob,
+        photoFilename: uploadFilenameForPreparedPhoto(
+          pickedFile.name,
+          preparedPhoto.mimeType
+        ),
+        idempotencyKey,
+        accessToken: props.accessToken,
+        onProgress: (percent) => setProgress(percent)
+      });
+    } catch (error) {
+      console.error("[simulations] room photo upload threw:", {
+        error,
+        filename: pickedFile.name,
+        preparedMimeType: preparedPhoto.mimeType,
+        preparedSourceUsed: preparedPhoto.sourceUsed,
+        preparedSize: preparedPhoto.blob.size
+      });
+      setFailureDetail(formatThrownFailureDetail(error));
       setPhase("failed");
       return;
     }
-    const result = await upload({
-      endpoint: SIMULATIONS_ENDPOINT,
-      sofaSlug: props.sofaSlug,
-      fabricId: props.fabricId,
-      visualPositionId: props.visualPositionId,
-      photoBlob: compressed.blob,
-      photoFilename: pickedFile.name,
-      idempotencyKey,
-      accessToken: props.accessToken,
-      onProgress: (percent) => setProgress(percent)
-    });
     if (result.ok) {
       props.onJobCreated(result.jobId);
       return;
     }
+    console.error("[simulations] room photo upload failed:", {
+      attempts: result.attempts,
+      code: result.code,
+      filename: pickedFile.name,
+      httpStatus: result.httpStatus,
+      message: result.message,
+      preparedMimeType: preparedPhoto.mimeType,
+      preparedSourceUsed: preparedPhoto.sourceUsed,
+      preparedSize: preparedPhoto.blob.size
+    });
+    setFailureDetail(formatUploadFailureDetail(result));
     setPhase("failed");
+  }
+
+  function retryAfterFailure(): void {
+    setFailureDetail(null);
+    if (pickedFile && !preparedPhoto) {
+      const requestId = prepareRequestRef.current + 1;
+      prepareRequestRef.current = requestId;
+      setPhase("idle");
+      setIsPreparingPhoto(true);
+      void prepareSelectedPhoto(pickedFile, requestId);
+      return;
+    }
+    void submit();
   }
 
   if (phase === "failed") {
@@ -122,10 +207,13 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         <p className="public-eyebrow">{copy.eyebrow}</p>
         <h2>{copy.uploadFailedTitle}</h2>
         <p>{copy.uploadFailedInstruction}</p>
+        {failureDetail ? (
+          <p className="simulation-photo-upload-diagnostic">{failureDetail}</p>
+        ) : null}
         <div className="simulation-photo-upload-actions">
           <button
             className="public-primary-button"
-            onClick={() => void submit()}
+            onClick={retryAfterFailure}
             type="button"
           >
             {copy.uploadFailedRetryButton}
@@ -173,7 +261,7 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
               {copy.takePhotoButton}
             </label>
             <input
-              accept="image/*"
+              accept={ROOM_PHOTO_ACCEPT}
               capture="environment"
               data-testid="simulation-camera-input"
               hidden
@@ -188,7 +276,7 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
           {copy.chooseFileButton}
         </label>
         <input
-          accept="image/*"
+          accept={ROOM_PHOTO_ACCEPT}
           data-testid="simulation-file-input"
           hidden
           id="simulation-file-input"
@@ -212,6 +300,32 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         </div>
       ) : null}
 
+      {pickedFile && preparedPhoto && !previewUrl ? (
+        <div className="simulation-photo-upload-preview">
+          <div className="simulation-photo-upload-preview-placeholder">
+            <p>{copy.previewUnavailableTitle}</p>
+            <span>{pickedFile.name}</span>
+          </div>
+          <button
+            className="public-secondary-button"
+            disabled={phase === "uploading"}
+            onClick={clearSelection}
+            type="button"
+          >
+            {copy.replaceLink}
+          </button>
+        </div>
+      ) : null}
+
+      {isPreparingPhoto ? (
+        <p
+          aria-live="polite"
+          className="simulation-photo-upload-progress"
+        >
+          {copy.photoPreparationLabel}
+        </p>
+      ) : null}
+
       {phase === "uploading" ? (
         <p
           aria-live="polite"
@@ -224,7 +338,12 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
       <div className="simulation-photo-upload-actions">
         <button
           className="public-primary-button"
-          disabled={!pickedFile || phase === "uploading"}
+          disabled={
+            !pickedFile ||
+            !preparedPhoto ||
+            isPreparingPhoto ||
+            phase === "uploading"
+          }
           onClick={() => void submit()}
           type="button"
         >
@@ -233,6 +352,53 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
       </div>
     </section>
   );
+}
+
+function isPreviewablePhotoMime(mimeType: string): boolean {
+  const normalized = mimeType.toLowerCase();
+  return (
+    normalized === "image/jpeg" ||
+    normalized === "image/jpg" ||
+    normalized === "image/png" ||
+    normalized === "image/webp"
+  );
+}
+
+function uploadFilenameForPreparedPhoto(
+  originalFilename: string,
+  mimeType: string
+): string {
+  if (mimeType.toLowerCase() !== "image/jpeg") {
+    return originalFilename;
+  }
+  return originalFilename.replace(/\.[^.]+$/, "") + ".jpg";
+}
+
+function formatPreparationFailureDetail(error: unknown): string {
+  return `Préparation locale échouée: ${formatUnknownError(error)}`;
+}
+
+function formatThrownFailureDetail(error: unknown): string {
+  return `Erreur inattendue pendant l'envoi: ${formatUnknownError(error)}`;
+}
+
+function formatUploadFailureDetail(result: Extract<UploadResult, { ok: false }>): string {
+  const parts = [`Code: ${result.code}`];
+  if (typeof result.httpStatus === "number") {
+    parts.push(`HTTP ${result.httpStatus}`);
+  }
+  if (result.message) {
+    parts.push(result.message);
+  }
+  parts.push(`${result.attempts} tentative${result.attempts > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function defaultIdempotencyKeyGenerator(): string {

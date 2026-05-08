@@ -58,7 +58,9 @@ export function buildCleaningFormData(input: CleaningFormDataInput): FormData {
   form.set("prompt", input.promptText);
   form.set("size", input.size);
   form.set("quality", input.quality);
-  const blob = new Blob([input.imageBytes], { type: input.imageMimeType });
+  const blob = new Blob([new Uint8Array(input.imageBytes).buffer], {
+    type: input.imageMimeType
+  });
   form.set("image", blob, "room.png");
   return form;
 }

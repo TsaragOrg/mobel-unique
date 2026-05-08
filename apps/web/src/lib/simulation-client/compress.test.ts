@@ -140,6 +140,17 @@ describe("compressRoomPhotoWithDeps", () => {
     expect(result.blob).toBe(file);
   });
 
+  it("still normalizes a small HEIC file instead of passing it through by size", async () => {
+    const file = fakeFile("tiny.heic", "image/heic", COMPRESS_DEFAULT_MIN_BYTES - 1);
+    const { deps, drawCalls } = makeDeps();
+
+    const result = await compressRoomPhotoWithDeps(file, {}, deps);
+
+    expect(drawCalls).toHaveLength(1);
+    expect(result.sourceUsed).toBe("compressed");
+    expect(result.mimeType).toBe("image/jpeg");
+  });
+
   it("falls back to original bytes when the browser cannot decode HEIC", async () => {
     const file = fakeFile("snap.heic", "image/heic", 4_000_000);
     const createImageBitmap = vi.fn(async () => {
@@ -153,6 +164,40 @@ describe("compressRoomPhotoWithDeps", () => {
     expect(result.sourceUsed).toBe("original");
     expect(result.mimeType).toBe("image/heic");
     expect(result.blob).toBe(file);
+  });
+
+  it("uses the HEIC converter when the browser cannot decode the original file", async () => {
+    const file = fakeFile("snap.heic", "application/octet-stream", 4_000_000);
+    const converted = new Blob([new ArrayBuffer(2_000_000)], {
+      type: "image/jpeg"
+    });
+    const createImageBitmap = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("InvalidStateError: heic not supported"))
+      .mockResolvedValueOnce({
+        width: 3200,
+        height: 2400,
+        close: () => undefined
+      });
+    const convertHeicToJpeg = vi.fn(async () => converted);
+    const { deps, drawCalls } = makeDeps({
+      createImageBitmap,
+      convertHeicToJpeg
+    });
+
+    const result = await compressRoomPhotoWithDeps(file, {}, deps);
+
+    expect(convertHeicToJpeg).toHaveBeenCalledWith(
+      file,
+      COMPRESS_DEFAULT_JPEG_QUALITY
+    );
+    expect(createImageBitmap).toHaveBeenLastCalledWith(
+      converted,
+      expect.objectContaining({ imageOrientation: "from-image" })
+    );
+    expect(drawCalls).toHaveLength(1);
+    expect(result.sourceUsed).toBe("compressed");
+    expect(result.mimeType).toBe("image/jpeg");
   });
 
   it("rounds the scaled dimension to an integer", async () => {

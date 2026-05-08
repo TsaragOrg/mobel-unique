@@ -125,7 +125,7 @@ export class MockCleaningProvider implements CleaningProvider {
   }
 }
 
-const MOCK_DOT_COLOR = 0xffd700ff;
+const MOCK_DOT_COLOR = Image.rgbaToColor(255, 215, 0, 255);
 const MOCK_DOT_SIZE = 12;
 
 export class MockCornersProvider implements CornersProvider {

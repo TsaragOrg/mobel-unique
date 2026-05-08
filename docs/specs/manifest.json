@@ -81,7 +81,7 @@
       "layer": "technical",
       "parent": "SPEC-0004",
       "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004"],
-      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034"],
+      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034", "PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
       "areas": ["api", "supabase"]
     },
@@ -111,7 +111,7 @@
         "SPEC-0007",
         "SPEC-0008"
       ],
-      "implementationPlans": ["PLAN-0061", "PLAN-0065"],
+      "implementationPlans": ["PLAN-0061", "PLAN-0065", "PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
     },
@@ -131,7 +131,7 @@
         "SPEC-0008",
         "SPEC-0009"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0010-api-contracts-and-edge-functions.md",
       "areas": ["web", "api", "supabase", "image-worker", "shared"]
     },
@@ -149,7 +149,7 @@
         "SPEC-0009",
         "SPEC-0010"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0011-admin-authentication-and-authorization.md",
       "areas": ["web", "api", "supabase", "workflow"]
     },
@@ -238,7 +238,8 @@
         "PLAN-0053",
         "PLAN-0056",
         "PLAN-0057",
-        "PLAN-0058"
+        "PLAN-0058",
+        "PLAN-0068"
       ],
       "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
       "areas": ["web", "supabase"]

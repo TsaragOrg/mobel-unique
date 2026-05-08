@@ -6,12 +6,24 @@
       "public_label": "Mobel Local Test"
     },
     {
+      "slug": "mobel-local-public",
+      "public_label": "Mobel Local Public"
+    },
+    {
       "slug": "mobel-local-corner",
       "public_label": "Mobel Local Corner"
     },
     {
       "slug": "mobel-local-soft",
       "public_label": "Mobel Local Soft"
+    },
+    {
+      "slug": "mobel-local-needs-generation",
+      "public_label": "Needs Generation"
+    },
+    {
+      "slug": "mobel-local-missing-images",
+      "public_label": "Missing Images"
     }
   ],
   "fabrics": [
@@ -45,13 +57,20 @@
       "slug": "big-gray-lines",
       "internal_name": "mobel-local sofa big gray lines",
       "public_name": "Big Gray Lines",
-      "public_description": "Local fixture sofa with two corner source photos.",
+      "public_description": "Published fixture sofa with complete public render coverage.",
       "shopify_order_url": "https://shopify.example/products/big-gray-lines",
+      "lifecycle_state": "published",
+      "render_coverage": "complete",
+      "manual_public_order": 1,
       "length_cm": 285,
       "depth_cm": 175,
       "height_cm": 82,
       "footprint_type": "corner",
-      "tag_slugs": ["mobel-local-test", "mobel-local-corner"],
+      "tag_slugs": [
+        "mobel-local-test",
+        "mobel-local-public",
+        "mobel-local-corner"
+      ],
       "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
       "source_fabric_slug": "grey-soft",
       "visual_positions": [
@@ -75,8 +94,10 @@
       "slug": "medium-milky-color-sofa",
       "internal_name": "mobel-local sofa medium milky color",
       "public_name": "Medium Milky Color Sofa",
-      "public_description": "Local fixture sofa with front, right, and left source photos.",
+      "public_description": "Draft fixture sofa with complete private renders and no public renders yet.",
       "shopify_order_url": "https://shopify.example/products/medium-milky-color-sofa",
+      "lifecycle_state": "draft",
+      "render_coverage": "complete",
       "length_cm": 235,
       "depth_cm": 98,
       "height_cm": 82,
@@ -105,6 +126,91 @@
           "public_label": "Left",
           "source_fabric_slug": "beige-textured",
           "source_image": "images/sofas/medium-milky-color-sofa/left.jpg"
+        }
+      ]
+    },
+    {
+      "slug": "archived-corner-test",
+      "internal_name": "mobel-local sofa archived corner test",
+      "public_name": "Archived Corner Test",
+      "public_description": "Archived fixture with complete private renders that should stay hidden publicly.",
+      "shopify_order_url": "https://shopify.example/products/archived-corner-test",
+      "lifecycle_state": "archived",
+      "render_coverage": "complete",
+      "length_cm": 305,
+      "depth_cm": 190,
+      "height_cm": 86,
+      "footprint_type": "corner",
+      "tag_slugs": ["mobel-local-test", "mobel-local-corner"],
+      "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
+      "source_fabric_slug": "beige-dotted",
+      "visual_positions": [
+        {
+          "sequence": 1,
+          "admin_label": "Front",
+          "public_label": "Front",
+          "source_fabric_slug": "beige-dotted"
+        },
+        {
+          "sequence": 2,
+          "admin_label": "Angle",
+          "public_label": "Angle",
+          "source_fabric_slug": "beige-dotted"
+        }
+      ]
+    },
+    {
+      "slug": "draft-source-only-test",
+      "internal_name": "mobel-local sofa draft source only test",
+      "public_name": "Draft Source Only Test",
+      "public_description": "Draft fixture that has source photos but still needs generated renders.",
+      "shopify_order_url": "https://shopify.example/products/draft-source-only-test",
+      "lifecycle_state": "draft",
+      "render_coverage": "source-only",
+      "length_cm": 218,
+      "depth_cm": 94,
+      "height_cm": 79,
+      "footprint_type": "straight",
+      "tag_slugs": ["mobel-local-test", "mobel-local-needs-generation"],
+      "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
+      "source_fabric_slug": "grey-soft",
+      "visual_positions": [
+        {
+          "sequence": 1,
+          "admin_label": "Front",
+          "public_label": "Front",
+          "source_fabric_slug": "grey-soft"
+        },
+        {
+          "sequence": 2,
+          "admin_label": "Side",
+          "public_label": "Side",
+          "source_fabric_slug": "grey-soft"
+        }
+      ]
+    },
+    {
+      "slug": "draft-no-images-test",
+      "internal_name": "mobel-local sofa draft no images test",
+      "public_name": "Draft No Images Test",
+      "public_description": "Draft fixture with metadata and fabric assignments but no source or render images.",
+      "shopify_order_url": "https://shopify.example/products/draft-no-images-test",
+      "lifecycle_state": "draft",
+      "render_coverage": "none",
+      "length_cm": 196,
+      "depth_cm": 88,
+      "height_cm": 76,
+      "footprint_type": "straight",
+      "tag_slugs": ["mobel-local-test", "mobel-local-missing-images"],
+      "fabric_slugs": ["grey-soft", "beige-dotted", "beige-textured"],
+      "source_fabric_slug": "grey-soft",
+      "visual_positions": [
+        {
+          "sequence": 1,
+          "admin_label": "Front",
+          "public_label": "Front",
+          "source_fabric_slug": "grey-soft",
+          "skip_source_photo": true
         }
       ]
     }

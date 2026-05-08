@@ -2,7 +2,7 @@
 
 Plan: PLAN-0051
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -155,3 +155,7 @@ This plan does **not** include:
   `SUPABASE_SERVICE_ROLE_KEY` and only runs against DEV when
   `SIMULATION_TEST_SEED_ALLOW_NON_LOCAL=1` is set, mirroring the
   existing safety on the catalog upsert.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in worker invocation guards, cron/deploy workflow wiring, seed support, tests, and roadmaps. Later checkpoint dispatch redesign continues under PLAN-0068.

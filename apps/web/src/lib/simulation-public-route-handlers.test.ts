@@ -8,9 +8,11 @@ import {
 import {
   SIMULATION_CREATE_MAX_PHOTO_BYTES,
   VERIFICATION_REQUEST_TTL_SECONDS,
+  handleConvertSimulationRoomPhotoPreviewRequest,
   handleCreateEmailVerificationRequest,
   handleCreateSimulationRequest,
   handleGetSimulationStatusRequest,
+  handleGetSimulationRealtimeTokenRequest,
   handleRequestRegenerationRequest,
   handleSubmitDimensionsRequest,
   handleVerifyEmailVerificationRequest,
@@ -19,8 +21,11 @@ import {
   type SimulationDimensionsStore,
   type SimulationJobReader,
   type SimulationJobView,
+  type SimulationProgressAccessReader,
   type SimulationQueueEnqueuer,
+  type SimulationRealtimeTokenIssuer,
   type SimulationRegenerationStore,
+  type SimulationRoomPhotoNormalizer,
   type SimulationStorageSigner,
   type SimulationStorageUploader
 } from "./simulation-public-route-handlers";
@@ -33,6 +38,34 @@ const SECRET = "test-secret";
 function fixedNow(iso: string) {
   const date = new Date(iso);
   return () => date;
+}
+
+const HEIC_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 104, 101, 105, 99, 0, 0, 0, 0
+]);
+const HEIF_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 109, 105, 102, 49, 0, 0, 0, 0
+]);
+const HEIC_COMPATIBLE_BRAND_BYTES = new Uint8Array([
+  0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0, 105, 115,
+  111, 56, 104, 101, 105, 99
+]);
+const NORMALIZED_JPEG_BYTES = new Uint8Array([255, 216, 255, 217]);
+
+function makeRoomPhotoOnlyFormData(options: {
+  bytes?: Uint8Array;
+  contentType?: string;
+  filename?: string;
+} = {}): FormData {
+  const formData = new FormData();
+  const bytes = options.bytes ?? HEIC_BYTES;
+  const photoArrayBuffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(photoArrayBuffer).set(bytes);
+  const blob = new Blob([photoArrayBuffer], {
+    type: options.contentType ?? "application/octet-stream"
+  });
+  formData.append("room_photo", blob, options.filename ?? "room.heic");
+  return formData;
 }
 
 describe("handleCreateEmailVerificationRequest", () => {
@@ -123,6 +156,48 @@ describe("handleCreateEmailVerificationRequest", () => {
       deps: { accessTokenSecret: SECRET, environment: "local" }
     });
     expect(response.status).toBe(400);
+  });
+});
+
+describe("handleConvertSimulationRoomPhotoPreviewRequest", () => {
+  it("returns a JPEG response after normalizing a HEIC room photo", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => {
+        expect(photo.fileContentType).toBe("image/heic");
+        expect(photo.fileExtension).toBe("heic");
+        return {
+          fileBytes: NORMALIZED_JPEG_BYTES,
+          fileContentType: "image/jpeg",
+          fileExtension: "jpg"
+        };
+      })
+    };
+
+    const response = await handleConvertSimulationRoomPhotoPreviewRequest({
+      formData: makeRoomPhotoOnlyFormData(),
+      deps: { roomPhotoNormalizer }
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      NORMALIZED_JPEG_BYTES
+    );
+  });
+
+  it("returns 400 when preview normalization cannot produce JPEG", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => photo)
+    };
+
+    const response = await handleConvertSimulationRoomPhotoPreviewRequest({
+      formData: makeRoomPhotoOnlyFormData(),
+      deps: { roomPhotoNormalizer }
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_FAILED");
   });
 });
 
@@ -571,6 +646,102 @@ describe("handleGetSimulationStatusRequest", () => {
   });
 });
 
+describe("handleGetSimulationRealtimeTokenRequest", () => {
+  const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
+  const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
+  const SESSION_ID = "00000000-0000-4000-8000-0000000000b2";
+  const NOW = fixedNow("2026-05-02T10:00:00Z");
+
+  function makeValidToken() {
+    return issueSimulationAccessToken({
+      verificationRequestId: VERIFICATION_REQUEST_ID,
+      secret: SECRET,
+      environment: "local",
+      now: NOW
+    }).token;
+  }
+
+  function createDeps(access: {
+    jobId: string;
+    simulationSessionId: string;
+    retentionDeadline: Date;
+  } | null) {
+    const progressAccessReader: SimulationProgressAccessReader = {
+      findOwnedProgressAccess: vi.fn().mockResolvedValue(access)
+    };
+    const realtimeTokenIssuer: SimulationRealtimeTokenIssuer = {
+      issueProgressToken: vi.fn().mockResolvedValue({
+        token: "progress.jwt",
+        expiresAt: new Date("2026-05-02T10:05:00Z")
+      })
+    };
+    return {
+      deps: {
+        accessTokenSecret: SECRET,
+        progressAccessReader,
+        realtimeTokenIssuer,
+        now: NOW
+      },
+      progressAccessReader,
+      realtimeTokenIssuer
+    };
+  }
+
+  it("returns a scoped Realtime token for an owned simulation job", async () => {
+    const ctx = createDeps({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { realtime_token: string; expires_at: string };
+    };
+    expect(body.data.realtime_token).toBe("progress.jwt");
+    expect(body.data.expires_at).toBe("2026-05-02T10:05:00.000Z");
+    expect(ctx.progressAccessReader.findOwnedProgressAccess).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      accessTokenHash: deriveSimulationSessionTokenHash(VERIFICATION_REQUEST_ID)
+    });
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).toHaveBeenCalledWith({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+  });
+
+  it("returns 401 AUTH_REQUIRED when no token is provided", async () => {
+    const ctx = createDeps({
+      jobId: JOB_ID,
+      simulationSessionId: SESSION_ID,
+      retentionDeadline: new Date("2026-05-03T10:00:00Z")
+    });
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: null,
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(401);
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the job is not owned by the visitor", async () => {
+    const ctx = createDeps(null);
+    const response = await handleGetSimulationRealtimeTokenRequest({
+      jobId: JOB_ID,
+      token: makeValidToken(),
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(404);
+    expect(ctx.realtimeTokenIssuer.issueProgressToken).not.toHaveBeenCalled();
+  });
+});
+
 describe("handleSubmitDimensionsRequest", () => {
   const VERIFICATION_REQUEST_ID = "stub-00000000-0000-4000-8000-000000000099";
   const JOB_ID = "00000000-0000-4000-8000-0000000000a1";
@@ -610,14 +781,15 @@ describe("handleSubmitDimensionsRequest", () => {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
     const dimensionsStore: SimulationDimensionsStore = {
-      submit: vi.fn().mockResolvedValue({ msgId: 42 })
+      submit: vi.fn().mockResolvedValue({
+        checkpointId: "00000000-0000-4000-8000-000000000042"
+      })
     };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         dimensionsStore,
-        queueName: QUEUE,
         now: NOW
       },
       jobReader,
@@ -626,12 +798,12 @@ describe("handleSubmitDimensionsRequest", () => {
   }
 
   it("returns 200 + placement_queued on a valid back_wall payload", async () => {
-    const { deps, dimensionsStore } = createDeps(makeJobView());
+    const ctx = createDeps(makeJobView());
     const response = await handleSubmitDimensionsRequest({
       jobId: JOB_ID,
       token: makeValidToken(),
       body: { wall_width: 4.2, wall_height: 2.7, room_depth: 5 },
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -639,19 +811,18 @@ describe("handleSubmitDimensionsRequest", () => {
     };
     expect(body.data.simulation_job_id).toBe(JOB_ID);
     expect(body.data.status).toBe("placement_queued");
-    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+    expect(ctx.dimensionsStore.submit).toHaveBeenCalledWith({
       jobId: JOB_ID,
       suppliedDimensions: {
         wall_width: 4.2,
         wall_height: 2.7,
         room_depth: 5
-      },
-      queueName: QUEUE
+      }
     });
   });
 
   it("returns 200 + placement_queued on a valid corner payload", async () => {
-    const { deps, dimensionsStore } = createDeps(
+    const ctx = createDeps(
       makeJobView({ roomGeometryMode: "corner" })
     );
     const response = await handleSubmitDimensionsRequest({
@@ -663,18 +834,17 @@ describe("handleSubmitDimensionsRequest", () => {
         room_height: 2.7,
         room_depth: 5
       },
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
-    expect(dimensionsStore.submit).toHaveBeenCalledWith({
+    expect(ctx.dimensionsStore.submit).toHaveBeenCalledWith({
       jobId: JOB_ID,
       suppliedDimensions: {
         left_wall_width: 3.4,
         right_wall_width: 4.0,
         room_height: 2.7,
         room_depth: 5
-      },
-      queueName: QUEUE
+      }
     });
   });
 
@@ -815,14 +985,15 @@ describe("handleRequestRegenerationRequest", () => {
       findOwnedJob: vi.fn().mockResolvedValue(job)
     };
     const regenerationStore: SimulationRegenerationStore = {
-      request: vi.fn().mockResolvedValue({ msgId: 99 })
+      request: vi.fn().mockResolvedValue({
+        checkpointId: "00000000-0000-4000-8000-000000000099"
+      })
     };
     return {
       deps: {
         accessTokenSecret: SECRET,
         jobReader,
         regenerationStore,
-        queueName: QUEUE,
         now: NOW
       },
       jobReader,
@@ -831,13 +1002,13 @@ describe("handleRequestRegenerationRequest", () => {
   }
 
   it("returns 200 + placement_queued for a succeeded job under the cap", async () => {
-    const { deps, regenerationStore } = createDeps(
+    const ctx = createDeps(
       makeJobView({ generatedOutputCount: 1 })
     );
     const response = await handleRequestRegenerationRequest({
       jobId: JOB_ID,
       token: makeValidToken(),
-      deps
+      deps: ctx.deps
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -845,9 +1016,8 @@ describe("handleRequestRegenerationRequest", () => {
     };
     expect(body.data.simulation_job_id).toBe(JOB_ID);
     expect(body.data.status).toBe("placement_queued");
-    expect(regenerationStore.request).toHaveBeenCalledWith({
-      jobId: JOB_ID,
-      queueName: QUEUE
+    expect(ctx.regenerationStore.request).toHaveBeenCalledWith({
+      jobId: JOB_ID
     });
   });
 
@@ -975,7 +1145,9 @@ describe("handleCreateSimulationRequest", () => {
     if (overrides.photoBytes !== null) {
       const photoBytes =
         overrides.photoBytes ?? new Uint8Array([1, 2, 3, 4, 5]);
-      const blob = new Blob([photoBytes as BlobPart], {
+      const photoArrayBuffer = new ArrayBuffer(photoBytes.byteLength);
+      new Uint8Array(photoArrayBuffer).set(photoBytes);
+      const blob = new Blob([photoArrayBuffer], {
         type: overrides.photoContentType ?? "image/jpeg"
       });
       formData.append("room_photo", blob, overrides.photoFilename ?? "room.jpg");
@@ -995,6 +1167,7 @@ describe("handleCreateSimulationRequest", () => {
     enqueueThrows?: boolean;
     finalizeThrows?: boolean;
     existingJob?: SimulationJobView | null;
+    roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
   } = {}) {
     const rateLimitStore: SimulationRateLimitStore = {
       increment: vi.fn().mockResolvedValue({
@@ -1038,6 +1211,10 @@ describe("handleCreateSimulationRequest", () => {
         : vi.fn().mockResolvedValue(undefined),
       deleteUploadedRoomPhoto: vi.fn().mockResolvedValue(undefined)
     };
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer =
+      options.roomPhotoNormalizer ?? {
+        normalize: vi.fn(async (photo) => photo)
+      };
 
     const createJobStore: SimulationCreateJobStore = {
       create: options.createThrows
@@ -1079,6 +1256,7 @@ describe("handleCreateSimulationRequest", () => {
         idempotencyStore,
         catalogStore,
         storageUploader,
+        roomPhotoNormalizer,
         createJobStore,
         queueEnqueuer,
         jobReader,
@@ -1089,6 +1267,7 @@ describe("handleCreateSimulationRequest", () => {
       idempotencyStore,
       catalogStore,
       storageUploader,
+      roomPhotoNormalizer,
       createJobStore,
       queueEnqueuer,
       jobReader
@@ -1132,10 +1311,7 @@ describe("handleCreateSimulationRequest", () => {
         retentionHours: 24
       })
     );
-    expect(ctx.queueEnqueuer.enqueueRoomPrep).toHaveBeenCalledWith({
-      jobId: NEW_JOB_ID,
-      queueName: QUEUE
-    });
+    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
     expect(ctx.idempotencyStore.finalize).toHaveBeenCalledWith(
       expect.any(String),
       NEW_JOB_ID
@@ -1212,6 +1388,174 @@ describe("handleCreateSimulationRequest", () => {
       deps: ctx.deps
     });
     expect(response.status).toBe(400);
+  });
+
+  it("accepts HEIC when the browser sends a generic content-type", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerRoomOriginalPath: `simulations/${NEW_JOB_ID}/inputs/room.heic`
+      })
+    );
+  });
+
+  it("normalizes HEIC uploads to JPEG before storing and creating the job when configured", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn(async (photo) => {
+        expect(photo.fileContentType).toBe("image/heic");
+        expect(photo.fileExtension).toBe("heic");
+        return {
+          fileBytes: NORMALIZED_JPEG_BYTES,
+          fileContentType: "image/jpeg",
+          fileExtension: "jpg"
+        };
+      })
+    };
+    const ctx = createDeps({ roomPhotoNormalizer });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+
+    expect(response.status).toBe(201);
+    expect(roomPhotoNormalizer.normalize).toHaveBeenCalledOnce();
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`,
+        bytes: NORMALIZED_JPEG_BYTES,
+        contentType: "image/jpeg"
+      })
+    );
+    expect(ctx.createJobStore.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerRoomOriginalPath: `simulations/${NEW_JOB_ID}/inputs/room.jpg`
+      })
+    );
+  });
+
+  it("returns a validation error when configured HEIC normalization fails", async () => {
+    const roomPhotoNormalizer: SimulationRoomPhotoNormalizer = {
+      normalize: vi.fn().mockRejectedValue(new Error("heic decode failed"))
+    };
+    const ctx = createDeps({ roomPhotoNormalizer });
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.HEIC"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_FAILED");
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
+    expect(ctx.createJobStore.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts HEIF when the browser sends an empty content-type", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIF_BYTES,
+        photoContentType: "",
+        photoFilename: "room.heif"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heif`,
+        contentType: "image/heif"
+      })
+    );
+  });
+
+  it("accepts HEIC by file signature when the filename has no image extension", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.bin"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+  });
+
+  it("accepts HEIC when the ftyp compatible brands identify the image", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: HEIC_COMPATIBLE_BRAND_BYTES,
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.bin"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(201);
+    expect(ctx.storageUploader.uploadRoomPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storagePath: `simulations/${NEW_JOB_ID}/inputs/room.heic`,
+        contentType: "image/heic"
+      })
+    );
+  });
+
+  it("rejects generic uploads without a HEIC or HEIF file signature", async () => {
+    const ctx = createDeps();
+    const response = await handleCreateSimulationRequest({
+      formData: makeFormData({
+        photoBytes: new Uint8Array([1, 2, 3, 4]),
+        photoContentType: "application/octet-stream",
+        photoFilename: "room.heic"
+      }),
+      headers: makeHeaders(),
+      clientIp: "203.0.113.7",
+      deps: ctx.deps
+    });
+    expect(response.status).toBe(400);
+    expect(ctx.storageUploader.uploadRoomPhoto).not.toHaveBeenCalled();
   });
 
   it("returns 400 when room_photo is empty", async () => {
@@ -1374,7 +1718,7 @@ describe("handleCreateSimulationRequest", () => {
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
   });
 
-  it("returns 500 without rollback when only the enqueue throws (job already exists)", async () => {
+  it("does not call the legacy pgmq enqueuer after creating the durable job", async () => {
     const ctx = createDeps({ enqueueThrows: true });
     const response = await handleCreateSimulationRequest({
       formData: makeFormData(),
@@ -1382,8 +1726,9 @@ describe("handleCreateSimulationRequest", () => {
       clientIp: "203.0.113.7",
       deps: ctx.deps
     });
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(201);
     expect(ctx.storageUploader.deleteUploadedRoomPhoto).not.toHaveBeenCalled();
+    expect(ctx.queueEnqueuer.enqueueRoomPrep).not.toHaveBeenCalled();
   });
 
   it("logs the underlying error when uploadRoomPhoto throws", async () => {
@@ -1413,22 +1758,6 @@ describe("handleCreateSimulationRequest", () => {
     });
     expect(errorSpy).toHaveBeenCalledWith(
       "[simulations] createJobStore.create failed:",
-      expect.any(Error)
-    );
-    errorSpy.mockRestore();
-  });
-
-  it("logs the underlying error when queueEnqueuer.enqueueRoomPrep throws", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const ctx = createDeps({ enqueueThrows: true });
-    await handleCreateSimulationRequest({
-      formData: makeFormData(),
-      headers: makeHeaders(),
-      clientIp: "203.0.113.7",
-      deps: ctx.deps
-    });
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[simulations] queueEnqueuer.enqueueRoomPrep failed:",
       expect.any(Error)
     );
     errorSpy.mockRestore();

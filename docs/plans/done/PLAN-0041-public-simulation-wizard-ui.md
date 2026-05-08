@@ -2,7 +2,7 @@
 
 Plan: PLAN-0041
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -165,3 +165,20 @@ existing tests and any non-enveloped callers continue to work. A new
 test asserts the enveloped 201 path returns `ok: true` with the
 correct `jobId`. This mirrors the PLAN-0050 envelope fix on the
 email-gate `auth.ts` helpers.
+
+## Follow-up fix: dimension entry centimetre input (2026-05-07)
+
+`Screen3Dimensions` accepted visitor-entered values as raw metres while
+the French wizard flow expects centimetre measurements. Visitors entering
+values such as `420`, `270`, and `500` for a 4.2 m by 2.7 m by 5 m room
+therefore tripped the `[0.5, 20] m` API-range gate and kept the Continue
+button disabled. The screen now validates browser input in centimetres
+(`50` to `2000` cm), displays the `cm` unit suffix, and converts the
+submitted payload back to metres before calling the PLAN-0040 dimensions
+endpoint so the worker and database contract remain unchanged. Component
+tests cover the back-wall and corner conversions plus the disabled-state
+range gate.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in wizard routes, screen components, client helpers, tests, and roadmaps. The live parity gate remains a launch concern under PLAN-0042.

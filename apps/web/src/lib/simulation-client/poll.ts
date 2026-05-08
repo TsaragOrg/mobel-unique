@@ -20,6 +20,12 @@ import type {
 
 export const POLL_DEFAULT_INTERVAL_MS = 2000;
 export const POLL_DEFAULT_HIDDEN_GRACE_MS = 30_000;
+export const POLL_DEFAULT_ERROR_BACKOFF_MS: readonly number[] = [
+  5_000,
+  10_000,
+  20_000,
+  30_000
+];
 
 export const POLL_TERMINAL_STATUSES: ReadonlySet<SimulationJobStatus> = new Set<SimulationJobStatus>([
   "succeeded",
@@ -45,6 +51,7 @@ export interface CreateSimulationPollerArgs {
   onError: (error: unknown) => void;
   intervalMs?: number;
   hiddenGraceMs?: number;
+  errorBackoffMs?: readonly number[];
   deps: SimulationPollDeps;
 }
 
@@ -59,13 +66,17 @@ export function createSimulationPoller(
 ): SimulationPoller {
   const intervalMs = args.intervalMs ?? POLL_DEFAULT_INTERVAL_MS;
   const hiddenGraceMs = args.hiddenGraceMs ?? POLL_DEFAULT_HIDDEN_GRACE_MS;
+  const errorBackoffMs =
+    args.errorBackoffMs ?? POLL_DEFAULT_ERROR_BACKOFF_MS;
 
   let intervalHandle: unknown = null;
   let pauseTimeoutHandle: unknown = null;
+  let retryTimeoutHandle: unknown = null;
   let visibilityUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
   let inFlight = false;
+  let consecutiveErrors = 0;
 
   function tick() {
     if (inFlight || stopped) return;
@@ -74,14 +85,22 @@ export function createSimulationPoller(
       .fetchStatus()
       .then((snapshot) => {
         if (stopped) return;
+        consecutiveErrors = 0;
         args.onUpdate(snapshot);
         if (POLL_TERMINAL_STATUSES.has(snapshot.status)) {
           clearActiveInterval();
+          clearRetryTimeout();
+          return;
+        }
+        if (intervalHandle === null && !args.deps.visibility.isHidden()) {
+          startInterval();
         }
       })
       .catch((err) => {
         if (stopped) return;
         args.onError(err);
+        clearActiveInterval();
+        scheduleRetryAfterError();
       })
       .finally(() => {
         inFlight = false;
@@ -107,6 +126,28 @@ export function createSimulationPoller(
     }
   }
 
+  function clearRetryTimeout() {
+    if (retryTimeoutHandle !== null) {
+      args.deps.clearTimeout(retryTimeoutHandle);
+      retryTimeoutHandle = null;
+    }
+  }
+
+  function scheduleRetryAfterError() {
+    if (retryTimeoutHandle !== null || args.deps.visibility.isHidden()) {
+      return;
+    }
+    const delayMs =
+      errorBackoffMs[
+        Math.min(consecutiveErrors, errorBackoffMs.length - 1)
+      ] ?? intervalMs;
+    consecutiveErrors += 1;
+    retryTimeoutHandle = args.deps.setTimeout(() => {
+      retryTimeoutHandle = null;
+      tick();
+    }, delayMs);
+  }
+
   function onVisibilityChange() {
     if (stopped) return;
     if (args.deps.visibility.isHidden()) {
@@ -114,6 +155,7 @@ export function createSimulationPoller(
       pauseTimeoutHandle = args.deps.setTimeout(() => {
         pauseTimeoutHandle = null;
         clearActiveInterval();
+        clearRetryTimeout();
       }, hiddenGraceMs);
       return;
     }
@@ -137,6 +179,7 @@ export function createSimulationPoller(
       stopped = true;
       clearActiveInterval();
       clearPauseTimeout();
+      clearRetryTimeout();
       if (visibilityUnsub) {
         visibilityUnsub();
         visibilityUnsub = null;
@@ -144,6 +187,7 @@ export function createSimulationPoller(
     },
     refresh() {
       if (stopped) return;
+      clearRetryTimeout();
       tick();
     }
   };
@@ -152,6 +196,7 @@ export function createSimulationPoller(
 export interface UseSimulationStatusPollOptions {
   intervalMs?: number;
   hiddenGraceMs?: number;
+  errorBackoffMs?: readonly number[];
   fetchStatus: () => Promise<SimulationStatusResponse>;
   enabled?: boolean;
 }
@@ -169,6 +214,15 @@ export function useSimulationStatusPoll(
   const [snapshot, setSnapshot] = useState<SimulationStatusResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
   const pollerRef = useRef<SimulationPoller | null>(null);
+  const manualRefreshInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!jobId || options.enabled === false) {
@@ -176,10 +230,14 @@ export function useSimulationStatusPoll(
     }
     const poller = createSimulationPoller({
       fetchStatus: options.fetchStatus,
-      onUpdate: (next) => setSnapshot(next),
+      onUpdate: (next) => {
+        setSnapshot(next);
+        setError(null);
+      },
       onError: (err) => setError(err),
       intervalMs: options.intervalMs,
       hiddenGraceMs: options.hiddenGraceMs,
+      errorBackoffMs: options.errorBackoffMs,
       deps: defaultBrowserPollDeps()
     });
     pollerRef.current = poller;
@@ -189,12 +247,35 @@ export function useSimulationStatusPoll(
       pollerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, options.enabled]);
+  }, [jobId, options.enabled, options.hiddenGraceMs, options.intervalMs]);
 
   return {
     snapshot,
     error,
-    refresh: () => pollerRef.current?.refresh()
+    refresh: () => {
+      if (pollerRef.current) {
+        pollerRef.current.refresh();
+        return;
+      }
+      if (!jobId || manualRefreshInFlightRef.current) {
+        return;
+      }
+      manualRefreshInFlightRef.current = true;
+      void options
+        .fetchStatus()
+        .then((next) => {
+          if (!mountedRef.current) return;
+          setSnapshot(next);
+          setError(null);
+        })
+        .catch((err) => {
+          if (!mountedRef.current) return;
+          setError(err);
+        })
+        .finally(() => {
+          manualRefreshInFlightRef.current = false;
+        });
+    }
   };
 }
 

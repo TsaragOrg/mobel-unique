@@ -2,7 +2,7 @@
 
 Plan: PLAN-0039
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -13,8 +13,13 @@ Affected packages:
 - `scripts/seed-simulation-test-data.mjs` (new)
 - `scripts/seed-simulation-test-data.test.mjs` (new)
 - `package.json` (new `seed:simulation-test` script)
+- `scripts/seed-local-admin-fixtures.mjs`
+- `scripts/seed-local-admin-fixtures.test.mjs`
+- `fixtures/local-admin-catalog`
+- `docs/local-supabase-worker-development.md`
 - `docs/roadmap/supabase.md`
 - `docs/roadmap/web.md`
+- `docs/roadmap/workflow.md`
 
 ## Goal
 
@@ -83,7 +88,7 @@ touch prompts, providers, or the validated v003 pipeline.
       cents. The accompanying SQL migration
       `20260502000700_simulation_cost_meter_record_charge.sql`
       adds the `simulation_cost_meter_record_charge(charge_cents,
-      cap_cents)` RPC the helper invokes.
+cap_cents)` RPC the helper invokes.
 - [x] Wire `chargeMeter(role)` into the worker dispatch path
       after each successful validation, cleaning, corners, and
       placement provider call. Telemetry failures are swallowed
@@ -93,6 +98,14 @@ touch prompts, providers, or the validated v003 pipeline.
       dispatch paths. The cap value is forwarded to the cost
       meter client, which the SQL function compares against the
       running total to flip `worker_paused`.
+- [x] Add migration
+      `20260508000100_fix_simulation_cost_meter_record_charge_ambiguity.sql`
+      after local live-worker testing surfaced Postgres 42702 on
+      `simulation_cost_meter_record_charge`: the RPC output column
+      `cost_date` collided with the unqualified `on conflict (cost_date)`
+      target. The replacement uses the primary-key constraint as the
+      conflict target and assigns the returned date through a local
+      `charged_cost_date` variable.
 - [ ] Integration test that runs a mock Stage 1 + Stage 2
       simulation and asserts the cost meter was incremented the
       expected number of times. Deferred to PLAN-0042's manual
@@ -118,8 +131,14 @@ touch prompts, providers, or the validated v003 pipeline.
   - one visual matrix column per sofa with sequence 1; and
   - one render cell per sofa pointing at a placeholder prepared
     sofa storage asset.
-  Every insert uses `on conflict do nothing` or `do update` so
-  the script is safe to re-run.
+    Every insert uses `on conflict do nothing` or `do update` so
+    the script is safe to re-run.
+- [x] Tighten the seed regression after local browser smoke testing:
+      assert every deterministic UUID constant is syntactically valid,
+      seed medium render variants required by the public catalog view,
+      seed private prepared-sofa assets required by public job creation,
+      and copy source fixture bytes into original, medium, swatch,
+      AI-reference, and prepared-sofa storage paths.
 - [x] Add `scripts/seed-simulation-test-data/fixtures/README.md`
       documenting the storage paths the seed expects and noting
       that real placeholder bytes are uploaded by PLAN-0042. The
@@ -128,17 +147,37 @@ touch prompts, providers, or the validated v003 pipeline.
       API-level publishability checks do not require the bucket
       objects to exist.
 - [x] Add `seed:simulation-test` to `package.json` scripts.
+- [x] Make `pnpm supabase:reset` restore a complete local test base by
+      running `seed:simulation-test:local-fixtures` after the admin
+      fixture seed. The admin fixture seed now generates deterministic
+      local images for missing files and applies default lifecycle/render
+      coverage scenarios to local manifests: one published complete sofa,
+      one draft complete sofa, one archived complete sofa, one source-only
+      draft, and one no-image draft.
+- [x] Correct `seed:simulation-test:local-fixtures` to copy published sofa
+      render bytes from the local admin fixture seed into the simulation-test
+      render paths instead of copying fabric swatch bytes as sofa renders.
+- [x] Keep complete local render scenarios sofa-like by reusing available
+      source sofa photos for manual render cells before falling back to
+      generated placeholders, and use two different published local sofa
+      renders as the simulation-test straight/corner sources.
+- [x] Publish the first three local sofas by default when a local manifest
+      omits explicit lifecycle states, while keeping later scenario rows for
+      archived and no-image draft coverage.
 - [x] Document the seed script in
       `docs/local-supabase-worker-development.md`.
 
 ### Verification
 
 - [x] Update `docs/roadmap/supabase.md`, `docs/roadmap/image-worker.md`,
-      and `docs/roadmap/workflow.md`. `docs/roadmap/web.md` is not
-      touched in this plan because PLAN-0039 ships only Supabase /
-      worker changes; the web-facing rate-limit and idempotency
-      consumers land in PLAN-0040 and update `docs/roadmap/web.md`
-      then.
+      `docs/roadmap/workflow.md`, and `docs/roadmap/web.md` as later
+      local browser smoke support also documents the public API's worker
+      pump environment variables.
+- [x] Run `pnpm vitest run scripts/seed-local-admin-fixtures.test.mjs scripts/in-home-simulation-seed-catalog-migration.test.mjs`.
+- [x] Run `pnpm supabase:reset` locally and verify Postgres has
+      published, draft, and archived sofas; public catalog rows; complete
+      and incomplete render-cell coverage; generated storage assets; and
+      simulation-test storage copies.
 - [x] Run `pnpm typecheck`, `pnpm test`, `pnpm spec:check origin/dev`
       — all green locally; CI re-validates on the PR.
 - [ ] Worker behavior parity check (manual, by Ahmed): run the
@@ -170,3 +209,7 @@ touch prompts, providers, or the validated v003 pipeline.
   the table + cleanup. The actual rate-limit logic lives in the API layer.
 - Migration timestamps follow the existing repo convention; check the
   highest committed timestamp before naming a new file to avoid collisions.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in migrations, seed scripts, tests, reset wiring, and roadmaps. Remaining launch verification is tracked by PLAN-0042.

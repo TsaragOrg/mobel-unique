@@ -2,7 +2,7 @@
 
 Plan: PLAN-0016
 Spec: SPEC-0007
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -193,3 +193,7 @@ The visitor UI for collecting `position` (left / center / right) and
 the optional sofa dimensions is also out of scope for this plan and
 remains tracked under SPEC-0004 and the future public-frontend
 specifications.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in worker code, live-pipeline scripts, tests, and roadmaps. Any remaining launch-level parity validation is tracked by PLAN-0042.

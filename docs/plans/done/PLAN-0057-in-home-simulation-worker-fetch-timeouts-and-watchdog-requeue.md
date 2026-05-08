@@ -2,7 +2,7 @@
 
 Plan: PLAN-0057
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -135,3 +135,7 @@ In addition, every internal Supabase REST/RPC/storage call in the worker is curr
 - The 180 s claim TTL means the worst-case stuck-job recovery window is roughly `180 s + 60 s cron tick = 4 minutes`. Combined with the rejection of orphan-queued state by Fix F, this caps the user-visible delay before the wizard either shows the result or shows the error screen.
 - Promise-race is intentionally additive: the `AbortController` is preserved so a fetch that does honor abort frees its socket immediately. The race timer only matters when abort fails to propagate.
 - The `recover_expired_in_home_simulation_claims` function from PLAN-0012 is left unchanged. The wrapper composes with it instead of editing it, so any downstream caller that depends on the original signature still works.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in Supabase fetch timeouts, claim TTL changes, recovery requeue migration, tests, and roadmaps. Recovery/dispatch refinements continue under PLAN-0068.

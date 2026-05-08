@@ -167,6 +167,40 @@ describe("uploadRoomPhotoWithDeps", () => {
     expect(body.get("room_photo")).toBeInstanceOf(File);
   });
 
+  it("preserves HEIC file metadata when the browser cannot decode it before upload", async () => {
+    const xhr = makeFakeXhr();
+    const deps = depsForTest([xhr], []);
+    const heicFile = new File([new ArrayBuffer(20)], "room.HEIC", {
+      type: "application/octet-stream"
+    });
+
+    const promise = uploadRoomPhotoWithDeps(
+      inputForTest({
+        photoBlob: heicFile,
+        photoFilename: heicFile.name
+      }),
+      deps
+    );
+    xhr.status = 201;
+    xhr.responseText = JSON.stringify({
+      data: {
+        simulation_job_id: "sim-heic",
+        status: "queued",
+        created_at: "2026-05-03T13:38:48.139Z",
+        retention_deadline: "2026-05-04T13:38:48.139Z"
+      }
+    });
+    xhr.onload?.();
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    const body = xhr.capturedBody!;
+    const photo = body.get("room_photo");
+    expect(photo).toBeInstanceOf(File);
+    expect((photo as File).name).toBe("room.HEIC");
+    expect((photo as File).type).toBe("application/octet-stream");
+  });
+
   it("sets Idempotency-Key and Authorization headers on every attempt", async () => {
     const xhrs = [makeFakeXhr(), makeFakeXhr(), makeFakeXhr()];
     const deps = depsForTest(xhrs, []);
@@ -284,6 +318,8 @@ describe("uploadRoomPhotoWithDeps", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("VALIDATION_FAILED");
+    expect(result.httpStatus).toBe(400);
+    expect(result.message).toBe("sofa_slug missing");
     expect(result.attempts).toBe(1);
   });
 

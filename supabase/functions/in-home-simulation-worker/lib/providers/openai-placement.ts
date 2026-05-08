@@ -304,7 +304,7 @@ export function buildPlacementFormData(
   form.set("prompt", input.promptText);
   form.set("size", input.size);
 
-  const roomBlob = new Blob([input.cleanedRoomBytes], {
+  const roomBlob = new Blob([new Uint8Array(input.cleanedRoomBytes).buffer], {
     type: input.cleanedRoomMimeType
   });
   form.append("image[]", roomBlob, "room.png");
@@ -314,9 +314,10 @@ export function buildPlacementFormData(
     input.preparedSofaBytes.length > 0 &&
     input.preparedSofaMimeType
   ) {
-    const sofaBlob = new Blob([input.preparedSofaBytes], {
-      type: input.preparedSofaMimeType
-    });
+    const sofaBlob = new Blob(
+      [new Uint8Array(input.preparedSofaBytes).buffer],
+      { type: input.preparedSofaMimeType }
+    );
     form.append("image[]", sofaBlob, "sofa.png");
   }
 

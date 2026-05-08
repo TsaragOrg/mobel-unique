@@ -5,17 +5,19 @@ import { useState } from "react";
 import { SIMULATION_LOCALE } from "../../lib/simulation-client/locale";
 import {
   SIMULATION_DIMENSION_MAX_M,
-  SIMULATION_DIMENSION_MIN_M
+  SIMULATION_DIMENSION_MIN_M,
 } from "../../lib/simulation-dimensions";
 import type {
   BackWallSuppliedDimensions,
   CornerSuppliedDimensions,
   RoomGeometryMode,
-  SuppliedDimensionsBody
+  SuppliedDimensionsBody,
 } from "../../lib/simulation-public-api";
 import { SimulationContextStrip } from "./SimulationContextStrip";
 
-type SubmitOutcome = { ok: true } | { ok: false; code?: string; message?: string };
+type SubmitOutcome =
+  | { ok: true }
+  | { ok: false; code?: string; message?: string };
 
 export interface Screen3DimensionsProps {
   jobId: string;
@@ -26,7 +28,10 @@ export interface Screen3DimensionsProps {
   guideImageUrl: string;
   onGuideImageError: () => void;
   onSubmitted: () => void;
-  submit?: (jobId: string, body: SuppliedDimensionsBody) => Promise<SubmitOutcome>;
+  submit?: (
+    jobId: string,
+    body: SuppliedDimensionsBody,
+  ) => Promise<SubmitOutcome>;
 }
 
 interface FormValues {
@@ -44,8 +49,10 @@ const EMPTY_FORM: FormValues = {
   leftWallWidth: "",
   rightWallWidth: "",
   roomHeight: "",
-  roomDepth: ""
+  roomDepth: "",
 };
+const DIMENSION_MIN_CM = SIMULATION_DIMENSION_MIN_M * 100;
+const DIMENSION_MAX_CM = SIMULATION_DIMENSION_MAX_M * 100;
 
 export function Screen3Dimensions(props: Screen3DimensionsProps) {
   const submit = props.submit ?? defaultSubmit;
@@ -113,7 +120,11 @@ export function Screen3Dimensions(props: Screen3DimensionsProps) {
         />
       </div>
 
-      <form className="simulation-dimension-form" onSubmit={onSubmit} noValidate>
+      <form
+        className="simulation-dimension-form"
+        onSubmit={onSubmit}
+        noValidate
+      >
         {props.geometryMode === "back_wall" ? (
           <>
             <DimensionField
@@ -196,10 +207,10 @@ function DimensionField(props: {
         <input
           id={props.id}
           inputMode="decimal"
-          max={SIMULATION_DIMENSION_MAX_M}
-          min={SIMULATION_DIMENSION_MIN_M}
+          max={DIMENSION_MAX_CM}
+          min={DIMENSION_MIN_CM}
           onChange={(event) => props.onChange(event.target.value)}
-          step="0.01"
+          step="1"
           type="number"
           value={props.value}
         />
@@ -213,29 +224,33 @@ function isPositiveBounded(raw: string): boolean {
   if (raw.trim() === "") return false;
   const value = Number(raw);
   if (!Number.isFinite(value)) return false;
-  return value >= SIMULATION_DIMENSION_MIN_M && value <= SIMULATION_DIMENSION_MAX_M;
+  return value >= DIMENSION_MIN_CM && value <= DIMENSION_MAX_CM;
 }
 
 function toBackWallBody(values: FormValues): BackWallSuppliedDimensions {
   return {
-    wall_width: Number(values.wallWidth),
-    wall_height: Number(values.wallHeight),
-    room_depth: Number(values.roomDepth)
+    wall_width: centimetersToMeters(values.wallWidth),
+    wall_height: centimetersToMeters(values.wallHeight),
+    room_depth: centimetersToMeters(values.roomDepth),
   };
 }
 
 function toCornerBody(values: FormValues): CornerSuppliedDimensions {
   return {
-    left_wall_width: Number(values.leftWallWidth),
-    right_wall_width: Number(values.rightWallWidth),
-    room_height: Number(values.roomHeight),
-    room_depth: Number(values.roomDepth)
+    left_wall_width: centimetersToMeters(values.leftWallWidth),
+    right_wall_width: centimetersToMeters(values.rightWallWidth),
+    room_height: centimetersToMeters(values.roomHeight),
+    room_depth: centimetersToMeters(values.roomDepth),
   };
+}
+
+function centimetersToMeters(raw: string): number {
+  return Number(raw) / 100;
 }
 
 async function defaultSubmit(
   jobId: string,
-  body: SuppliedDimensionsBody
+  body: SuppliedDimensionsBody,
 ): Promise<SubmitOutcome> {
   try {
     const response = await fetch(
@@ -244,8 +259,8 @@ async function defaultSubmit(
         body: JSON.stringify(body),
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        method: "POST"
-      }
+        method: "POST",
+      },
     );
     if (response.ok) {
       return { ok: true };
@@ -256,7 +271,7 @@ async function defaultSubmit(
     return {
       ok: false,
       code: payload?.error?.code,
-      message: payload?.error?.message
+      message: payload?.error?.message,
     };
   } catch (error) {
     return { ok: false, message: (error as Error).message };

@@ -2,7 +2,7 @@
 
 Plan: PLAN-0040
 Spec: SPEC-0015
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -243,3 +243,7 @@ return the 500 envelope. The user-facing JSON envelope is unchanged;
 only operator visibility improves. No new tests because no behavior
 changed for clients of the API. This unblocks diagnosing the dev
 500 so PLAN-0042 manual launch testing can continue.
+
+## Plan Hygiene Closure
+
+Closed from active during the 2026-05-08 plan hygiene pass. Implementation evidence exists in public route handlers, helper libraries, RPC migrations, tests, and roadmaps. Launch verification remains in PLAN-0042.

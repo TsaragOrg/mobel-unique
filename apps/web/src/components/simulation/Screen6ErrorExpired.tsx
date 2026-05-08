@@ -12,9 +12,26 @@ export interface Screen6ErrorExpiredProps {
     fabricName: string;
     visualPositionLabel: string;
   };
+  errorDetail?: string | null;
   restartHref?: string;
   backToSofaHref?: string;
   backToCatalogHref?: string;
+}
+
+function publicErrorDiagnostic(errorDetail: string | null | undefined): string | null {
+  const detail = errorDetail?.trim();
+  if (!detail) return null;
+
+  const lower = detail.toLowerCase();
+  if (
+    lower.includes("heic") ||
+    lower.includes("heif") ||
+    lower.includes("unsupported_format")
+  ) {
+    return SIMULATION_LOCALE.screen6ErrorOrExpired.error.heicDiagnostic;
+  }
+
+  return SIMULATION_LOCALE.screen6ErrorOrExpired.error.genericDiagnostic;
 }
 
 export function Screen6ErrorExpired(props: Screen6ErrorExpiredProps) {
@@ -47,6 +64,7 @@ export function Screen6ErrorExpired(props: Screen6ErrorExpiredProps) {
   }
 
   const error = SIMULATION_LOCALE.screen6ErrorOrExpired.error;
+  const diagnostic = publicErrorDiagnostic(props.errorDetail);
   return (
     <section
       className="simulation-terminal-screen simulation-terminal-error"
@@ -67,6 +85,12 @@ export function Screen6ErrorExpired(props: Screen6ErrorExpiredProps) {
         <p className="public-eyebrow">{error.eyebrow}</p>
         <h1>{error.title}</h1>
         <p>{error.instruction}</p>
+        {diagnostic ? (
+          <p className="simulation-terminal-diagnostic">
+            <strong>{error.diagnosticPrefix}</strong>
+            <span>{diagnostic}</span>
+          </p>
+        ) : null}
         <div className="simulation-terminal-actions">
           {props.restartHref ? (
             <a className="public-primary-link" href={props.restartHref}>
