@@ -88,7 +88,7 @@ touch prompts, providers, or the validated v003 pipeline.
       cents. The accompanying SQL migration
       `20260502000700_simulation_cost_meter_record_charge.sql`
       adds the `simulation_cost_meter_record_charge(charge_cents,
-  cap_cents)` RPC the helper invokes.
+cap_cents)` RPC the helper invokes.
 - [x] Wire `chargeMeter(role)` into the worker dispatch path
       after each successful validation, cleaning, corners, and
       placement provider call. Telemetry failures are swallowed
@@ -98,6 +98,14 @@ touch prompts, providers, or the validated v003 pipeline.
       dispatch paths. The cap value is forwarded to the cost
       meter client, which the SQL function compares against the
       running total to flip `worker_paused`.
+- [x] Add migration
+      `20260508000100_fix_simulation_cost_meter_record_charge_ambiguity.sql`
+      after local live-worker testing surfaced Postgres 42702 on
+      `simulation_cost_meter_record_charge`: the RPC output column
+      `cost_date` collided with the unqualified `on conflict (cost_date)`
+      target. The replacement uses the primary-key constraint as the
+      conflict target and assigns the returned date through a local
+      `charged_cost_date` variable.
 - [ ] Integration test that runs a mock Stage 1 + Stage 2
       simulation and asserts the cost meter was incremented the
       expected number of times. Deferred to PLAN-0042's manual
