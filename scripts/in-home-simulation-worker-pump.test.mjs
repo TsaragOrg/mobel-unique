@@ -3,40 +3,30 @@ import { describe, expect, it } from "vitest";
 
 const workerPath = "supabase/functions/in-home-simulation-worker/index.ts";
 
-describe("PLAN-0068 in-home simulation worker checkpoint pump", () => {
+describe("PLAN-0068 in-home simulation worker dispatch and checkpoint modes", () => {
   const source = readFileSync(workerPath, "utf8");
 
-  it("parses explicit pump, dispatch, and checkpoint invocation modes", () => {
-    expect(source).toContain("type WorkerMode = \"legacy_queue\" | \"pump\" | \"dispatch\" | \"checkpoint\"");
+  it("parses only dispatch and checkpoint invocation modes", () => {
+    expect(source).toContain("type WorkerMode = \"dispatch\" | \"checkpoint\"");
     expect(source).toContain("parseWorkerRequestBody");
-    expect(source).toContain('mode === "pump"');
     expect(source).toContain('mode === "dispatch"');
     expect(source).toContain('mode === "checkpoint"');
     expect(source).toContain("In-home simulation worker mode is invalid");
+    expect(source).not.toContain('mode === "pump"');
+    expect(source).not.toContain("legacy_queue");
   });
 
-  it("keeps legacy queue mode as the no-mode fallback during migration", () => {
-    expect(source).toContain("return { mode: \"legacy_queue\" }");
-    expect(source).toContain("dequeueRoomPrepMessages");
-  });
-
-  it("implements pump mode as short orchestration without provider work", () => {
-    const pumpIndex = source.indexOf("async function handlePumpMode");
+  it("uses dispatch mode as the no-body and no-mode recovery default", () => {
+    const parseIndex = source.indexOf("async function parseWorkerRequestBody");
     const checkpointIndex = source.indexOf("async function handleCheckpointMode");
-    const pumpSource = source.slice(pumpIndex, checkpointIndex);
+    const parseSource = source.slice(parseIndex, checkpointIndex);
 
-    expect(pumpIndex).toBeGreaterThan(-1);
-    expect(checkpointIndex).toBeGreaterThan(pumpIndex);
-    expect(source).toContain("in_home_simulation_checkpoint_pump_status");
-    expect(pumpSource).toContain("readCheckpointPumpStatus");
-    expect(pumpSource).toContain("IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS");
-    expect(pumpSource).toContain("available_slots");
-    expect(pumpSource).toContain("invokeWorkerCheckpoint");
-    expect(pumpSource).toContain("deferWorkerInvocation");
-    expect(pumpSource).not.toContain("selectStage1Providers");
-    expect(pumpSource).not.toContain("selectStage2Providers");
-    expect(pumpSource).not.toContain("processClaimedJob(");
-    expect(pumpSource).not.toContain("processPlacementJob(");
+    expect(parseIndex).toBeGreaterThan(-1);
+    expect(checkpointIndex).toBeGreaterThan(parseIndex);
+    expect(parseSource).toContain('return { mode: "dispatch" }');
+    expect(source).not.toContain("dequeueRoomPrepMessages");
+    expect(source).not.toContain("processClaimedJob(");
+    expect(source).not.toContain("readCheckpointPumpStatus");
   });
 
   it("claims one durable checkpoint in checkpoint mode", () => {
@@ -73,6 +63,16 @@ describe("PLAN-0068 in-home simulation worker checkpoint pump", () => {
     expect(source).toContain("requeue_stale_in_home_simulation_checkpoint_dispatches");
     expect(source).toContain("mark_in_home_simulation_checkpoint_dispatch_dispatched");
     expect(source).toContain("mark_in_home_simulation_checkpoint_dispatch_retryable");
+  });
+
+  it("does not keep request-time pump or legacy queue execution paths", () => {
+    expect(source).not.toContain("async function handlePumpMode");
+    expect(source).not.toContain("in_home_simulation_checkpoint_pump_status");
+    expect(source).not.toContain("dequeue_in_home_simulation_room_prep_messages");
+    expect(source).not.toContain("enqueue_in_home_simulation_room_prep_message");
+    expect(source).not.toContain("release_in_home_simulation_room_prep_claim");
+    expect(source).not.toContain("claim_specific_in_home_simulation_room_prep_job");
+    expect(source).not.toContain("claim_specific_in_home_simulation_placement_job");
   });
 
   it("emits structured logs for dispatch, checkpoint, and provider boundaries", () => {

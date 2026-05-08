@@ -202,13 +202,6 @@ export interface SimulationCreateJobStore {
   >;
 }
 
-export interface SimulationQueueEnqueuer {
-  enqueueRoomPrep(input: {
-    jobId: string;
-    queueName: string;
-  }): Promise<{ msgId: number }>;
-}
-
 export interface SimulationPublicCreateHandlerDeps {
   accessTokenSecret: string;
   rateLimitSalt: string;

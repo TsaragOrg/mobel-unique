@@ -142,7 +142,7 @@ constraint, not the public route behavior.
       state if needed, indexes, RLS, and recovery semantics.
 - [x] Update `SPEC-0010` so public simulation APIs write durable state and do
       not wait on worker pump acknowledgement.
-- [ ] Update `SPEC-0012` and `SPEC-0015` so the frontend contract keeps
+- [x] Update `SPEC-0012` and `SPEC-0015` so the frontend contract keeps
       Realtime as observation plus HTTP fallback, not execution.
 
 ### 2. Dispatch Design
@@ -171,6 +171,9 @@ constraint, not the public route behavior.
 - [x] Remove request-time worker pump invocation from public route handlers.
 - [x] Replace `SIMULATION_WORKER_PUMP_TIMEOUT_MS` usage with dispatch/backstop
       configuration or retire it if no longer needed.
+- [x] Remove the public web `SIMULATION_QUEUE_NAME` and
+      `SimulationQueueEnqueuer` remnants so public route handlers expose only
+      durable dispatch-outbox dependencies.
 - [x] Accept public HEIC/HEIF room uploads when browsers submit empty or generic
       content types by validating the ISO BMFF `ftyp` signature and preserving
       canonical `.heic` or `.heif` input storage paths.
@@ -185,7 +188,7 @@ constraint, not the public route behavior.
 - [ ] Add worker source tests for one-checkpoint invocation, claim capacity,
       retryable checkpoint failure, non-retryable checkpoint failure, and next
       checkpoint activation.
-- [ ] Refactor any remaining broad pump behavior into internal recovery-only
+- [x] Refactor any remaining broad pump behavior into internal recovery-only
       dispatch or remove it from the normal flow.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
