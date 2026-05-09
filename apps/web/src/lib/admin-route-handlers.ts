@@ -3,6 +3,7 @@ import {
   ADMIN_TRUSTED_DEVICE_COOKIE,
   type createAdminAuth
 } from "./admin-auth";
+import { ADMIN_ERROR_MESSAGES } from "../app/admin/admin-copy";
 
 const TRUSTED_DEVICE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90;
 
@@ -123,7 +124,7 @@ function internalErrorResponse() {
     {
       error: {
         code: "AUTH_INVALID",
-        message: "Authentication is invalid."
+        message: ADMIN_ERROR_MESSAGES.AUTH_INVALID
       }
     },
     401

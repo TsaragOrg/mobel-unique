@@ -1,4 +1,5 @@
 import { type createAdminAuth } from "./admin-auth";
+import { formatAdminErrorCodeMessage } from "../app/admin/admin-copy";
 import {
   AdminCatalogOperationError,
   shapeFabricRenderCandidateResponse,
@@ -1252,7 +1253,10 @@ function validationResponse(input: {
 }) {
   return jsonResponse(
     {
-      error: input.error,
+      error: {
+        ...input.error,
+        message: formatAdminErrorCodeMessage(input.error.code),
+      },
     },
     input.status,
   );
@@ -1299,12 +1303,12 @@ function parseStorageAssetPreviewVariant(input: string | null | undefined):
   };
 }
 
-function notFoundResponse(code: string, message: string) {
+function notFoundResponse(code: string, _message: string) {
   return jsonResponse(
     {
       error: {
         code,
-        message,
+        message: formatAdminErrorCodeMessage(code),
       },
     },
     404,
@@ -1329,7 +1333,7 @@ function catalogErrorResponse(error: AdminCatalogOperationErrorData) {
       error: {
         code: error.code,
         details: error.details ?? {},
-        message: error.message,
+        message: formatAdminErrorCodeMessage(error.code),
       },
     },
     error.status,

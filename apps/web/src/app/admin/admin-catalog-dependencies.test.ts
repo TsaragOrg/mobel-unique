@@ -6,7 +6,7 @@ describe("admin catalog dependencies", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses server error messages instead of technical error codes", async () => {
+  it("uses French admin messages instead of technical error codes", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -37,7 +37,7 @@ describe("admin catalog dependencies", () => {
       dependencies.createTag("admin-token", {
         public_label: "Angle premium",
       }),
-    ).rejects.toThrow("A tag with this label or slug already exists.");
+    ).rejects.toThrow("Une étiquette utilise déjà ce libellé ou cette adresse.");
   });
 
   it("builds protected admin preview URLs with the requested variant", async () => {

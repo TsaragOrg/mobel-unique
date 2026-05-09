@@ -103,7 +103,7 @@ describe("admin image upload preparation", () => {
       expect(result.file.size).toBe(8);
       expect(result.resized).toBe(true);
       expect(result.message).toBe(
-        "Image converted from WebP to JPEG before upload.",
+        "L'image a été convertie de WebP en JPEG avant l'envoi.",
       );
       expect(canvas.width).toBe(1600);
       expect(canvas.height).toBe(1200);
@@ -169,7 +169,7 @@ describe("admin image upload preparation", () => {
     expect(result.file.size).toBe(7);
     expect(result.resized).toBe(true);
     expect(result.message).toBe(
-      "Image resized from 4000x3000 to 2048x1536 before upload.",
+      "L'image a été réduite de 4000x3000 à 2048x1536 avant l'envoi.",
     );
     expect(canvas.width).toBe(2048);
     expect(canvas.height).toBe(1536);
@@ -204,7 +204,7 @@ describe("admin image upload preparation", () => {
       expect(result.file.size).toBe(8);
       expect(result.resized).toBe(true);
       expect(result.message).toBe(
-        "Image resized from 3072x4096 to 1536x2048 before upload.",
+        "L'image a été réduite de 3072x4096 à 1536x2048 avant l'envoi.",
       );
       expect(canvas.width).toBe(1536);
       expect(canvas.height).toBe(2048);
@@ -246,7 +246,7 @@ describe("admin image upload preparation", () => {
     expect(result.file.size).toBe(8);
     expect(result.resized).toBe(true);
     expect(result.message).toBe(
-      "Image converted from WebP to JPEG and resized from 4000x3000 to 2048x1536 before upload.",
+      "L'image a été convertie de WebP en JPEG et réduite de 4000x3000 à 2048x1536 avant l'envoi.",
     );
     expect(canvas.width).toBe(2048);
     expect(canvas.height).toBe(1536);
@@ -306,7 +306,7 @@ describe("admin image upload preparation", () => {
     expect(result.file.type).toBe("image/png");
     expect(result.file.size).toBe(7);
     expect(result.resized).toBe(true);
-    expect(result.message).toBe("Swatch cropped to a 512x512 square before upload.");
+    expect(result.message).toBe("L'échantillon a été recadré en carré 512x512 avant l'envoi.");
     expect(canvas.width).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(canvas.height).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(drawImage).toHaveBeenCalledWith(
@@ -348,7 +348,7 @@ describe("admin image upload preparation", () => {
     expect(result.file.type).toBe("image/webp");
     expect(result.file.size).toBe(8);
     expect(result.resized).toBe(true);
-    expect(result.message).toBe("Swatch cropped to a 512x512 square before upload.");
+    expect(result.message).toBe("L'échantillon a été recadré en carré 512x512 avant l'envoi.");
     expect(canvas.width).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(canvas.height).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(drawImage).toHaveBeenCalledWith(

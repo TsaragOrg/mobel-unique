@@ -15,20 +15,20 @@ describe("Admin login page", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: "Admin sign in"
+        name: "Connexion admin"
       })
     ).toBeInTheDocument();
     expect(screen.getByText("MOBEL UNIQUE")).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", {
-        name: "Admin"
+        name: "Administration"
       })
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByLabelText("Adresse e-mail")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mot de passe")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Sign in"
+        name: "Se connecter"
       })
     ).toBeInTheDocument();
     expect(screen.queryByText(/sign up/i)).not.toBeInTheDocument();
@@ -40,5 +40,6 @@ describe("Admin login page", () => {
       follow: false,
       index: false
     });
+    expect(metadata.title).toBe("Connexion admin | Mobel Unique");
   });
 });

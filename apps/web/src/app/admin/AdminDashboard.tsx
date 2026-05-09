@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getBrowserSupabaseClient } from "../../lib/supabase-browser";
+import { ADMIN_COPY } from "./admin-copy";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type DashboardState = "checking" | "forbidden" | "ready";
@@ -123,7 +124,7 @@ export default function AdminDashboard({
       <AdminShell showNavigation={false} variant="auth">
         <section className="admin-auth-card" aria-live="polite">
           <p className="admin-status-text" role="status">
-            Checking admin session.
+            {ADMIN_COPY.auth.checkingSession}
           </p>
         </section>
       </AdminShell>
@@ -140,9 +141,9 @@ export default function AdminDashboard({
           aria-labelledby="admin-denied-title"
         >
           <AdminPageHeader
-            description="This account is not authorized for the admin area."
-            eyebrow="Secure workspace"
-            title="Admin access unavailable"
+            description={ADMIN_COPY.auth.deniedDescription}
+            eyebrow={ADMIN_COPY.auth.deniedEyebrow}
+            title={ADMIN_COPY.auth.deniedTitle}
             titleId="admin-denied-title"
           />
           <button
@@ -150,7 +151,7 @@ export default function AdminDashboard({
             onClick={handleLogout}
             type="button"
           >
-            Return to sign in
+            {ADMIN_COPY.auth.returnToSignIn}
           </button>
         </section>
       </AdminShell>
@@ -169,68 +170,83 @@ export default function AdminDashboard({
               onClick={handleLogout}
               type="button"
             >
-              Sign out
+              {ADMIN_COPY.dashboard.signOut}
             </button>
           }
-          description="Manage catalog content, fabrics, tags, and visual readiness from one workspace."
-          eyebrow="Workspace"
-          title="Admin dashboard"
+          description={ADMIN_COPY.dashboard.description}
+          eyebrow={ADMIN_COPY.dashboard.eyebrow}
+          title={ADMIN_COPY.dashboard.title}
           titleId="admin-title"
         />
         {/* RU: Эти карточки открывают основные разделы админского каталога.
             FR: Ces cartes ouvrent les zones principales du catalogue admin. */}
-        <nav className="admin-action-grid" aria-label="Catalog actions">
+        <nav
+          className="admin-action-grid"
+          aria-label={ADMIN_COPY.dashboard.actionsAriaLabel}
+        >
           <Link
-            aria-label="Sofas"
+            aria-label={ADMIN_COPY.dashboard.actions.sofas.label}
             className="admin-action-card"
             href="/admin/sofas"
           >
             <span className="admin-action-card-top">
-              <span className="admin-action-kicker">Catalog</span>
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.sofas.kicker}
+              </span>
               <AdminActionIcon name="sofas" />
             </span>
-            <strong>Sofas</strong>
+            <strong>{ADMIN_COPY.dashboard.actions.sofas.label}</strong>
             <span aria-hidden="true">
-              Manage sofa entries, dimensions, and publishing state.
+              {ADMIN_COPY.dashboard.actions.sofas.description}
             </span>
           </Link>
           <Link
-            aria-label="New sofa"
+            aria-label={ADMIN_COPY.dashboard.actions.newSofa.label}
             className="admin-action-card"
             href="/admin/sofas/new"
           >
             <span className="admin-action-card-top">
-              <span className="admin-action-kicker">Create</span>
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.newSofa.kicker}
+              </span>
               <AdminActionIcon name="new-sofa" />
             </span>
-            <strong>New sofa</strong>
-            <span aria-hidden="true">Start a new sofa catalog record.</span>
+            <strong>{ADMIN_COPY.dashboard.actions.newSofa.label}</strong>
+            <span aria-hidden="true">
+              {ADMIN_COPY.dashboard.actions.newSofa.description}
+            </span>
           </Link>
           <Link
-            aria-label="Fabrics"
+            aria-label={ADMIN_COPY.dashboard.actions.fabrics.label}
             className="admin-action-card"
             href="/admin/fabrics"
           >
             <span className="admin-action-card-top">
-              <span className="admin-action-kicker">Materials</span>
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.fabrics.kicker}
+              </span>
               <AdminActionIcon name="fabrics" />
             </span>
-            <strong>Fabrics</strong>
+            <strong>{ADMIN_COPY.dashboard.actions.fabrics.label}</strong>
             <span aria-hidden="true">
-              Maintain swatches, references, and ordering.
+              {ADMIN_COPY.dashboard.actions.fabrics.description}
             </span>
           </Link>
           <Link
-            aria-label="Tags"
+            aria-label={ADMIN_COPY.dashboard.actions.tags.label}
             className="admin-action-card"
             href="/admin/tags"
           >
             <span className="admin-action-card-top">
-              <span className="admin-action-kicker">Taxonomy</span>
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.tags.kicker}
+              </span>
               <AdminActionIcon name="tags" />
             </span>
-            <strong>Tags</strong>
-            <span aria-hidden="true">Organize public catalog filters.</span>
+            <strong>{ADMIN_COPY.dashboard.actions.tags.label}</strong>
+            <span aria-hidden="true">
+              {ADMIN_COPY.dashboard.actions.tags.description}
+            </span>
           </Link>
         </nav>
       </section>

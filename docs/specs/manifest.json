@@ -254,6 +254,27 @@
       "implementationPlans": ["PLAN-0049"],
       "path": "docs/specs/accepted/SPEC-0016-admin-fabric-swatch-cropper.md",
       "areas": ["web"]
+    },
+    {
+      "id": "SPEC-0017",
+      "title": "Admin French Localization",
+      "status": "accepted",
+      "layer": "feature",
+      "parent": "SPEC-0013",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0011",
+        "SPEC-0013",
+        "SPEC-0014",
+        "SPEC-0016"
+      ],
+      "implementationPlans": ["PLAN-0076"],
+      "path": "docs/specs/accepted/SPEC-0017-admin-french-localization.md",
+      "areas": ["web", "api"]
     }
   ]
 }
