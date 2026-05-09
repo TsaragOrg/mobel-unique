@@ -16,6 +16,11 @@ describe("admin error messages", () => {
     expect(formatAdminErrorMessage("REFINE_PROMPT_REQUIRED")).toBe(
       "Write what should be improved before starting refinement.",
     );
+    expect(
+      formatAdminErrorMessage("FABRIC_RENDER_SOFA_PROCESSING_CONFLICT"),
+    ).toBe(
+      "Another image generation is already running. Wait for it to finish before resuming a queued cell.",
+    );
   });
 
   it("hides unknown technical codes behind a generic message", () => {

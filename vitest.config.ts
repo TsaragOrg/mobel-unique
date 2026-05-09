@@ -1,11 +1,9 @@
 import { defineConfig } from "vitest/config";
 
-// The in-home simulation worker is a Deno module that imports
-// imagescript via a Deno-only URL. Vitest runs in Node and cannot
-// follow `https://deno.land/...` URLs. Aliasing the Deno URL to the
-// npm `imagescript` package (already a dev dependency) lets the same
-// .ts files be exercised from vitest in Node without changing the
-// production import.
+// Some Supabase Edge Function modules import imagescript through a Deno-only
+// URL. Vitest runs in Node and cannot follow `https://deno.land/...` URLs.
+// Aliasing the Deno URL to the npm `imagescript` package lets those .ts files
+// be exercised from vitest in Node without changing the production import.
 export default defineConfig({
   resolve: {
     alias: {

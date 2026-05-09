@@ -1575,6 +1575,45 @@ describe("admin catalog route handlers", () => {
     });
   });
 
+  it("resumes a queued fabric render job from one selected render cell", async () => {
+    const renderCellId = "00000000-0000-4000-8000-000000003012";
+    const preferredJobId = "00000000-0000-4000-8000-000000003013";
+    const requestId = "00000000-0000-4000-8000-000000003014";
+    const resumeFabricRenderJobs = vi.fn(async () => ({
+      preferred_job_id: preferredJobId,
+      render_cell_id: renderCellId,
+      request_ids: [requestId],
+      status: "started" as const,
+      total_requests: 1,
+    }));
+    const store = {
+      resumeFabricRenderJobs,
+    } as unknown as AdminCatalogStore;
+
+    const response = await handleResumeFabricRenderJobsRequest({
+      ...createInput(store),
+      request: jsonRequest({
+        render_cell_id: renderCellId,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(resumeFabricRenderJobs).toHaveBeenCalledWith({
+      render_cell_id: renderCellId,
+      request_id: null,
+      sofa_id: null,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        preferred_job_id: preferredJobId,
+        render_cell_id: renderCellId,
+        request_ids: [requestId],
+        status: "started",
+        total_requests: 1,
+      },
+    });
+  });
+
   it("returns a new request-scoped job for manual fabric render retry", async () => {
     const requestId = "00000000-0000-4000-8000-000000003021";
     const jobId = "00000000-0000-4000-8000-000000003022";

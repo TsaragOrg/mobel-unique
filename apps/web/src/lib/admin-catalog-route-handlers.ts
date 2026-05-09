@@ -639,6 +639,12 @@ export async function handleResumeFabricRenderJobsRequest(input: RequestInput) {
     return jsonResponse(
       {
         data: {
+          ...(resume.preferred_job_id
+            ? { preferred_job_id: resume.preferred_job_id }
+            : {}),
+          ...(resume.render_cell_id
+            ? { render_cell_id: resume.render_cell_id }
+            : {}),
           request_ids: resume.request_ids,
           status: resume.status,
           total_requests: resume.total_requests,

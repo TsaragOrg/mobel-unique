@@ -12,6 +12,7 @@ import {
   shapeSofaResponse,
   shapeVisualMatrixColumnResponse,
   validateManualRenderMutationPayload,
+  validateFabricRenderResumePayload,
   validateFabricRenderJobCreatePayload,
   validateFabricCreatePayload,
   validateFabricPatchPayload,
@@ -227,6 +228,49 @@ describe("admin catalog validation", () => {
     expect(source).toContain("FABRIC_RENDER_WORKER_FUNCTION_URL");
     expect(source).toContain("FABRIC_RENDER_WORKER_INVOKE_SECRET");
     expect(source).not.toContain("fabric_render_admin_enqueue_job");
+  });
+
+  it("validates selected queued render cell resume payloads exclusively", () => {
+    const renderCellId = "00000000-0000-4000-8000-000000000908";
+    const requestId = "00000000-0000-4000-8000-000000000917";
+    const sofaId = "00000000-0000-4000-8000-000000000101";
+
+    const selectedCellResult = validateFabricRenderResumePayload({
+      render_cell_id: renderCellId,
+    });
+
+    expect(selectedCellResult).toMatchObject({
+      ok: true,
+      value: {
+        render_cell_id: renderCellId,
+        request_id: null,
+        sofa_id: null,
+      },
+    });
+
+    for (const payload of [
+      {
+        render_cell_id: renderCellId,
+        request_id: requestId,
+      },
+      {
+        render_cell_id: renderCellId,
+        sofa_id: sofaId,
+      },
+    ]) {
+      const result = validateFabricRenderResumePayload(payload);
+
+      expect(result).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: expect.arrayContaining(Object.keys(payload)),
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
   });
 
   it("publishes public render originals and variants through one cleanup-aware flow", () => {
