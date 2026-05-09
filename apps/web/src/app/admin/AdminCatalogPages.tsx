@@ -420,15 +420,24 @@ export interface FabricRenderJobBatchResult {
 
 export type FabricRenderResumeInput =
   | {
+      render_cell_id?: null;
       request_id: string;
       sofa_id?: null;
     }
   | {
+      render_cell_id?: null;
       request_id?: null;
       sofa_id: string;
+    }
+  | {
+      render_cell_id: string;
+      request_id?: null;
+      sofa_id?: null;
     };
 
 export interface FabricRenderResumeResult {
+  preferred_job_id?: string | null;
+  render_cell_id?: string | null;
   request_ids: string[];
   status: "noop" | "started";
   total_requests: number;
@@ -4961,15 +4970,6 @@ function RenderCoverageSection({
   const canGenerateAll = renderCells.some(
     (cell) => cell.can_generate_initial && !cell.current_private_asset_id,
   );
-  const hasQueuedJobs = renderCells.some(
-    (cell) => cell.latest_job?.status === "queued",
-  );
-  const hasProcessingJobs = renderCells.some(
-    (cell) => cell.latest_job?.status === "processing",
-  );
-  const canResumeQueuedJobs = Boolean(
-    coverage && hasQueuedJobs && !hasProcessingJobs,
-  );
   const renderStatusCounts = RENDER_CELL_STATUS_ORDER.reduce(
     (counts, status) => ({
       ...counts,
@@ -5120,18 +5120,15 @@ function RenderCoverageSection({
     void handleReviewCandidates(selectedCell);
   }, [activeCellId, reviewCellId, selectedCell, selectedStatus]);
 
-  async function handleResumeQueuedJobs() {
-    if (!coverage) {
-      return;
-    }
-
+  // RU: Это действие запускает выбранную ячейку из очереди, если другая картинка не создается.
+  // FR: Cette action lance la case choisie depuis la file si aucune autre image n'est en cours.
+  async function handleResumeQueuedCell(cell: AdminCatalogRenderCell) {
     setErrorMessage(null);
-    setActiveCellId("__resume__");
+    setActiveCellId(cell.id);
 
     try {
       await dependencies.resumeFabricRenderJobs(accessToken, {
-        request_id: null,
-        sofa_id: coverage.sofa_id,
+        render_cell_id: cell.id,
       });
       await onRefresh();
     } catch (error) {
@@ -5462,6 +5459,11 @@ function RenderCoverageSection({
       return;
     }
 
+    if (status === "queued") {
+      void handleResumeQueuedCell(cell);
+      return;
+    }
+
     if (status === "missing") {
       void handleGenerate(cell);
     }
@@ -5593,18 +5595,6 @@ function RenderCoverageSection({
               {activeCellId === "__generate_all__"
                 ? "Queueing"
                 : "Generate missing"}
-            </button>
-          ) : null}
-          {canResumeQueuedJobs ? (
-            <button
-              className="admin-secondary-button"
-              disabled={activeCellId === "__resume__"}
-              onClick={() => void handleResumeQueuedJobs()}
-              type="button"
-            >
-              {activeCellId === "__resume__"
-                ? "Resuming"
-                : "Resume queued jobs"}
             </button>
           ) : null}
         </div>

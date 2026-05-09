@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                        |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Done   | SPEC-0006 | PLAN-0074 | Admin fabric render resume now accepts a selected `render_cell_id`, returns the preferred job details, rejects cells without queued work, and reports same-sofa processing conflicts with a visible admin-safe error. |
 | Active | SPEC-0007 | PLAN-0068 | Remaining public simulation API work is to validate delayed-dispatch responses, Realtime fallback behavior, and recovery-edge cases without exposing dispatch ids or worker internals. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation create, dimensions, and regeneration handlers now call dispatch-outbox RPCs and no longer invoke the in-home worker from the request path; web environment documentation no longer requires in-home worker URL, invoke secret, or pump timeout variables. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation create, dimensions, and regeneration handlers now use checkpoint-pump RPCs and invoke the in-home worker pump as best effort after durable state is persisted; legacy pgmq enqueue is no longer part of the public create path. |

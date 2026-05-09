@@ -4,6 +4,7 @@
 
 | Status | Spec      | Plan      | Work                                                                                                                                                            |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Done   | SPEC-0006 | PLAN-0074 | Fabric render worker pump/job modes now accept `preferred_job_id`, hand it to the first job claim, start only one preferred job from selected-cell resume, and continue the request chain only after a successful job. |
 | Active | SPEC-0007 | PLAN-0068 | In-home simulation worker work will keep bounded one-checkpoint execution while removing request-time pump chaining from the public path and adding transactional outbox dispatcher/recovery coverage for every checkpoint type. |
 | Done   | SPEC-0007 | PLAN-0068 | In-home simulation dispatch mode now recovers stale checkpoint claims and stale dispatch locks before claiming fresh work, so dead Edge isolates cannot leave the visitor stuck on an infinite loading state. |
 | Done   | SPEC-0007 | PLAN-0068 | In-home simulation room validation now loads the HEIC decoder from a runtime-resolvable WASM bundle and logs `room_validation_heic_conversion_failed` before marking unsupported HEIC/HEIF input non-retryable. |

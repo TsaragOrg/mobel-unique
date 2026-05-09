@@ -17,6 +17,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
     "An equivalent image generation job is already active.",
   FABRIC_RENDER_JOB_FAILED: "The image generation failed.",
   FABRIC_RENDER_JOB_NOT_FOUND: "Image generation job was not found.",
+  FABRIC_RENDER_SOFA_PROCESSING_CONFLICT:
+    "Another image generation is already running. Wait for it to finish before resuming a queued cell.",
   FABRIC_RENDER_WORKER_INVOKE_FAILED:
     "Image generation could not start. Please try again.",
   IMAGE_DECODE_FAILED:
@@ -32,13 +34,13 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   RENDER_CELL_NOT_FOUND: "Render cell was not found.",
   SOFA_CONFLICT: "This sofa cannot be changed in its current state.",
   SOFA_FABRIC_NOT_FOUND: "This fabric line was not found.",
-  SOFA_FABRIC_ORDER_CONFLICT:
-    "Another fabric already uses this public order.",
+  SOFA_FABRIC_ORDER_CONFLICT: "Another fabric already uses this public order.",
   SOFA_NOT_FOUND: "Sofa was not found.",
   SOFA_RENDER_EXPORT_NOT_FOUND: "Render export was not found.",
   STORAGE_ASSET_NOT_FOUND: "Stored image was not found.",
   TAG_CONFLICT: "A tag with this label or slug already exists.",
-  TAG_IN_USE: "This tag is already assigned to a sofa, so it cannot be deleted.",
+  TAG_IN_USE:
+    "This tag is already assigned to a sofa, so it cannot be deleted.",
   TAG_NOT_FOUND: "Tag was not found.",
   UNSUPPORTED_FIELD: "Some entered data cannot be saved here.",
   UNSUPPORTED_MEDIA_TYPE: "Request body must be JSON.",
@@ -107,7 +109,9 @@ export function formatAdminErrorMessage(error: unknown) {
 }
 
 export function formatAdminPublicationBlockerLabel(code: string) {
-  return ADMIN_PUBLICATION_BLOCKER_LABELS[code] ?? "Publication needs attention";
+  return (
+    ADMIN_PUBLICATION_BLOCKER_LABELS[code] ?? "Publication needs attention"
+  );
 }
 
 export function formatRenderCellBlockerLabel(code: string) {

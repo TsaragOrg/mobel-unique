@@ -1,4 +1,4 @@
-import { Image } from "imagescript";
+import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
 export const FABRIC_RENDER_IMAGE_VARIANT_KINDS = ["small", "medium"] as const;
 

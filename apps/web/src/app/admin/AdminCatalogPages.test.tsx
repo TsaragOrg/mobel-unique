@@ -840,10 +840,7 @@ describe("Admin catalog pages", () => {
 
     expect(
       await screen.findByRole("img", { name: "Source photo for Canape test" }),
-    ).toHaveAttribute(
-      "src",
-      `blob:admin-preview/${sourcePhotoAssetId}/small`,
-    );
+    ).toHaveAttribute("src", `blob:admin-preview/${sourcePhotoAssetId}/small`);
     expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
       "admin-token",
       sourcePhotoAssetId,
@@ -1896,7 +1893,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(await screen.findByLabelText("Search tags"), {
       target: { value: "con" },
     });
-    fireEvent.click(screen.getByRole("option", { name: "Add Convertible tag" }));
+    fireEvent.click(
+      screen.getByRole("option", { name: "Add Convertible tag" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
 
     await waitFor(() => {
@@ -1973,10 +1972,9 @@ describe("Admin catalog pages", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("listbox", { name: "Matching tags" })).queryByRole(
-        "option",
-        { name: "Add Top sofa tag" },
-      ),
+      within(
+        screen.getByRole("listbox", { name: "Matching tags" }),
+      ).queryByRole("option", { name: "Add Top sofa tag" }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("option", { name: "Add Red sofa tag" }));
@@ -2188,9 +2186,9 @@ describe("Admin catalog pages", () => {
     fireEvent.scroll(selectedTags);
 
     await waitFor(() => {
-      expect(visualScrollbar?.style.getPropertyValue("--admin-tag-rail-thumb-left")).toBe(
-        "30%",
-      );
+      expect(
+        visualScrollbar?.style.getPropertyValue("--admin-tag-rail-thumb-left"),
+      ).toBe("30%");
     });
     expect(
       visualScrollbar?.style.getPropertyValue("--admin-tag-rail-thumb-width"),
@@ -4294,9 +4292,7 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Publish/i }));
-    expect(
-      screen.getByText("Missing public renders"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Missing public renders")).toBeInTheDocument();
     expect(
       screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
     ).not.toBeInTheDocument();
@@ -4532,16 +4528,34 @@ describe("Admin catalog pages", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Resume queued jobs" }));
+    expect(
+      screen.queryByRole("button", { name: "Resume queued jobs" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Queued fabric, Front: Queued/i }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: /Render cell/i })).getByRole(
+        "button",
+        {
+          name: "Resume generation",
+        },
+      ),
+    );
     await waitFor(() => {
       expect(dependencies.resumeFabricRenderJobs).toHaveBeenCalledWith(
         "admin-token",
         {
-          request_id: null,
-          sofa_id: sofaId,
+          render_cell_id: queuedJob.render_cell_id,
         },
       );
     });
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: /Render cell/i })).getByRole(
+        "button",
+        { name: "Close render cell" },
+      ),
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: /Failed fabric, Front: Failed/i }),
@@ -4557,6 +4571,131 @@ describe("Admin catalog pages", () => {
         failedJob.id,
       );
     });
+  });
+
+  it("shows a conflict message when a selected queued cell cannot resume while another job is processing", async () => {
+    // RU: Эти значения описывают ячейку в очереди, которую админ пытается запустить вручную.
+    // FR: Ces valeurs decrivent une case en attente que l'admin essaie de lancer a la main.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const visualColumn = {
+      admin_label: "front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: "00000000-0000-4000-8000-000000000705",
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const fabric = {
+      ai_reference_asset: null,
+      ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+      archived_at: null,
+      created_at: "2026-04-28T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000913",
+      internal_name: "Queued fabric",
+      is_premium: false,
+      lifecycle_state: "active",
+      public_name: "Queued fabric",
+      swatch_preview_url: null,
+      swatch_asset: null,
+      swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const assignment = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric,
+      fabric_id: fabric.id,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const queuedJob = {
+      attempt_count: 0,
+      completed_at: null,
+      created_at: "2026-04-28T10:30:00.000Z",
+      fabric_id: fabric.id,
+      generation_mode: "initial",
+      id: "00000000-0000-4000-8000-000000000916",
+      last_error_message: null,
+      max_attempts: 3,
+      prompt_note: null,
+      queued_at: "2026-04-28T10:30:00.000Z",
+      request_id: "00000000-0000-4000-8000-000000000917",
+      refinement_source_asset_id: null,
+      refine_prompt: null,
+      render_cell_id: "00000000-0000-4000-8000-000000000915",
+      sofa_id: sofaId,
+      status: "queued",
+      updated_at: "2026-04-28T10:30:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          {
+            blockers: ["ACTIVE_RENDER_JOB_EXISTS"],
+            can_generate_initial: false,
+            candidate_count: 0,
+            current_private_asset_id: null,
+            current_public_asset_id: null,
+            fabric_id: fabric.id,
+            has_private_render: false,
+            has_public_render: false,
+            id: queuedJob.render_cell_id,
+            latest_job: queuedJob,
+            sofa_id: sofaId,
+            source_photo_id: visualColumn.current_source_photo_id,
+            source_type: "ai_generated",
+            updated_at: "2026-04-28T10:00:00.000Z",
+            visual_matrix_column_id: visualColumn.id,
+          },
+        ],
+        sofa_fabrics: [assignment],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listFabrics: vi.fn(async () => [fabric]),
+      listSofaFabrics: vi.fn(async () => [assignment]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+      resumeFabricRenderJobs: vi.fn(async () => {
+        throw new Error("FABRIC_RENDER_SOFA_PROCESSING_CONFLICT");
+      }),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Queued fabric, Front: Queued/i }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: /Render cell/i })).getByRole(
+        "button",
+        { name: "Resume generation" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(dependencies.resumeFabricRenderJobs).toHaveBeenCalledWith(
+        "admin-token",
+        {
+          render_cell_id: queuedJob.render_cell_id,
+        },
+      );
+    });
+    expect(
+      screen
+        .getAllByRole("alert")
+        .some((alert) =>
+          alert.textContent?.includes(
+            "Another image generation is already running. Wait for it to finish before resuming a queued cell.",
+          ),
+        ),
+    ).toBe(true);
   });
 
   it("opens generated candidate review directly and attaches a manual render from coverage", async () => {
@@ -5468,7 +5607,9 @@ describe("Admin catalog pages", () => {
     expect(
       within(dialog).getByText("Complete the missing render input first."),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText("Source photo missing")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Source photo missing"),
+    ).toBeInTheDocument();
     expect(
       within(dialog).queryByText("MISSING_SOURCE_PHOTO"),
     ).not.toBeInTheDocument();

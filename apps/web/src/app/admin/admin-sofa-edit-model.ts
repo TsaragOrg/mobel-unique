@@ -86,8 +86,11 @@ export function getRenderCellPrimaryAction(
       return {
         label: "Retry generation",
       };
-    case "processing":
     case "queued":
+      return {
+        label: "Resume generation",
+      };
+    case "processing":
       return null;
     case "ready":
       return {

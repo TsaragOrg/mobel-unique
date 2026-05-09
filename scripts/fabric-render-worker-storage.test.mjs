@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
 import {
@@ -28,6 +29,10 @@ import {
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
+const FABRIC_RENDER_IMAGE_VARIANTS_PATH =
+  "supabase/functions/fabric-render-worker/image-variants.ts";
+const FABRIC_RENDER_DENO_JSON_PATH =
+  "supabase/functions/fabric-render-worker/deno.json";
 
 function createFetchResponse(body, options = {}) {
   return {
@@ -238,6 +243,21 @@ describe("fabric render storage and scratch helpers", () => {
     ).toBe(
       "renders/sofa-id/fabric-id/column-id/candidates/job-id/variants/small/small-asset-id.jpg",
     );
+  });
+
+  it("uses the Deno imagescript import for Edge-compatible variant generation", async () => {
+    const [source, denoJsonText] = await Promise.all([
+      readFile(FABRIC_RENDER_IMAGE_VARIANTS_PATH, "utf8"),
+      readFile(FABRIC_RENDER_DENO_JSON_PATH, "utf8"),
+    ]);
+    const denoJson = JSON.parse(denoJsonText);
+
+    expect(source).toContain(
+      'from "https://deno.land/x/imagescript@1.2.17/mod.ts"',
+    );
+    expect(source).not.toContain('from "imagescript"');
+    expect(denoJson.imports?.imagescript).toBeUndefined();
+    expect(denoJsonText).not.toContain("npm:imagescript");
   });
 
   it("generates small and medium private candidate variant metadata without cropping", async () => {
