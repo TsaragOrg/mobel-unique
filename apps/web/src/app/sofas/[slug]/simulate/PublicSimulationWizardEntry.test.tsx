@@ -59,7 +59,38 @@ const detail: PublicSofaDetailResponse = {
       swatch_url: "https://assets.example/boucle.png"
     }
   ],
-  renders: [],
+  renders: [
+    {
+      fabric_id: "fabric-boucle",
+      height_px: 900,
+      render_medium_content_type: "image/png",
+      render_medium_height_px: 450,
+      render_medium_url: "https://assets.example/rivoli-front-boucle-medium.png",
+      render_medium_width_px: 600,
+      render_original_content_type: "image/png",
+      render_original_height_px: 900,
+      render_original_url: "https://assets.example/rivoli-front-boucle.png",
+      render_original_width_px: 1200,
+      render_url: "https://assets.example/rivoli-front-boucle.png",
+      visual_position_id: "front",
+      width_px: 1200
+    },
+    {
+      fabric_id: "fabric-boucle",
+      height_px: 900,
+      render_medium_content_type: "image/png",
+      render_medium_height_px: 450,
+      render_medium_url: "https://assets.example/rivoli-side-boucle-medium.png",
+      render_medium_width_px: 600,
+      render_original_content_type: "image/png",
+      render_original_height_px: 900,
+      render_original_url: "https://assets.example/rivoli-side-boucle.png",
+      render_original_width_px: 1200,
+      render_url: "https://assets.example/rivoli-side-boucle.png",
+      visual_position_id: "side",
+      width_px: 1200
+    }
+  ],
   sofa: {
     dimensions: {
       depth_cm: null,
@@ -103,6 +134,29 @@ describe("PublicSimulationWizardEntry", () => {
     expect(
       screen.getByLabelText("Contexte de la simulation")
     ).toHaveTextContent("Canapé Rivoli · Bouclette · Vue de face");
+  });
+
+  it("passes the selected fabric and visual-position render into Screen 1", async () => {
+    render(
+      <PublicSimulationWizardEntry
+        slug="canape-rivoli"
+        fetchSofa={async () => detail}
+        readStoredSelection={() => ({
+          fabric_id: "fabric-boucle",
+          visual_position_id: "front"
+        })}
+        navigateToJob={() => undefined}
+      />
+    );
+
+    expect(
+      await screen.findByRole("img", {
+        name: "Canapé Rivoli en Bouclette, Vue de face"
+      })
+    ).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli-front-boucle-medium.png"
+    );
   });
 
   it("falls back to the missing-selection panel when sessionStorage holds nothing", async () => {

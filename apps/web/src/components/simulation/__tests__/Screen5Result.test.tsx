@@ -12,6 +12,7 @@ const baseProps = {
   visualPositionLabel: "Vue de face",
   resultImageUrl: "https://signed.example/output-1.png",
   backToSofaHref: "/sofas/canape-rivoli",
+  generationCount: 1,
   onResultImageError: vi.fn(),
   onRegenerationStarted: vi.fn()
 };
@@ -19,8 +20,30 @@ const baseProps = {
 type RegenerateFn = (
   jobId: string
 ) => Promise<{ ok: true } | { ok: false; message?: string }>;
+type DownloadFn = (input: {
+  filename: string;
+  imageUrl: string;
+}) => Promise<{ ok: true } | { ok: false; message?: string }>;
 
 describe("Screen5Result", () => {
+  it("shows the result image and compact action panel metadata", () => {
+    render(
+      <Screen5Result
+        {...baseProps}
+        generationCount={2}
+        regenerationAvailable={true}
+        requestRegeneration={vi.fn<RegenerateFn>(async () => ({ ok: true }))}
+      />
+    );
+
+    expect(screen.getByText("Résultat")).toBeInTheDocument();
+    expect(screen.getByText("Génération 2 sur 3")).toBeInTheDocument();
+    expect(screen.getByAltText(/votre canapé placé/i)).toHaveAttribute(
+      "src",
+      "https://signed.example/output-1.png"
+    );
+  });
+
   it("always shows the muted retention notice", () => {
     render(
       <Screen5Result
@@ -49,6 +72,58 @@ describe("Screen5Result", () => {
     ).toBeInTheDocument();
   });
 
+  it("downloads the result image through a button without rendering a signed download link", async () => {
+    const downloadResult = vi.fn<DownloadFn>(async () => ({ ok: true }));
+    render(
+      <Screen5Result
+        {...baseProps}
+        downloadResult={downloadResult}
+        regenerationAvailable={true}
+        requestRegeneration={vi.fn<RegenerateFn>(async () => ({ ok: true }))}
+      />
+    );
+
+    expect(
+      screen.queryByRole("link", { name: /télécharger l'image/i })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /télécharger l'image/i })
+    );
+    expect(
+      screen.getByRole("button", { name: /téléchargement en cours/i })
+    ).toBeDisabled();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(downloadResult).toHaveBeenCalledWith({
+      filename: "mobel-unique-simulation-sim-1.png",
+      imageUrl: "https://signed.example/output-1.png"
+    });
+  });
+
+  it("shows an inline download error when result image download fails", async () => {
+    render(
+      <Screen5Result
+        {...baseProps}
+        downloadResult={vi.fn<DownloadFn>(async () => ({
+          ok: false,
+          message: "boom"
+        }))}
+        regenerationAvailable={true}
+        requestRegeneration={vi.fn<RegenerateFn>(async () => ({ ok: true }))}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /télécharger l'image/i })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /téléchargement n'a pas abouti/i
+    );
+  });
+
   it("removes the regeneration button from the DOM (not just disabled) when unavailable", () => {
     render(
       <Screen5Result
@@ -61,6 +136,7 @@ describe("Screen5Result", () => {
     expect(
       screen.queryByRole("button", { name: /nouvelle génération/i })
     ).not.toBeInTheDocument();
+    expect(screen.getByText(/limite de générations atteinte/i)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /retour au canapé/i })
     ).toHaveAttribute("href", "/sofas/canape-rivoli");
@@ -95,6 +171,9 @@ describe("Screen5Result", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /nouvelle génération/i }));
+    expect(
+      screen.getByRole("button", { name: /nouvelle génération en cours/i })
+    ).toBeDisabled();
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     expect(requestRegeneration).toHaveBeenCalledWith("sim-1");

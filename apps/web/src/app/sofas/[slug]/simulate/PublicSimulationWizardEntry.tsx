@@ -105,14 +105,27 @@ export function PublicSimulationWizardEntry(
     [detail?.visual_positions, selection?.visual_position_id]
   );
 
+  const selectedRender = useMemo(
+    () =>
+      detail?.renders.find(
+        (entry) =>
+          entry.fabric_id === selection?.fabric_id &&
+          entry.visual_position_id === selection?.visual_position_id
+      ) ?? null,
+    [detail?.renders, selection?.fabric_id, selection?.visual_position_id]
+  );
+
+  const visualPositionLabel = visualPosition
+    ? visualPosition.public_label ?? `Vue ${visualPosition.sequence}`
+    : "";
+
   function handleJobCreated(jobId: string) {
     if (detail && fabric && visualPosition) {
       stashJobContext(jobId, {
         slug: props.slug,
         sofaName: detail.sofa.public_name,
         fabricName: fabric.public_name,
-        visualPositionLabel:
-          visualPosition.public_label ?? `Vue ${visualPosition.sequence}`
+        visualPositionLabel
       });
     }
     if (props.navigateToJob) {
@@ -168,12 +181,17 @@ export function PublicSimulationWizardEntry(
           fabricName={fabric.public_name}
           geometryMode={geometryMode}
           onJobCreated={handleJobCreated}
+          sofaPreviewAlt={`${detail.sofa.public_name} en ${fabric.public_name}, ${visualPositionLabel}`}
+          sofaPreviewUrl={
+            selectedRender?.render_medium_url ??
+            selectedRender?.render_original_url ??
+            selectedRender?.render_url ??
+            null
+          }
           sofaName={detail.sofa.public_name}
           sofaSlug={props.slug}
           visualPositionId={visualPosition.id}
-          visualPositionLabel={
-            visualPosition.public_label ?? `Vue ${visualPosition.sequence}`
-          }
+          visualPositionLabel={visualPositionLabel}
         />
       ) : null}
     </PublicShell>

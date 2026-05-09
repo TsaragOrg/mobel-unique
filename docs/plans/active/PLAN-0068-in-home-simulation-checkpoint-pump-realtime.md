@@ -7,6 +7,7 @@ Related change requests:
 
 - CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015-in-home-checkpoint-pump-realtime
 - CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015-in-home-database-dispatched-checkpoints-realtime
+- CR-SPEC-0015-public-simulation-realtime-loading-copy
 
 Status: active
 Owner area: supabase
@@ -211,6 +212,9 @@ constraint, not the public route behavior.
 - [ ] Add frontend tests for progress rendering, fallback polling, foreground
       refresh, offline/online recovery, and signed URL refresh through the
       status endpoint.
+- [x] Use the latest visitor-safe Realtime progress payload to render specific
+      loading copy for room preparation and placement while keeping signed URLs
+      on the HTTP status endpoint.
 - [x] Keep a slow signed-status reconciliation read while Realtime is connected
       so a missed progress event cannot strand the visitor on stale loading UI.
 - [x] Convert HEIC/HEIF photos to browser-previewable JPEG on selection when

@@ -50,21 +50,37 @@ export const SIMULATION_LOCALE = {
     eyebrow: "Étape 1 sur 3 — Photo de la pièce",
     title: "Photo de votre pièce",
     instructionBackWall:
-      "Placez-vous face au mur où viendra le canapé et prenez une photo nette en cadrant le mur en entier, du sol au plafond.",
+      "Prenez une photo nette de l'emplacement du canapé en gardant la même direction que l'image du canapé sélectionné.",
     instructionCorner:
       "Placez-vous face au coin où viendra le canapé d'angle. Cadrez les deux murs qui se rejoignent ainsi que le sol jusqu'à vos pieds.",
+    guidanceAriaLabel: "Canapé sélectionné et photo de la pièce",
+    selectedSofaLabel: "Canapé sélectionné",
+    selectedSofaUnavailableTitle: "Aperçu du canapé indisponible",
+    selectedSofaUnavailableInstruction:
+      "La sélection reste bien prise en compte pour la simulation.",
+    roomPhotoTargetLabel: "Photo à prendre",
+    roomPhotoTargetActionLabel: "Ajouter une photo de votre pièce",
+    replaceRoomPhotoActionLabel: "Remplacer la photo de votre pièce",
+    roomPhotoTargetTitle: "Ajouter une photo de votre pièce",
+    roomPhotoTargetInstructionDesktop:
+      "Cliquez dans ce cadre pour choisir une image.",
+    roomPhotoTargetInstructionTouch:
+      "Touchez ce cadre pour prendre la photo.",
+    orientationGuidancePrefix:
+      "Gardez le même angle que la vue sélectionnée :",
+    orientationGuidanceSuffix:
+      "Si cette vue est de côté, prenez la pièce depuis ce même côté.",
     disclaimerCornerStrong:
       "Le canapé sélectionné est un modèle d'angle. La photo doit montrer un coin de la pièce — deux murs qui se rencontrent — sinon la simulation ne pourra pas se positionner correctement.",
     disclaimerBackWallShort:
-      "Une seule prise de vue frontale d'un mur suffit. Évitez les photos prises en biais.",
-    takePhotoButton: "Prendre une photo",
-    chooseFileButton: "Choisir un fichier",
+      "Cadrez le mur et le sol où viendra le canapé. Si le canapé sélectionné est vu de côté, prenez aussi votre pièce depuis ce côté.",
     previewAlt: "Aperçu de la photo de votre pièce",
     previewUnavailableTitle: "Aperçu indisponible pour ce fichier",
     replaceLink: "Remplacer la photo",
     continueButton: "Continuer",
     photoPreparationLabel: "Préparation de la photo",
     uploadProgressLabel: "Envoi de la photo",
+    photoBusyLabel: "Photo en cours de traitement",
     // TODO: FR native review — error wording shown after three upload failures.
     uploadFailedTitle: "L'envoi n'a pas pu aboutir",
     uploadFailedInstruction:
@@ -76,13 +92,38 @@ export const SIMULATION_LOCALE = {
     eyebrow: "Préparation",
     title: "Préparation de votre simulation",
     reassurance: "Cela prend environ une minute. Merci de patienter.",
+    progressStepLabel: "Étape {current} sur {total}",
+    progress: {
+      roomValidation: {
+        title: "Vérification de votre photo",
+        reassurance:
+          "Nous vérifions que la pièce est exploitable pour la simulation.",
+      },
+      roomCleaning: {
+        title: "Préparation de votre image",
+        reassurance:
+          "Nous préparons la photo pour poser les repères correctement.",
+      },
+      roomCorners: {
+        title: "Analyse de la pièce",
+        reassurance:
+          "Nous détectons les murs, le sol et les repères utiles.",
+      },
+      awaitingDimensions: {
+        title: "Guide de mesures prêt",
+        reassurance:
+          "Les repères sont prêts. Les dimensions de la pièce sont nécessaires pour continuer.",
+      },
+    },
   },
 
   screen3Dimensions: {
     eyebrow: "Étape 2 sur 3 — Dimensions",
     title: "Mesurez votre pièce",
     instruction:
-      "Indiquez les dimensions de votre pièce en centimètres, en suivant les lignes colorées affichées sur l'image.",
+      "Renseignez en centimètres les mesures indiquées sur la photo.",
+    workspaceAriaLabel: "Photo guide et dimensions à renseigner",
+    formEyebrow: "Mesures à fournir",
     guideImageAlt:
       "Aperçu de votre pièce avec des lignes colorées indiquant les dimensions à renseigner",
     guideImageUnavailable: "Aperçu temporairement indisponible.",
@@ -111,13 +152,29 @@ export const SIMULATION_LOCALE = {
     titleRegeneration: "Nouvelle génération en cours",
     reassuranceInitial: "Cela prend environ une minute. Merci de patienter.",
     reassuranceRegeneration: "Patientez quelques instants.",
+    progressStepLabel: "Étape {current} sur {total}",
+    progress: {
+      placementGeneration: {
+        title: "Placement du canapé dans votre pièce",
+        reassurance:
+          "Nous alignons le canapé sélectionné avec la photo de votre pièce.",
+      },
+    },
   },
 
   screen5Result: {
     eyebrow: "Étape 3 sur 3 — Résultat",
     title: "Votre canapé dans votre pièce",
+    panelLabel: "Résultat",
     resultImageAlt: "Aperçu de votre canapé placé dans votre pièce",
+    generationCountLabel: "Génération {current} sur {total}",
     regenerateButton: "Lancer une nouvelle génération",
+    regeneratingButton: "Nouvelle génération en cours",
+    downloadButton: "Télécharger l'image",
+    downloadingButton: "Téléchargement en cours",
+    downloadFailedNotice:
+      "Le téléchargement n'a pas abouti. Réessayez dans quelques instants.",
+    regenerationLimitNotice: "Limite de générations atteinte.",
     backToSofaLink: "Retour au canapé",
     // TODO: FR native review — retention notice quotes the 24h window.
     retentionNotice:

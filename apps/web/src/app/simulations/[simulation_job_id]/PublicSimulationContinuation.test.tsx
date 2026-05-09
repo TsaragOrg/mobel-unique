@@ -263,6 +263,100 @@ describe("PublicSimulationContinuation", () => {
     ).toHaveTextContent(/mesurez votre pièce/i);
   });
 
+  it("uses Realtime step details to make room preparation loading copy specific", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(snapshot("room_prep_processing"));
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "room_prep_processing",
+        progress_step_key: "room_cleaning",
+        progress_step_ordinal: 2,
+        progress_total_steps: 4,
+        visitor_action_required: false,
+        guide_available: false,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:01:00.000Z"
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1 })
+      ).toHaveTextContent("Préparation de votre image")
+    );
+    expect(screen.getByText("Étape 2 sur 4")).toBeInTheDocument();
+  });
+
+  it("uses Realtime step details to make placement loading copy specific", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("placement_queued"))
+      .mockResolvedValueOnce(snapshot("placement_processing"));
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "placement_processing",
+        progress_step_key: "placement_generation",
+        progress_step_ordinal: 4,
+        progress_total_steps: 4,
+        visitor_action_required: false,
+        guide_available: false,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:03:00.000Z"
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1 })
+      ).toHaveTextContent("Placement du canapé dans votre pièce")
+    );
+    expect(screen.getByText("Étape 4 sur 4")).toBeInTheDocument();
+  });
+
   it("keeps a slow reconciliation read once Realtime is connected", async () => {
     vi.useFakeTimers();
     let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =

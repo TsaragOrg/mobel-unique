@@ -26,6 +26,29 @@ function makeOkSubmit() {
 }
 
 describe("Screen3Dimensions", () => {
+  it("organizes the guide image and measurement form in one labelled workspace", () => {
+    render(
+      <Screen3Dimensions
+        {...baseProps}
+        geometryMode="back_wall"
+        submit={makeOkSubmit()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("group", {
+        name: /photo guide et dimensions à renseigner/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Mesures à fournir")).toBeInTheDocument();
+    expect(screen.getByAltText(/lignes colorées/i)).toHaveAttribute(
+      "src",
+      "https://signed.example/guide.png",
+    );
+    expect(screen.queryByText("Photo guide")).not.toBeInTheDocument();
+    expect(screen.queryByText("Valeur en centimètres")).not.toBeInTheDocument();
+  });
+
   it("renders three numeric fields when the geometry mode is back_wall", () => {
     render(
       <Screen3Dimensions

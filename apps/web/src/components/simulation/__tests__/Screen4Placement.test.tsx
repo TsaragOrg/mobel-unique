@@ -55,4 +55,21 @@ describe("Screen4Placement", () => {
       screen.getByTestId("simulation-placement-initial")
     ).toBeInTheDocument();
   });
+
+  it("can render a Realtime placement progress message", () => {
+    render(
+      <Screen4Placement
+        {...baseProps}
+        progressLabel="Étape 4 sur 4"
+        reassurance="Nous alignons le canapé sélectionné avec la photo de votre pièce."
+        title="Placement du canapé dans votre pièce"
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent("Placement du canapé dans votre pièce");
+    expect(screen.getByText("Étape 4 sur 4")).toBeInTheDocument();
+    expect(screen.getByText(/Nous alignons le canapé/i)).toBeInTheDocument();
+  });
 });

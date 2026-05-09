@@ -38,4 +38,25 @@ describe("Screen2RoomPrep", () => {
       screen.queryByRole("button", { name: /annuler|cancel/i })
     ).not.toBeInTheDocument();
   });
+
+  it("can render a Realtime progress message", () => {
+    render(
+      <Screen2RoomPrep
+        sofaName="Canapé Rivoli"
+        fabricName="Bouclette"
+        visualPositionLabel="Vue de face"
+        progressLabel="Étape 2 sur 4"
+        reassurance="Nous préparons la photo pour poser les repères correctement."
+        title="Préparation de votre image"
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent("Préparation de votre image");
+    expect(screen.getByText("Étape 2 sur 4")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Nous préparons la photo/i)
+    ).toBeInTheDocument();
+  });
 });

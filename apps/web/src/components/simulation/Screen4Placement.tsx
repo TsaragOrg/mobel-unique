@@ -8,11 +8,17 @@ export interface Screen4PlacementProps {
   fabricName: string;
   visualPositionLabel: string;
   previousResultImageUrl?: string | null;
+  progressLabel?: string | null;
+  reassurance?: string | null;
+  title?: string | null;
 }
 
 export function Screen4Placement(props: Screen4PlacementProps) {
   const copy = SIMULATION_LOCALE.screen4Placement;
   const isRegeneration = Boolean(props.previousResultImageUrl);
+  const title = props.title ?? copy.titleInitial;
+  const reassurance = props.reassurance ?? copy.reassuranceInitial;
+  const regenerationTitle = props.title ?? copy.titleRegeneration;
 
   if (isRegeneration && props.previousResultImageUrl) {
     return (
@@ -43,7 +49,8 @@ export function Screen4Placement(props: Screen4PlacementProps) {
               className="simulation-status-spinner"
               data-testid="simulation-status-spinner"
             />
-            <span>{copy.titleRegeneration}</span>
+            <span>{regenerationTitle}</span>
+            {props.progressLabel ? <small>{props.progressLabel}</small> : null}
           </div>
         </div>
       </section>
@@ -68,8 +75,11 @@ export function Screen4Placement(props: Screen4PlacementProps) {
           data-testid="simulation-status-spinner"
         />
         <p className="public-eyebrow">{copy.eyebrow}</p>
-        <h1>{copy.titleInitial}</h1>
-        <p className="simulation-status-reassurance">{copy.reassuranceInitial}</p>
+        <h1>{title}</h1>
+        {props.progressLabel ? (
+          <p className="simulation-status-progress">{props.progressLabel}</p>
+        ) : null}
+        <p className="simulation-status-reassurance">{reassurance}</p>
       </div>
     </section>
   );
