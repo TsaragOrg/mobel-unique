@@ -3070,9 +3070,23 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Grey fabric, Front: Ready/i }),
-    );
+    // RU: Эта кнопка помогает проверить, что исходное фото отмечено знаком в углу клетки.
+    // FR: Ce bouton aide a verifier que la photo source est marquee dans le coin de la case.
+    const sourcePhotoCellButton = screen.getByRole("button", {
+      name: /Grey fabric, Front: Ready/i,
+    });
+    const sourceImageMarker = within(sourcePhotoCellButton).getByText("SI");
+
+    expect(sourceImageMarker).toBeInTheDocument();
+    expect(sourceImageMarker.parentElement).toBe(sourcePhotoCellButton);
+    expect(
+      within(sourcePhotoCellButton).queryByText("Source photo"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sourcePhotoCellButton).queryByText("No generation needed"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(sourcePhotoCellButton);
     const dialog = screen.getByRole("dialog", { name: /Render cell/i });
 
     expect(
