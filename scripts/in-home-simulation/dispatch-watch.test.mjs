@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const scriptPath = fileURLToPath(
-  new URL("./dispatch-watch.mjs", import.meta.url)
+  new URL("./dispatch-watch.mjs", import.meta.url),
 );
 
 function runScript({ args = [], env = {} } = {}) {
@@ -13,8 +14,8 @@ function runScript({ args = [], env = {} } = {}) {
       env: {
         ...process.env,
         SUPABASE_URL: "http://127.0.0.1:54321",
-        ...env
-      }
+        ...env,
+      },
     });
 
     let stdout = "";
@@ -41,32 +42,40 @@ function startWorkerServer(handler) {
       const address = server.address();
       resolve({
         close: () => new Promise((done) => server.close(done)),
-        url: `http://127.0.0.1:${address.port}`
+        url: `http://127.0.0.1:${address.port}`,
       });
     });
   });
 }
 
 describe("sim:dispatch cli", () => {
+  it("uses native fetch instead of shelling out to curl", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).toContain("await fetch(");
+    expect(source).not.toContain("curl");
+    expect(source).not.toContain("node:child_process");
+  });
+
+  it("does not keep a continuous local watch loop", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).not.toContain("setInterval");
+    expect(source).not.toContain("setTimeout(resolve");
+    expect(source).not.toContain("SIGINT");
+    expect(source).not.toContain("sim:dispatch:watch");
+  });
+
   it("fails clearly when SUPABASE_URL is not local", async () => {
     const result = await runScript({
       args: ["--once"],
-      env: { SUPABASE_URL: "https://prod.supabase.co" }
+      env: { SUPABASE_URL: "https://prod.supabase.co" },
     });
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain(
-      "SUPABASE_URL must point at a local Supabase instance"
+      "SUPABASE_URL must point at a local Supabase instance",
     );
-  });
-
-  it("fails clearly when the interval is too small", async () => {
-    const result = await runScript({
-      args: ["--interval-ms", "10"]
-    });
-
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("--interval-ms must be an integer");
   });
 
   it("dispatches one local worker request in once mode", async () => {
@@ -86,8 +95,8 @@ describe("sim:dispatch cli", () => {
             processed: 1,
             queued: 0,
             started_count: 1,
-            status: "claimed"
-          })
+            status: "claimed",
+          }),
         );
       });
     });
@@ -95,7 +104,7 @@ describe("sim:dispatch cli", () => {
     try {
       const result = await runScript({
         args: ["--once"],
-        env: { SUPABASE_URL: worker.url }
+        env: { SUPABASE_URL: worker.url },
       });
 
       expect(result.status).toBe(0);

@@ -93,6 +93,9 @@ const REQUIRED_FUNCTIONS = [
   "spec_0009_expired_zip_exports",
   "spec_0009_public_render_assets_for_unavailable_sofas",
   "deactivate_storage_asset_variants",
+  "create_public_simulation_email_verification_request",
+  "verify_public_simulation_auth_otp_session",
+  "purge_public_simulation_email_handoffs",
 ];
 
 function values(items) {

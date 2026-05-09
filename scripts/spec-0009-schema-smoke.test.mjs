@@ -90,6 +90,11 @@ describe("SPEC-0009 schema smoke script", () => {
     expect(source).toContain("medium_variant.variant_kind = 'medium'");
     expect(source).toContain("original_asset.lifecycle_state = 'active'");
     expect(source).toContain("medium_asset.lifecycle_state = 'active'");
+    expect(source).toContain(
+      '"create_public_simulation_email_verification_request"',
+    );
+    expect(source).toContain('"verify_public_simulation_auth_otp_session"');
+    expect(source).toContain('"purge_public_simulation_email_handoffs"');
   });
 
   it(

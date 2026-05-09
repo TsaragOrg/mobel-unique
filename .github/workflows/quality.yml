@@ -70,7 +70,8 @@ jobs:
       FABRIC_RENDER_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/fabric-render-worker
       OPENAI_API_KEY: ${{ secrets.SUPABASE_DEV_OPENAI_API_KEY }}
       IN_HOME_SIMULATION_WORKER_INVOKE_SECRET: ${{ secrets.SUPABASE_DEV_IN_HOME_SIMULATION_WORKER_INVOKE_SECRET }}
-      IN_HOME_SIMULATION_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-worker
+      IN_HOME_SIMULATION_PURGE_INVOKE_SECRET: ${{ secrets.SUPABASE_DEV_IN_HOME_SIMULATION_PURGE_INVOKE_SECRET }}
+      IN_HOME_SIMULATION_PURGE_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-purge
 
     steps:
       - name: Checkout
@@ -99,7 +100,8 @@ jobs:
           test -n "${FABRIC_RENDER_WORKER_FUNCTION_URL}"
           test -n "${OPENAI_API_KEY}"
           test -n "${IN_HOME_SIMULATION_WORKER_INVOKE_SECRET}"
-          test -n "${IN_HOME_SIMULATION_WORKER_FUNCTION_URL}"
+          test -n "${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}"
+          test -n "${IN_HOME_SIMULATION_PURGE_FUNCTION_URL}"
 
       - name: Link Supabase DEV project
         run: pnpm exec supabase link --project-ref "${SUPABASE_PROJECT_REF}" --password "${SUPABASE_DB_PASSWORD}" --yes
@@ -210,7 +212,20 @@ jobs:
       - name: Deploy Supabase DEV in-home simulation worker
         run: pnpm exec supabase functions deploy in-home-simulation-worker --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt
 
-      - name: Set Supabase DEV in-home simulation cron Vault secrets
+      - name: Set Supabase DEV in-home simulation purge secrets
+        run: |
+          pnpm exec supabase secrets set \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            APP_ENV=dev \
+            IN_HOME_SIMULATION_PURGE_INVOKE_SECRET="${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}" \
+            IN_HOME_SIMULATION_PURGE_BATCH_SIZE=50 \
+            IN_HOME_SIMULATION_ORPHAN_MIN_AGE_HOURS=1 \
+            PUBLIC_SIMULATION_EMAIL_HANDOFF_PURGE_BATCH_SIZE=500
+
+      - name: Deploy Supabase DEV in-home simulation purge
+        run: pnpm exec supabase functions deploy in-home-simulation-purge --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt
+
+      - name: Set Supabase DEV in-home simulation purge cron Vault secrets
         run: |
           mkdir -p supabase/.temp
           node <<'NODE'
@@ -225,16 +240,16 @@ jobs:
           }
 
           const functionUrl = sqlString(
-            "IN_HOME_SIMULATION_WORKER_FUNCTION_URL",
-            process.env.IN_HOME_SIMULATION_WORKER_FUNCTION_URL,
+            "IN_HOME_SIMULATION_PURGE_FUNCTION_URL",
+            process.env.IN_HOME_SIMULATION_PURGE_FUNCTION_URL,
           );
           const invokeSecret = sqlString(
-            "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET",
-            process.env.IN_HOME_SIMULATION_WORKER_INVOKE_SECRET,
+            "IN_HOME_SIMULATION_PURGE_INVOKE_SECRET",
+            process.env.IN_HOME_SIMULATION_PURGE_INVOKE_SECRET,
           );
 
           fs.writeFileSync(
-            "supabase/.temp/in-home-simulation-dev-vault-secrets.sql",
+            "supabase/.temp/in-home-simulation-purge-dev-vault-secrets.sql",
             `
           do $$
           declare
@@ -243,41 +258,41 @@ jobs:
           begin
             select id into function_url_secret_id
             from vault.secrets
-            where name = 'in_home_simulation_worker_function_url'
+            where name = 'in_home_simulation_purge_function_url'
             limit 1;
 
             if function_url_secret_id is null then
               perform vault.create_secret(
                 ${functionUrl},
-                'in_home_simulation_worker_function_url',
-                'In-home simulation worker Edge Function URL'
+                'in_home_simulation_purge_function_url',
+                'In-home simulation purge Edge Function URL'
               );
             else
               perform vault.update_secret(
                 function_url_secret_id,
                 ${functionUrl},
-                'in_home_simulation_worker_function_url',
-                'In-home simulation worker Edge Function URL'
+                'in_home_simulation_purge_function_url',
+                'In-home simulation purge Edge Function URL'
               );
             end if;
 
             select id into invoke_secret_id
             from vault.secrets
-            where name = 'in_home_simulation_worker_invoke_secret'
+            where name = 'in_home_simulation_purge_invoke_secret'
             limit 1;
 
             if invoke_secret_id is null then
               perform vault.create_secret(
                 ${invokeSecret},
-                'in_home_simulation_worker_invoke_secret',
-                'In-home simulation worker cron invocation secret'
+                'in_home_simulation_purge_invoke_secret',
+                'In-home simulation purge cron invocation secret'
               );
             else
               perform vault.update_secret(
                 invoke_secret_id,
                 ${invokeSecret},
-                'in_home_simulation_worker_invoke_secret',
-                'In-home simulation worker cron invocation secret'
+                'in_home_simulation_purge_invoke_secret',
+                'In-home simulation purge cron invocation secret'
               );
             end if;
           end;
@@ -285,8 +300,8 @@ jobs:
           `,
           );
           NODE
-          pnpm exec supabase db query --linked --file supabase/.temp/in-home-simulation-dev-vault-secrets.sql
-          rm -f supabase/.temp/in-home-simulation-dev-vault-secrets.sql
+          pnpm exec supabase db query --linked --file supabase/.temp/in-home-simulation-purge-dev-vault-secrets.sql
+          rm -f supabase/.temp/in-home-simulation-purge-dev-vault-secrets.sql
 
   supabase-prod:
     name: Supabase PROD Deploy
@@ -305,7 +320,8 @@ jobs:
       FABRIC_RENDER_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_ID }}.supabase.co/functions/v1/fabric-render-worker
       OPENAI_API_KEY: ${{ secrets.SUPABASE_PROD_OPENAI_API_KEY }}
       IN_HOME_SIMULATION_WORKER_INVOKE_SECRET: ${{ secrets.SUPABASE_PROD_IN_HOME_SIMULATION_WORKER_INVOKE_SECRET }}
-      IN_HOME_SIMULATION_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-worker
+      IN_HOME_SIMULATION_PURGE_INVOKE_SECRET: ${{ secrets.SUPABASE_PROD_IN_HOME_SIMULATION_PURGE_INVOKE_SECRET }}
+      IN_HOME_SIMULATION_PURGE_FUNCTION_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-purge
 
     steps:
       - name: Checkout
@@ -334,7 +350,8 @@ jobs:
           test -n "${FABRIC_RENDER_WORKER_FUNCTION_URL}"
           test -n "${OPENAI_API_KEY}"
           test -n "${IN_HOME_SIMULATION_WORKER_INVOKE_SECRET}"
-          test -n "${IN_HOME_SIMULATION_WORKER_FUNCTION_URL}"
+          test -n "${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}"
+          test -n "${IN_HOME_SIMULATION_PURGE_FUNCTION_URL}"
 
       - name: Link Supabase PROD project
         run: pnpm exec supabase link --project-ref "${SUPABASE_PROJECT_REF}" --password "${SUPABASE_DB_PASSWORD}" --yes
@@ -454,7 +471,20 @@ jobs:
       - name: Deploy Supabase PROD in-home simulation worker
         run: pnpm exec supabase functions deploy in-home-simulation-worker --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt
 
-      - name: Set Supabase PROD in-home simulation cron Vault secrets
+      - name: Set Supabase PROD in-home simulation purge secrets
+        run: |
+          pnpm exec supabase secrets set \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            APP_ENV=prod \
+            IN_HOME_SIMULATION_PURGE_INVOKE_SECRET="${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}" \
+            IN_HOME_SIMULATION_PURGE_BATCH_SIZE=50 \
+            IN_HOME_SIMULATION_ORPHAN_MIN_AGE_HOURS=1 \
+            PUBLIC_SIMULATION_EMAIL_HANDOFF_PURGE_BATCH_SIZE=500
+
+      - name: Deploy Supabase PROD in-home simulation purge
+        run: pnpm exec supabase functions deploy in-home-simulation-purge --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt
+
+      - name: Set Supabase PROD in-home simulation purge cron Vault secrets
         run: |
           mkdir -p supabase/.temp
           node <<'NODE'
@@ -469,16 +499,16 @@ jobs:
           }
 
           const functionUrl = sqlString(
-            "IN_HOME_SIMULATION_WORKER_FUNCTION_URL",
-            process.env.IN_HOME_SIMULATION_WORKER_FUNCTION_URL,
+            "IN_HOME_SIMULATION_PURGE_FUNCTION_URL",
+            process.env.IN_HOME_SIMULATION_PURGE_FUNCTION_URL,
           );
           const invokeSecret = sqlString(
-            "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET",
-            process.env.IN_HOME_SIMULATION_WORKER_INVOKE_SECRET,
+            "IN_HOME_SIMULATION_PURGE_INVOKE_SECRET",
+            process.env.IN_HOME_SIMULATION_PURGE_INVOKE_SECRET,
           );
 
           fs.writeFileSync(
-            "supabase/.temp/in-home-simulation-prod-vault-secrets.sql",
+            "supabase/.temp/in-home-simulation-purge-prod-vault-secrets.sql",
             `
           do $$
           declare
@@ -487,41 +517,41 @@ jobs:
           begin
             select id into function_url_secret_id
             from vault.secrets
-            where name = 'in_home_simulation_worker_function_url'
+            where name = 'in_home_simulation_purge_function_url'
             limit 1;
 
             if function_url_secret_id is null then
               perform vault.create_secret(
                 ${functionUrl},
-                'in_home_simulation_worker_function_url',
-                'In-home simulation worker Edge Function URL'
+                'in_home_simulation_purge_function_url',
+                'In-home simulation purge Edge Function URL'
               );
             else
               perform vault.update_secret(
                 function_url_secret_id,
                 ${functionUrl},
-                'in_home_simulation_worker_function_url',
-                'In-home simulation worker Edge Function URL'
+                'in_home_simulation_purge_function_url',
+                'In-home simulation purge Edge Function URL'
               );
             end if;
 
             select id into invoke_secret_id
             from vault.secrets
-            where name = 'in_home_simulation_worker_invoke_secret'
+            where name = 'in_home_simulation_purge_invoke_secret'
             limit 1;
 
             if invoke_secret_id is null then
               perform vault.create_secret(
                 ${invokeSecret},
-                'in_home_simulation_worker_invoke_secret',
-                'In-home simulation worker cron invocation secret'
+                'in_home_simulation_purge_invoke_secret',
+                'In-home simulation purge cron invocation secret'
               );
             else
               perform vault.update_secret(
                 invoke_secret_id,
                 ${invokeSecret},
-                'in_home_simulation_worker_invoke_secret',
-                'In-home simulation worker cron invocation secret'
+                'in_home_simulation_purge_invoke_secret',
+                'In-home simulation purge cron invocation secret'
               );
             end if;
           end;
@@ -529,5 +559,5 @@ jobs:
           `,
           );
           NODE
-          pnpm exec supabase db query --linked --file supabase/.temp/in-home-simulation-prod-vault-secrets.sql
-          rm -f supabase/.temp/in-home-simulation-prod-vault-secrets.sql
+          pnpm exec supabase db query --linked --file supabase/.temp/in-home-simulation-purge-prod-vault-secrets.sql
+          rm -f supabase/.temp/in-home-simulation-purge-prod-vault-secrets.sql

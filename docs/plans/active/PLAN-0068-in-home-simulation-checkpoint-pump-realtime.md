@@ -21,13 +21,16 @@ Affected packages:
 
 ## Goal
 
-Move the public in-home simulation system from request-time worker pumping to
-database-dispatched checkpoints with visitor-safe Realtime progress.
+Move the public in-home simulation system from request-time worker pumping and
+cron pickup to API-woken database-dispatched checkpoints with visitor-safe
+Realtime progress.
 
-The API should write durable state and return. The database should emit or
-record dispatchable checkpoint work after commit. The worker should process one
-bounded checkpoint per invocation. Realtime should keep the visitor connected to
-safe progress state. Cron should exist only as recovery and backlog backstop.
+The API should write durable state, wake the worker dispatcher immediately, and
+return without running checkpoint/provider work. The database records
+dispatchable checkpoint work in the same transaction. The worker processes one
+bounded checkpoint per invocation. Realtime keeps the visitor connected to safe
+progress state. In-home simulation worker cron runners must not be part of this
+operation.
 
 ## Current State
 
@@ -39,13 +42,12 @@ Already delivered under this plan:
 - checkpoint success and progress helper foundations;
 - public API wrappers that create checkpoint state;
 - public Realtime access contract and frontend subscription fallback;
-- worker support for explicit pump/checkpoint modes;
-- local timeout tuning for request-time pump invocation.
+- worker support for explicit dispatch/checkpoint modes;
+- local timeout tuning for dispatch invocation.
 
 The design now needs correction before more implementation proceeds: public API
-route handlers should not invoke a worker pump directly after writing durable
-state. That coupling creates noisy aborts, ties visitor response behavior to
-worker startup, and is the wrong boundary for a public workflow.
+route handlers must wake the worker dispatcher directly after durable writes,
+without cron, watch loops, or request-time pump/provider execution.
 
 ## Target Architecture
 
@@ -53,10 +55,11 @@ worker startup, and is the wrong boundary for a public workflow.
 Public API action
   -> validate visitor session, rate limits, idempotency, and catalog selection
   -> write job/checkpoint state and dispatch outbox intent in one database mutation
-  -> return after commit succeeds
+  -> wake in-home-simulation-worker with mode=dispatch
+  -> return without running checkpoint/provider work
 
-Database dispatch
-  -> observes or drains transactional outbox rows after commit
+Worker dispatch
+  -> drains transactional outbox rows after API or worker wake-up
   -> invokes one internal checkpoint worker for each claimed dispatch row
   -> marks dispatch rows as dispatched or retryable
 
@@ -69,9 +72,9 @@ Realtime progress
   -> broadcasts visitor-safe progress metadata only
   -> causes the browser to refresh status when signed URLs are needed
 
-Recovery cron
+Recovery
   -> recovers expired checkpoint claims
-  -> redispatches claimable backlog
+  -> redispatches claimable backlog through explicit service-side dispatch
   -> respects cost-meter pause and provider capacity
 ```
 
@@ -80,17 +83,20 @@ the execution source of truth.
 
 ## Architecture Decisions
 
-- Public API handlers must not call the worker pump as the normal product path.
+- Public API handlers must call the worker only in dispatch mode after durable
+  state commits. They must not call a request-time pump or checkpoint/provider
+  path.
 - Job creation, dimension submission, and regeneration must finish after
-  committed durable state, not after worker acknowledgement.
+  committed durable state plus successful dispatch wake-up, not after checkpoint
+  work.
 - Checkpoint rows or checkpoint state columns are authoritative for work
   eligibility.
 - Dispatch delivery uses a transactional database outbox. Public API mutations
   create or upsert the outbox row in the same transaction that makes a
   checkpoint claimable.
-- Immediate delivery may be triggered by a database-originated signal, but the
-  outbox row is authoritative. The scheduled backstop drains the same outbox
-  and repairs missing dispatch rows for claimable checkpoints.
+- Immediate delivery is triggered by the public API after commit, but the outbox
+  row is authoritative. Dispatch recovery drains the same outbox and repairs
+  missing dispatch rows for claimable checkpoints.
 - Lost dispatch delivery must leave the checkpoint recoverable by scanning
   durable state.
 - Worker invocations must process one checkpoint for one job.
@@ -100,36 +106,27 @@ the execution source of truth.
 - Public Realtime must use a visitor-safe progress surface and a scoped access
   contract. It must not expose `in_home_simulation_jobs` directly.
 - Signed guide/result URLs stay API-only.
-- Cron may run every minute as recovery, but it must not be the normal latency
-  path for fresh visitor actions.
+- In-home simulation worker cron runners are removed from the product path and
+  must not be reintroduced for fresh visitor actions.
 
 ## Local Development Behavior
 
 Local browser testing uses the same database outbox semantics as DEV and PROD:
 public web routes write the job, checkpoint, progress projection, and dispatch
-outbox row only. They do not call the worker function directly and do not need
-in-home worker URL or invoke-secret variables in `apps/web/.env.example`.
+outbox row, then wake the local worker function in dispatch mode. They need the
+server-only in-home worker URL and invoke-secret variables in the web app
+environment because the API is now responsible for starting dispatch.
 
-When local Supabase does not provide an immediate database-originated dispatch
-signal, the developer can drain the same outbox rows manually through the worker
-dispatcher:
+Browser testing must not require a cron job or a long-running local dispatcher
+watch loop. The developer still can drain the same outbox rows manually for
+diagnostics:
 
 ```bash
 pnpm sim:dispatch:once
 ```
 
-For browser testing, keep the local dispatcher backstop running in a separate
-terminal:
-
-```bash
-pnpm sim:dispatch:watch
-```
-
-The helper calls only `in-home-simulation-worker` with `mode=dispatch`. It must
-not be replaced by a public API route-handler pump. The local helper allows a
-long request timeout because the local Edge Runtime can keep a dispatch request
-open until the background checkpoint finishes; this is a local development
-constraint, not the public route behavior.
+The helper calls only `in-home-simulation-worker` with `mode=dispatch`. It is
+operator tooling, not part of the visitor workflow.
 
 ## Workstreams
 
@@ -149,7 +146,7 @@ constraint, not the public route behavior.
 ### 2. Dispatch Design
 
 - [x] Choose the dispatch mechanism: transactional database outbox plus a small
-      dispatcher/backstop.
+      API-woken dispatcher.
 - [x] Add a migration for the checkpoint dispatch outbox table, including one
       active dispatch intent per checkpoint, status, attempts, next attempt
       time, dispatcher lock fields, and service-role-only RLS.
@@ -161,7 +158,7 @@ constraint, not the public route behavior.
 - [x] Add idempotency tests proving duplicate public API retries and duplicate
       dispatcher wake-ups cannot start the same checkpoint twice.
 - [x] Add failure tests proving lost immediate dispatch leaves the outbox row
-      pending and recoverable by the backstop.
+      pending and recoverable by explicit dispatch retry.
 
 ### 3. Public API Decoupling
 
@@ -170,7 +167,7 @@ constraint, not the public route behavior.
 - [x] Add route-handler tests proving dimensions and regeneration write
       placement checkpoints and do not call `invokeWorkerPump`.
 - [x] Remove request-time worker pump invocation from public route handlers.
-- [x] Replace `SIMULATION_WORKER_PUMP_TIMEOUT_MS` usage with dispatch/backstop
+- [x] Replace `SIMULATION_WORKER_PUMP_TIMEOUT_MS` usage with dispatch wake-up
       configuration or retire it if no longer needed.
 - [x] Remove the public web `SIMULATION_QUEUE_NAME` and
       `SimulationQueueEnqueuer` remnants so public route handlers expose only
@@ -181,7 +178,9 @@ constraint, not the public route behavior.
 - [x] Add a Node runtime preview-normalization endpoint so HEIC/HEIF selections
       that fail browser-side decoding can still be converted to previewable
       JPEG before the visitor continues.
-- [ ] Keep safe API responses when dispatch is delayed; never expose dispatch
+- [x] Wake the in-home worker dispatcher from public create, dimensions, and
+      regeneration APIs immediately after durable DB writes.
+- [x] Keep safe API responses when dispatch fails; never expose dispatch
       ids, worker URLs, provider names, queue ids, or raw errors.
 
 ### 4. Worker Checkpoint Execution
@@ -189,8 +188,8 @@ constraint, not the public route behavior.
 - [ ] Add worker source tests for one-checkpoint invocation, claim capacity,
       retryable checkpoint failure, non-retryable checkpoint failure, and next
       checkpoint activation.
-- [x] Refactor any remaining broad pump behavior into internal recovery-only
-      dispatch or remove it from the normal flow.
+- [x] Refactor any remaining broad pump behavior into dispatch-only
+      orchestration or remove it from the normal flow.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
       into bounded checkpoints.
@@ -235,9 +234,11 @@ constraint, not the public route behavior.
 
 ### 6. Recovery, Purge, And Cost Controls
 
-- [x] Update recovery cron to recover expired checkpoint claims and redispatch
-      claimable backlog.
-- [x] Add tests for recovery when the database dispatch signal was missed.
+- [x] Remove in-home simulation worker cron runners from migrations and deploy
+      workflow.
+- [x] Keep dispatch recovery RPCs able to recover expired checkpoint claims and
+      redispatch claimable backlog when explicitly woken.
+- [x] Add tests for recovery when an API or worker dispatch wake-up was missed.
 - [ ] Add tests for cost-meter pause leaving checkpoints visible, delayed, and
       recoverable rather than failed.
 - [ ] Update purge behavior so expired simulations redact or delete checkpoint
@@ -256,9 +257,9 @@ constraint, not the public route behavior.
       OpenAI room preparation, dimension submission, first placement result,
       and one regeneration.
 - [x] Run `pnpm test` and `pnpm build` before closing the plan.
-- [ ] Move this plan to `docs/plans/done` only after the request-time pump path
-      is removed from the public simulation flow and the recovery path is
-      verified.
+- [ ] Move this plan to `docs/plans/done` only after request-time pump and
+      worker cron paths are removed from the public simulation flow and recovery
+      behavior is verified.
 
 ## Tests
 
@@ -270,6 +271,7 @@ pnpm vitest run scripts/in-home-simulation-checkpoint-claim.test.mjs
 pnpm vitest run scripts/in-home-simulation-checkpoint-pump-status.test.mjs
 pnpm vitest run scripts/in-home-simulation-checkpoint-success.test.mjs
 pnpm vitest run scripts/in-home-simulation-worker-pump.test.mjs
+pnpm vitest run scripts/in-home-simulation-remove-worker-crons-migration.test.mjs
 pnpm vitest run scripts/in-home-simulation-realtime-progress.test.mjs
 pnpm --filter @mobel-unique/web test -- src/lib/simulation-public-route-handlers.test.ts
 pnpm --filter @mobel-unique/web test -- src/app/simulations/[simulation_job_id]/PublicSimulationContinuation.test.tsx
@@ -292,7 +294,7 @@ Manual verification before PLAN-0042 launch sign-off:
 - Corner happy path from upload to result with Realtime progress.
 - Regeneration while previous result remains visible.
 - Realtime disconnect followed by fallback polling.
-- Missed dispatch followed by cron recovery.
+- Missed dispatch followed by explicit dispatch retry or operator recovery.
 - Expired claim recovery for every checkpoint type.
 - RLS negative test with a second visitor token.
 - Cost-meter pause leaves work recoverably delayed.
@@ -311,8 +313,8 @@ Update these roadmaps as implementation lands:
 
 - The old pump-based CR remains historical context. The new database-dispatch
   CR is the target architecture for remaining work.
-- Do not remove existing recovery cron behavior until database-dispatch recovery
-  tests are green.
+- Do not reintroduce in-home simulation worker cron behavior for visitor-facing
+  execution.
 - The Realtime contract must be privacy-reviewed before launch.
 - The public UI must not show provider names, prompt names, raw worker errors,
   storage paths, queue ids, dispatch ids, worker URLs, or signed URLs.

@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0012
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012
 Areas: web, supabase
-Implementation Plans: PLAN-0068
+Implementation Plans: PLAN-0068, PLAN-0074
 
 ## Traceability
 
@@ -36,6 +36,9 @@ This spec consumes:
 - `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
   Pump And Realtime Progress` to replace fixed polling as the nominal progress
   path with job-scoped Realtime progress and bounded polling fallback.
+- `CR-SPEC-0009-SPEC-0010-SPEC-0015-public-simulation-supabase-auth-otp-smtp`
+  to replace the launch-window email verification stub with Supabase Auth email
+  OTP backed by configured SMTP while preserving the public simulation facade.
 
 This spec produces the implementation plans that build the simulation wizard
 pages, the supporting public API endpoints, the test catalog seeding tooling,
@@ -55,16 +58,16 @@ The following work is in scope:
 
 - The simulation wizard page at `/sofas/[slug]/simulate` covering wizard steps
   4-12 from `SPEC-0012` (upload through result and regeneration). Wizard steps
-  1-3 (sofa context confirmation and email verification) are stubbed pending
-  delivery of the catalog and email-verification work owned by another team
-  member.
+  1-3 (sofa context confirmation and email verification) are reached through
+  the public sofa detail selection and the email gate route. The email
+  verification gate is backed by Supabase Auth email OTP after PLAN-0074.
 - The simulation continuation page at `/simulations/[simulation_job_id]` that
   resumes Realtime progress observation, fallback polling, dimension entry,
   processing, and result states.
-- Five public API endpoints in `apps/web` route handlers that proxy authorized
+- Public API endpoints in `apps/web` route handlers that proxy authorized
   visitor actions to Supabase RPCs and Storage:
-    - `POST /api/public/simulation/email-verifications` (stub)
-    - `POST /api/public/simulation/email-verifications/{verification_request_id}/verify` (stub)
+    - `POST /api/public/simulation/email-verifications`
+    - `POST /api/public/simulation/email-verifications/{verification_request_id}/verify`
     - `POST /api/public/simulations`
     - `GET /api/public/simulations/{simulation_job_id}`
     - `POST /api/public/simulations/{simulation_job_id}/dimensions`
@@ -112,10 +115,11 @@ spec or its plans:
 - The full public catalog page at `/catalog`. Owned by another team member.
 - The sofa detail page at `/sofas/[slug]`. Owned by another team member. The
   simulation wizard does not render the sofa detail experience.
-- Real email verification with code delivery, hash storage, brute-force
-  protection, or commercial-consent persistence. Owned by another team
-  member. This spec ships only the verification stub that returns a
-  deterministic access token.
+- Application-managed OTP generation, code storage, code hash verification,
+  or direct SMTP sending for this flow. PLAN-0074 uses Supabase Auth email OTP
+  and configured SMTP as the verification provider while the application owns
+  consent persistence, verified simulation sessions, access-token issuance, and
+  retention cleanup.
 - A direct Shopify return action on the result screen. The result screen ends
   on a "Return to sofa" navigation back to `/sofas/[slug]` where the catalog
   owner provides the Shopify call-to-action.
@@ -544,9 +548,12 @@ under `apps/web/src/app/api/public/simulation*` and `apps/web/src/app/api/public
 They never expose Supabase service-role credentials, OpenAI keys, private
 bucket paths, or another visitor's data to the browser.
 
-### `POST /api/public/simulation/email-verifications` (STUB)
+### `POST /api/public/simulation/email-verifications`
 
-Stub implementation for the development and first-launch period.
+Starts or resends a real email verification attempt for the public simulation
+gate. PLAN-0040 shipped this route as a launch-window stub; PLAN-0074 replaces
+the route body with a Supabase Auth email OTP provider while preserving the
+public response shape consumed by the existing email gate UI.
 
 Request body:
 
@@ -562,20 +569,22 @@ Response:
 
 ```json
 {
-  "verification_request_id": "stub-{uuid}",
+  "verification_request_id": "opaque-verification-id",
   "expires_at": "..."
 }
 ```
 
-The stub does not send any email, does not validate the email shape beyond
-basic format, accepts any consent payload that has `consent_email_use=true`,
-and stores no records. The contract surface matches the SPEC-0010 expectation
-so the catalog owner can replace the implementation without changing
-clients.
+The implementation must validate the email shape, require email-use consent,
+keep optional commercial consent separate, record the normalized email hash,
+record only encrypted raw email needed for the short provider handoff, and call
+Supabase Auth `signInWithOtp`. Supabase Auth owns OTP generation, provider-side
+OTP storage, expiry, delivery, and Auth-side rate limits. The route must not
+return Supabase Auth sessions or reveal whether the email has been used before.
 
-### `POST /api/public/simulation/email-verifications/{verification_request_id}/verify` (STUB)
+### `POST /api/public/simulation/email-verifications/{verification_request_id}/verify`
 
-Stub implementation.
+Verifies the visitor-provided OTP and creates or refreshes the application
+simulation session.
 
 Request body:
 
@@ -589,14 +598,17 @@ Response:
 
 ```json
 {
-  "simulation_access_token": "dev-token-{verification_request_id}",
+  "simulation_access_token": "opaque-application-token",
   "expires_at": "..."
 }
 ```
 
-The stub returns a deterministic access token derived from the request id and
-sets a `simulation_access_token` HTTP-only cookie with `Max-Age=86400`,
-`SameSite=Lax`, and `Secure` outside local development.
+The implementation must verify the OTP through Supabase Auth `verifyOtp`, store
+the returned `auth.users.id` server-side, create or refresh the verified
+`simulation_sessions` row, and set a `simulation_access_token` HTTP-only cookie
+with `Max-Age=86400`, `SameSite=Lax`, and `Secure` outside local development.
+Supabase Auth access tokens and refresh tokens must not be returned to the
+browser for this visitor simulation flow.
 
 ### `POST /api/public/simulations`
 
@@ -812,10 +824,11 @@ production launch. They are not blockers for development against stubs.
   fail at the corners step when the visitor uploads the actual L-shape
   scene. Mis-tagging is therefore the single biggest catalog risk for
   this flow and must be communicated to the catalog owner explicitly.
-- The verification stub is owned by this spec only for the launch window.
-  When the catalog owner ships real verification, the route handler bodies
-  for the two email-verification endpoints are replaced. The contracts
-  defined in `SPEC-0010` and reaffirmed here remain the boundary.
+- The launch-window verification stub is replaced by PLAN-0074. The two
+  email-verification endpoints remain the stable public boundary, but their
+  route handler bodies delegate to Supabase Auth email OTP with configured SMTP
+  and create application-owned simulation sessions only after provider
+  verification succeeds.
 - The route shapes `/sofas/[slug]/simulate` and `/simulations/[id]` are
   fixed.
 
@@ -824,6 +837,12 @@ production launch. They are not blockers for development against stubs.
 - A verified visitor can complete a full happy path on a `back_wall` test
   sofa from upload through dimension entry, placement, viewing the result,
   and at least one regeneration.
+- A visitor can request a real email OTP, verify that OTP through the public
+  email gate, and start a simulation only after the application has created a
+  verified simulation session.
+- Scheduled cleanup purges encrypted email handoff data after the operational
+  retention window and deletes only Supabase Auth users marked as transient
+  public simulation identities.
 - A verified visitor can complete a full happy path on a `corner` test sofa
   with the dimension form correctly showing four required inputs including
   `room_depth`.

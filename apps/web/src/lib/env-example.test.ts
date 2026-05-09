@@ -24,7 +24,7 @@ describe("web environment example", () => {
     expect(envExample).not.toContain("NEXT_PUBLIC_SUPABASE_JWT_SECRET");
   });
 
-  it("documents the SPEC-0015 PLAN-0040 public simulation server-side env names", () => {
+  it("documents the SPEC-0015 public simulation server-side env names", () => {
     const envExample = readFileSync(
       join(process.cwd(), ".env.example"),
       "utf8",
@@ -33,13 +33,24 @@ describe("web environment example", () => {
     expect(envExample).toContain("SUPABASE_SERVICE_ROLE_KEY=");
     expect(envExample).toContain("SUPABASE_JWT_SECRET=");
     expect(envExample).toContain("SIMULATION_ACCESS_TOKEN_SECRET=");
+    expect(envExample).toContain("SIMULATION_EMAIL_ENCRYPTION_SECRET=");
+    expect(envExample).toContain("SIMULATION_EMAIL_HASH_SECRET=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_SUBJECT_SALT=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_IP_PER_DAY=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_EMAIL_PER_DAY=");
     expect(envExample).not.toContain("SIMULATION_QUEUE_NAME=");
     expect(envExample).not.toContain("SIMULATION_WORKER_PUMP_TIMEOUT_MS=");
-    expect(envExample).not.toContain("IN_HOME_SIMULATION_WORKER_FUNCTION_URL=");
-    expect(envExample).not.toContain("IN_HOME_SIMULATION_WORKER_INVOKE_SECRET=");
+    expect(envExample).toContain("IN_HOME_SIMULATION_WORKER_FUNCTION_URL=");
+    expect(envExample).toContain("IN_HOME_SIMULATION_WORKER_INVOKE_SECRET=");
+    expect(envExample).toContain(
+      "IN_HOME_SIMULATION_DISPATCH_TRIGGER_TIMEOUT_MS=",
+    );
+    expect(envExample).not.toContain(
+      "NEXT_PUBLIC_IN_HOME_SIMULATION_WORKER_FUNCTION_URL=",
+    );
+    expect(envExample).not.toContain(
+      "NEXT_PUBLIC_IN_HOME_SIMULATION_WORKER_INVOKE_SECRET=",
+    );
     expect(envExample).toContain("SIMULATION_CORNER_TAG_SLUG=");
     expect(envExample).toContain("SIMULATION_RETENTION_HOURS=");
   });

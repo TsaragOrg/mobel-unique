@@ -4,6 +4,10 @@ Target spec ids: SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012, SPEC-0015
 Related spec ids: SPEC-0003, SPEC-0004, SPEC-0006
 Status: accepted
 
+Superseded by:
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015-in-home-database-dispatched-checkpoints-realtime`
+for the final no-cron, API-woken dispatch contract.
+
 ## Reason For Change
 
 The current in-home simulation implementation is close to the required product

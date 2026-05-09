@@ -70,7 +70,7 @@ export function PublicSimulationContinuation(
   const [realtimeConnection, setRealtimeConnection] =
     useState<SimulationProgressConnectionState>("connecting");
 
-  const { snapshot, refresh } = useSimulationStatusPoll(props.jobId, {
+  const { snapshot, error, refresh } = useSimulationStatusPoll(props.jobId, {
     errorBackoffMs: STATUS_ERROR_BACKOFF_MS,
     fetchStatus: () => fetchStatus(props.jobId),
     intervalMs:
@@ -116,6 +116,27 @@ export function PublicSimulationContinuation(
   }, [snapshot?.status, props.jobId]);
 
   const screen = useMemo(() => {
+    const stripContext = {
+      sofaName: context.sofaName,
+      fabricName: context.fabricName,
+      visualPositionLabel: context.visualPositionLabel
+    };
+    const backToSofaHref = context.slug ? `/sofas/${context.slug}` : "/catalog";
+    const restartHref = context.slug
+      ? `/sofas/${context.slug}/simulate`
+      : undefined;
+
+    if (!snapshot && error) {
+      return (
+        <Screen6ErrorExpired
+          backToSofaHref={backToSofaHref}
+          context={stripContext}
+          restartHref={restartHref}
+          variant="error"
+        />
+      );
+    }
+
     if (!snapshot) {
       return (
         <section className="public-status-panel" aria-live="polite">
@@ -131,7 +152,15 @@ export function PublicSimulationContinuation(
       previousResultUrl,
       onRefresh: refresh
     });
-  }, [snapshot, latestProgress, context, previousResultUrl, refresh, props.jobId]);
+  }, [
+    snapshot,
+    error,
+    latestProgress,
+    context,
+    previousResultUrl,
+    refresh,
+    props.jobId
+  ]);
 
   return <PublicShell currentPath="detail">{screen}</PublicShell>;
 }

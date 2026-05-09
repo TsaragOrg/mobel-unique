@@ -1,10 +1,8 @@
 // SPEC-0015 PLAN-0050 client-side helpers for the public simulation
-// email verification stub. Both helpers wrap the PLAN-0040 endpoints
-// (`POST /api/public/simulation/email-verifications` and
-// `POST /api/public/simulation/email-verifications/{id}/verify`) and
-// surface a typed success/failure outcome so the email-gate UI can
-// render the right inline error code without inspecting raw HTTP
-// responses.
+// email verification gate. Both helpers wrap the public verification
+// endpoints and surface a typed success/failure outcome so the
+// email-gate UI can render the right inline error code without
+// inspecting raw HTTP responses.
 //
 // `fetch` is injected so unit tests can drive deterministic
 // outcomes; the default uses the global fetch with
