@@ -3216,6 +3216,35 @@ describe("Admin catalog pages", () => {
       visibility: "private",
       width_px: 1600,
     };
+    const selectedManualRender = new File(
+      ["manual-large-original"],
+      "manual_render_front.png",
+      {
+        type: "image/png",
+      },
+    );
+    const preparedManualRender = new File(
+      ["manual-large-prepared"],
+      "manual_render_front.png",
+      {
+        type: "image/png",
+      },
+    );
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ file, purpose }) =>
+        purpose === "manual_render"
+          ? {
+              file: preparedManualRender,
+              message:
+                "Image resized from 4096x3072 to 2048x1536 before upload.",
+              resized: true,
+            }
+          : {
+              file,
+              message: null,
+              resized: false,
+            },
+    );
     const dependencies = createDependencies({
       completeUpload: vi.fn(async () => manualRenderAsset),
       getRenderCoverage: vi.fn(async () => ({
@@ -3256,7 +3285,7 @@ describe("Admin catalog pages", () => {
 
     fireEvent.change(within(dialog).getByLabelText("Manual render"), {
       target: {
-        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+        files: [selectedManualRender],
       },
     });
     fireEvent.click(
@@ -3264,6 +3293,18 @@ describe("Admin catalog pages", () => {
     );
 
     await waitFor(() => {
+      expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
+        byte_size: preparedManualRender.size,
+        content_type: "image/png",
+        purpose: "manual_render",
+        render_cell_id: sourcePhotoCell.id,
+      });
+      expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          upload_id: "manual-render-upload",
+        }),
+        preparedManualRender,
+      );
       expect(dependencies.createStorageAssetPreviewUrl).toHaveBeenCalledWith(
         "admin-token",
         "00000000-0000-4000-8000-000000000909",
@@ -3276,6 +3317,15 @@ describe("Admin catalog pages", () => {
         "blob:admin-preview/00000000-0000-4000-8000-000000000909",
       );
     });
+    expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+      file: selectedManualRender,
+      purpose: "manual_render",
+    });
+    expect(
+      screen.getByText(
+        "Image resized from 4096x3072 to 2048x1536 before upload.",
+      ),
+    ).toBeInTheDocument();
     expect(within(dialog).queryByText("Source photo is current")).toBeNull();
     expect(within(dialog).getByText("Manual upload")).toBeInTheDocument();
   });
@@ -3959,20 +4009,38 @@ describe("Admin catalog pages", () => {
     const preparedSourcePhoto = new File(["prepared-source"], "source.jpg", {
       type: "image/jpeg",
     });
+    const preparedManualRender = new File(["prepared-manual"], "manual.jpg", {
+      type: "image/jpeg",
+    });
     vi.mocked(prepareAdminImageUploadFile).mockImplementation(
       async ({ file, purpose }) =>
         purpose === "sofa_source_photo"
           ? {
               file: preparedSourcePhoto,
-              message:
-                "Image resized from 4096x3072 to 2048x1536 before upload.",
+              message: "Image converted from WebP to JPEG before upload.",
               resized: true,
             }
-          : {
-              file,
-              message: null,
-              resized: false,
-            },
+          : purpose === "manual_render"
+            ? {
+                file: preparedManualRender,
+                message: "Image converted from WebP to JPEG before upload.",
+                resized: true,
+              }
+            : {
+                file,
+                message: null,
+                resized: false,
+              },
+    );
+    const selectedSourcePhoto = new File(["source"], "source.webp", {
+      type: "image/webp",
+    });
+    const selectedManualRender = new File(
+      ["manual"],
+      "manual_render_front.webp",
+      {
+        type: "image/webp",
+      },
     );
     const assignedFabric = {
       assigned_at: "2026-04-28T10:15:00.000Z",
@@ -4081,7 +4149,7 @@ describe("Admin catalog pages", () => {
     });
     fireEvent.change(screen.getByLabelText("Source photo 1"), {
       target: {
-        files: [new File(["source"], "source.png", { type: "image/png" })],
+        files: [selectedSourcePhoto],
       },
     });
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -4124,10 +4192,12 @@ describe("Admin catalog pages", () => {
       }),
       preparedSourcePhoto,
     );
+    expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+      file: selectedSourcePhoto,
+      purpose: "sofa_source_photo",
+    });
     expect(
-      screen.getByText(
-        "Image resized from 4096x3072 to 2048x1536 before upload.",
-      ),
+      screen.getByText("Image converted from WebP to JPEG before upload."),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Renders/i }));
@@ -4770,6 +4840,26 @@ describe("Admin catalog pages", () => {
       has_private_render: true,
       updated_at: "2026-04-28T10:40:00.000Z",
     };
+    const selectedManualRender = new File(["manual"], "manual_render_front.webp", {
+      type: "image/webp",
+    });
+    const preparedManualRender = new File(["prepared-manual"], "manual.jpg", {
+      type: "image/jpeg",
+    });
+    vi.mocked(prepareAdminImageUploadFile).mockImplementation(
+      async ({ file, purpose }) =>
+        purpose === "manual_render"
+          ? {
+              file: preparedManualRender,
+              message: "Image converted from WebP to JPEG before upload.",
+              resized: true,
+            }
+          : {
+              file,
+              message: null,
+              resized: false,
+            },
+    );
     let candidateSelected = false;
     const dependencies = createDependencies({
       getRenderCoverage: vi.fn(async () => ({
@@ -4919,7 +5009,7 @@ describe("Admin catalog pages", () => {
     const readyDialog = screen.getByRole("dialog", { name: /Render cell/i });
     fireEvent.change(within(readyDialog).getByLabelText("Manual render"), {
       target: {
-        files: [new File(["manual"], "manual.png", { type: "image/png" })],
+        files: [selectedManualRender],
       },
     });
     fireEvent.click(
@@ -4930,12 +5020,22 @@ describe("Admin catalog pages", () => {
 
     await waitFor(() => {
       expect(dependencies.createUpload).toHaveBeenCalledWith("admin-token", {
-        byte_size: 6,
-        content_type: "image/png",
+        byte_size: preparedManualRender.size,
+        content_type: "image/jpeg",
         purpose: "manual_render",
         render_cell_id: renderCell.id,
       });
     });
+    expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
+      file: selectedManualRender,
+      purpose: "manual_render",
+    });
+    expect(dependencies.uploadToSignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upload_id: "manual-render-upload",
+      }),
+      preparedManualRender,
+    );
     expect(dependencies.setManualRender).toHaveBeenCalledWith(
       "admin-token",
       renderCell.id,

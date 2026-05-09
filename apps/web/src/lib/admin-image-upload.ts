@@ -24,8 +24,9 @@ export interface FabricSwatchCropInput {
   width: number;
 }
 
-const RESIZABLE_RENDER_INPUT_PURPOSES = new Set<AdminImageUploadPurpose>([
+const GENERATION_INPUT_PURPOSES = new Set<AdminImageUploadPurpose>([
   "fabric_ai_reference",
+  "manual_render",
   "sofa_source_photo",
 ]);
 
@@ -79,7 +80,7 @@ export async function prepareAdminImageUploadFile(input: {
   }
 
   if (
-    !RESIZABLE_RENDER_INPUT_PURPOSES.has(input.purpose) ||
+    !isGenerationInputPurpose(input.purpose) ||
     !SUPPORTED_IMAGE_CONTENT_TYPES.has(input.file.type)
   ) {
     return unchanged(input.file);
@@ -90,23 +91,38 @@ export async function prepareAdminImageUploadFile(input: {
   try {
     const longestEdge = Math.max(image.width, image.height);
 
-    if (longestEdge <= ADMIN_RENDER_INPUT_MAX_EDGE_PX) {
+    const shouldConvertWebp = input.file.type === "image/webp";
+    const shouldResize = longestEdge > ADMIN_RENDER_INPUT_MAX_EDGE_PX;
+
+    if (!shouldConvertWebp && !shouldResize) {
       return unchanged(input.file);
     }
 
-    const scale = ADMIN_RENDER_INPUT_MAX_EDGE_PX / longestEdge;
+    const scale = shouldResize ? ADMIN_RENDER_INPUT_MAX_EDGE_PX / longestEdge : 1;
     const targetWidth = Math.max(1, Math.round(image.width * scale));
     const targetHeight = Math.max(1, Math.round(image.height * scale));
-    const preparedFile = await resizeImageFile({
+    const outputType = shouldConvertWebp ? "image/jpeg" : input.file.type;
+    const preparedFile = await writeCanvasImageFile({
       file: input.file,
       image,
+      outputName: shouldConvertWebp
+        ? jpegFileNameForWebp(input.file.name)
+        : input.file.name,
+      outputType,
       targetHeight,
       targetWidth,
     });
 
     return {
       file: preparedFile,
-      message: `Image resized from ${image.width}x${image.height} to ${targetWidth}x${targetHeight} before upload.`,
+      message: imagePreparationMessage({
+        convertedWebp: shouldConvertWebp,
+        height: image.height,
+        resized: shouldResize,
+        targetHeight,
+        targetWidth,
+        width: image.width,
+      }),
       resized: true,
     };
   } finally {
@@ -132,6 +148,10 @@ function unchanged(file: File): PreparedAdminImageUpload {
     message: null,
     resized: false,
   };
+}
+
+function isGenerationInputPurpose(purpose: AdminImageUploadPurpose) {
+  return GENERATION_INPUT_PURPOSES.has(purpose);
 }
 
 async function loadImage(file: File): Promise<LoadedImage> {
@@ -233,9 +253,11 @@ async function cropFabricSwatchFile(input: {
   });
 }
 
-async function resizeImageFile(input: {
+async function writeCanvasImageFile(input: {
   file: File;
   image: LoadedImage;
+  outputName: string;
+  outputType: string;
   targetHeight: number;
   targetWidth: number;
 }) {
@@ -257,15 +279,43 @@ async function resizeImageFile(input: {
     input.targetHeight,
   );
 
-  const outputType = SUPPORTED_IMAGE_CONTENT_TYPES.has(input.file.type)
-    ? input.file.type
-    : "image/jpeg";
-  const blob = await createCanvasBlob(canvas, outputType);
+  const blob = await createCanvasBlob(canvas, input.outputType);
 
-  return new File([blob], input.file.name, {
+  return new File([blob], input.outputName, {
     lastModified: input.file.lastModified,
-    type: outputType,
+    type: input.outputType,
   });
+}
+
+function jpegFileNameForWebp(fileName: string) {
+  if (/\.webp$/i.test(fileName)) {
+    return fileName.replace(/\.webp$/i, ".jpg");
+  }
+
+  if (!/\.[^./\\]+$/.test(fileName)) {
+    return `${fileName}.jpg`;
+  }
+
+  return fileName.replace(/\.[^./\\]+$/, ".jpg");
+}
+
+function imagePreparationMessage(input: {
+  convertedWebp: boolean;
+  height: number;
+  resized: boolean;
+  targetHeight: number;
+  targetWidth: number;
+  width: number;
+}) {
+  if (input.convertedWebp && input.resized) {
+    return `Image converted from WebP to JPEG and resized from ${input.width}x${input.height} to ${input.targetWidth}x${input.targetHeight} before upload.`;
+  }
+
+  if (input.convertedWebp) {
+    return "Image converted from WebP to JPEG before upload.";
+  }
+
+  return `Image resized from ${input.width}x${input.height} to ${input.targetWidth}x${input.targetHeight} before upload.`;
 }
 
 async function createCanvasBlob(canvas: HTMLCanvasElement, outputType: string) {

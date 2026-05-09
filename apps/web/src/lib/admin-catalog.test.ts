@@ -690,6 +690,77 @@ describe("admin catalog validation", () => {
       },
     });
   });
+
+  it("validates upload content types by purpose", () => {
+    for (const purpose of [
+      "fabric_ai_reference",
+      "sofa_source_photo",
+      "manual_render",
+    ] as const) {
+      const payload: Record<string, unknown> = {
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose,
+      };
+
+      if (purpose === "sofa_source_photo") {
+        payload.original_fabric_id = fabricRecord.id;
+        payload.sofa_id = sofaRecord.id;
+        payload.visual_matrix_column_id = visualMatrixColumnRecord.id;
+      }
+
+      if (purpose === "manual_render") {
+        payload.render_cell_id = fabricRenderJobRecord.render_cell_id;
+      }
+
+      const result = validateUploadCreatePayload(payload);
+
+      expect(result).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: ["content_type"],
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
+
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose: "fabric_swatch",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose: "fabric_swatch",
+      },
+    });
+
+    for (const contentType of ["image/jpeg", "image/png"] as const) {
+      expect(
+        validateUploadCreatePayload({
+          byte_size: 1200,
+          content_type: contentType,
+          purpose: "manual_render",
+          render_cell_id: fabricRenderJobRecord.render_cell_id,
+        }),
+      ).toEqual({
+        ok: true,
+        value: {
+          byte_size: 1200,
+          content_type: contentType,
+          purpose: "manual_render",
+          render_cell_id: fabricRenderJobRecord.render_cell_id,
+        },
+      });
+    }
+  });
 });
 
 describe("admin catalog response shaping", () => {

@@ -4700,6 +4700,11 @@ function RenderCoverageSection({
   // RU: Эти значения хранят сообщение, выбранную ячейку и список картинок для проверки.
   // FR: Ces valeurs gardent le message, la case choisie et la liste d'images a verifier.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // RU: Эта строка хранит короткое сообщение о подготовке ручной картинки.
+  // FR: Cette ligne garde un court message sur la preparation de l'image manuelle.
+  const [uploadInfoMessage, setUploadInfoMessage] = useState<string | null>(
+    null,
+  );
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [reviewCellId, setReviewCellId] = useState<string | null>(null);
@@ -5416,11 +5421,14 @@ function RenderCoverageSection({
 
   // RU: Это действие загружает картинку вручную для выбранной ячейки.
   // FR: Cette action envoie une image manuelle pour la case choisie.
+  // RU: Перед отправкой картинка может стать меньше или сменить WebP на JPEG.
+  // FR: Avant l'envoi, l'image peut devenir plus petite ou passer de WebP a JPEG.
   async function handleManualRenderUpload(
     cell: AdminCatalogRenderCell,
     form: HTMLFormElement,
   ) {
     setErrorMessage(null);
+    setUploadInfoMessage(null);
     setActiveCellId(cell.id);
 
     const formData = new FormData(form);
@@ -5433,13 +5441,23 @@ function RenderCoverageSection({
     }
 
     try {
+      const preparedUpload = await prepareAdminImageUploadFile({
+        file,
+        purpose: "manual_render",
+      });
+      const uploadFile = preparedUpload.file;
+
+      if (preparedUpload.message) {
+        setUploadInfoMessage(preparedUpload.message);
+      }
+
       const upload = await dependencies.createUpload(accessToken, {
-        byte_size: file.size,
-        content_type: file.type,
+        byte_size: uploadFile.size,
+        content_type: uploadFile.type,
         purpose: "manual_render",
         render_cell_id: cell.id,
       });
-      await dependencies.uploadToSignedUrl(upload, file);
+      await dependencies.uploadToSignedUrl(upload, uploadFile);
       const asset = await dependencies.completeUpload(
         accessToken,
         upload.upload_id,
@@ -5641,6 +5659,11 @@ function RenderCoverageSection({
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
+        </p>
+      ) : null}
+      {uploadInfoMessage ? (
+        <p className="form-info" role="status">
+          {uploadInfoMessage}
         </p>
       ) : null}
       {!coverage ||

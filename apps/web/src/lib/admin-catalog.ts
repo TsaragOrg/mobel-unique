@@ -622,6 +622,15 @@ const UPLOAD_PURPOSES = [
 ] as const;
 
 const IMAGE_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const GENERATION_INPUT_IMAGE_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+] as const;
+const GENERATION_INPUT_UPLOAD_PURPOSES = [
+  "fabric_ai_reference",
+  "manual_render",
+  "sofa_source_photo",
+] as const;
 
 const MAX_ADMIN_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_RENDER_INPUT_EDGE_PX = 2048;
@@ -762,7 +771,7 @@ export function validateUploadCreatePayload(
 
   if (
     !contentType ||
-    !(IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)
+    !isUploadContentTypeAllowedForPurpose(purpose, contentType)
   ) {
     fields.push("content_type");
   }
@@ -1719,8 +1728,7 @@ export function createSupabaseAdminCatalogStore(
       }
 
       if (
-        (descriptor.purpose === "fabric_ai_reference" ||
-          descriptor.purpose === "sofa_source_photo") &&
+        isGenerationInputUploadPurpose(descriptor.purpose) &&
         Math.max(imageMetadata.width_px, imageMetadata.height_px) >
           MAX_RENDER_INPUT_EDGE_PX
       ) {
@@ -4040,6 +4048,35 @@ function readStringList(value: unknown) {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function isUploadContentTypeAllowedForPurpose(
+  purpose: UploadPurpose | null,
+  contentType: string,
+) {
+  if (!(IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)) {
+    return false;
+  }
+
+  if (!purpose) {
+    return true;
+  }
+
+  if (isGenerationInputUploadPurpose(purpose)) {
+    return (GENERATION_INPUT_IMAGE_CONTENT_TYPES as readonly string[]).includes(
+      contentType,
+    );
+  }
+
+  return true;
+}
+
+function isGenerationInputUploadPurpose(
+  purpose: UploadPurpose,
+): purpose is (typeof GENERATION_INPUT_UPLOAD_PURPOSES)[number] {
+  return (GENERATION_INPUT_UPLOAD_PURPOSES as readonly string[]).includes(
+    purpose,
+  );
+}
+
 interface UploadDescriptor extends UploadCreateInput {
   bucket_id: string;
   expires_at: string;
@@ -4326,6 +4363,13 @@ function readUploadDescriptor(
       return null;
     }
 
+    const purpose = parsed.purpose as UploadPurpose;
+    const contentType = parsed.content_type.trim().toLowerCase();
+
+    if (!isUploadContentTypeAllowedForPurpose(purpose, contentType)) {
+      return null;
+    }
+
     if (
       parsed.purpose === "sofa_source_photo" &&
       (typeof parsed.sofa_id !== "string" ||
@@ -4342,7 +4386,11 @@ function readUploadDescriptor(
       return null;
     }
 
-    return parsed as unknown as UploadDescriptor;
+    return {
+      ...parsed,
+      content_type: contentType,
+      purpose,
+    } as unknown as UploadDescriptor;
   } catch {
     return null;
   }
