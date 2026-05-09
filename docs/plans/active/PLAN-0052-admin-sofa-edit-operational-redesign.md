@@ -248,6 +248,10 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: Sofa edit render status chips now show only status text,
   removing the previous one-letter markers from render cells, the status key,
   and the render cell sheet.
+- Follow-up fix: Sofa edit Renders cells now show a gray SI source-image marker
+  in the top-right corner of the render cell when the current cell image is the
+  source photo, including the accessible cell label, so admins can identify
+  source-photo cells without opening the detail sheet.
 
 ## Acceptance Criteria
 

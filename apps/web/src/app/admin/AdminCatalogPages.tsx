@@ -4461,6 +4461,33 @@ function getRenderCellStatusLabel(status: RenderCellDisplayStatus) {
   return RENDER_CELL_STATUS_LABELS[status];
 }
 
+function getRenderCellButtonAriaLabel({
+  cell,
+  columnName,
+  fabricName,
+  isMobile = false,
+  status,
+}: {
+  cell: AdminCatalogRenderCell | null;
+  columnName: string;
+  fabricName: string;
+  isMobile?: boolean;
+  status: RenderCellDisplayStatus;
+}) {
+  // RU: Эта часть добавляет подсказку для случая, когда картинка взята из исходного фото.
+  // FR: Cette partie ajoute un indice quand l'image vient de la photo source.
+  const sourcePhotoSuffix =
+    cell && isSourcePhotoCompleteCell(cell) ? ", Source photo" : "";
+
+  return isMobile
+    ? `Mobile cell ${columnName} for ${fabricName} is ${getRenderCellStatusLabel(
+        status,
+      )}${sourcePhotoSuffix}`
+    : `${fabricName}, ${columnName}: ${getRenderCellStatusLabel(
+        status,
+      )}${sourcePhotoSuffix}`;
+}
+
 function getVisualMatrixColumnLabel(column: AdminCatalogVisualMatrixColumn) {
   return (
     column.public_label ?? column.admin_label ?? `Column ${column.sequence}`
@@ -4544,30 +4571,42 @@ function RenderCellButtonContent({
   previewUrl: string | null;
   status: RenderCellDisplayStatus;
 }) {
+  // RU: Эти значения выбирают текст и подсказки внутри клетки.
+  // FR: Ces valeurs choisissent le texte et les indices dans la case.
   const hasPreview = Boolean(previewUrl);
   const latestJobStatus = cell.latest_job?.status ?? null;
   const displayBlockers = getRenderCellDisplayBlockers(cell.blockers);
+  // RU: Эта отметка говорит, что текущая картинка взята из исходного фото.
+  // FR: Ce repere dit que l'image actuelle vient de la photo source.
+  const isSourcePhotoCurrent = isSourcePhotoCompleteCell(cell);
 
   return (
-    <span className="admin-render-cell-content">
-      <span className="admin-render-cell-media" aria-hidden="true">
-        {hasPreview ? <img alt="" src={previewUrl ?? ""} /> : <span />}
-      </span>
-      <span className="admin-render-cell-copy">
-        <RenderStatusChip status={status} />
-        <span className="admin-render-cell-meta">
-          {cell.candidate_count > 0
-            ? `${cell.candidate_count} candidates`
-            : latestJobStatus
-              ? `Job ${latestJobStatus}`
-              : displayBlockers.length > 0
-                ? `${displayBlockers.length} blockers`
-                : hasPreview
-                  ? "Current render"
-                  : "Open details"}
+    <>
+      {isSourcePhotoCurrent ? (
+        <span aria-hidden="true" className="admin-render-cell-source-badge">
+          SI
+        </span>
+      ) : null}
+      <span className="admin-render-cell-content">
+        <span className="admin-render-cell-media" aria-hidden="true">
+          {hasPreview ? <img alt="" src={previewUrl ?? ""} /> : <span />}
+        </span>
+        <span className="admin-render-cell-copy">
+          <RenderStatusChip status={status} />
+          <span className="admin-render-cell-meta">
+            {cell.candidate_count > 0
+              ? `${cell.candidate_count} candidates`
+              : latestJobStatus
+                ? `Job ${latestJobStatus}`
+                : displayBlockers.length > 0
+                  ? `${displayBlockers.length} blockers`
+                  : hasPreview
+                    ? "Current render"
+                    : "Open details"}
+          </span>
         </span>
       </span>
-    </span>
+    </>
   );
 }
 
@@ -5644,11 +5683,13 @@ function RenderCoverageSection({
                         <td key={column.id}>
                           {cell && status ? (
                             <button
-                              aria-label={`${getSofaFabricDisplayName(
-                                assignment,
-                              )}, ${getVisualMatrixColumnLabel(
-                                column,
-                              )}: ${getRenderCellStatusLabel(status)}`}
+                              aria-label={getRenderCellButtonAriaLabel({
+                                cell,
+                                columnName: getVisualMatrixColumnLabel(column),
+                                fabricName:
+                                  getSofaFabricDisplayName(assignment),
+                                status,
+                              })}
                               className="admin-render-cell-button"
                               onClick={(event) =>
                                 handleOpenRenderCell(cell, event.currentTarget)
@@ -5696,11 +5737,13 @@ function RenderCoverageSection({
 
                     return (
                       <button
-                        aria-label={`Mobile cell ${getVisualMatrixColumnLabel(
-                          column,
-                        )} for ${getSofaFabricDisplayName(
-                          assignment,
-                        )} is ${getRenderCellStatusLabel(status)}`}
+                        aria-label={getRenderCellButtonAriaLabel({
+                          cell: cell ?? null,
+                          columnName: getVisualMatrixColumnLabel(column),
+                          fabricName: getSofaFabricDisplayName(assignment),
+                          isMobile: true,
+                          status,
+                        })}
                         className="admin-render-cell-button"
                         disabled={!cell}
                         key={column.id}
