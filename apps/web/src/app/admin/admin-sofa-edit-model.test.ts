@@ -81,24 +81,24 @@ describe("admin sofa edit model", () => {
 
   it("selects the primary render cell action", () => {
     expect(getRenderCellPrimaryAction("blocked")).toMatchObject({
-      label: "Go to View columns",
+      label: "Aller à Colonnes de vue",
       targetTab: "visual_matrix",
     });
     expect(getRenderCellPrimaryAction("missing")).toMatchObject({
-      label: "Generate",
+      label: "Générer",
     });
     expect(getRenderCellPrimaryAction("candidate")).toMatchObject({
-      label: "Review candidates",
+      label: "Voir les variantes",
     });
     expect(getRenderCellPrimaryAction("ready")).toMatchObject({
-      label: "View current render",
+      label: "Voir le rendu actuel",
     });
     expect(getRenderCellPrimaryAction("queued")).toMatchObject({
-      label: "Resume generation",
+      label: "Reprendre la génération",
     });
     expect(getRenderCellPrimaryAction("processing")).toBeNull();
     expect(getRenderCellPrimaryAction("failed")).toMatchObject({
-      label: "Retry generation",
+      label: "Relancer la génération",
     });
   });
 

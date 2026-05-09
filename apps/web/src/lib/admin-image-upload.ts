@@ -1,3 +1,5 @@
+import { formatUploadPreparationMessage } from "../app/admin/admin-copy";
+
 export const ADMIN_RENDER_INPUT_MAX_EDGE_PX = 2048;
 export const ADMIN_FABRIC_SWATCH_OUTPUT_PX = 512;
 
@@ -71,7 +73,9 @@ export async function prepareAdminImageUploadFile(input: {
 
       return {
         file: preparedFile,
-        message: "Swatch cropped to a 512x512 square before upload.",
+        message: formatUploadPreparationMessage({
+          kind: "fabric_swatch_crop",
+        }),
         resized: true,
       };
     } finally {
@@ -308,14 +312,38 @@ function imagePreparationMessage(input: {
   width: number;
 }) {
   if (input.convertedWebp && input.resized) {
-    return `Image converted from WebP to JPEG and resized from ${input.width}x${input.height} to ${input.targetWidth}x${input.targetHeight} before upload.`;
+    return formatUploadPreparationMessage({
+      convertedWebp: input.convertedWebp,
+      height: input.height,
+      kind: "render_input",
+      resized: input.resized,
+      targetHeight: input.targetHeight,
+      targetWidth: input.targetWidth,
+      width: input.width,
+    });
   }
 
   if (input.convertedWebp) {
-    return "Image converted from WebP to JPEG before upload.";
+    return formatUploadPreparationMessage({
+      convertedWebp: input.convertedWebp,
+      height: input.height,
+      kind: "render_input",
+      resized: input.resized,
+      targetHeight: input.targetHeight,
+      targetWidth: input.targetWidth,
+      width: input.width,
+    });
   }
 
-  return `Image resized from ${input.width}x${input.height} to ${input.targetWidth}x${input.targetHeight} before upload.`;
+  return formatUploadPreparationMessage({
+    convertedWebp: input.convertedWebp,
+    height: input.height,
+    kind: "render_input",
+    resized: input.resized,
+    targetHeight: input.targetHeight,
+    targetWidth: input.targetWidth,
+    width: input.width,
+  });
 }
 
 async function createCanvasBlob(canvas: HTMLCanvasElement, outputType: string) {

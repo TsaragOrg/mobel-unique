@@ -1406,6 +1406,7 @@ describe("admin catalog route handlers", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "INVALID_STORAGE_ASSET_VARIANT",
+        message: "Cette variante d'aperçu n'est pas disponible.",
       },
     });
     expect(previewSpy).not.toHaveBeenCalled();
@@ -1440,6 +1441,7 @@ describe("admin catalog route handlers", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "STORAGE_ASSET_NOT_FOUND",
+        message: "L'image enregistrée est introuvable.",
       },
     });
     expect(previewSpy).toHaveBeenCalledWith(assetId, "small");
