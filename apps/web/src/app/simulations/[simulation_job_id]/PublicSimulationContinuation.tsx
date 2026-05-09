@@ -23,7 +23,10 @@ import {
   type SimulationJobContext
 } from "../../../lib/simulation-client/job-context";
 import { SIMULATION_LOCALE } from "../../../lib/simulation-client/locale";
-import type { SimulationStatusResponse } from "../../../lib/simulation-public-api";
+import type {
+  SimulationPublicProgressPayload,
+  SimulationStatusResponse
+} from "../../../lib/simulation-public-api";
 
 interface ApiEnvelope<T> {
   data?: T;
@@ -61,6 +64,8 @@ export function PublicSimulationContinuation(
   const [context] = useState<SimulationJobContext>(
     () => loadJobContext(props.jobId) ?? FALLBACK_CONTEXT
   );
+  const [latestProgress, setLatestProgress] =
+    useState<SimulationPublicProgressPayload | null>(null);
   const [previousResultUrl, setPreviousResultUrl] = useState<string | null>(null);
   const [realtimeConnection, setRealtimeConnection] =
     useState<SimulationProgressConnectionState>("connecting");
@@ -83,7 +88,10 @@ export function PublicSimulationContinuation(
       onError: (error) => {
         console.error("[simulations] progress realtime failed:", error);
       },
-      onProgress: () => refresh()
+      onProgress: (payload) => {
+        setLatestProgress(payload);
+        refresh();
+      }
     });
     // Realtime is the primary progress channel. The poller is retained as a
     // slow reconciliation read so a missed Realtime event cannot strand the UI.
@@ -118,11 +126,12 @@ export function PublicSimulationContinuation(
     return renderScreenForStatus({
       jobId: props.jobId,
       snapshot,
+      progress: latestProgress,
       context,
       previousResultUrl,
       onRefresh: refresh
     });
-  }, [snapshot, context, previousResultUrl, refresh, props.jobId]);
+  }, [snapshot, latestProgress, context, previousResultUrl, refresh, props.jobId]);
 
   return <PublicShell currentPath="detail">{screen}</PublicShell>;
 }
@@ -130,13 +139,14 @@ export function PublicSimulationContinuation(
 interface RenderScreenArgs {
   jobId: string;
   snapshot: SimulationStatusResponse;
+  progress: SimulationPublicProgressPayload | null;
   context: SimulationJobContext;
   previousResultUrl: string | null;
   onRefresh: () => void;
 }
 
 function renderScreenForStatus(args: RenderScreenArgs) {
-  const { snapshot, context, jobId, previousResultUrl, onRefresh } = args;
+  const { snapshot, progress, context, jobId, previousResultUrl, onRefresh } = args;
   const backToSofaHref = context.slug ? `/sofas/${context.slug}` : "/catalog";
   const restartHref = context.slug
     ? `/sofas/${context.slug}/simulate`
@@ -146,15 +156,16 @@ function renderScreenForStatus(args: RenderScreenArgs) {
     fabricName: context.fabricName,
     visualPositionLabel: context.visualPositionLabel
   };
+  const progressCopy = getSimulationProgressCopy(snapshot, progress);
 
   switch (snapshot.status) {
     case "queued":
     case "room_prep_processing":
-      return <Screen2RoomPrep {...stripContext} />;
+      return <Screen2RoomPrep {...stripContext} {...progressCopy.roomPrep} />;
 
     case "awaiting_dimensions":
       if (!snapshot.dimension_guide_overlay_url) {
-        return <Screen2RoomPrep {...stripContext} />;
+        return <Screen2RoomPrep {...stripContext} {...progressCopy.roomPrep} />;
       }
       return (
         <Screen3Dimensions
@@ -172,6 +183,7 @@ function renderScreenForStatus(args: RenderScreenArgs) {
       return (
         <Screen4Placement
           {...stripContext}
+          {...progressCopy.placement}
           previousResultImageUrl={previousResultUrl}
         />
       );
@@ -184,6 +196,7 @@ function renderScreenForStatus(args: RenderScreenArgs) {
         <Screen5Result
           {...stripContext}
           backToSofaHref={backToSofaHref}
+          generationCount={snapshot.generated_output_count}
           jobId={jobId}
           onRegenerationStarted={onRefresh}
           onResultImageError={onRefresh}
@@ -207,6 +220,101 @@ function renderScreenForStatus(args: RenderScreenArgs) {
     case "expired":
       return <Screen6ErrorExpired variant="expired" backToCatalogHref="/catalog" />;
   }
+}
+
+interface LoadingProgressCopy {
+  progressLabel?: string | null;
+  reassurance?: string | null;
+  title?: string | null;
+}
+
+function getSimulationProgressCopy(
+  snapshot: SimulationStatusResponse,
+  progress: SimulationPublicProgressPayload | null
+): {
+  placement: LoadingProgressCopy;
+  roomPrep: LoadingProgressCopy;
+} {
+  const progressForJob =
+    progress?.simulation_job_id === snapshot.simulation_job_id ? progress : null;
+  const key = progressForJob?.progress_step_key ?? null;
+  const label = formatProgressStepLabel(
+    progressForJob?.progress_step_ordinal ?? null,
+    progressForJob?.progress_total_steps ?? null,
+    snapshot.status === "placement_queued" || snapshot.status === "placement_processing"
+      ? SIMULATION_LOCALE.screen4Placement.progressStepLabel
+      : SIMULATION_LOCALE.screen2RoomPrep.progressStepLabel
+  );
+
+  if (key === "room_validation") {
+    return {
+      placement: {},
+      roomPrep: {
+        ...SIMULATION_LOCALE.screen2RoomPrep.progress.roomValidation,
+        progressLabel: label
+      }
+    };
+  }
+
+  if (key === "room_cleaning") {
+    return {
+      placement: {},
+      roomPrep: {
+        ...SIMULATION_LOCALE.screen2RoomPrep.progress.roomCleaning,
+        progressLabel: label
+      }
+    };
+  }
+
+  if (key === "room_corners") {
+    return {
+      placement: {},
+      roomPrep: {
+        ...SIMULATION_LOCALE.screen2RoomPrep.progress.roomCorners,
+        progressLabel: label
+      }
+    };
+  }
+
+  if (key === "awaiting_dimensions") {
+    return {
+      placement: {},
+      roomPrep: {
+        ...SIMULATION_LOCALE.screen2RoomPrep.progress.awaitingDimensions,
+        progressLabel: label
+      }
+    };
+  }
+
+  if (
+    key === "placement_generation" ||
+    snapshot.status === "placement_queued" ||
+    snapshot.status === "placement_processing"
+  ) {
+    return {
+      placement: {
+        ...SIMULATION_LOCALE.screen4Placement.progress.placementGeneration,
+        progressLabel: label
+      },
+      roomPrep: {}
+    };
+  }
+
+  return {
+    placement: {},
+    roomPrep: {}
+  };
+}
+
+function formatProgressStepLabel(
+  ordinal: number | null,
+  total: number | null,
+  template: string
+): string | null {
+  if (!ordinal || !total) return null;
+  return template
+    .replace("{current}", String(ordinal))
+    .replace("{total}", String(total));
 }
 
 async function defaultFetchStatus(

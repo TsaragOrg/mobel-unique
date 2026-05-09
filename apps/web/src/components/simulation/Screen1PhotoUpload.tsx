@@ -26,6 +26,8 @@ export interface Screen1PhotoUploadProps {
   visualPositionId: string;
   visualPositionLabel: string;
   geometryMode: RoomGeometryMode;
+  sofaPreviewAlt?: string;
+  sofaPreviewUrl?: string | null;
   accessToken?: string;
   backToSofaHref: string;
   onJobCreated: (jobId: string) => void;
@@ -62,6 +64,35 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
 
   const isTouch = useMemo(() => detectTouch(), [detectTouch]);
   const copy = SIMULATION_LOCALE.screen1PhotoUpload;
+  const selectedSofaAlt =
+    props.sofaPreviewAlt ??
+    `${props.sofaName} en ${props.fabricName}, ${props.visualPositionLabel}`;
+  const orientationGuidance = [
+    `${copy.orientationGuidancePrefix} ${props.visualPositionLabel}.`,
+    copy.orientationGuidanceSuffix
+  ].join(" ");
+  const roomPhotoTargetActionLabel = pickedFile
+    ? copy.replaceRoomPhotoActionLabel
+    : copy.roomPhotoTargetActionLabel;
+  const roomPhotoTargetInstruction = isTouch
+    ? copy.roomPhotoTargetInstructionTouch
+    : copy.roomPhotoTargetInstructionDesktop;
+  const isPhotoBusy = isPreparingPhoto || phase === "uploading";
+  const photoBusyText =
+    phase === "uploading"
+      ? `${copy.uploadProgressLabel} — ${progress}%`
+      : copy.photoPreparationLabel;
+  const roomPhotoTargetClassName = [
+    "simulation-photo-upload-room-frame",
+    !pickedFile ? "simulation-photo-upload-room-frame-empty" : "",
+    previewUrl || (pickedFile && preparedPhoto)
+      ? "simulation-photo-upload-room-frame-ready"
+      : "",
+    phase === "uploading" ? "" : "simulation-photo-upload-room-frame-clickable",
+    isPhotoBusy ? "simulation-photo-upload-room-frame-busy" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   useEffect(() => {
     if (!previewBlob) {
@@ -90,18 +121,11 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
     void prepareSelectedPhoto(file, requestId);
   }
 
-  function clearSelection() {
-    prepareRequestRef.current += 1;
-    setPickedFile(null);
-    setPreparedPhoto(null);
-    setPreviewBlob(null);
-    setIdempotencyKey(null);
-    setPhase("idle");
-    setFailureDetail(null);
-    setIsPreparingPhoto(false);
-    setProgress(0);
-    if (cameraInputRef.current) cameraInputRef.current.value = "";
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function openPhotoTargetPicker(): void {
+    if (phase === "uploading") return;
+    const input = isTouch ? cameraInputRef.current : fileInputRef.current;
+    if (input) input.value = "";
+    input?.click();
   }
 
   async function prepareSelectedPhoto(
@@ -244,6 +268,100 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         </p>
       </header>
 
+      <section
+        aria-label={copy.guidanceAriaLabel}
+        className="simulation-photo-upload-guidance"
+      >
+        <div className="simulation-photo-upload-guidance-panel">
+          <p className="simulation-photo-upload-guidance-label">
+            {copy.selectedSofaLabel}
+          </p>
+          <div className="simulation-photo-upload-sofa-frame">
+            {props.sofaPreviewUrl ? (
+              <img alt={selectedSofaAlt} src={props.sofaPreviewUrl} />
+            ) : (
+              <div className="simulation-photo-upload-sofa-unavailable">
+                <p>{copy.selectedSofaUnavailableTitle}</p>
+                <span>{copy.selectedSofaUnavailableInstruction}</span>
+              </div>
+            )}
+          </div>
+          <p className="simulation-photo-upload-guidance-caption">
+            {props.sofaName} · {props.fabricName}
+          </p>
+        </div>
+
+        <div
+          aria-hidden="true"
+          className="simulation-photo-upload-guidance-bridge"
+        />
+
+        <div className="simulation-photo-upload-guidance-panel">
+          <p className="simulation-photo-upload-guidance-label">
+            {copy.roomPhotoTargetLabel}
+          </p>
+          <button
+            aria-label={roomPhotoTargetActionLabel}
+            className={roomPhotoTargetClassName}
+            data-testid="simulation-photo-target"
+            disabled={phase === "uploading"}
+            onClick={openPhotoTargetPicker}
+            type="button"
+          >
+            {previewUrl ? (
+              <img alt={copy.previewAlt} src={previewUrl} />
+            ) : null}
+
+            {pickedFile && preparedPhoto && !previewUrl ? (
+              <div className="simulation-photo-upload-preview-placeholder">
+                <p>{copy.previewUnavailableTitle}</p>
+                <span>{pickedFile.name}</span>
+              </div>
+            ) : null}
+
+            {!pickedFile ? (
+              <div className="simulation-photo-upload-room-placeholder">
+                <svg
+                  aria-hidden="true"
+                  className="simulation-photo-upload-room-action-icon"
+                  focusable="false"
+                  viewBox="0 0 48 48"
+                >
+                  <path d="M24 7v24" />
+                  <path d="m15 16 9-9 9 9" />
+                  <path d="M12 31v7c0 1.7 1.3 3 3 3h18c1.7 0 3-1.3 3-3v-7" />
+                </svg>
+                <p>{copy.roomPhotoTargetTitle}</p>
+                <span>{roomPhotoTargetInstruction}</span>
+              </div>
+            ) : null}
+
+            {pickedFile && preparedPhoto ? (
+              <span className="simulation-photo-upload-room-replace-hint">
+                {copy.replaceLink}
+              </span>
+            ) : null}
+
+            {isPhotoBusy ? (
+              <span
+                aria-label={copy.photoBusyLabel}
+                className="simulation-photo-upload-room-busy"
+                role="status"
+              >
+                <span
+                  aria-hidden="true"
+                  className="simulation-photo-upload-spinner"
+                />
+                <span>{photoBusyText}</span>
+              </span>
+            ) : null}
+          </button>
+          <p className="simulation-photo-upload-orientation">
+            {orientationGuidance}
+          </p>
+        </div>
+      </section>
+
       {props.geometryMode === "corner" ? (
         <p className="simulation-photo-upload-disclaimer" role="note">
           {copy.disclaimerCornerStrong}
@@ -254,68 +372,27 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         </p>
       )}
 
-      <div className="simulation-photo-upload-pickers">
-        {isTouch ? (
-          <>
-            <label className="public-primary-button" htmlFor="simulation-camera-input">
-              {copy.takePhotoButton}
-            </label>
-            <input
-              accept={ROOM_PHOTO_ACCEPT}
-              capture="environment"
-              data-testid="simulation-camera-input"
-              hidden
-              id="simulation-camera-input"
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-              ref={cameraInputRef}
-              type="file"
-            />
-          </>
-        ) : null}
-        <label className="public-secondary-button" htmlFor="simulation-file-input">
-          {copy.chooseFileButton}
-        </label>
+      {isTouch ? (
         <input
           accept={ROOM_PHOTO_ACCEPT}
-          data-testid="simulation-file-input"
+          capture="environment"
+          data-testid="simulation-camera-input"
           hidden
-          id="simulation-file-input"
+          id="simulation-camera-input"
           onChange={(event) => chooseFile(event.target.files?.[0])}
-          ref={fileInputRef}
+          ref={cameraInputRef}
           type="file"
         />
-      </div>
-
-      {previewUrl ? (
-        <div className="simulation-photo-upload-preview">
-          <img alt={copy.previewAlt} src={previewUrl} />
-          <button
-            className="public-secondary-button"
-            disabled={phase === "uploading"}
-            onClick={clearSelection}
-            type="button"
-          >
-            {copy.replaceLink}
-          </button>
-        </div>
       ) : null}
-
-      {pickedFile && preparedPhoto && !previewUrl ? (
-        <div className="simulation-photo-upload-preview">
-          <div className="simulation-photo-upload-preview-placeholder">
-            <p>{copy.previewUnavailableTitle}</p>
-            <span>{pickedFile.name}</span>
-          </div>
-          <button
-            className="public-secondary-button"
-            disabled={phase === "uploading"}
-            onClick={clearSelection}
-            type="button"
-          >
-            {copy.replaceLink}
-          </button>
-        </div>
-      ) : null}
+      <input
+        accept={ROOM_PHOTO_ACCEPT}
+        data-testid="simulation-file-input"
+        hidden
+        id="simulation-file-input"
+        onChange={(event) => chooseFile(event.target.files?.[0])}
+        ref={fileInputRef}
+        type="file"
+      />
 
       {isPreparingPhoto ? (
         <p

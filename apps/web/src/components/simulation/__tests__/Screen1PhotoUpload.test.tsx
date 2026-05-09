@@ -16,6 +16,7 @@ import {
 } from "vitest";
 
 import { Screen1PhotoUpload } from "../Screen1PhotoUpload";
+import type { CompressedPhoto } from "../../../lib/simulation-client/compress";
 import type { UploadInput, UploadResult } from "../../../lib/simulation-client/upload";
 
 let createdObjectUrls: string[] = [];
@@ -34,6 +35,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   createdObjectUrls = [];
+  vi.useRealTimers();
 });
 
 afterAll(() => {
@@ -92,6 +94,14 @@ function makeImmediateUploadNetworkFailure() {
   }));
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 describe("Screen1PhotoUpload", () => {
   it("renders the context strip with the sofa, fabric, and visual position", () => {
     render(
@@ -108,6 +118,105 @@ describe("Screen1PhotoUpload", () => {
     expect(
       screen.getByLabelText("Contexte de la simulation")
     ).toHaveTextContent("Canapé Rivoli · Bouclette écrue · Vue de face");
+  });
+
+  it("shows the selected sofa, room-photo target, and selected-view guidance before upload", () => {
+    render(
+      <Screen1PhotoUpload
+        {...baseProps}
+        geometryMode="back_wall"
+        sofaPreviewAlt="Canapé Rivoli en bouclette écrue, Vue de face"
+        sofaPreviewUrl="https://assets.example/rivoli-front-boucle-medium.png"
+        compress={makePassthroughCompress()}
+        upload={makeImmediateUploadOk()}
+        generateIdempotencyKey={() => "idem-1"}
+        isTouchDevice={() => false}
+      />
+    );
+
+    expect(
+      screen.getByLabelText(/Canapé sélectionné et photo de la pièce/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Canapé Rivoli en bouclette écrue, Vue de face"
+      })
+    ).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli-front-boucle-medium.png"
+    );
+    expect(
+      screen.getByText("Canapé sélectionné", {
+        selector: ".simulation-photo-upload-guidance-label"
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Photo à prendre/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Cliquez dans ce cadre pour choisir une image/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Ajouter une photo de votre pièce"
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Choisir un fichier")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prendre une photo")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Gardez le même angle que la vue sélectionnée : Vue de face/i)
+    ).toBeInTheDocument();
+  });
+
+  it("opens the room-photo picker when the room-photo target is clicked", () => {
+    render(
+      <Screen1PhotoUpload
+        {...baseProps}
+        geometryMode="back_wall"
+        compress={makePassthroughCompress()}
+        upload={makeImmediateUploadOk()}
+        generateIdempotencyKey={() => "idem-1"}
+        isTouchDevice={() => false}
+      />
+    );
+
+    const fileInput = screen.getByTestId(
+      "simulation-file-input"
+    ) as HTMLInputElement;
+    const clickSpy = vi.spyOn(fileInput, "click");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ajouter une photo de votre pièce"
+      })
+    );
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the camera input from the room-photo target on touch devices", () => {
+    render(
+      <Screen1PhotoUpload
+        {...baseProps}
+        geometryMode="back_wall"
+        compress={makePassthroughCompress()}
+        upload={makeImmediateUploadOk()}
+        generateIdempotencyKey={() => "idem-1"}
+        isTouchDevice={() => true}
+      />
+    );
+
+    const cameraInput = screen.getByTestId(
+      "simulation-camera-input"
+    ) as HTMLInputElement;
+    const clickSpy = vi.spyOn(cameraInput, "click");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Ajouter une photo de votre pièce"
+      })
+    );
+
+    expect(screen.getByText(/Touchez ce cadre pour prendre la photo/i)).toBeInTheDocument();
+    expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
   it("shows the corner disclaimer when the sofa geometry mode is corner", () => {
@@ -145,8 +254,11 @@ describe("Screen1PhotoUpload", () => {
     );
 
     expect(
-      screen.getByText(/prise de vue frontale d'un mur/i)
+      screen.getByText(/Si le canapé sélectionné est vu de côté/i)
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/prise de vue frontale/i)
+    ).not.toBeInTheDocument();
   });
 
   it("renders the camera capture input only on touch devices", () => {
@@ -219,6 +331,38 @@ describe("Screen1PhotoUpload", () => {
       await screen.findByAltText(/Aperçu de la photo/)
     ).toBeInTheDocument();
     await waitFor(() => expect(continueButton).not.toBeDisabled());
+  });
+
+  it("shows a loading state inside the room-photo target while preparing the image", async () => {
+    const pendingCompress = deferred<CompressedPhoto>();
+    const compress = vi.fn(() => pendingCompress.promise);
+
+    render(
+      <Screen1PhotoUpload
+        {...baseProps}
+        geometryMode="back_wall"
+        compress={compress}
+        upload={makeImmediateUploadOk()}
+        generateIdempotencyKey={() => "idem-1"}
+        isTouchDevice={() => false}
+      />
+    );
+
+    fireEvent.change(screen.getByTestId("simulation-file-input"), {
+      target: { files: [fakeJpeg()] }
+    });
+
+    expect(
+      await screen.findByLabelText("Photo en cours de traitement")
+    ).toHaveTextContent("Préparation de la photo");
+
+    pendingCompress.resolve({
+      blob: fakeJpeg(),
+      mimeType: "image/jpeg",
+      width: 1600,
+      height: 1200,
+      sourceUsed: "compressed" as const
+    });
   });
 
   it("submits the photo through compress and upload, then notifies the parent with the new job id", async () => {

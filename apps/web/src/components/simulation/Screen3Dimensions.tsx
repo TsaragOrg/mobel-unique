@@ -43,6 +43,12 @@ interface FormValues {
   roomDepth: string;
 }
 
+interface DimensionFieldConfig {
+  id: string;
+  key: keyof FormValues;
+  label: string;
+}
+
 const EMPTY_FORM: FormValues = {
   wallWidth: "",
   wallHeight: "",
@@ -57,10 +63,7 @@ const DIMENSION_MAX_CM = SIMULATION_DIMENSION_MAX_M * 100;
 export function Screen3Dimensions(props: Screen3DimensionsProps) {
   const submit = props.submit ?? defaultSubmit;
   const copy = SIMULATION_LOCALE.screen3Dimensions;
-  const fields =
-    props.geometryMode === "back_wall"
-      ? copy.fields.backWall
-      : copy.fields.corner;
+  const fieldConfigs = getFieldConfigs(props.geometryMode);
 
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -112,83 +115,59 @@ export function Screen3Dimensions(props: Screen3DimensionsProps) {
         <p>{copy.instruction}</p>
       </header>
 
-      <div className="simulation-dimension-guide">
-        <img
-          alt={copy.guideImageAlt}
-          onError={props.onGuideImageError}
-          src={props.guideImageUrl}
-        />
-      </div>
-
-      <form
-        className="simulation-dimension-form"
-        onSubmit={onSubmit}
-        noValidate
+      <div
+        aria-label={copy.workspaceAriaLabel}
+        className="simulation-dimension-workspace"
+        role="group"
       >
-        {props.geometryMode === "back_wall" ? (
-          <>
-            <DimensionField
-              id="dim-wall-width"
-              label={(fields as typeof copy.fields.backWall).wallWidth}
-              onChange={(v) => setField("wallWidth", v)}
-              value={values.wallWidth}
+        <figure className="simulation-dimension-guide-panel">
+          <div className="simulation-dimension-guide">
+            <img
+              alt={copy.guideImageAlt}
+              onError={props.onGuideImageError}
+              src={props.guideImageUrl}
             />
-            <DimensionField
-              id="dim-wall-height"
-              label={(fields as typeof copy.fields.backWall).wallHeight}
-              onChange={(v) => setField("wallHeight", v)}
-              value={values.wallHeight}
-            />
-            <DimensionField
-              id="dim-room-depth"
-              label={(fields as typeof copy.fields.backWall).roomDepth}
-              onChange={(v) => setField("roomDepth", v)}
-              value={values.roomDepth}
-            />
-          </>
-        ) : (
-          <>
-            <DimensionField
-              id="dim-left-wall"
-              label={(fields as typeof copy.fields.corner).leftWallWidth}
-              onChange={(v) => setField("leftWallWidth", v)}
-              value={values.leftWallWidth}
-            />
-            <DimensionField
-              id="dim-right-wall"
-              label={(fields as typeof copy.fields.corner).rightWallWidth}
-              onChange={(v) => setField("rightWallWidth", v)}
-              value={values.rightWallWidth}
-            />
-            <DimensionField
-              id="dim-room-height"
-              label={(fields as typeof copy.fields.corner).roomHeight}
-              onChange={(v) => setField("roomHeight", v)}
-              value={values.roomHeight}
-            />
-            <DimensionField
-              id="dim-room-depth"
-              label={(fields as typeof copy.fields.corner).roomDepth}
-              onChange={(v) => setField("roomDepth", v)}
-              value={values.roomDepth}
-            />
-          </>
-        )}
+          </div>
+        </figure>
 
-        {serverError ? (
-          <p className="simulation-dimension-error" role="alert">
-            {serverError}
-          </p>
-        ) : null}
-
-        <button
-          className="public-primary-button"
-          disabled={!isValid || submitting}
-          type="submit"
+        <form
+          className="simulation-dimension-form"
+          onSubmit={onSubmit}
+          noValidate
         >
-          {copy.continueButton}
-        </button>
-      </form>
+          <div className="simulation-dimension-form-heading">
+            <p className="simulation-dimension-section-label">
+              {copy.formEyebrow}
+            </p>
+          </div>
+
+          <div className="simulation-dimension-field-list">
+            {fieldConfigs.map((field) => (
+              <DimensionField
+                id={field.id}
+                key={field.id}
+                label={field.label}
+                onChange={(v) => setField(field.key, v)}
+                value={values[field.key]}
+              />
+            ))}
+          </div>
+
+          {serverError ? (
+            <p className="simulation-dimension-error" role="alert">
+              {serverError}
+            </p>
+          ) : null}
+
+          <button
+            className="public-primary-button"
+            disabled={!isValid || submitting}
+            type="submit"
+          >
+            {copy.continueButton}
+          </button>
+        </form>
+      </div>
     </section>
   );
 }
@@ -201,8 +180,10 @@ function DimensionField(props: {
 }) {
   const copy = SIMULATION_LOCALE.screen3Dimensions;
   return (
-    <label className="simulation-dimension-field" htmlFor={props.id}>
-      <span>{props.label}</span>
+    <div className="simulation-dimension-field">
+      <label htmlFor={props.id}>
+        <span>{props.label}</span>
+      </label>
       <span className="simulation-dimension-input-wrapper">
         <input
           id={props.id}
@@ -216,8 +197,55 @@ function DimensionField(props: {
         />
         <span aria-hidden="true">{copy.fieldUnitSuffix}</span>
       </span>
-    </label>
+    </div>
   );
+}
+
+function getFieldConfigs(
+  geometryMode: RoomGeometryMode,
+): DimensionFieldConfig[] {
+  const copy = SIMULATION_LOCALE.screen3Dimensions;
+  if (geometryMode === "back_wall") {
+    return [
+      {
+        id: "dim-wall-width",
+        key: "wallWidth",
+        label: copy.fields.backWall.wallWidth,
+      },
+      {
+        id: "dim-wall-height",
+        key: "wallHeight",
+        label: copy.fields.backWall.wallHeight,
+      },
+      {
+        id: "dim-room-depth",
+        key: "roomDepth",
+        label: copy.fields.backWall.roomDepth,
+      },
+    ];
+  }
+  return [
+    {
+      id: "dim-left-wall",
+      key: "leftWallWidth",
+      label: copy.fields.corner.leftWallWidth,
+    },
+    {
+      id: "dim-right-wall",
+      key: "rightWallWidth",
+      label: copy.fields.corner.rightWallWidth,
+    },
+    {
+      id: "dim-room-height",
+      key: "roomHeight",
+      label: copy.fields.corner.roomHeight,
+    },
+    {
+      id: "dim-room-depth",
+      key: "roomDepth",
+      label: copy.fields.corner.roomDepth,
+    },
+  ];
 }
 
 function isPositiveBounded(raw: string): boolean {

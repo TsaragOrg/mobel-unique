@@ -7,10 +7,15 @@ export interface Screen2RoomPrepProps {
   sofaName: string;
   fabricName: string;
   visualPositionLabel: string;
+  progressLabel?: string | null;
+  reassurance?: string | null;
+  title?: string | null;
 }
 
 export function Screen2RoomPrep(props: Screen2RoomPrepProps) {
   const copy = SIMULATION_LOCALE.screen2RoomPrep;
+  const title = props.title ?? copy.title;
+  const reassurance = props.reassurance ?? copy.reassurance;
   return (
     <section className="simulation-status-screen" aria-live="polite">
       <SimulationContextStrip
@@ -25,8 +30,11 @@ export function Screen2RoomPrep(props: Screen2RoomPrepProps) {
           data-testid="simulation-status-spinner"
         />
         <p className="public-eyebrow">{copy.eyebrow}</p>
-        <h1>{copy.title}</h1>
-        <p className="simulation-status-reassurance">{copy.reassurance}</p>
+        <h1>{title}</h1>
+        {props.progressLabel ? (
+          <p className="simulation-status-progress">{props.progressLabel}</p>
+        ) : null}
+        <p className="simulation-status-reassurance">{reassurance}</p>
       </div>
     </section>
   );

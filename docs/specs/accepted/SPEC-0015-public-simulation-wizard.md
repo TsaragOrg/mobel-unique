@@ -138,8 +138,10 @@ spec or its plans:
   for any pipeline stage. OpenAI is the only provider after this spec.
 - A second isolated Supabase project for development. The single existing
   Supabase project is treated as production for the first launch.
-- Image download buttons, share buttons, or any action that exposes the
-  signed URL or generated artifact path to copy or distribution flows.
+- Share buttons, long-term save actions, or any action that exposes the
+  signed URL or generated artifact path to copy or distribution flows. A
+  controlled Screen 5 download of the latest result image is allowed when it
+  does not render the signed URL as a visible or copyable link.
 
 ## Users And Permissions
 
@@ -234,16 +236,27 @@ Visible elements:
   `{sofa_name} · {fabric_name} · {visual_position_label}`.
 - A title "Photo of your room".
 - Short instruction text.
+- A prominent visual guidance area showing the selected public sofa render for
+  the current fabric and visual position when available, a clickable room-photo
+  target, and a clear relationship between the sofa that will be inserted and
+  the room photo the visitor must provide.
+- Orientation guidance naming `{visual_position_label}` and telling the visitor
+  to photograph the room from a compatible direction. For example, a side-view
+  sofa selection must ask for a room photo taken from the side that matches that
+  selected view.
 - For corner-tagged sofas, a strong disclaimer instructing the visitor to
   photograph a corner of the room (two walls meeting), with at least one
   example wording about good and bad photos. For non-corner sofas, a
   shorter disclaimer guiding a frontal photo of one wall.
-- Two buttons on mobile: "Take a photo" using
-  `<input type="file" accept="image/*" capture="environment">` and
-  "Choose a file" without `capture`. On non-touch devices, only the
-  file picker is shown.
+- The room-photo target is the visible upload trigger. On touch devices it
+  opens `<input type="file" accept="image/*" capture="environment">`; on
+  non-touch devices it opens a regular file picker. The native inputs stay
+  hidden and no separate visible upload buttons are required.
 - After file selection: a preview of the selected image, a "Replace" link,
   and a primary "Continue" button.
+- While the browser prepares or uploads the room photo, the room-photo target
+  displays an inline loading state so the visitor sees that the selected image
+  is being processed.
 
 Behavior:
 
@@ -264,6 +277,8 @@ Forbidden:
 
 - No download or share controls.
 - No exposure of private storage paths or signed URLs in markup or analytics.
+- No private catalog storage paths in the selected sofa guidance area; only
+  public catalog render URLs may be used.
 
 ### Screen 2: Room Preparation Processing
 
@@ -280,8 +295,10 @@ Behavior:
 
 - The continuation page observes job-scoped Realtime progress and uses the
   status endpoint as fallback.
-- Step-based progress may be shown when the backend provides safe progress
-  keys and ordinals.
+- Step-based progress copy may be shown when the backend provides safe progress
+  keys and ordinals. Supported room-preparation keys include
+  `room_validation`, `room_cleaning`, `room_corners`, and
+  `awaiting_dimensions`.
 - No progress percentage is shown unless backed by defensible backend state.
 - No cancel button is shown.
 
@@ -293,9 +310,13 @@ Visible elements:
 
 - The context strip.
 - A title "Measure your room".
-- The signed dimension guide image (`dimension_guide_overlay.png`) at
-  generous size, with `onError` handler that triggers a refresh of the
-  signed URL via the status endpoint.
+- A labelled measurement workspace that pairs the signed dimension guide image
+  (`dimension_guide_overlay.png`) with the required input form.
+- The signed dimension guide image at generous size, especially on desktop,
+  with `onError` handler that triggers a refresh of the signed URL via the
+  status endpoint.
+- Concise copy explaining that the required measurements should be entered in
+  centimetres.
 - The dimension input form, fields ordered to match the colored guide lines:
     - For `back_wall`: "Width (red)", "Height (blue)",
       "Depth (green)".
@@ -303,6 +324,13 @@ Visible elements:
       "Height (blue)", "Depth (green)".
 - A primary "Continue" button. Disabled until all fields are filled with
   positive numbers below a sensible upper bound (e.g. 20).
+- On desktop, the guide image and input group may sit side by side. On mobile,
+  the same content stacks without text overlap or hidden controls.
+- The heading and guide image must stay compact enough that visitors can
+  discover the measurement fields without guessing that the form is hidden
+  below a full-height image.
+- The input controls use neutral styling; color mapping is communicated through
+  the labels, not colorful input decoration.
 
 Behavior:
 
@@ -332,6 +360,8 @@ progress):
 Behavior:
 
 - Realtime progress observation continues with bounded fallback polling.
+- Step-based progress copy may be shown for the `placement_generation`
+  progress key.
 - The status endpoint remains the only source for signed result URLs.
 - The destructive full-screen loading pattern is forbidden when a previous
   result exists.
@@ -343,16 +373,28 @@ Trigger: status is `succeeded`.
 Visible elements:
 
 - The context strip.
-- The signed latest result image (`output-{n}.png`), as the primary visual.
+- A responsive result workspace pairing the signed latest result image
+  (`output-{n}.png`) with the action area.
+- The signed latest result image, as the primary visual. It remains large and
+  inspectable without pushing the available actions below excessive whitespace.
+- A compact action panel beside the image on desktop and below the image on
+  mobile.
+- A discreet generated-result count using the public three-result cap.
 - A primary action "New generation" when `regeneration_available` is
   true. The action posts to
   `POST /api/public/simulations/{id}/regenerations`.
 - A secondary text link "Back to sofa" that navigates to
   `/sofas/[slug]`.
+- A button "Download image" that downloads the latest result image for the
+  current visitor session without rendering the signed result URL as a link.
 - A short retention notice in muted text:
   "This image will be deleted in 24 hours."
 - When a regeneration has just failed, a small inline error message above
   the actions: "The new generation failed. Showing the previous result."
+- When a download has just failed, a small inline error message above the
+  actions. The previous result remains visible.
+- When the regeneration cap is reached, the regeneration button is absent and
+  the panel shows a discreet limit state.
 
 Behavior:
 
@@ -361,10 +403,13 @@ Behavior:
 - When `regeneration_available` is false, the regeneration button is removed
   from the DOM (not disabled). "Back to sofa" becomes the primary
   action.
+- While a regeneration request is being submitted, the regeneration button shows
+  a submitting state.
+- While the download action is preparing the local file, the download button
+  shows a submitting state.
 
 Forbidden:
 
-- No download button.
 - No share button.
 - No long-term save action.
 - No visible signed URL.
@@ -793,11 +838,18 @@ production launch. They are not blockers for development against stubs.
   with a safe rate-limit message.
 - A duplicate `Idempotency-Key` returns the same `simulation_job_id` and
   does not create a second job or duplicate storage object.
+- The upload screen visibly shows the selected sofa render before photo
+  selection and gives orientation guidance tied to the selected visual position.
 - The L-shape disclaimer is visibly present on the upload screen for any
   sofa whose tags trigger `corner` mode.
+- The dimension-entry screen shows the signed guide image and neutral
+  centimetre inputs inside one responsive measurement workspace.
+- The result screen keeps the signed result image and final actions together in
+  one responsive workspace, including the generation count and regeneration
+  limit state.
 - The result screen never exposes signed URLs in visible text, hidden
-  attributes, or analytics payloads, and no download or share controls are
-  rendered.
+  attributes, persistent download links, or analytics payloads, and no share
+  controls are rendered.
 - The Gemini placement provider, its tests, and `GEMINI_API_KEY`
   dependency are absent from the in-home simulation worker.
 - The scene classifier provider, its tests, and the

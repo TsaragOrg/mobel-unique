@@ -130,4 +130,59 @@ describe("global public catalog styles", () => {
   padding: 0;
 }`);
   });
+
+  it("keeps public simulation dimension fields discoverable above the fold", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+    const compactDimensionStart = css.indexOf("@media (max-width: 780px)");
+    const nextMediaStart = css.indexOf("@media", compactDimensionStart + 1);
+    const compactDimensionCss = css.slice(
+      compactDimensionStart,
+      nextMediaStart,
+    );
+
+    expect(css).toContain(`.simulation-dimension-heading h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(1.75rem, 3vw, 2.35rem);`);
+    expect(css).toContain(`grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);`);
+    expect(css).toContain(`height: clamp(280px, 42vw, 620px);`);
+    expect(css).toContain(`max-height: calc(100vh - 230px);`);
+    expect(css).not.toContain(".simulation-dimension-field-red");
+    expect(css).not.toContain(".simulation-dimension-field-blue");
+    expect(css).not.toContain(".simulation-dimension-field-green");
+    expect(compactDimensionCss).toContain(`.simulation-dimension-guide {
+    height: clamp(180px, 52vw, 300px);
+    max-height: none;
+  }`);
+  });
+
+  it("keeps public simulation result actions beside a bounded result image", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+    const compactResultStart = css.indexOf("@media (max-width: 780px)");
+    const compactResultCss = css.slice(compactResultStart);
+
+    expect(css).toContain(`.simulation-result-workspace {
+  align-items: start;
+  display: grid;
+  gap: clamp(16px, 2.4vw, 32px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);`);
+    expect(css).toContain(`.simulation-result-image {
+  align-items: center;
+  background: #f6f6f4;
+  border: 1px solid var(--public-line);
+  display: flex;
+  height: clamp(360px, 52vw, 760px);`);
+    expect(css).toContain(`max-height: calc(100vh - 210px);`);
+    expect(css).toContain(`.simulation-result-panel {
+  align-self: start;
+  border-top: 1px solid var(--public-line);
+  display: flex;`);
+    expect(compactResultCss).toContain(`.simulation-result-image {
+    height: clamp(260px, 74vw, 520px);
+    max-height: none;
+  }`);
+  });
 });
