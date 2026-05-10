@@ -20,28 +20,49 @@ export const BACKFILL_VARIANT_PRESETS = {
   },
 };
 export const BACKFILL_JPEG_QUALITY = 84;
+export const BACKFILL_ENVIRONMENTS = ["local", "dev", "prod"];
+export const DEFAULT_BACKFILL_PAGE_SIZE = 100;
 
 export function parseBackfillArgs(argv) {
   const options = {
     assetId: null,
+    confirmProd: false,
     dryRun: false,
+    environment: "local",
     help: false,
-    limit: 100,
+    limit: null,
+    pageSize: DEFAULT_BACKFILL_PAGE_SIZE,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
 
-    if (arg === "--help") {
+    if (arg === "--") {
+      continue;
+    } else if (arg === "--help") {
       options.help = true;
+    } else if (arg === "--confirm-prod") {
+      options.confirmProd = true;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
+    } else if (arg === "--environment") {
+      const value = argv[++index];
+      if (!BACKFILL_ENVIRONMENTS.includes(value)) {
+        throw new Error("--environment must be local, dev, or prod.");
+      }
+      options.environment = value;
     } else if (arg === "--limit") {
       const value = Number(argv[++index]);
       if (!Number.isInteger(value) || value <= 0) {
         throw new Error("--limit must be a positive integer.");
       }
       options.limit = value;
+    } else if (arg === "--page-size") {
+      const value = Number(argv[++index]);
+      if (!Number.isInteger(value) || value <= 0) {
+        throw new Error("--page-size must be a positive integer.");
+      }
+      options.pageSize = value;
     } else if (arg === "--asset-id") {
       const value = argv[++index];
       if (!value || !/^[0-9a-f-]{36}$/i.test(value)) {
@@ -60,11 +81,85 @@ export function usage() {
   return `Usage: node scripts/backfill-catalog-image-variants.mjs [options]
 
 Options:
+  --environment <name>  Target environment: local, dev, or prod. Default: local.
   --dry-run             Report missing variants without writing storage or rows.
-  --limit <count>       Maximum number of original assets to inspect. Default: 100.
+  --confirm-prod        Required for non-dry-run writes when --environment prod.
+  --limit <count>       Maximum number of original assets to inspect. Default: all.
+  --page-size <count>   REST page size for candidate asset scans. Default: 100.
   --asset-id <uuid>     Backfill one original asset.
   --help                Show this help.
+
+Environment variables:
+  local: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+  dev:   SUPABASE_DEV_URL, SUPABASE_DEV_SERVICE_ROLE_KEY
+  prod:  SUPABASE_PROD_URL, SUPABASE_PROD_SERVICE_ROLE_KEY
 `;
+}
+
+export function resolveBackfillConnection({ env = process.env, options }) {
+  const environment = options.environment ?? "local";
+  let serviceRoleKey;
+  let supabaseUrl;
+
+  if (environment === "local") {
+    supabaseUrl = normalizeSupabaseUrl(
+      env.SUPABASE_URL ??
+        env.NEXT_PUBLIC_SUPABASE_URL ??
+        "http://127.0.0.1:54321",
+    );
+    serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!isLocalSupabaseUrl(supabaseUrl)) {
+      throw new Error(
+        `--environment local requires a local SUPABASE_URL (got ${supabaseUrl}).`,
+      );
+    }
+  } else if (environment === "dev") {
+    supabaseUrl = normalizeSupabaseUrl(env.SUPABASE_DEV_URL);
+    serviceRoleKey = env.SUPABASE_DEV_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error(
+        "SUPABASE_DEV_URL and SUPABASE_DEV_SERVICE_ROLE_KEY are required for --environment dev.",
+      );
+    }
+    if (isLocalSupabaseUrl(supabaseUrl)) {
+      throw new Error("SUPABASE_DEV_URL must not point at local Supabase.");
+    }
+    if (
+      env.SUPABASE_PROD_URL &&
+      supabaseUrl === normalizeSupabaseUrl(env.SUPABASE_PROD_URL)
+    ) {
+      throw new Error("SUPABASE_DEV_URL must differ from SUPABASE_PROD_URL.");
+    }
+  } else if (environment === "prod") {
+    supabaseUrl = normalizeSupabaseUrl(env.SUPABASE_PROD_URL);
+    serviceRoleKey = env.SUPABASE_PROD_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error(
+        "SUPABASE_PROD_URL and SUPABASE_PROD_SERVICE_ROLE_KEY are required for --environment prod.",
+      );
+    }
+    if (isLocalSupabaseUrl(supabaseUrl)) {
+      throw new Error("SUPABASE_PROD_URL must not point at local Supabase.");
+    }
+    if (!options.dryRun && !options.confirmProd) {
+      throw new Error("--confirm-prod is required before writing to PROD.");
+    }
+  } else {
+    throw new Error("--environment must be local, dev, or prod.");
+  }
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
+  }
+
+  return {
+    environment,
+    serviceRoleKey,
+    supabaseUrl,
+  };
 }
 
 export function formatBackfillFailure(error, serviceRoleKey) {
@@ -92,90 +187,116 @@ export async function backfillCatalogImageVariants(input) {
     serviceRoleKey,
     supabaseUrl,
   });
-  const originalAssets = await listCandidateAssets(client, {
-    assetId: input.assetId ?? null,
-    limit: input.limit ?? 100,
-  });
   const result = {
-    assetsScanned: originalAssets.length,
+    assetsScanned: 0,
     assetsSkipped: 0,
     variantsCreated: 0,
     variantsPlanned: 0,
   };
 
-  for (const originalAsset of originalAssets) {
-    const existingKinds = await listExistingVariantKinds(
-      client,
-      originalAsset.id,
-    );
-    const missingKinds = BACKFILL_VARIANT_KINDS.filter(
-      (variantKind) => !existingKinds.has(variantKind),
-    );
+  const pageSize = input.pageSize ?? DEFAULT_BACKFILL_PAGE_SIZE;
+  const maxAssets = input.assetId ? 1 : (input.limit ?? null);
+  let offset = 0;
 
-    if (missingKinds.length === 0) {
-      result.assetsSkipped += 1;
-      continue;
-    }
-
-    if (input.dryRun) {
-      result.variantsPlanned += missingKinds.length;
-      continue;
-    }
-
-    const originalBytes = await client.downloadObject(
-      originalAsset.bucket_id,
-      originalAsset.object_path,
-    );
-    const generatedVariants = await generateVariants({
-      bytes: originalBytes,
-      contentType: originalAsset.content_type,
+  while (maxAssets === null || result.assetsScanned < maxAssets) {
+    const remaining =
+      maxAssets === null ? pageSize : maxAssets - result.assetsScanned;
+    const originalAssets = await listCandidateAssets(client, {
+      assetId: input.assetId ?? null,
+      limit: Math.min(pageSize, remaining),
+      offset,
     });
 
-    for (const variantKind of missingKinds) {
-      const generatedVariant = generatedVariants[variantKind];
-      const variantAssetId = idGenerator();
-      const objectPath = buildVariantObjectPath({
-        contentType: generatedVariant.contentType,
-        originalAssetId: originalAsset.id,
-        variantAssetId,
-        variantKind,
-      });
-
-      await client.uploadObject({
-        body: generatedVariant.bytes,
-        bucketId: originalAsset.bucket_id,
-        contentType: generatedVariant.contentType,
-        objectPath,
-      });
-
-      await client.upsertStorageAsset({
-        asset_kind: `${originalAsset.asset_kind}_variant`,
-        bucket_id: originalAsset.bucket_id,
-        byte_size: generatedVariant.bytes.byteLength,
-        content_type: generatedVariant.contentType,
-        height_px: generatedVariant.heightPx,
-        id: variantAssetId,
-        lifecycle_state: "active",
-        object_path: objectPath,
-        purged_at: null,
-        deleted_at: null,
-        visibility: originalAsset.visibility,
-        width_px: generatedVariant.widthPx,
-      });
-      await client.upsertVariantLink({
-        generation_kind: "stored",
-        original_asset_id: originalAsset.id,
-        variant_asset_id: variantAssetId,
-        variant_kind: variantKind,
-      });
-      result.variantsCreated += 1;
+    if (originalAssets.length === 0) {
+      break;
     }
+
+    for (const originalAsset of originalAssets) {
+      result.assetsScanned += 1;
+
+      const existingKinds = await listExistingVariantKinds(
+        client,
+        originalAsset.id,
+      );
+      const missingKinds = BACKFILL_VARIANT_KINDS.filter(
+        (variantKind) => !existingKinds.has(variantKind),
+      );
+
+      if (missingKinds.length === 0) {
+        result.assetsSkipped += 1;
+        continue;
+      }
+
+      if (input.dryRun) {
+        result.variantsPlanned += missingKinds.length;
+        continue;
+      }
+
+      const originalBytes = await client.downloadObject(
+        originalAsset.bucket_id,
+        originalAsset.object_path,
+      );
+      const generatedVariants = await generateVariants({
+        bytes: originalBytes,
+        contentType: originalAsset.content_type,
+      });
+
+      for (const variantKind of missingKinds) {
+        const generatedVariant = generatedVariants[variantKind];
+        const variantAssetId = idGenerator();
+        const objectPath = buildVariantObjectPath({
+          contentType: generatedVariant.contentType,
+          originalAssetId: originalAsset.id,
+          variantAssetId,
+          variantKind,
+        });
+
+        await client.uploadObject({
+          body: generatedVariant.bytes,
+          bucketId: originalAsset.bucket_id,
+          contentType: generatedVariant.contentType,
+          objectPath,
+        });
+
+        await client.upsertStorageAsset({
+          asset_kind: `${originalAsset.asset_kind}_variant`,
+          bucket_id: originalAsset.bucket_id,
+          byte_size: generatedVariant.bytes.byteLength,
+          content_type: generatedVariant.contentType,
+          height_px: generatedVariant.heightPx,
+          id: variantAssetId,
+          lifecycle_state: "active",
+          object_path: objectPath,
+          purged_at: null,
+          deleted_at: null,
+          visibility: originalAsset.visibility,
+          width_px: generatedVariant.widthPx,
+        });
+        await client.upsertVariantLink({
+          generation_kind: "stored",
+          original_asset_id: originalAsset.id,
+          variant_asset_id: variantAssetId,
+          variant_kind: variantKind,
+        });
+        result.variantsCreated += 1;
+      }
+    }
+
+    if (input.assetId) {
+      break;
+    }
+
+    offset += originalAssets.length;
   }
 
   return result;
 }
 
-function createSupabaseBackfillClient({ fetchImpl, serviceRoleKey, supabaseUrl }) {
+function createSupabaseBackfillClient({
+  fetchImpl,
+  serviceRoleKey,
+  supabaseUrl,
+}) {
   async function rest(path, init = {}) {
     const response = await fetchImpl(`${supabaseUrl}${path}`, {
       ...init,
@@ -194,7 +315,9 @@ function createSupabaseBackfillClient({ fetchImpl, serviceRoleKey, supabaseUrl }
     const body = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
-      throw new Error(`REST ${path} failed with HTTP ${response.status}: ${text}`);
+      throw new Error(
+        `REST ${path} failed with HTTP ${response.status}: ${text}`,
+      );
     }
 
     return body;
@@ -229,13 +352,16 @@ function createSupabaseBackfillClient({ fetchImpl, serviceRoleKey, supabaseUrl }
       });
     },
     upsertStorageAsset(asset) {
-      return rest("/rest/v1/storage_assets?on_conflict=bucket_id,object_path&select=*", {
-        body: [asset],
-        headers: {
-          Prefer: "resolution=merge-duplicates,return=representation",
+      return rest(
+        "/rest/v1/storage_assets?on_conflict=bucket_id,object_path&select=*",
+        {
+          body: [asset],
+          headers: {
+            Prefer: "resolution=merge-duplicates,return=representation",
+          },
+          method: "POST",
         },
-        method: "POST",
-      });
+      );
     },
     upsertVariantLink(link) {
       return rest(
@@ -252,7 +378,7 @@ function createSupabaseBackfillClient({ fetchImpl, serviceRoleKey, supabaseUrl }
   };
 }
 
-function buildCandidateAssetsPath({ assetId, limit }) {
+function buildCandidateAssetsPath({ assetId, limit, offset = 0 }) {
   const query = [
     "select=*",
     "lifecycle_state=eq.active",
@@ -261,6 +387,10 @@ function buildCandidateAssetsPath({ assetId, limit }) {
     "order=id.asc",
     `limit=${limit}`,
   ];
+
+  if (!assetId && offset > 0) {
+    query.push(`offset=${offset}`);
+  }
 
   if (assetId) {
     query.push(`id=eq.${encodeURIComponent(assetId)}`);
@@ -443,6 +573,13 @@ function normalizeSupabaseUrl(url) {
     : null;
 }
 
+function isLocalSupabaseUrl(url) {
+  return (
+    typeof url === "string" &&
+    (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))
+  );
+}
+
 async function main() {
   const options = parseBackfillArgs(process.argv.slice(2));
 
@@ -451,21 +588,24 @@ async function main() {
     return;
   }
 
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const connection = resolveBackfillConnection({
+    env: process.env,
+    options,
+  });
 
   try {
     const result = await backfillCatalogImageVariants({
       ...options,
-      serviceRoleKey,
-      supabaseUrl: process.env.SUPABASE_URL,
+      serviceRoleKey: connection.serviceRoleKey,
+      supabaseUrl: connection.supabaseUrl,
     });
     const prefix = options.dryRun ? "DRY RUN" : "PASS";
 
     console.log(
-      `${prefix} catalog image variant backfill: scanned ${result.assetsScanned} assets, skipped ${result.assetsSkipped}, planned ${result.variantsPlanned}, created ${result.variantsCreated} variants.`,
+      `${prefix} catalog image variant backfill (${connection.environment}): scanned ${result.assetsScanned} assets, skipped ${result.assetsSkipped}, planned ${result.variantsPlanned}, created ${result.variantsCreated} variants.`,
     );
   } catch (error) {
-    console.error(formatBackfillFailure(error, serviceRoleKey));
+    console.error(formatBackfillFailure(error, connection.serviceRoleKey));
     process.exit(1);
   }
 }

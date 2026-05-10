@@ -12,6 +12,8 @@ Affected packages:
 - `supabase/migrations`
 - `supabase/functions/fabric-render-worker`
 - `scripts`
+- `package.json`
+- `supabase/.env.example`
 - `docs/roadmap/supabase.md`
 - `docs/roadmap/web.md`
 - `docs/roadmap/image-worker.md`
@@ -213,11 +215,22 @@ This plan does not include:
   - Idempotently creates missing `small` and `medium` variants for active
     `sofa_source_photo`, `manual_render`, `fabric_render_candidate`, and
     `published_sofa_render` assets.
-  - Supports `--dry-run`, `--limit`, and `--asset-id`.
-  - Requires explicit Supabase URL and service-role environment variables.
+  - Supports `--environment local|dev|prod`, `--dry-run`, `--limit`,
+    `--page-size`, and `--asset-id`.
+  - Uses paged asset scans so skipped early assets do not prevent later assets
+    from being backfilled.
+  - Requires separated local, DEV, and PROD Supabase URL/service-role variables
+    and explicit `--confirm-prod` for PROD writes.
 - Create: `scripts/backfill-catalog-image-variants.test.mjs`
   - Covers dry-run behavior, idempotent skip behavior, selected asset behavior,
-    private/public bucket preservation, and safe error output.
+    private/public bucket preservation, paged candidate scans, environment
+    credential separation, PROD confirmation, command wiring, and safe error
+    output.
+- Modify: `package.json`
+  - Adds local, DEV dry-run, DEV write, PROD dry-run, and PROD confirmed write
+    commands for catalog image variant backfill.
+- Modify: `supabase/.env.example`
+  - Documents DEV and PROD backfill credential variable names without secrets.
 - Modify: `scripts/seed-local-admin-fixtures.mjs`
   - Creates variants for seeded source photos and published render copies.
 - Modify: `scripts/seed-local-admin-fixtures.test.mjs`
@@ -471,7 +484,6 @@ Rules:
     ```
 
 29. Update roadmaps:
-
     - `docs/roadmap/supabase.md`
     - `docs/roadmap/web.md`
     - `docs/roadmap/image-worker.md`
@@ -497,12 +509,11 @@ Rules:
 32. Run local backfill after `supabase db reset` and local seed:
 
     ```powershell
-    node --env-file=supabase/.env.local scripts/backfill-catalog-image-variants.mjs --dry-run
-    node --env-file=supabase/.env.local scripts/backfill-catalog-image-variants.mjs
+    pnpm catalog:variants:backfill:local -- --dry-run
+    pnpm catalog:variants:backfill:local
     ```
 
 33. Run manual browser QA on local web:
-
     - Admin Renders matrix loads small previews.
     - Candidate rows load small previews.
     - Current-render sheet and comparison dialog load medium previews.
@@ -587,6 +598,22 @@ Rollout order matters:
 If a deployment reaches UI changes before backfill, the admin UI should show
 safe placeholders for missing `small` or `medium` variants and public catalog
 cards should avoid silently using original bytes.
+
+Backfill commands:
+
+```powershell
+pnpm catalog:variants:backfill:local -- --dry-run
+pnpm catalog:variants:backfill:local
+pnpm catalog:variants:backfill:dev:dry-run
+pnpm catalog:variants:backfill:dev
+pnpm catalog:variants:backfill:prod:dry-run
+pnpm catalog:variants:backfill:prod
+```
+
+DEV uses `SUPABASE_DEV_URL` and `SUPABASE_DEV_SERVICE_ROLE_KEY`. PROD uses
+`SUPABASE_PROD_URL` and `SUPABASE_PROD_SERVICE_ROLE_KEY`. The PROD write
+command includes the required `--confirm-prod` guard; direct CLI use must also
+include that flag before writing to PROD.
 
 ## Notes
 
