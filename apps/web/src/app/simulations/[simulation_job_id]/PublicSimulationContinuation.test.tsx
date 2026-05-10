@@ -1,3 +1,4 @@
+import React from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -170,6 +171,27 @@ describe("PublicSimulationContinuation", () => {
     const text = screen.getByTestId("simulation-screen-error").textContent ?? "";
     expect(text).toMatch(/HEIC\/HEIF n'a pas pu être converti/i);
     expect(text).not.toMatch(/libheif|esm\.sh|https?:\/\//i);
+  });
+
+  it("renders an error screen when the initial status read fails", async () => {
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={async () => {
+          throw new Error("status request failed (401)");
+        }}
+        loadJobContext={() => baseContext}
+        subscribeProgress={() => () => undefined}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("simulation-screen-error")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByText(/cela prend environ une minute/i)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/diagnostic/i)).not.toBeInTheDocument();
   });
 
   it("renders Screen 6 expired variant on expired status without a Restart action", async () => {

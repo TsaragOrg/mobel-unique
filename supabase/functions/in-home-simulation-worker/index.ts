@@ -2530,10 +2530,12 @@ async function invokeWorker(input: {
 }
 
 function resolveWorkerFunctionUrl(supabaseUrl: string): string {
-  return (
-    Deno.env.get("IN_HOME_SIMULATION_WORKER_FUNCTION_URL") ??
-    `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/in-home-simulation-worker`
-  );
+  const configuredUrl = Deno.env.get("IN_HOME_SIMULATION_WORKER_FUNCTION_URL");
+  if (configuredUrl && configuredUrl.trim().length > 0) {
+    return configuredUrl;
+  }
+
+  return `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/in-home-simulation-worker`;
 }
 
 function buildWorkerInvocationHeaders(): Record<string, string> {

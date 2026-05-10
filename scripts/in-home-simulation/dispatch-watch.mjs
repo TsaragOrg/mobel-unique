@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-
-const DEFAULT_INTERVAL_MS = 2000;
 const DEFAULT_TIMEOUT_MS = 140_000;
-const MIN_INTERVAL_MS = 1000;
 
 function fail(message, exitCode = 1) {
   console.error(`FAIL sim:dispatch: ${message}`);
@@ -17,9 +13,7 @@ function info(message) {
 
 function parseArgs(argv) {
   const args = {
-    intervalMs: DEFAULT_INTERVAL_MS,
-    once: false,
-    timeoutMs: DEFAULT_TIMEOUT_MS
+    timeoutMs: DEFAULT_TIMEOUT_MS,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -28,11 +22,6 @@ function parseArgs(argv) {
       continue;
     }
     if (value === "--once") {
-      args.once = true;
-      continue;
-    }
-    if (value === "--interval-ms") {
-      args.intervalMs = Number.parseInt(argv[++i] ?? "", 10);
       continue;
     }
     if (value === "--timeout-ms") {
@@ -52,10 +41,13 @@ function ensureLocalSupabaseUrl(url) {
   if (!url) {
     fail("SUPABASE_URL is required", 2);
   }
-  if (!url.startsWith("http://127.0.0.1") && !url.startsWith("http://localhost")) {
+  if (
+    !url.startsWith("http://127.0.0.1") &&
+    !url.startsWith("http://localhost")
+  ) {
     fail(
       `SUPABASE_URL must point at a local Supabase instance (got ${url}). Refusing to dispatch against DEV or PROD.`,
-      2
+      2,
     );
   }
 }
@@ -72,55 +64,47 @@ function formatDispatchResult(body) {
     `processed=${body.processed ?? 0}`,
     `started=${body.started_count ?? 0}`,
     `queued=${body.queued ?? 0}`,
-    `active=${body.active_processing ?? "-"}`
+    `active=${body.active_processing ?? "-"}`,
   ].join(" ");
 }
 
 async function dispatchOnce({ supabaseUrl, invokeSecret, timeoutMs }) {
-  const args = [
-    "-sS",
-    "--max-time",
-    String(timeoutMs / 1000),
-    "-X",
-    "POST",
-    `${supabaseUrl}/functions/v1/in-home-simulation-worker`,
-    "-H",
-    "Accept: application/json",
-    "-H",
-    "Content-Type: application/json"
-  ];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  let text = "";
 
-  if (invokeSecret) {
-    args.push("-H", `x-in-home-simulation-worker-secret: ${invokeSecret}`);
+  try {
+    response = await fetch(
+      `${supabaseUrl}/functions/v1/in-home-simulation-worker`,
+      {
+        body: JSON.stringify({ mode: "dispatch" }),
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(invokeSecret
+            ? { "x-in-home-simulation-worker-secret": invokeSecret }
+            : {}),
+        },
+        method: "POST",
+        signal: controller.signal,
+      },
+    );
+    text = await response.text();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`worker dispatch timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 
-  args.push("-d", JSON.stringify({ mode: "dispatch" }));
-
-  const text = await new Promise((resolve, reject) => {
-    const child = spawn("curl", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (status) => {
-      if (status !== 0) {
-        reject(new Error(stderr.trim() || `curl exited with status ${status}`));
-        return;
-      }
-      resolve(stdout);
-    });
-  });
+  if (!response.ok) {
+    throw new Error(
+      `worker dispatch returned HTTP ${response.status}: ${text}`,
+    );
+  }
 
   let body = null;
   try {
@@ -141,7 +125,6 @@ async function dispatchOnce({ supabaseUrl, invokeSecret, timeoutMs }) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  ensurePositiveInteger("--interval-ms", args.intervalMs, MIN_INTERVAL_MS);
   ensurePositiveInteger("--timeout-ms", args.timeoutMs, 1000);
 
   const supabaseUrl = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
@@ -149,50 +132,15 @@ async function main() {
 
   const invokeSecret = process.env.IN_HOME_SIMULATION_WORKER_INVOKE_SECRET;
 
-  if (args.once) {
-    try {
-      const body = await dispatchOnce({
-        invokeSecret,
-        supabaseUrl,
-        timeoutMs: args.timeoutMs
-      });
-      info(`PASS sim:dispatch:once ${formatDispatchResult(body)}`);
-      return;
-    } catch (error) {
-      fail(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  let stopped = false;
-  process.once("SIGINT", () => {
-    stopped = true;
-    info("");
-    info("Stopped sim:dispatch:watch");
-  });
-
-  info(
-    `Watching local in-home simulation dispatch outbox every ${args.intervalMs}ms at ${supabaseUrl}`
-  );
-
-  while (!stopped) {
-    try {
-      const body = await dispatchOnce({
-        invokeSecret,
-        supabaseUrl,
-        timeoutMs: args.timeoutMs
-      });
-      info(`${new Date().toISOString()} ${formatDispatchResult(body)}`);
-    } catch (error) {
-      console.error(
-        `${new Date().toISOString()} dispatch failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-
-    if (!stopped) {
-      await new Promise((resolve) => setTimeout(resolve, args.intervalMs));
-    }
+  try {
+    const body = await dispatchOnce({
+      invokeSecret,
+      supabaseUrl,
+      timeoutMs: args.timeoutMs,
+    });
+    info(`PASS sim:dispatch:once ${formatDispatchResult(body)}`);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
 }
 

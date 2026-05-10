@@ -391,6 +391,14 @@ The API must support email verification before simulation generation.
 
 Exact retention durations, resend limits, verification attempt limits, email copy, consent wording, and abuse thresholds belong to the privacy, retention, and abuse protection spec. This API spec defines the contract shape required by the product flow.
 
+`CR-SPEC-0009-SPEC-0010-SPEC-0015-public-simulation-supabase-auth-otp-smtp`
+authorizes Supabase Auth email OTP with a configured SMTP provider as the
+verification engine behind this public API facade. The route contract remains
+application-owned: browsers receive the public simulation response shape and
+the application `simulation_access_token`, not Supabase Auth access tokens,
+refresh tokens, service-role credentials, SMTP credentials, or private Auth
+metadata.
+
 ### `POST /api/public/simulation/email-verifications`
 
 Starts or resends an email verification attempt.
@@ -419,6 +427,10 @@ Rules:
 - optional commercial contact consent must be stored separately from required email-use consent;
 - the API must normalize and hash email addresses before storing lookup values;
 - plaintext verification codes must never be stored;
+- when Supabase Auth backs OTP delivery, code generation, code storage, expiry,
+  resend limits, and OTP verification may be delegated to Supabase Auth while
+  the application still records consent, email hash, provider user id, and
+  simulation-session state;
 - the response must not reveal whether an email has been used before;
 - rejected optional commercial consent must not block simulation.
 
@@ -459,6 +471,8 @@ Rules:
 - the token returned to the browser must be opaque;
 - only a hash of the access token may be stored;
 - the token authorizes only simulation actions allowed by this spec;
+- Supabase Auth sessions returned by provider verification must remain
+  server-side implementation details for this flow;
 - failed verification attempts must not expose plaintext code or email data.
 
 ## Public In-Home Simulation API
@@ -506,12 +520,12 @@ Response:
 The API must make the durable simulation job claimable for worker processing
 and write the transactional dispatch outbox intent in the same database
 mutation. Queue messages may be used as wake-up hints, but the durable job,
-checkpoint state, and dispatch outbox remain authoritative. If immediate
-dispatch is delayed after durable state has been written, the job must remain
-recoverably queued so the scheduler backstop can drain the same outbox later.
-The public route handler must not invoke or wait on the worker directly. The
-browser must not receive worker function names, queue ids, dispatch ids, or
-service invocation details.
+checkpoint state, and dispatch outbox remain authoritative. After the database
+mutation commits, the public route handler must wake the internal worker
+dispatcher with a short service-side call. It must not run checkpoint/provider
+work, must not use request-time pump mode, and must fail safely if the worker
+cannot be woken. The browser must not receive worker function names, queue ids,
+dispatch ids, or service invocation details.
 
 ### `GET /api/public/simulations/{simulation_job_id}`
 

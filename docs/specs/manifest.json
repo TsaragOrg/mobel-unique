@@ -111,7 +111,7 @@
         "SPEC-0007",
         "SPEC-0008"
       ],
-      "implementationPlans": ["PLAN-0061", "PLAN-0065", "PLAN-0068"],
+      "implementationPlans": ["PLAN-0061", "PLAN-0065", "PLAN-0068", "PLAN-0074"],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
     },
@@ -131,7 +131,7 @@
         "SPEC-0008",
         "SPEC-0009"
       ],
-      "implementationPlans": ["PLAN-0068"],
+      "implementationPlans": ["PLAN-0068", "PLAN-0074"],
       "path": "docs/specs/accepted/SPEC-0010-api-contracts-and-edge-functions.md",
       "areas": ["web", "api", "supabase", "image-worker", "shared"]
     },
@@ -239,7 +239,8 @@
         "PLAN-0056",
         "PLAN-0057",
         "PLAN-0058",
-        "PLAN-0068"
+        "PLAN-0068",
+        "PLAN-0074"
       ],
       "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
       "areas": ["web", "supabase"]

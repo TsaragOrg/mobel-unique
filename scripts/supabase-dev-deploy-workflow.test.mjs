@@ -89,14 +89,17 @@ describe("Supabase DEV deploy workflow", () => {
       "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET: ${{ secrets.SUPABASE_DEV_IN_HOME_SIMULATION_WORKER_INVOKE_SECRET }}",
     );
     expect(workflow).toContain(
-      "IN_HOME_SIMULATION_WORKER_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-worker",
+      "IN_HOME_SIMULATION_PURGE_FUNCTION_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_ID }}.supabase.co/functions/v1/in-home-simulation-purge",
     );
     expect(workflow).toContain('test -n "${OPENAI_API_KEY}"');
     expect(workflow).toContain(
       'test -n "${IN_HOME_SIMULATION_WORKER_INVOKE_SECRET}"',
     );
     expect(workflow).toContain(
-      'test -n "${IN_HOME_SIMULATION_WORKER_FUNCTION_URL}"',
+      'test -n "${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}"',
+    );
+    expect(workflow).toContain(
+      'test -n "${IN_HOME_SIMULATION_PURGE_FUNCTION_URL}"',
     );
   });
 
@@ -121,19 +124,20 @@ describe("Supabase DEV deploy workflow", () => {
     );
   });
 
-  it("upserts DEV Vault secrets for the in-home simulation cron runner after deploying the function", () => {
-    const deployIndex = workflow.indexOf(
-      "Deploy Supabase DEV in-home simulation worker",
-    );
-    const vaultIndex = workflow.indexOf(
+  it("does not configure a DEV cron runner for in-home simulation worker dispatch", () => {
+    expect(workflow).not.toContain(
       "Set Supabase DEV in-home simulation cron Vault secrets",
     );
-
-    expect(vaultIndex).toBeGreaterThan(deployIndex);
-    expect(workflow).toContain("in_home_simulation_worker_function_url");
-    expect(workflow).toContain("in_home_simulation_worker_invoke_secret");
-    expect(workflow).toContain(
+    expect(workflow).not.toContain("in_home_simulation_worker_function_url");
+    expect(workflow).not.toContain("in_home_simulation_worker_invoke_secret");
+    expect(workflow).not.toContain(
       "supabase/.temp/in-home-simulation-dev-vault-secrets.sql",
+    );
+    expect(workflow).not.toContain(
+      "IN_HOME_SIMULATION_WORKER_FUNCTION_URL:",
+    );
+    expect(workflow).not.toContain(
+      'test -n "${IN_HOME_SIMULATION_WORKER_FUNCTION_URL}"',
     );
   });
 
@@ -146,6 +150,39 @@ describe("Supabase DEV deploy workflow", () => {
     );
 
     expect(inHomeSecretsIndex).toBeGreaterThan(fabricVaultIndex);
+  });
+
+  it("sets DEV in-home simulation purge secrets, deploys the function, and upserts Vault cron secrets", () => {
+    const workerDeployIndex = workflow.indexOf(
+      "Deploy Supabase DEV in-home simulation worker",
+    );
+    const secretsIndex = workflow.indexOf(
+      "Set Supabase DEV in-home simulation purge secrets",
+    );
+    const deployIndex = workflow.indexOf(
+      "Deploy Supabase DEV in-home simulation purge",
+    );
+    const vaultIndex = workflow.indexOf(
+      "Set Supabase DEV in-home simulation purge cron Vault secrets",
+    );
+
+    expect(secretsIndex).toBeGreaterThan(workerDeployIndex);
+    expect(deployIndex).toBeGreaterThan(secretsIndex);
+    expect(vaultIndex).toBeGreaterThan(deployIndex);
+    expect(workflow).toContain(
+      'IN_HOME_SIMULATION_PURGE_INVOKE_SECRET="${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}"',
+    );
+    expect(workflow).toContain(
+      "PUBLIC_SIMULATION_EMAIL_HANDOFF_PURGE_BATCH_SIZE=500",
+    );
+    expect(workflow).toContain(
+      'supabase functions deploy in-home-simulation-purge --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt',
+    );
+    expect(workflow).toContain("in_home_simulation_purge_function_url");
+    expect(workflow).toContain("in_home_simulation_purge_invoke_secret");
+    expect(workflow).toContain(
+      "supabase/.temp/in-home-simulation-purge-dev-vault-secrets.sql",
+    );
   });
 });
 
@@ -179,6 +216,9 @@ describe("Supabase PROD deploy workflow", () => {
     );
     expect(prodWorkflow).toContain(
       "IN_HOME_SIMULATION_WORKER_INVOKE_SECRET: ${{ secrets.SUPABASE_PROD_IN_HOME_SIMULATION_WORKER_INVOKE_SECRET }}",
+    );
+    expect(prodWorkflow).toContain(
+      "IN_HOME_SIMULATION_PURGE_INVOKE_SECRET: ${{ secrets.SUPABASE_PROD_IN_HOME_SIMULATION_PURGE_INVOKE_SECRET }}",
     );
     expect(prodWorkflow).not.toContain("SUPABASE_DEV_");
   });
@@ -230,20 +270,16 @@ describe("Supabase PROD deploy workflow", () => {
     expect(prodWorkflow).toContain("fabric_render_worker_invoke_secret");
   });
 
-  it("sets PROD in-home simulation worker secrets, deploys the function, and upserts Vault cron secrets", () => {
+  it("sets PROD in-home simulation worker secrets and deploys the function without cron Vault secrets", () => {
     const secretsIndex = prodWorkflow.indexOf(
       "Set Supabase PROD in-home simulation worker secrets",
     );
     const deployIndex = prodWorkflow.indexOf(
       "Deploy Supabase PROD in-home simulation worker",
     );
-    const vaultIndex = prodWorkflow.indexOf(
-      "Set Supabase PROD in-home simulation cron Vault secrets",
-    );
 
     expect(secretsIndex).toBeGreaterThan(-1);
     expect(deployIndex).toBeGreaterThan(secretsIndex);
-    expect(vaultIndex).toBeGreaterThan(deployIndex);
     expect(prodWorkflow).toContain("IN_HOME_SIMULATION_PROVIDER_MODE=live");
     expect(prodWorkflow).toContain(
       'IN_HOME_SIMULATION_WORKER_INVOKE_SECRET="${IN_HOME_SIMULATION_WORKER_INVOKE_SECRET}"',
@@ -257,10 +293,52 @@ describe("Supabase PROD deploy workflow", () => {
     expect(prodWorkflow).toContain(
       'supabase functions deploy in-home-simulation-worker --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt',
     );
-    expect(prodWorkflow).toContain(
+    expect(prodWorkflow).not.toContain(
+      "Set Supabase PROD in-home simulation cron Vault secrets",
+    );
+    expect(prodWorkflow).not.toContain(
       "supabase/.temp/in-home-simulation-prod-vault-secrets.sql",
     );
-    expect(prodWorkflow).toContain("in_home_simulation_worker_function_url");
-    expect(prodWorkflow).toContain("in_home_simulation_worker_invoke_secret");
+    expect(prodWorkflow).not.toContain("in_home_simulation_worker_function_url");
+    expect(prodWorkflow).not.toContain("in_home_simulation_worker_invoke_secret");
+    expect(prodWorkflow).not.toContain(
+      "IN_HOME_SIMULATION_WORKER_FUNCTION_URL:",
+    );
+    expect(prodWorkflow).not.toContain(
+      'test -n "${IN_HOME_SIMULATION_WORKER_FUNCTION_URL}"',
+    );
+  });
+
+  it("sets PROD in-home simulation purge secrets, deploys the function, and upserts Vault cron secrets", () => {
+    const workerDeployIndex = prodWorkflow.indexOf(
+      "Deploy Supabase PROD in-home simulation worker",
+    );
+    const secretsIndex = prodWorkflow.indexOf(
+      "Set Supabase PROD in-home simulation purge secrets",
+    );
+    const deployIndex = prodWorkflow.indexOf(
+      "Deploy Supabase PROD in-home simulation purge",
+    );
+    const vaultIndex = prodWorkflow.indexOf(
+      "Set Supabase PROD in-home simulation purge cron Vault secrets",
+    );
+
+    expect(secretsIndex).toBeGreaterThan(workerDeployIndex);
+    expect(deployIndex).toBeGreaterThan(secretsIndex);
+    expect(vaultIndex).toBeGreaterThan(deployIndex);
+    expect(prodWorkflow).toContain(
+      'IN_HOME_SIMULATION_PURGE_INVOKE_SECRET="${IN_HOME_SIMULATION_PURGE_INVOKE_SECRET}"',
+    );
+    expect(prodWorkflow).toContain(
+      "PUBLIC_SIMULATION_EMAIL_HANDOFF_PURGE_BATCH_SIZE=500",
+    );
+    expect(prodWorkflow).toContain(
+      'supabase functions deploy in-home-simulation-purge --project-ref "${SUPABASE_PROJECT_REF}" --no-verify-jwt',
+    );
+    expect(prodWorkflow).toContain("in_home_simulation_purge_function_url");
+    expect(prodWorkflow).toContain("in_home_simulation_purge_invoke_secret");
+    expect(prodWorkflow).toContain(
+      "supabase/.temp/in-home-simulation-purge-prod-vault-secrets.sql",
+    );
   });
 });

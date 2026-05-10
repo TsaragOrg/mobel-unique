@@ -18,7 +18,7 @@ export const SIMULATION_LOCALE = {
       "Saisissez votre adresse e-mail pour recevoir un code de vérification à usage unique. Ce code ouvre l'accès à la simulation.",
     emailFieldLabel: "Adresse e-mail",
     emailFieldPlaceholder: "vous@exemple.com",
-    // TODO: FR native review — consent for the launch-window stub. Confirm legal wording.
+    // TODO: FR native review — consent for simulation email delivery. Confirm legal wording.
     consentEmailUseLabel:
       "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour me transmettre les informations relatives à ma simulation.",
     // TODO: FR native review — optional marketing consent. Confirm wording and legal status.

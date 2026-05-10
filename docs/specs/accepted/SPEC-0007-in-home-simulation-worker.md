@@ -38,9 +38,10 @@ types have distinct inputs, retention rules, visibility rules, and failure
 handling.
 
 `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Database-Dispatched Checkpoints And Realtime Progress`
-updates this worker contract so cron is a recovery backstop rather than the
-normal product latency path, and so expensive provider work is split into
-durable checkpoints.
+updates this worker contract so public API actions wake dispatch immediately
+after committing durable checkpoint state, scheduled cron is not part of the
+visitor-facing execution path, and expensive provider work is split into durable
+checkpoints.
 
 A future domain-level `In-Home Simulation Flow` spec may emerge later to
 consolidate wizard rules, validation rules, dimension semantics, regeneration
@@ -525,13 +526,14 @@ The worker must support a dispatch mode and a checkpoint job mode:
 
 Public API actions that create the initial job, submit dimensions, or request a
 regeneration must write a checkpoint and dispatch outbox row in the same
-database transaction. Public API handlers must not wait on worker acknowledgement
-or invoke the worker directly. Scheduler invocation remains required as a
-watchdog and backlog backstop, but it must drain the same outbox rows instead
-of being the normal latency path for new visitor work.
+database transaction, then wake worker dispatch immediately through a short
+service-side call. Public API handlers must not run checkpoint/provider work and
+must not call a request-time pump. Scheduled cron invocation is not part of the
+in-home simulation worker execution path.
 
 A job that is `queued` or `placement_queued` but has no live queue message must
-still be discoverable and processable by dispatch or recovery logic.
+still be discoverable and processable by dispatch retry or operator recovery
+logic.
 
 The queue consumer function may process more than one queued message per
 invocation, but it must respect a configurable concurrency limit based on the
@@ -1104,8 +1106,8 @@ Worker-specific configuration:
   worker claim TTL per checkpoint, defaulting to 180 seconds locally;
 - `IN_HOME_SIMULATION_MAX_ACTIVE_CHECKPOINTS`: optional global capacity
   limit for concurrently claimed in-home simulation checkpoints;
-- `IN_HOME_SIMULATION_DISPATCH_BATCH_SIZE`: optional dispatch-backstop
-  batch size for claimed outbox rows;
+- `IN_HOME_SIMULATION_DISPATCH_BATCH_SIZE`: optional dispatch batch size for
+  claimed outbox rows;
 - `IN_HOME_SIMULATION_DISPATCH_LOCK_TTL_SECONDS`: optional lock TTL for
   dispatch-outbox claims;
 - `IN_HOME_SIMULATION_WORKER_INVOCATION_TIMEOUT_MS`: optional timeout for

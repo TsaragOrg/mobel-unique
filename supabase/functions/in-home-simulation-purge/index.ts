@@ -15,13 +15,15 @@
 // production. The visitor-facing API never calls this function.
 
 import {
-  extractJobIdFromUploadPath
+  extractJobIdFromUploadPath,
 } from "../in-home-simulation-worker/lib/orphan-paths.ts";
 
 const FUNCTION_NAME = "in-home-simulation-purge";
 const STORAGE_BUCKET = "simulation-private-artifacts";
 const DEFAULT_BATCH_SIZE = 50;
 const DEFAULT_ORPHAN_MIN_AGE_HOURS = 1;
+const DEFAULT_EMAIL_HANDOFF_PURGE_BATCH_SIZE = 500;
+const PUBLIC_SIMULATION_AUTH_USER_PURPOSE = "in_home_simulation_email_otp";
 
 type ExpiredJobRow = {
   job_id: string;
@@ -43,19 +45,40 @@ type PurgeResult = {
   error?: string;
 };
 
+type EmailHandoffPurgeRow = {
+  out_verification_request_id: string;
+  out_auth_user_id: string | null;
+};
+
+type AuthUserCleanupResult = {
+  auth_user_id: string;
+  status:
+    | "deleted"
+    | "already_missing"
+    | "skipped_non_transient"
+    | "skipped_protected_admin"
+    | "failed";
+  error?: string;
+};
+
 type PurgeResponse = {
   function_name: string;
   status: "noop" | "ok" | "partial" | "failed";
   processed: number;
   results: PurgeResult[];
   orphans_deleted?: number;
+  email_handoffs_purged?: number;
+  auth_users_deleted?: number;
+  auth_users_skipped?: number;
+  auth_user_cleanup_errors?: number;
+  auth_user_cleanup_results?: AuthUserCleanupResult[];
   error?: string;
 };
 
 function jsonResponse(body: PurgeResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
     headers: { "Content-Type": "application/json" },
-    status
+    status,
   });
 }
 
@@ -66,9 +89,9 @@ function failed(error: string, status = 500): Response {
       status: "failed",
       processed: 0,
       results: [],
-      error
+      error,
     },
-    status
+    status,
   );
 }
 
@@ -80,20 +103,53 @@ function parsePositiveInt(name: string, fallback: number): number {
   return parsed;
 }
 
+function isLocalPurgeEnvironment(): boolean {
+  const appEnv = Deno.env.get("APP_ENV");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+
+  return (
+    appEnv === "local" ||
+    supabaseUrl.includes("127.0.0.1") ||
+    supabaseUrl.includes("localhost")
+  );
+}
+
+function validatePurgeInvocation(request: Request): Response | null {
+  if (isLocalPurgeEnvironment()) {
+    return null;
+  }
+
+  const expectedSecret = Deno.env.get("IN_HOME_SIMULATION_PURGE_INVOKE_SECRET");
+  if (!expectedSecret) {
+    return failed(
+      "Missing required environment variable: IN_HOME_SIMULATION_PURGE_INVOKE_SECRET",
+      500,
+    );
+  }
+
+  if (
+    request.headers.get("x-in-home-simulation-purge-secret") !== expectedSecret
+  ) {
+    return failed("In-home simulation purge invocation is unauthorized", 401);
+  }
+
+  return null;
+}
+
 async function callRpc<T>(
   supabaseUrl: string,
   serviceRoleKey: string,
   name: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): Promise<T> {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
     body: JSON.stringify(body),
     headers: {
       "Authorization": `Bearer ${serviceRoleKey}`,
       "Content-Type": "application/json",
-      "apikey": serviceRoleKey
+      "apikey": serviceRoleKey,
     },
-    method: "POST"
+    method: "POST",
   });
   if (!response.ok) {
     const text = await response.text();
@@ -107,13 +163,13 @@ async function callRpc<T>(
 async function listExpiredJobs(
   supabaseUrl: string,
   serviceRoleKey: string,
-  batchSize: number
+  batchSize: number,
 ): Promise<ExpiredJobRow[]> {
   const rows = await callRpc<ExpiredJobRow[] | null>(
     supabaseUrl,
     serviceRoleKey,
     "list_expired_in_home_simulation_jobs",
-    { batch_size: batchSize }
+    { batch_size: batchSize },
   );
   return Array.isArray(rows) ? rows : [];
 }
@@ -121,7 +177,7 @@ async function listExpiredJobs(
 async function listStorageObjects(
   supabaseUrl: string,
   serviceRoleKey: string,
-  prefix: string
+  prefix: string,
 ): Promise<StorageObject[]> {
   const collected: StorageObject[] = [];
   const queue: string[] = [prefix];
@@ -136,20 +192,20 @@ async function listStorageObjects(
           headers: {
             "Authorization": `Bearer ${serviceRoleKey}`,
             "Content-Type": "application/json",
-            "apikey": serviceRoleKey
+            "apikey": serviceRoleKey,
           },
           body: JSON.stringify({
             prefix: current,
             limit: 100,
             offset,
-            sortBy: { column: "name", order: "asc" }
-          })
-        }
+            sortBy: { column: "name", order: "asc" },
+          }),
+        },
       );
       if (!response.ok) {
         const text = await response.text();
         throw new Error(
-          `storage list failed for ${current}: HTTP ${response.status} ${text}`
+          `storage list failed for ${current}: HTTP ${response.status} ${text}`,
         );
       }
       const rows = (await response.json()) as Array<
@@ -175,7 +231,7 @@ async function listStorageObjects(
 async function deleteStorageObject(
   supabaseUrl: string,
   serviceRoleKey: string,
-  path: string
+  path: string,
 ): Promise<boolean> {
   const response = await fetch(
     `${supabaseUrl}/storage/v1/object/${STORAGE_BUCKET}/${path}`,
@@ -183,9 +239,9 @@ async function deleteStorageObject(
       method: "DELETE",
       headers: {
         "Authorization": `Bearer ${serviceRoleKey}`,
-        "apikey": serviceRoleKey
-      }
-    }
+        "apikey": serviceRoleKey,
+      },
+    },
   );
   if (response.status === 404 || response.status === 200) {
     return true;
@@ -193,7 +249,7 @@ async function deleteStorageObject(
   if (!response.ok) {
     const text = await response.text();
     throw new Error(
-      `storage delete failed for ${path}: HTTP ${response.status} ${text}`
+      `storage delete failed for ${path}: HTTP ${response.status} ${text}`,
     );
   }
   return true;
@@ -202,29 +258,33 @@ async function deleteStorageObject(
 async function purgeJob(
   supabaseUrl: string,
   serviceRoleKey: string,
-  job: ExpiredJobRow
+  job: ExpiredJobRow,
 ): Promise<PurgeResult> {
   const result: PurgeResult = {
     job_id: job.job_id,
     storage_prefix: job.storage_prefix,
     objects_deleted: 0,
-    marked_expired: false
+    marked_expired: false,
   };
   try {
     const objects = await listStorageObjects(
       supabaseUrl,
       serviceRoleKey,
-      job.storage_prefix
+      job.storage_prefix,
     );
     for (const obj of objects) {
-      const ok = await deleteStorageObject(supabaseUrl, serviceRoleKey, obj.name);
+      const ok = await deleteStorageObject(
+        supabaseUrl,
+        serviceRoleKey,
+        obj.name,
+      );
       if (ok) result.objects_deleted += 1;
     }
     await callRpc<void>(
       supabaseUrl,
       serviceRoleKey,
       "mark_in_home_simulation_job_purged",
-      { job_id: job.job_id }
+      { job_id: job.job_id },
     );
     result.marked_expired = true;
   } catch (error) {
@@ -238,6 +298,9 @@ Deno.serve(async (request) => {
     return failed("Method not allowed", 405);
   }
 
+  const authError = validatePurgeInvocation(request);
+  if (authError) return authError;
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
@@ -246,7 +309,7 @@ Deno.serve(async (request) => {
 
   const batchSize = parsePositiveInt(
     "IN_HOME_SIMULATION_PURGE_BATCH_SIZE",
-    DEFAULT_BATCH_SIZE
+    DEFAULT_BATCH_SIZE,
   );
 
   let jobs: ExpiredJobRow[];
@@ -255,7 +318,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     return failed(
       error instanceof Error ? error.message : String(error),
-      502
+      502,
     );
   }
 
@@ -266,36 +329,231 @@ Deno.serve(async (request) => {
 
   const orphansDeleted = await deleteOrphanUploads(
     supabaseUrl,
-    serviceRoleKey
+    serviceRoleKey,
   );
 
-  if (jobs.length === 0 && orphansDeleted === 0) {
+  let emailHandoffsPurged = 0;
+  let authUserCleanupResults: AuthUserCleanupResult[] = [];
+  let identityCleanupError: string | undefined;
+  try {
+    const emailHandoffs = await purgeEmailHandoffs(
+      supabaseUrl,
+      serviceRoleKey,
+    );
+    emailHandoffsPurged = emailHandoffs.length;
+    authUserCleanupResults = await cleanupTransientAuthUsers(
+      supabaseUrl,
+      serviceRoleKey,
+      emailHandoffs
+        .map((row) => row.out_auth_user_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+  } catch (error) {
+    identityCleanupError = error instanceof Error
+      ? error.message
+      : String(error);
+  }
+
+  const authUsersDeleted = authUserCleanupResults.filter(
+    (result) =>
+      result.status === "deleted" || result.status === "already_missing",
+  ).length;
+  const authUsersSkipped = authUserCleanupResults.filter(
+    (result) =>
+      result.status === "skipped_non_transient" ||
+      result.status === "skipped_protected_admin",
+  ).length;
+  const authUserCleanupErrors = authUserCleanupResults.filter(
+    (result) => result.status === "failed",
+  ).length;
+
+  if (
+    jobs.length === 0 &&
+    orphansDeleted === 0 &&
+    emailHandoffsPurged === 0 &&
+    authUserCleanupResults.length === 0 &&
+    !identityCleanupError
+  ) {
     return jsonResponse({
       function_name: FUNCTION_NAME,
       status: "noop",
       processed: 0,
       results: [],
-      orphans_deleted: 0
+      orphans_deleted: 0,
+      email_handoffs_purged: 0,
+      auth_users_deleted: 0,
+      auth_users_skipped: 0,
+      auth_user_cleanup_errors: 0,
+      auth_user_cleanup_results: [],
     });
   }
 
-  const allOk = results.every((r) => r.marked_expired && !r.error);
+  const allOk = results.every((r) => r.marked_expired && !r.error) &&
+    !identityCleanupError &&
+    authUserCleanupErrors === 0;
   return jsonResponse({
     function_name: FUNCTION_NAME,
     status: allOk ? "ok" : "partial",
     processed: results.filter((r) => r.marked_expired).length,
     results,
-    orphans_deleted: orphansDeleted
+    orphans_deleted: orphansDeleted,
+    email_handoffs_purged: emailHandoffsPurged,
+    auth_users_deleted: authUsersDeleted,
+    auth_users_skipped: authUsersSkipped,
+    auth_user_cleanup_errors: authUserCleanupErrors,
+    auth_user_cleanup_results: authUserCleanupResults,
+    error: identityCleanupError,
   });
 });
 
+async function purgeEmailHandoffs(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<EmailHandoffPurgeRow[]> {
+  const batchSize = parsePositiveInt(
+    "PUBLIC_SIMULATION_EMAIL_HANDOFF_PURGE_BATCH_SIZE",
+    DEFAULT_EMAIL_HANDOFF_PURGE_BATCH_SIZE,
+  );
+  const rows = await callRpc<EmailHandoffPurgeRow[] | null>(
+    supabaseUrl,
+    serviceRoleKey,
+    "purge_public_simulation_email_handoffs",
+    { p_batch_size: batchSize },
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function cleanupTransientAuthUsers(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  authUserIds: string[],
+): Promise<AuthUserCleanupResult[]> {
+  const uniqueAuthUserIds = Array.from(new Set(authUserIds));
+  const results: AuthUserCleanupResult[] = [];
+  for (const authUserId of uniqueAuthUserIds) {
+    results.push(
+      await cleanupTransientAuthUser(supabaseUrl, serviceRoleKey, authUserId),
+    );
+  }
+  return results;
+}
+
+async function cleanupTransientAuthUser(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  authUserId: string,
+): Promise<AuthUserCleanupResult> {
+  try {
+    const user = await fetchAuthUser(supabaseUrl, serviceRoleKey, authUserId);
+    if (!user) {
+      return { auth_user_id: authUserId, status: "already_missing" };
+    }
+    if (hasAdminClaim(user)) {
+      return { auth_user_id: authUserId, status: "skipped_protected_admin" };
+    }
+    if (!isPublicSimulationTransientUser(user)) {
+      return { auth_user_id: authUserId, status: "skipped_non_transient" };
+    }
+    await deleteAuthUser(supabaseUrl, serviceRoleKey, authUserId);
+    return { auth_user_id: authUserId, status: "deleted" };
+  } catch (error) {
+    return {
+      auth_user_id: authUserId,
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function fetchAuthUser(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  authUserId: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${authUserId}`,
+    {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
+        "Accept": "application/json",
+      },
+    },
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `auth user lookup failed for ${authUserId}: HTTP ${response.status} ${text}`,
+    );
+  }
+  const body = await response.json();
+  const record = asRecord(body);
+  const nestedUser = asRecord(record?.user);
+  return nestedUser ?? record;
+}
+
+async function deleteAuthUser(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  authUserId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${authUserId}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
+        "Accept": "application/json",
+      },
+    },
+  );
+  if (response.status === 404 || response.status === 204 || response.ok) {
+    return;
+  }
+  const text = await response.text();
+  throw new Error(
+    `auth user delete failed for ${authUserId}: HTTP ${response.status} ${text}`,
+  );
+}
+
+function isPublicSimulationTransientUser(
+  user: Record<string, unknown>,
+): boolean {
+  const metadata = asRecord(user.raw_user_meta_data) ??
+    asRecord(user.user_metadata);
+  if (!metadata) return false;
+  return (
+    metadata.public_simulation_transient === true &&
+    metadata.public_simulation_purpose === PUBLIC_SIMULATION_AUTH_USER_PURPOSE
+  );
+}
+
+function hasAdminClaim(user: Record<string, unknown>): boolean {
+  const appMetadata = asRecord(user.app_metadata) ??
+    asRecord(user.raw_app_meta_data);
+  const mobelUniqueClaim = asRecord(appMetadata?.mobel_unique);
+  return mobelUniqueClaim?.role === "admin";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 async function deleteOrphanUploads(
   supabaseUrl: string,
-  serviceRoleKey: string
+  serviceRoleKey: string,
 ): Promise<number> {
   const minAgeHours = parsePositiveInt(
     "IN_HOME_SIMULATION_ORPHAN_MIN_AGE_HOURS",
-    DEFAULT_ORPHAN_MIN_AGE_HOURS
+    DEFAULT_ORPHAN_MIN_AGE_HOURS,
   );
   const cutoffMs = Date.now() - minAgeHours * 3600 * 1000;
 
@@ -318,8 +576,8 @@ async function deleteOrphanUploads(
     new Set(
       candidates
         .map((o) => extractJobIdFromUploadPath(o.name))
-        .filter((id): id is string => id !== null)
-    )
+        .filter((id): id is string => id !== null),
+    ),
   );
 
   let existingJobIds: Set<string>;
@@ -327,7 +585,7 @@ async function deleteOrphanUploads(
     existingJobIds = await fetchExistingJobIds(
       supabaseUrl,
       serviceRoleKey,
-      candidateJobIds
+      candidateJobIds,
     );
   } catch (_error) {
     return 0;
@@ -341,7 +599,7 @@ async function deleteOrphanUploads(
       const ok = await deleteStorageObject(
         supabaseUrl,
         serviceRoleKey,
-        obj.name
+        obj.name,
       );
       if (ok) deleted += 1;
     } catch (_error) {
@@ -353,7 +611,7 @@ async function deleteOrphanUploads(
 
 async function listAllUploadObjects(
   supabaseUrl: string,
-  serviceRoleKey: string
+  serviceRoleKey: string,
 ): Promise<Array<{ name: string; lastModifiedMs: number }>> {
   const collected: Array<{ name: string; lastModifiedMs: number }> = [];
   // Walk down by listing simulations/, then for each subdir list its
@@ -366,7 +624,7 @@ async function listAllUploadObjects(
     const inputsList = await rawList(
       supabaseUrl,
       serviceRoleKey,
-      `${jobPrefix}/inputs`
+      `${jobPrefix}/inputs`,
     );
     for (const obj of inputsList) {
       if (obj.id === null || obj.id === undefined) continue;
@@ -374,7 +632,7 @@ async function listAllUploadObjects(
       const ms = lastModified ? Date.parse(lastModified) : Date.now();
       collected.push({
         name: `${jobPrefix}/inputs/${obj.name}`,
-        lastModifiedMs: Number.isFinite(ms) ? ms : Date.now()
+        lastModifiedMs: Number.isFinite(ms) ? ms : Date.now(),
       });
     }
   }
@@ -384,7 +642,7 @@ async function listAllUploadObjects(
 async function rawList(
   supabaseUrl: string,
   serviceRoleKey: string,
-  prefix: string
+  prefix: string,
 ): Promise<
   Array<{
     name: string;
@@ -408,15 +666,15 @@ async function rawList(
         headers: {
           "Authorization": `Bearer ${serviceRoleKey}`,
           "Content-Type": "application/json",
-          "apikey": serviceRoleKey
+          "apikey": serviceRoleKey,
         },
         body: JSON.stringify({
           prefix,
           limit: 100,
           offset,
-          sortBy: { column: "name", order: "asc" }
-        })
-      }
+          sortBy: { column: "name", order: "asc" },
+        }),
+      },
     );
     if (!response.ok) {
       throw new Error(`storage list failed: HTTP ${response.status}`);
@@ -438,7 +696,7 @@ async function rawList(
 async function fetchExistingJobIds(
   supabaseUrl: string,
   serviceRoleKey: string,
-  candidateJobIds: string[]
+  candidateJobIds: string[],
 ): Promise<Set<string>> {
   if (candidateJobIds.length === 0) return new Set();
   const inList = candidateJobIds
@@ -451,9 +709,9 @@ async function fetchExistingJobIds(
       headers: {
         "Authorization": `Bearer ${serviceRoleKey}`,
         "apikey": serviceRoleKey,
-        "Accept": "application/json"
-      }
-    }
+        "Accept": "application/json",
+      },
+    },
   );
   if (!response.ok) {
     throw new Error(`job lookup failed: HTTP ${response.status}`);

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const PATH =
   "supabase/migrations/20260502001100_create_in_home_simulation_job_for_visitor.sql";
+const PLAN_0074_PATH =
+  "supabase/migrations/20260509000400_public_simulation_supabase_auth_otp.sql";
+const PLAN_0074_CRON_PATH =
+  "supabase/migrations/20260509000500_public_simulation_identity_purge_cron.sql";
 
 describe("SPEC-0015 PLAN-0040 production create-job RPC", () => {
   const sql = readFileSync(PATH, "utf8").replace(/\r\n/g, "\n");
@@ -145,5 +149,86 @@ describe("SPEC-0015 PLAN-0040 production create-job RPC", () => {
       "text, text, uuid, uuid, text, public.room_geometry_mode, uuid, integer"
     );
     expect(sql).toContain("to service_role");
+  });
+});
+
+describe("SPEC-0015 PLAN-0074 Supabase Auth OTP create-job override", () => {
+  const sql = readFileSync(PLAN_0074_PATH, "utf8").replace(/\r\n/g, "\n");
+
+  it("adds Auth-backed verification and session metadata columns", () => {
+    expect(sql).toContain("add column if not exists auth_user_id uuid");
+    expect(sql).toContain(
+      "alter column verification_code_hash drop not null"
+    );
+    expect(sql).toContain(
+      "add column if not exists email_verification_request_id uuid"
+    );
+    expect(sql).toContain("email_purged_at timestamptz");
+  });
+
+  it("creates the request and session RPCs used by the web route handlers", () => {
+    expect(sql).toContain(
+      "create or replace function public.create_public_simulation_email_verification_request"
+    );
+    expect(sql).toContain(
+      "create or replace function public.verify_public_simulation_auth_otp_session"
+    );
+    expect(sql).toContain("p_auth_user_id uuid");
+    expect(sql).toContain("p_access_token_hash text");
+  });
+
+  it("records required consent before OTP delivery and keeps optional marketing consent separate", () => {
+    expect(sql).toContain("'email_verification_required'");
+    expect(sql).toContain("'commercial_contact_optional'");
+    expect(sql).toContain("p_optional_commercial_decision");
+    expect(sql).toContain("'public-simulation-email-gate'");
+  });
+
+  it("overrides create_in_home_simulation_job_for_visitor to require an existing verified session", () => {
+    expect(sql).toContain(
+      "create or replace function public.create_in_home_simulation_job_for_visitor"
+    );
+    expect(sql).toContain(
+      "extensions.digest('access_token:' || p_verification_request_id, 'sha256')"
+    );
+    expect(sql).toContain("from public.simulation_sessions");
+    expect(sql).toContain("and status = 'active'");
+    expect(sql).toContain("and expires_at > now()");
+    expect(sql).toContain("verified simulation session required");
+    expect(sql).not.toContain(
+      "extensions.digest('email:' || p_verification_request_id, 'sha256')"
+    );
+  });
+
+  it("adds a service-role cleanup helper for encrypted email handoff purge", () => {
+    expect(sql).toContain(
+      "create or replace function public.purge_public_simulation_email_handoffs"
+    );
+    expect(sql).toContain("email_address_encrypted = null");
+    expect(sql).toContain("email_purged_at = now()");
+    expect(sql).toContain("interval '24 hours'");
+    expect(sql).toContain("auth_cleanup_candidates");
+    expect(sql).toContain("other_request.email_purged_at is null");
+    expect(sql).toContain("active_session.expires_at > now()");
+  });
+});
+
+describe("SPEC-0015 PLAN-0074 public simulation identity purge cron", () => {
+  const sql = readFileSync(PLAN_0074_CRON_PATH, "utf8").replace(/\r\n/g, "\n");
+
+  it("schedules the purge function hourly through pg_cron and pg_net", () => {
+    expect(sql).toContain("create extension if not exists pg_net");
+    expect(sql).toContain("create extension if not exists pg_cron");
+    expect(sql).toContain("public-simulation-identity-purge-runner");
+    expect(sql).toContain("'17 * * * *'");
+    expect(sql).toContain("net.http_post");
+    expect(sql).toContain("'worker', 'in-home-simulation-purge'");
+  });
+
+  it("uses Vault function URL and invoke secret instead of committed secrets", () => {
+    expect(sql).toContain("in_home_simulation_purge_function_url");
+    expect(sql).toContain("in_home_simulation_purge_invoke_secret");
+    expect(sql).toContain("'x-in-home-simulation-purge-secret'");
+    expect(sql).toContain("secrets.invoke_secret");
   });
 });

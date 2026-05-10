@@ -105,6 +105,7 @@ describe("PLAN-0068 in-home simulation worker dispatch and checkpoint modes", ()
   it("self-invokes through the in-home worker function URL and secret", () => {
     expect(source).toContain("resolveWorkerFunctionUrl");
     expect(source).toContain("IN_HOME_SIMULATION_WORKER_FUNCTION_URL");
+    expect(source).toContain("configuredUrl.trim().length > 0");
     expect(source).toContain("buildWorkerInvocationHeaders");
     expect(source).toContain("IN_HOME_SIMULATION_WORKER_INVOKE_SECRET");
     expect(source).toContain("IN_HOME_SIMULATION_WORKER_INVOCATION_TIMEOUT_MS");
