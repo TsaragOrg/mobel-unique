@@ -1,3 +1,8 @@
+/*
+RU: Этот файл проверяет первый экран админки. Пользователь видит проверку доступа, отказ или рабочую панель. Здесь мы убеждаемся, что ссылки и выход ведут себя правильно.
+FR: Ce fichier verifie le premier ecran admin. L'utilisateur voit le controle d'acces, un refus ou le panneau de travail. Ici nous verifions que les liens et la sortie restent corrects.
+*/
+
 import { render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -39,7 +44,7 @@ describe("Admin dashboard", () => {
     await waitFor(() => {
       expect(dependencies.redirect).toHaveBeenCalledWith("/admin/login");
     });
-    expect(screen.queryByText("Admin dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tableau de bord admin")).not.toBeInTheDocument();
   });
 
   it("fails closed for authenticated non-admin users", async () => {
@@ -53,9 +58,9 @@ describe("Admin dashboard", () => {
     render(<AdminDashboard dependencies={dependencies} />);
 
     await screen.findByRole("heading", {
-      name: "Admin access unavailable",
+      name: "Accès admin indisponible",
     });
-    expect(screen.queryByText("Admin dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tableau de bord admin")).not.toBeInTheDocument();
   });
 
   it("renders protected admin content only after the first-party session facade succeeds", async () => {
@@ -64,27 +69,35 @@ describe("Admin dashboard", () => {
     render(<AdminDashboard dependencies={dependencies} />);
 
     await screen.findByRole("heading", {
-      name: "Admin dashboard",
+      name: "Tableau de bord admin",
     });
     expect(dependencies.verifyAdminSession).toHaveBeenCalledWith("admin-token");
     expect(screen.getAllByText("MOBEL UNIQUE").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("navigation", {
-        name: "Admin",
+        name: "Administration",
       }),
     ).toBeInTheDocument();
     const catalogActions = screen.getByRole("navigation", {
-      name: "Catalog actions",
+      name: "Actions du catalogue",
     });
+    const actionIcons = catalogActions.querySelectorAll(".admin-action-icon");
 
     expect(
-      within(catalogActions).getByRole("link", { name: "Sofas" }),
+      within(catalogActions).getByRole("link", { name: "Canapés" }),
     ).toHaveAttribute("href", "/admin/sofas");
     expect(
-      within(catalogActions).getByRole("link", { name: "Tags" }),
+      within(catalogActions).getByRole("link", { name: "Nouveau canapé" }),
+    ).toHaveAttribute("href", "/admin/sofas/new");
+    expect(
+      within(catalogActions).getByRole("link", { name: "Étiquettes" }),
     ).toHaveAttribute("href", "/admin/tags");
     expect(
-      within(catalogActions).getByRole("link", { name: "Fabrics" }),
+      within(catalogActions).getByRole("link", { name: "Tissus" }),
     ).toHaveAttribute("href", "/admin/fabrics");
+    expect(actionIcons).toHaveLength(4);
+    for (const icon of actionIcons) {
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+    }
   });
 });

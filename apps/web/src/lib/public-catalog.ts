@@ -60,6 +60,8 @@ export interface PublicSofaRecord {
   id: string;
   length_cm?: number | null;
   manual_public_order?: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description?: string | null;
   public_name: string;
   public_slug: string;
@@ -93,8 +95,17 @@ export interface PublicVisualPositionRecord {
 export interface PublicRenderCellRecord {
   fabric_id: string;
   public_render_height_px?: number | null;
+  public_render_content_type?: string | null;
   public_render_object_path: string;
   public_render_width_px?: number | null;
+  render_medium_content_type: string;
+  render_medium_height_px?: number | null;
+  render_medium_object_path: string;
+  render_medium_width_px?: number | null;
+  render_original_content_type: string;
+  render_original_height_px?: number | null;
+  render_original_object_path: string;
+  render_original_width_px?: number | null;
   render_cell_id: string;
   sofa_id: string;
   visual_matrix_column_id: string;
@@ -126,8 +137,17 @@ export interface PublicTagResponse {
   slug: string;
 }
 
+export interface PublicPriceResponse {
+  amount_cents: number;
+  currency: "EUR";
+}
+
 export interface PublicCatalogItemResponse {
   default_fabric_id: string;
+  default_render_medium_content_type: string;
+  default_render_medium_height_px: number | null;
+  default_render_medium_url: string;
+  default_render_medium_width_px: number | null;
   default_render_url: string;
   default_visual_position_id: string;
   dimensions: {
@@ -138,6 +158,7 @@ export interface PublicCatalogItemResponse {
     length_cm: number | null;
   };
   id: string;
+  price: PublicPriceResponse | null;
   public_description: string | null;
   public_name: string;
   public_slug: string;
@@ -165,6 +186,14 @@ export interface PublicSofaDetailResponse {
   renders: Array<{
     fabric_id: string;
     height_px: number | null;
+    render_medium_content_type: string;
+    render_medium_height_px: number | null;
+    render_medium_url: string;
+    render_medium_width_px: number | null;
+    render_original_content_type: string;
+    render_original_height_px: number | null;
+    render_original_url: string;
+    render_original_width_px: number | null;
     render_url: string;
     visual_position_id: string;
     width_px: number | null;
@@ -172,6 +201,7 @@ export interface PublicSofaDetailResponse {
   sofa: {
     dimensions: PublicCatalogItemResponse["dimensions"];
     id: string;
+    price: PublicPriceResponse | null;
     public_description: string | null;
     public_name: string;
     public_slug: string;
@@ -603,15 +633,25 @@ function shapeCatalogItemResponse(
   state: UsableSofaState,
   publicAssetBaseUrl: string,
 ): PublicCatalogItemResponse {
+  const mediumUrl = buildPublicStorageUrl(
+    publicAssetBaseUrl,
+    state.defaultRender.render_medium_object_path,
+  );
+
   return {
     default_fabric_id: state.defaultFabric.id,
-    default_render_url: buildPublicStorageUrl(
-      publicAssetBaseUrl,
-      state.defaultRender.public_render_object_path,
-    ),
+    default_render_medium_content_type:
+      state.defaultRender.render_medium_content_type,
+    default_render_medium_height_px:
+      state.defaultRender.render_medium_height_px ?? null,
+    default_render_medium_url: mediumUrl,
+    default_render_medium_width_px:
+      state.defaultRender.render_medium_width_px ?? null,
+    default_render_url: mediumUrl,
     default_visual_position_id: state.defaultVisualPosition.id,
     dimensions: shapeDimensions(state.sofa),
     id: state.sofa.id,
+    price: shapePrice(state.sofa),
     public_description: state.sofa.public_description ?? null,
     public_name: state.sofa.public_name,
     public_slug: state.sofa.public_slug,
@@ -639,19 +679,36 @@ function shapeSofaDetailResponse(
         fabric.public_swatch_object_path,
       ),
     })),
-    renders: state.renders.map((render) => ({
-      fabric_id: render.fabric_id,
-      height_px: render.public_render_height_px ?? null,
-      render_url: buildPublicStorageUrl(
+    renders: state.renders.map((render) => {
+      const mediumUrl = buildPublicStorageUrl(
         publicAssetBaseUrl,
-        render.public_render_object_path,
-      ),
-      visual_position_id: render.visual_matrix_column_id,
-      width_px: render.public_render_width_px ?? null,
-    })),
+        render.render_medium_object_path,
+      );
+      const originalUrl = buildPublicStorageUrl(
+        publicAssetBaseUrl,
+        render.render_original_object_path,
+      );
+
+      return {
+        fabric_id: render.fabric_id,
+        height_px: render.render_original_height_px ?? null,
+        render_medium_content_type: render.render_medium_content_type,
+        render_medium_height_px: render.render_medium_height_px ?? null,
+        render_medium_url: mediumUrl,
+        render_medium_width_px: render.render_medium_width_px ?? null,
+        render_original_content_type: render.render_original_content_type,
+        render_original_height_px: render.render_original_height_px ?? null,
+        render_original_url: originalUrl,
+        render_original_width_px: render.render_original_width_px ?? null,
+        render_url: originalUrl,
+        visual_position_id: render.visual_matrix_column_id,
+        width_px: render.render_original_width_px ?? null,
+      };
+    }),
     sofa: {
       dimensions: shapeDimensions(state.sofa),
       id: state.sofa.id,
+      price: shapePrice(state.sofa),
       public_description: state.sofa.public_description ?? null,
       public_name: state.sofa.public_name,
       public_slug: state.sofa.public_slug,
@@ -673,6 +730,20 @@ function shapeDimensions(sofa: PublicSofaRecord) {
     footprint_type: stringOrNull(sofa.footprint_type),
     height_cm: numberOrNull(sofa.height_cm),
     length_cm: numberOrNull(sofa.length_cm),
+  };
+}
+
+function shapePrice(sofa: PublicSofaRecord): PublicPriceResponse | null {
+  const amountCents = numberOrNull(sofa.price_cents);
+  const currency = stringOrNull(sofa.price_currency);
+
+  if (!amountCents || currency !== "EUR") {
+    return null;
+  }
+
+  return {
+    amount_cents: amountCents,
+    currency: "EUR",
   };
 }
 
@@ -745,6 +816,8 @@ function shapeSofaRecord(
     id: record.id,
     length_cm: numberOrNull(record.length_cm),
     manual_public_order: numberOrNull(record.manual_public_order),
+    price_cents: numberOrNull(record.price_cents),
+    price_currency: stringOrNull(record.price_currency),
     public_description: stringOrNull(record.public_description),
     public_name: record.public_name,
     public_slug: record.public_slug,
@@ -821,22 +894,51 @@ function shapeVisualPositionRecord(
 function shapeRenderCellRecord(
   record: PublicRenderCellRecord | JsonObject,
 ): PublicRenderCellRecord | null {
+  const mediumObjectPath =
+    stringOrNull(record.render_medium_object_path) ??
+    stringOrNull(record.public_render_object_path);
+  const mediumContentType =
+    stringOrNull(record.render_medium_content_type) ??
+    stringOrNull(record.public_render_content_type);
+  const originalObjectPath = stringOrNull(record.render_original_object_path);
+  const originalContentType = stringOrNull(record.render_original_content_type);
+
   if (
     !isRecord(record) ||
     typeof record.render_cell_id !== "string" ||
     typeof record.sofa_id !== "string" ||
     typeof record.fabric_id !== "string" ||
     typeof record.visual_matrix_column_id !== "string" ||
-    typeof record.public_render_object_path !== "string"
+    !mediumObjectPath ||
+    !mediumContentType ||
+    !originalObjectPath ||
+    !originalContentType
   ) {
     return null;
   }
 
   return {
     fabric_id: record.fabric_id,
-    public_render_height_px: numberOrNull(record.public_render_height_px),
-    public_render_object_path: record.public_render_object_path,
-    public_render_width_px: numberOrNull(record.public_render_width_px),
+    public_render_content_type: mediumContentType,
+    public_render_height_px:
+      numberOrNull(record.public_render_height_px) ??
+      numberOrNull(record.render_medium_height_px),
+    public_render_object_path: mediumObjectPath,
+    public_render_width_px:
+      numberOrNull(record.public_render_width_px) ??
+      numberOrNull(record.render_medium_width_px),
+    render_medium_content_type: mediumContentType,
+    render_medium_height_px:
+      numberOrNull(record.render_medium_height_px) ??
+      numberOrNull(record.public_render_height_px),
+    render_medium_object_path: mediumObjectPath,
+    render_medium_width_px:
+      numberOrNull(record.render_medium_width_px) ??
+      numberOrNull(record.public_render_width_px),
+    render_original_content_type: originalContentType,
+    render_original_height_px: numberOrNull(record.render_original_height_px),
+    render_original_object_path: originalObjectPath,
+    render_original_width_px: numberOrNull(record.render_original_width_px),
     render_cell_id: record.render_cell_id,
     sofa_id: record.sofa_id,
     visual_matrix_column_id: record.visual_matrix_column_id,

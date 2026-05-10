@@ -1,12 +1,27 @@
+/*
+RU: Этот файл проверяет публичную страницу одного дивана.
+RU: Во время проверки видны название, цена, ткань, вид, размеры, метки и кнопки для симуляции или заказа.
+RU: Проверки помогают убедиться, что посетитель может выбрать ткань и вид, открыть симуляцию и увидеть главные данные дивана.
+FR: Ce fichier verifie la page publique d'un canape.
+FR: Pendant les tests, on voit le nom, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
+FR: Les tests aident a verifier que le visiteur peut choisir le tissu et la vue, ouvrir la simulation et voir les donnees principales du canape.
+RU: Также проверяется большое окно с картинкой дивана.
+FR: Les tests verifient aussi la grande fenetre avec l'image du canape.
+*/
+
 import {
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicSofaDetailPage } from "./PublicSofaDetailPage";
 
+// RU: Эти данные дают странице диван с ценой, тканями, видами, размерами и метками.
+// FR: Ces donnees donnent a la page un canape avec prix, tissus, vues, tailles et etiquettes.
 const detail = {
   defaults: {
     fabric_id: "fabric-boucle",
@@ -32,28 +47,36 @@ const detail = {
     {
       fabric_id: "fabric-boucle",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/boucle-face.png",
+      render_original_url:
+        "https://assets.example/rivoli/boucle-face-original.png",
+      render_url: "https://assets.example/rivoli/boucle-face-medium.jpg",
       visual_position_id: "front",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-boucle",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/boucle-profil.png",
+      render_original_url:
+        "https://assets.example/rivoli/boucle-profil-original.png",
+      render_url: "https://assets.example/rivoli/boucle-profil-medium.jpg",
       visual_position_id: "profile",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-sauge",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/sauge-face.png",
+      render_original_url:
+        "https://assets.example/rivoli/sauge-face-original.png",
+      render_url: "https://assets.example/rivoli/sauge-face-medium.jpg",
       visual_position_id: "front",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-sauge",
       height_px: 1200,
-      render_url: "https://assets.example/rivoli/sauge-profil.png",
+      render_original_url:
+        "https://assets.example/rivoli/sauge-profil-original.png",
+      render_url: "https://assets.example/rivoli/sauge-profil-medium.jpg",
       visual_position_id: "profile",
       width_px: 1600,
     },
@@ -67,6 +90,10 @@ const detail = {
       length_cm: 240,
     },
     id: "sofa-rivoli",
+    price: {
+      amount_cents: 129900,
+      currency: "EUR",
+    },
     public_description: "Un canapé modulable pour le salon.",
     public_name: "Canapé Rivoli",
     public_slug: "canape-rivoli",
@@ -96,6 +123,17 @@ const detail = {
   ],
 };
 
+// RU: Эти данные дают странице много меток, чтобы проверить короткий и полный вид меток.
+// FR: Ces donnees donnent beaucoup d'etiquettes pour verifier la vue courte et la vue complete.
+const manySofaTags = Array.from({ length: 10 }, (_, index) => {
+  const number = String(index + 1).padStart(2, "0");
+
+  return {
+    public_label: `Étiquette ${number}`,
+    slug: `etiquette-${number}`,
+  };
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: {
@@ -124,8 +162,14 @@ describe("PublicSofaDetailPage", () => {
     mockDetailResponse();
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
 
+    expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
+      "href",
+      "/catalog",
+    );
     expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
     expect(screen.getByText("Un canapé modulable pour le salon.")).toBeInTheDocument();
+    expect(screen.getByText("1 299 €")).toBeInTheDocument();
     expect(screen.getByText("Longueur 240 cm")).toBeInTheDocument();
     expect(screen.getByText("Profondeur 96 cm")).toBeInTheDocument();
     expect(screen.getByText("Hauteur 82 cm")).toBeInTheDocument();
@@ -141,7 +185,7 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Face"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/boucle-face.png",
+      "https://assets.example/rivoli/boucle-face-original.png",
     );
     expect(screen.getByRole("link", { name: "Lancer ma simulation" })).toHaveAttribute(
       "href",
@@ -151,7 +195,39 @@ describe("PublicSofaDetailPage", () => {
       "href",
       "https://shopify.example/products/canape-rivoli",
     );
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/public/sofas/canape-rivoli", {
+      cache: "no-store",
+    });
     expect(screen.getByText(/Le rendu IA reste une estimation visuelle/i)).toBeInTheDocument();
+  });
+
+  it("keeps sofa detail tags compact until the visitor opens the full list", async () => {
+    const detailWithManyTags = {
+      ...detail,
+      sofa: {
+        ...detail.sofa,
+        tags: manySofaTags,
+      },
+    };
+    mockDetailResponse({ data: detailWithManyTags, meta: {} });
+
+    render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    await screen.findByRole("heading", { name: detailWithManyTags.sofa.public_name });
+    const tagGroup = screen.getByRole("list", { name: "Étiquettes du canapé" });
+
+    expect(within(tagGroup).getByText("Étiquette 01")).toBeInTheDocument();
+    expect(within(tagGroup).getByText("Étiquette 02")).toBeInTheDocument();
+    expect(within(tagGroup).getByText("Étiquette 03")).toBeInTheDocument();
+    expect(within(tagGroup).queryByText("Étiquette 04")).not.toBeInTheDocument();
+
+    fireEvent.click(within(tagGroup).getByRole("button", { name: "Voir plus" }));
+
+    expect(within(tagGroup).getByText("Étiquette 10")).toBeInTheDocument();
+    expect(within(tagGroup).getByRole("button", { name: "Voir moins" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("restores a valid internal catalog preview fabric from session storage", async () => {
@@ -168,7 +244,7 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Face"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/sauge-face.png",
+      "https://assets.example/rivoli/sauge-face-original.png",
     );
     expect(
       window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli"),
@@ -183,7 +259,7 @@ describe("PublicSofaDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profil" }));
     expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Profil"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/boucle-profil.png",
+      "https://assets.example/rivoli/boucle-profil-original.png",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
@@ -194,8 +270,46 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Profil"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/sauge-profil.png",
+      "https://assets.example/rivoli/sauge-profil-original.png",
     );
+  });
+
+  it("opens the selected sofa image in a full-screen viewer and closes it", async () => {
+    mockDetailResponse();
+    render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    const openButton = await screen.findByRole("button", {
+      name: "Agrandir l'image du canapé",
+    });
+
+    fireEvent.click(openButton);
+
+    const dialog = screen.getByRole("dialog", { name: "Image du canapé" });
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Canapé Rivoli en Bouclé ivoire, Face",
+      }),
+    ).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/boucle-face-original.png",
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Fermer l'image" }),
+    );
+
+    expect(
+      screen.queryByRole("dialog", { name: "Image du canapé" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(openButton);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Image du canapé" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("blocks simulation when session-scoped selection state is stale", async () => {

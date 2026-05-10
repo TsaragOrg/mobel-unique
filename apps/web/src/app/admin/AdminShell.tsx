@@ -1,22 +1,30 @@
+/*
+RU: Этот файл нужен для общей рамки админки. На экране видно логотип, навигацию и заголовки страниц. Здесь можно перейти между разделами или увидеть заголовок текущей страницы.
+FR: Ce fichier sert au cadre commun de l'admin. A l'ecran, on voit le logo, la navigation et les titres des pages. Ici, on peut passer entre les zones ou lire le titre de la page.
+*/
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ADMIN_COPY } from "./admin-copy";
 
+// RU: Эти ссылки показывают верхнее меню админки.
+// FR: Ces liens affichent le menu du haut de l'admin.
 const ADMIN_NAV_ITEMS = [
   {
     href: "/admin",
-    label: "Dashboard",
+    label: ADMIN_COPY.shell.navigation.dashboard,
   },
   {
     href: "/admin/sofas",
-    label: "Sofas",
+    label: ADMIN_COPY.shell.navigation.sofas,
   },
   {
     href: "/admin/fabrics",
-    label: "Fabrics",
+    label: ADMIN_COPY.shell.navigation.fabrics,
   },
   {
     href: "/admin/tags",
-    label: "Tags",
+    label: ADMIN_COPY.shell.navigation.tags,
   },
 ] as const;
 
@@ -44,7 +52,7 @@ export function AdminShell({
       <div className="admin-frame">
         <header className="admin-topbar">
           <Link className="admin-brand" href={showNavigation ? "/admin" : "/"}>
-            MOBEL UNIQUE
+            {ADMIN_COPY.shell.brand}
           </Link>
           {showNavigation ? <AdminNavigation /> : null}
         </header>
@@ -56,7 +64,7 @@ export function AdminShell({
 
 export function AdminNavigation() {
   return (
-    <nav className="admin-nav" aria-label="Admin">
+    <nav className="admin-nav" aria-label={ADMIN_COPY.shell.navigationAriaLabel}>
       {ADMIN_NAV_ITEMS.map((item) => (
         <Link href={item.href} key={item.href}>
           {item.label}

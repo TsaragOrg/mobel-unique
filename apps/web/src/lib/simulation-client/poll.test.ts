@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  POLL_DEFAULT_ERROR_BACKOFF_MS,
   POLL_DEFAULT_HIDDEN_GRACE_MS,
   POLL_DEFAULT_INTERVAL_MS,
   POLL_TERMINAL_STATUSES,
@@ -255,7 +256,7 @@ describe("createSimulationPoller", () => {
     expect(runtime.visibility.listeners).toHaveLength(0);
   });
 
-  it("forwards fetch errors to onError without stopping the poller", async () => {
+  it("backs off after fetch errors instead of keeping the interval hot", async () => {
     const runtime = makeRuntime();
     const errors: unknown[] = [];
     let throwOnNext = false;
@@ -281,6 +282,37 @@ describe("createSimulationPoller", () => {
     await runtime.tick();
 
     expect(errors).toHaveLength(1);
+    expect(runtime.intervals).toHaveLength(0);
+    expect(runtime.timeouts).toHaveLength(1);
+    expect(runtime.timeouts[0].delayMs).toBe(POLL_DEFAULT_ERROR_BACKOFF_MS[0]);
+  });
+
+  it("resets error backoff and resumes the normal interval after a successful retry", async () => {
+    const runtime = makeRuntime();
+    let fail = true;
+    const fetchStatus = vi.fn(async () => {
+      if (fail) {
+        throw new Error("server down");
+      }
+      return buildSnapshot("queued");
+    });
+
+    const poller = createSimulationPoller({
+      fetchStatus,
+      onUpdate: () => undefined,
+      onError: () => undefined,
+      deps: runtime.deps
+    });
+    poller.start();
+    await flushMicrotasks();
+
+    expect(runtime.intervals).toHaveLength(0);
+    expect(runtime.timeouts[0].delayMs).toBe(POLL_DEFAULT_ERROR_BACKOFF_MS[0]);
+
+    fail = false;
+    await runtime.fireTimeout(runtime.timeouts[0].id);
+
     expect(runtime.intervals).toHaveLength(1);
+    expect(runtime.intervals[0].delayMs).toBe(POLL_DEFAULT_INTERVAL_MS);
   });
 });

@@ -81,7 +81,7 @@
       "layer": "technical",
       "parent": "SPEC-0004",
       "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004"],
-      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034"],
+      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034", "PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
       "areas": ["api", "supabase"]
     },
@@ -111,7 +111,7 @@
         "SPEC-0007",
         "SPEC-0008"
       ],
-      "implementationPlans": ["PLAN-0061"],
+      "implementationPlans": ["PLAN-0061", "PLAN-0065", "PLAN-0068", "PLAN-0074"],
       "path": "docs/specs/accepted/SPEC-0009-data-model-and-storage.md",
       "areas": ["web", "api", "image-worker", "supabase", "shared"]
     },
@@ -131,7 +131,7 @@
         "SPEC-0008",
         "SPEC-0009"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0068", "PLAN-0074"],
       "path": "docs/specs/accepted/SPEC-0010-api-contracts-and-edge-functions.md",
       "areas": ["web", "api", "supabase", "image-worker", "shared"]
     },
@@ -149,7 +149,7 @@
         "SPEC-0009",
         "SPEC-0010"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0068"],
       "path": "docs/specs/accepted/SPEC-0011-admin-authentication-and-authorization.md",
       "areas": ["web", "api", "supabase", "workflow"]
     },
@@ -188,7 +188,7 @@
         "SPEC-0011",
         "SPEC-0012"
       ],
-      "implementationPlans": [],
+      "implementationPlans": ["PLAN-0065"],
       "path": "docs/specs/accepted/SPEC-0013-admin-frontend-experience-and-page-flows.md",
       "areas": ["web", "api", "supabase"]
     },
@@ -206,7 +206,8 @@
         "PLAN-0047",
         "PLAN-0048",
         "PLAN-0052",
-        "PLAN-0059"
+        "PLAN-0059",
+        "PLAN-0065"
       ],
       "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
       "areas": ["web", "api"]
@@ -237,7 +238,9 @@
         "PLAN-0053",
         "PLAN-0056",
         "PLAN-0057",
-        "PLAN-0058"
+        "PLAN-0058",
+        "PLAN-0068",
+        "PLAN-0074"
       ],
       "path": "docs/specs/accepted/SPEC-0015-public-simulation-wizard.md",
       "areas": ["web", "supabase"]
@@ -252,6 +255,27 @@
       "implementationPlans": ["PLAN-0049"],
       "path": "docs/specs/accepted/SPEC-0016-admin-fabric-swatch-cropper.md",
       "areas": ["web"]
+    },
+    {
+      "id": "SPEC-0017",
+      "title": "Admin French Localization",
+      "status": "accepted",
+      "layer": "feature",
+      "parent": "SPEC-0013",
+      "dependsOn": [
+        "SPEC-0001",
+        "SPEC-0003",
+        "SPEC-0005",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0011",
+        "SPEC-0013",
+        "SPEC-0014",
+        "SPEC-0016"
+      ],
+      "implementationPlans": ["PLAN-0076"],
+      "path": "docs/specs/accepted/SPEC-0017-admin-french-localization.md",
+      "areas": ["web", "api"]
     }
   ]
 }

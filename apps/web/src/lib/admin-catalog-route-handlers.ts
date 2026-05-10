@@ -1,4 +1,5 @@
 import { type createAdminAuth } from "./admin-auth";
+import { formatAdminErrorCodeMessage } from "../app/admin/admin-copy";
 import {
   AdminCatalogOperationError,
   shapeFabricRenderCandidateResponse,
@@ -30,6 +31,7 @@ import {
   type AdminFabricRenderJobBatchRecord,
   type AdminFabricRenderResumeRecord,
 } from "./admin-catalog";
+import type { CatalogImageDeliveryVariant } from "./catalog-image-variants";
 
 export type { AdminCatalogStore } from "./admin-catalog";
 
@@ -52,6 +54,7 @@ type SofaInput = BaseInput & {
 
 type StorageAssetInput = BaseInput & {
   assetId: string;
+  variant?: string | null;
 };
 
 type RenderExportInput = BaseInput & {
@@ -258,6 +261,54 @@ export async function handlePublishSofaRequest(input: SofaInput) {
   });
 }
 
+export async function handleArchiveSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.archiveSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
+export async function handleUnarchiveSofaRequest(input: SofaInput) {
+  return withAuthorizedStore(input, async (store) => {
+    const result = await store.unarchiveSofa(input.sofaId);
+
+    if (!result) {
+      return notFoundResponse("SOFA_NOT_FOUND", "Sofa was not found.");
+    }
+
+    if (isCatalogError(result)) {
+      return catalogErrorResponse(result);
+    }
+
+    return jsonResponse(
+      {
+        data: {
+          sofa: shapeSofaResponse(result),
+        },
+        meta: {},
+      },
+      200,
+    );
+  });
+}
+
 export async function handleUnpublishSofaRequest(input: SofaInput) {
   return withAuthorizedStore(input, async (store) => {
     const result = await store.unpublishSofa(input.sofaId);
@@ -335,7 +386,16 @@ export async function handleGetStorageAssetPreviewRequest(
   input: StorageAssetInput,
 ) {
   return withAuthorizedStore(input, async (store) => {
-    const preview = await store.getStorageAssetPreview(input.assetId);
+    const variant = parseStorageAssetPreviewVariant(input.variant);
+
+    if (!variant.ok) {
+      return validationResponse(variant);
+    }
+
+    const preview = await store.getStorageAssetPreview(
+      input.assetId,
+      variant.value,
+    );
 
     if (!preview) {
       return notFoundResponse(
@@ -580,6 +640,12 @@ export async function handleResumeFabricRenderJobsRequest(input: RequestInput) {
     return jsonResponse(
       {
         data: {
+          ...(resume.preferred_job_id
+            ? { preferred_job_id: resume.preferred_job_id }
+            : {}),
+          ...(resume.render_cell_id
+            ? { render_cell_id: resume.render_cell_id }
+            : {}),
           request_ids: resume.request_ids,
           status: resume.status,
           total_requests: resume.total_requests,
@@ -1187,18 +1253,62 @@ function validationResponse(input: {
 }) {
   return jsonResponse(
     {
-      error: input.error,
+      error: {
+        ...input.error,
+        message: formatAdminErrorCodeMessage(input.error.code),
+      },
     },
     input.status,
   );
 }
 
-function notFoundResponse(code: string, message: string) {
+function parseStorageAssetPreviewVariant(input: string | null | undefined):
+  | {
+      ok: true;
+      value: CatalogImageDeliveryVariant;
+    }
+  | {
+      error: {
+        code: string;
+        details: Record<string, unknown>;
+        message: string;
+      };
+      ok: false;
+      status: 400;
+    } {
+  if (!input) {
+    return {
+      ok: true,
+      value: "original",
+    };
+  }
+
+  if (input === "original" || input === "small" || input === "medium") {
+    return {
+      ok: true,
+      value: input,
+    };
+  }
+
+  return {
+    error: {
+      code: "INVALID_STORAGE_ASSET_VARIANT",
+      details: {
+        variant: input,
+      },
+      message: "Storage asset preview variant is not supported.",
+    },
+    ok: false,
+    status: 400,
+  };
+}
+
+function notFoundResponse(code: string, _message: string) {
   return jsonResponse(
     {
       error: {
         code,
-        message,
+        message: formatAdminErrorCodeMessage(code),
       },
     },
     404,
@@ -1223,7 +1333,7 @@ function catalogErrorResponse(error: AdminCatalogOperationErrorData) {
       error: {
         code: error.code,
         details: error.details ?? {},
-        message: error.message,
+        message: formatAdminErrorCodeMessage(error.code),
       },
     },
     error.status,

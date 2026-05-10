@@ -3,17 +3,14 @@
 Execution plans currently being implemented.
 
 Every active plan must reference a registered spec id from `docs/specs/manifest.json`.
+Plans that have shipped or have been superseded by a newer active plan must be
+moved to `docs/plans/done` with a closure note before new implementation work
+continues.
 
 | Plan | Spec | Status | Owner area | Summary |
 | ---- | ---- | ------ | ---------- | ------- |
-| PLAN-0038 | SPEC-0015 | active | supabase | Worker cleanup: remove Gemini and scene classifier providers, make `room_depth` required. |
-| PLAN-0039 | SPEC-0015 | active | supabase | DB foundation tables, cost meter wiring, deterministic test catalog seed. |
-| PLAN-0040 | SPEC-0015 | active | web | Five public simulation route handlers plus auth, rate-limit, idempotency helpers. |
-| PLAN-0041 | SPEC-0015 | active | web | Wizard pages with French copy and a worker behavior parity gate. |
 | PLAN-0042 | SPEC-0015 | active | workflow | Production launch test, cross-team sign-off, and operations runbook. |
-| PLAN-0044 | SPEC-0013 | active | web | Admin interface visual system, shared shell, and phased harmonization across protected admin pages. |
-| PLAN-0049 | SPEC-0016 | active | web | Admin fabric create and edit forms generate square cropped swatch uploads in the browser. |
-| PLAN-0050 | SPEC-0015 | active | web | Public simulation email gate UI: two-step verification screen at `/sofas/[slug]/simulate/start` that mints the access cookie before the wizard. |
 | PLAN-0052 | SPEC-0014 | active | web | Sofa edit operational redesign for sober admin UX, clearer tab hierarchy, quieter controls, richer render cells, larger cell detail, and export relocation. |
-| PLAN-0059 | SPEC-0014 | active | web | Transaction-safe View Columns source fabric reassignment when an existing source image changes fabric line without upload. |
-| PLAN-0061 | SPEC-0009 | active | workflow | Manual DEV-only catalog snapshot export, validation, and apply workflow for local sofa catalog data. |
+| PLAN-0067 | SPEC-0009 | active | supabase | Durable stored small and medium catalog image variants for admin render review, public catalog cards, publication, worker output, and backfill. |
+| PLAN-0068 | SPEC-0007 | active | supabase | In-home simulation durable checkpoints and Realtime progress; this remains the target plan for replacing request-time pumping. |
+| PLAN-0074 | SPEC-0015 | active | web | Public simulation email gate replacement using Supabase Auth email OTP with configured SMTP, application-owned simulation sessions, and 24-hour identity cleanup. |

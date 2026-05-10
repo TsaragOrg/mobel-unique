@@ -13,11 +13,15 @@ export const DEFAULT_OUTPUT_PATH =
 export const CATALOG_STORAGE_ASSET_KINDS = [
   "fabric_ai_reference",
   "fabric_render_candidate",
+  "fabric_render_candidate_variant",
   "fabric_render_private",
   "fabric_swatch_public",
   "manual_render",
+  "manual_render_variant",
   "published_sofa_render",
+  "published_sofa_render_variant",
   "sofa_source_photo",
+  "sofa_source_photo_variant",
 ];
 
 export const CATALOG_TABLES = [
@@ -42,6 +46,18 @@ export const CATALOG_TABLES = [
       "created_at",
       "deleted_at",
       "purged_at",
+    ],
+  },
+  {
+    name: "storage_asset_variants",
+    orderBy: "original_asset_id, variant_kind",
+    columns: [
+      "original_asset_id",
+      "variant_kind",
+      "variant_asset_id",
+      "generation_kind",
+      "created_at",
+      "updated_at",
     ],
   },
   {
@@ -258,6 +274,7 @@ const DELETE_SQL = [
   "delete from public.sofas;",
   "delete from public.fabrics;",
   "delete from public.public_tags;",
+  "delete from public.storage_asset_variants;",
   `delete from public.storage_assets where asset_kind in (${CATALOG_STORAGE_ASSET_KINDS.map(
     sqlString,
   ).join(", ")});`,

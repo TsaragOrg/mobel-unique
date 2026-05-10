@@ -1,12 +1,20 @@
+/*
+RU: Этот файл нужен для списка тканей в админке. На экране видны ткани и ссылка на создание. Здесь можно открыть ткань или начать новую запись.
+FR: Ce fichier sert a la liste des tissus dans l'admin. A l'ecran, on voit les tissus et le lien de creation. Ici, on peut ouvrir un tissu ou commencer une nouvelle fiche.
+*/
+
 import type { Metadata } from "next";
+import { ADMIN_COPY } from "../admin-copy";
 import { AdminFabricsPage } from "../AdminCatalogPages";
 
+// RU: Эти данные говорят браузеру название страницы и закрывают ее от поиска.
+// FR: Ces donnees donnent le nom de la page au navigateur et la ferment aux moteurs de recherche.
 export const metadata: Metadata = {
   robots: {
     follow: false,
     index: false,
   },
-  title: "Fabrics | Mobel Unique",
+  title: ADMIN_COPY.catalog.metadataTitles.fabrics,
 };
 
 export default function FabricsPage() {

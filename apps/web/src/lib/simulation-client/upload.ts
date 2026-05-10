@@ -38,12 +38,19 @@ export interface UploadDeps {
 
 export type UploadAttemptOutcome =
   | { ok: true; payload: CreateSimulationResponse }
-  | { ok: false; retryable: true; reason: "NETWORK" | "TIMEOUT" | "HTTP_5XX" }
+  | {
+      ok: false;
+      retryable: true;
+      reason: "NETWORK" | "TIMEOUT" | "HTTP_5XX";
+      httpStatus?: number;
+      message?: string;
+    }
   | {
       ok: false;
       retryable: false;
       code: SimulationPublicErrorCode | "UNKNOWN";
       httpStatus: number;
+      message?: string;
     };
 
 export type UploadResult =
@@ -71,7 +78,11 @@ export async function uploadRoomPhotoWithDeps(
   const maxAttempts = options.maxAttempts ?? UPLOAD_DEFAULT_MAX_ATTEMPTS;
   const backoffsMs = options.backoffsMs ?? UPLOAD_DEFAULT_BACKOFFS_MS;
 
-  let lastRetryReason: "NETWORK" | "TIMEOUT" | "HTTP_5XX" = "NETWORK";
+  let lastRetryFailure: {
+    reason: "NETWORK" | "TIMEOUT" | "HTTP_5XX";
+    httpStatus?: number;
+    message?: string;
+  } = { reason: "NETWORK" };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const outcome = await runOneAttempt(input, deps);
@@ -90,10 +101,15 @@ export async function uploadRoomPhotoWithDeps(
         ok: false,
         code: outcome.code,
         attempts: attempt,
-        httpStatus: outcome.httpStatus
+        httpStatus: outcome.httpStatus,
+        message: outcome.message
       };
     }
-    lastRetryReason = outcome.reason;
+    lastRetryFailure = {
+      reason: outcome.reason,
+      httpStatus: outcome.httpStatus,
+      message: outcome.message
+    };
     if (attempt === maxAttempts) {
       break;
     }
@@ -105,8 +121,15 @@ export async function uploadRoomPhotoWithDeps(
 
   return {
     ok: false,
-    code: lastRetryReason === "TIMEOUT" ? "TIMEOUT" : "NETWORK",
-    attempts: maxAttempts
+    code:
+      lastRetryFailure.reason === "TIMEOUT"
+        ? "TIMEOUT"
+        : lastRetryFailure.reason === "HTTP_5XX"
+          ? "INTERNAL_ERROR"
+          : "NETWORK",
+    attempts: maxAttempts,
+    httpStatus: lastRetryFailure.httpStatus,
+    message: lastRetryFailure.message
   };
 }
 
@@ -162,14 +185,23 @@ function runOneAttempt(
         return;
       }
       if (status >= 500 && status < 600) {
-        resolve({ ok: false, retryable: true, reason: "HTTP_5XX" });
+        const serverError = extractServerError(text);
+        resolve({
+          ok: false,
+          retryable: true,
+          reason: "HTTP_5XX",
+          httpStatus: status,
+          message: serverError.message
+        });
         return;
       }
+      const serverError = extractServerError(text);
       resolve({
         ok: false,
         retryable: false,
-        code: extractServerErrorCode(text),
-        httpStatus: status
+        code: serverError.code,
+        httpStatus: status,
+        message: serverError.message
       });
     };
 
@@ -224,20 +256,25 @@ function safeParseSuccess(text: string): CreateSimulationResponse | null {
   }
 }
 
-function extractServerErrorCode(
-  text: string
-): SimulationPublicErrorCode | "UNKNOWN" {
+function extractServerError(text: string): {
+  code: SimulationPublicErrorCode | "UNKNOWN";
+  message?: string;
+} {
   try {
     const parsed = JSON.parse(text) as {
-      error?: { code?: SimulationPublicErrorCode };
+      error?: { code?: SimulationPublicErrorCode; message?: string };
     };
-    if (parsed.error?.code) {
-      return parsed.error.code;
-    }
+    return {
+      code: parsed.error?.code ?? "UNKNOWN",
+      message:
+        typeof parsed.error?.message === "string"
+          ? parsed.error.message
+          : undefined
+    };
   } catch {
     // fall through
   }
-  return "UNKNOWN";
+  return { code: "UNKNOWN" };
 }
 
 function clamp(value: number, min: number, max: number): number {

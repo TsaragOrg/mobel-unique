@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 
 const functionPath = "supabase/functions/fabric-render-worker/index.ts";
 
+function extractStringConstant(source, name) {
+  const match = source.match(new RegExp(`const ${name} =\\s*"([^"]+)";`));
+
+  if (!match) {
+    throw new Error(`${name} was not found`);
+  }
+
+  return match[1];
+}
+
 describe("fabric render worker Edge Function", () => {
   it("claims, completes, and fails request-scoped jobs through the expected RPC helpers", async () => {
     const source = await readFile(functionPath, "utf8");
@@ -48,7 +58,7 @@ describe("fabric render worker Edge Function", () => {
     expect(pumpSource).not.toContain("processClaimedJob");
   });
 
-  it("uses job mode to claim one request job and re-invoke pump after completion", async () => {
+  it("uses job mode to claim one request job and re-invoke pump after successful completion", async () => {
     const source = await readFile(functionPath, "utf8");
     const jobIndex = source.indexOf("async function handleJobMode");
     const processIndex = source.indexOf("async function processClaimedJob");
@@ -61,8 +71,34 @@ describe("fabric render worker Edge Function", () => {
     expect(jobSource).toContain("p_capacity_scope");
     expect(jobSource).toContain("processClaimedJob");
     expect(jobSource).toContain("invokeNextWorkerPump");
-    expect(jobSource).toContain("finally");
     expect(jobSource).toContain('status === "capacity_full"');
+  });
+
+  it("passes a preferred queued job from selected-cell pump requests into the first claim", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const pumpIndex = source.indexOf("async function handlePumpMode");
+    const jobIndex = source.indexOf("async function handleJobMode");
+    const invokeWorkerIndex = source.indexOf("async function invokeWorker(");
+    const pumpSource = source.slice(pumpIndex, jobIndex);
+    const jobSource = source.slice(jobIndex, invokeWorkerIndex);
+
+    expect(source).toContain("preferred_job_id");
+    expect(source).toContain("preferredJobId");
+    expect(pumpSource).toContain("input.preferredJobId ? 1");
+    expect(pumpSource).toContain("preferredJobId: input.preferredJobId");
+    expect(jobSource).toContain("p_preferred_job_id: input.preferredJobId");
+  });
+
+  it("does not continue the same queued request after a failed job", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const jobIndex = source.indexOf("async function handleJobMode");
+    const readStatusIndex = source.indexOf("function readRequestStatusCount");
+    const jobSource = source.slice(jobIndex, readStatusIndex);
+
+    expect(jobSource).toContain("const response = await processClaimedJob");
+    expect(jobSource).toContain("if (response.ok)");
+    expect(jobSource).toContain("invokeNextWorkerPump");
+    expect(jobSource).not.toContain("finally");
   });
 
   it("continues the next queued request when local global capacity frees up", async () => {
@@ -71,7 +107,7 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("async function invokeNextWorkerPump");
     expect(source).toContain("fabric_render_worker_next_queued_request_id");
     expect(source).toContain("readNextRequestId");
-    expect(source).toContain("capacityScope === \"global\"");
+    expect(source).toContain('capacityScope === "global"');
     expect(source).toContain("return nextRequestId");
   });
 
@@ -85,6 +121,22 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain("MOCK_INPUT_IMAGE_BASE64");
     expect(source).toContain("MOCK_OUTPUT_PNG_BASE64");
     expect(source).toContain("materializeProviderInputBytes");
+  });
+
+  it("uses an RGBA mock output PNG that the Edge image decoder can read", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const bytes = Buffer.from(
+      extractStringConstant(source, "MOCK_OUTPUT_PNG_BASE64"),
+      "base64",
+    );
+
+    expect(bytes.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(bytes.readUInt32BE(16)).toBe(1);
+    expect(bytes.readUInt32BE(20)).toBe(1);
+    expect(bytes[24]).toBe(8);
+    expect(bytes[25]).toBe(6);
   });
 
   it("wires Gemini provider helpers, scratch artifacts, and retry classification", async () => {
@@ -223,6 +275,39 @@ describe("fabric render worker Edge Function", () => {
     expect(source).toContain(
       "output_width_px: normalizedImage.normalizedWidthPx",
     );
+  });
+
+  it("uploads private candidate variants before marking the worker job succeeded", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const variantGenerationIndex = source.indexOf(
+      "generateFabricRenderCandidateImageVariants",
+    );
+    const outputUploadIndex = source.indexOf("objectPath: outputPath");
+    const succeedIndex = source.indexOf("fabric_render_worker_succeed");
+
+    expect(source).toContain("./image-variants.ts");
+    expect(variantGenerationIndex).toBeGreaterThan(-1);
+    expect(outputUploadIndex).toBeGreaterThan(-1);
+    expect(succeedIndex).toBeGreaterThan(outputUploadIndex);
+    expect(source).toContain("p_output_variants");
+    expect(source).toContain("variant_asset_id");
+    expect(source).toContain("variant_kind");
+    expect(source).toContain("variant.bytes");
+    expect(source).toContain("variant.object_path");
+  });
+
+  it("removes already uploaded private originals and variants when completion fails", async () => {
+    const source = await readFile(functionPath, "utf8");
+    const uploadedPathsIndex = source.indexOf("uploadedOutputObjectPaths");
+    const cleanupIndex = source.indexOf(
+      "removeUploadedFabricRenderOutputObjects",
+    );
+    const failRpcIndex = source.indexOf("fabric_render_worker_fail");
+
+    expect(source).toContain("removeStorageObjects");
+    expect(uploadedPathsIndex).toBeGreaterThan(-1);
+    expect(cleanupIndex).toBeGreaterThan(uploadedPathsIndex);
+    expect(failRpcIndex).toBeGreaterThan(cleanupIndex);
   });
 
   it("does not accept generated candidates or publish public assets from the worker", async () => {

@@ -75,27 +75,30 @@ export function getRenderCellPrimaryAction(
   switch (status) {
     case "blocked":
       return {
-        label: "Go to View columns",
+        label: "Aller à Colonnes de vue",
         targetTab: "visual_matrix",
       };
     case "candidate":
       return {
-        label: "Review candidates",
+        label: "Voir les variantes",
       };
     case "failed":
       return {
-        label: "Retry generation",
+        label: "Relancer la génération",
+      };
+    case "queued":
+      return {
+        label: "Reprendre la génération",
       };
     case "processing":
-    case "queued":
       return null;
     case "ready":
       return {
-        label: "View current render",
+        label: "Voir le rendu actuel",
       };
     case "missing":
       return {
-        label: "Generate",
+        label: "Générer",
       };
   }
 }

@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0012
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012
 Areas: web, supabase
-Implementation Plans: none yet
+Implementation Plans: PLAN-0068, PLAN-0074
 
 ## Traceability
 
@@ -33,6 +33,12 @@ This spec consumes:
   rules.
 - `CR-SPEC-0012-allow-room-depth-in-mvp` to override the MVP dimension
   restriction.
+- `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
+  Pump And Realtime Progress` to replace fixed polling as the nominal progress
+  path with job-scoped Realtime progress and bounded polling fallback.
+- `CR-SPEC-0009-SPEC-0010-SPEC-0015-public-simulation-supabase-auth-otp-smtp`
+  to replace the launch-window email verification stub with Supabase Auth email
+  OTP backed by configured SMTP while preserving the public simulation facade.
 
 This spec produces the implementation plans that build the simulation wizard
 pages, the supporting public API endpoints, the test catalog seeding tooling,
@@ -52,15 +58,16 @@ The following work is in scope:
 
 - The simulation wizard page at `/sofas/[slug]/simulate` covering wizard steps
   4-12 from `SPEC-0012` (upload through result and regeneration). Wizard steps
-  1-3 (sofa context confirmation and email verification) are stubbed pending
-  delivery of the catalog and email-verification work owned by another team
-  member.
+  1-3 (sofa context confirmation and email verification) are reached through
+  the public sofa detail selection and the email gate route. The email
+  verification gate is backed by Supabase Auth email OTP after PLAN-0074.
 - The simulation continuation page at `/simulations/[simulation_job_id]` that
-  resumes polling, dimension entry, processing, and result states.
-- Five public API endpoints in `apps/web` route handlers that proxy authorized
+  resumes Realtime progress observation, fallback polling, dimension entry,
+  processing, and result states.
+- Public API endpoints in `apps/web` route handlers that proxy authorized
   visitor actions to Supabase RPCs and Storage:
-    - `POST /api/public/simulation/email-verifications` (stub)
-    - `POST /api/public/simulation/email-verifications/{verification_request_id}/verify` (stub)
+    - `POST /api/public/simulation/email-verifications`
+    - `POST /api/public/simulation/email-verifications/{verification_request_id}/verify`
     - `POST /api/public/simulations`
     - `GET /api/public/simulations/{simulation_job_id}`
     - `POST /api/public/simulations/{simulation_job_id}/dimensions`
@@ -108,10 +115,11 @@ spec or its plans:
 - The full public catalog page at `/catalog`. Owned by another team member.
 - The sofa detail page at `/sofas/[slug]`. Owned by another team member. The
   simulation wizard does not render the sofa detail experience.
-- Real email verification with code delivery, hash storage, brute-force
-  protection, or commercial-consent persistence. Owned by another team
-  member. This spec ships only the verification stub that returns a
-  deterministic access token.
+- Application-managed OTP generation, code storage, code hash verification,
+  or direct SMTP sending for this flow. PLAN-0074 uses Supabase Auth email OTP
+  and configured SMTP as the verification provider while the application owns
+  consent persistence, verified simulation sessions, access-token issuance, and
+  retention cleanup.
 - A direct Shopify return action on the result screen. The result screen ends
   on a "Return to sofa" navigation back to `/sofas/[slug]` where the catalog
   owner provides the Shopify call-to-action.
@@ -134,8 +142,10 @@ spec or its plans:
   for any pipeline stage. OpenAI is the only provider after this spec.
 - A second isolated Supabase project for development. The single existing
   Supabase project is treated as production for the first launch.
-- Image download buttons, share buttons, or any action that exposes the
-  signed URL or generated artifact path to copy or distribution flows.
+- Share buttons, long-term save actions, or any action that exposes the
+  signed URL or generated artifact path to copy or distribution flows. A
+  controlled Screen 5 download of the latest result image is allowed when it
+  does not render the signed URL as a visible or copyable link.
 
 ## Users And Permissions
 
@@ -172,17 +182,22 @@ The end-to-end flow consumed by the wizard is:
 3. The visitor uploads or captures a room photo. The browser compresses the
    image and `POST`s it together with the sofa context as
    `multipart/form-data` with an `Idempotency-Key` header.
-4. The server creates the simulation job, enqueues it for the worker, and
-   returns the job id. The browser navigates to `/simulations/{job_id}` using
-   `router.replace` so browser back returns to the sofa detail page.
-5. The continuation page polls `GET /api/public/simulations/{job_id}` every
-   2 seconds. While the status is `queued` or `room_prep_processing`, a
-   minimal processing screen is shown.
+4. The server creates the simulation job, makes the first worker checkpoint
+   claimable, records a transactional dispatch-outbox intent, and returns the
+   job id without invoking worker execution from the public request.
+   The browser navigates to `/simulations/{job_id}` using `router.replace` so
+   browser back returns to the sofa detail page.
+5. The continuation page observes job-scoped Realtime progress with bounded
+   HTTP status polling as fallback. While the status is `queued` or
+   `room_prep_processing`, a processing screen with safe step progress is
+   shown.
 6. When the status reaches `awaiting_dimensions`, the dimension entry screen
    is shown with the signed guide image and the input fields appropriate to
-   the geometry mode. The visitor enters dimensions in metres and submits.
-7. Polling resumes for `placement_queued` and `placement_processing`. If a
-   previous successful result exists from a regeneration cycle, it remains
+   the geometry mode. The visitor enters dimensions in centimetres; the
+   browser submits the API contract in metres.
+7. Realtime progress observation resumes for `placement_queued` and
+   `placement_processing`, with fallback polling when Realtime is unavailable.
+   If a previous successful result exists from a regeneration cycle, it remains
    visible behind a translucent veil with a small "new generation" indicator.
 8. When the status reaches `succeeded`, the result screen is shown with the
    signed result image, a regeneration call-to-action when available, and a
@@ -225,16 +240,27 @@ Visible elements:
   `{sofa_name} · {fabric_name} · {visual_position_label}`.
 - A title "Photo of your room".
 - Short instruction text.
+- A prominent visual guidance area showing the selected public sofa render for
+  the current fabric and visual position when available, a clickable room-photo
+  target, and a clear relationship between the sofa that will be inserted and
+  the room photo the visitor must provide.
+- Orientation guidance naming `{visual_position_label}` and telling the visitor
+  to photograph the room from a compatible direction. For example, a side-view
+  sofa selection must ask for a room photo taken from the side that matches that
+  selected view.
 - For corner-tagged sofas, a strong disclaimer instructing the visitor to
   photograph a corner of the room (two walls meeting), with at least one
   example wording about good and bad photos. For non-corner sofas, a
   shorter disclaimer guiding a frontal photo of one wall.
-- Two buttons on mobile: "Take a photo" using
-  `<input type="file" accept="image/*" capture="environment">` and
-  "Choose a file" without `capture`. On non-touch devices, only the
-  file picker is shown.
+- The room-photo target is the visible upload trigger. On touch devices it
+  opens `<input type="file" accept="image/*" capture="environment">`; on
+  non-touch devices it opens a regular file picker. The native inputs stay
+  hidden and no separate visible upload buttons are required.
 - After file selection: a preview of the selected image, a "Replace" link,
   and a primary "Continue" button.
+- While the browser prepares or uploads the room photo, the room-photo target
+  displays an inline loading state so the visitor sees that the selected image
+  is being processed.
 
 Behavior:
 
@@ -255,6 +281,8 @@ Forbidden:
 
 - No download or share controls.
 - No exposure of private storage paths or signed URLs in markup or analytics.
+- No private catalog storage paths in the selected sofa guidance area; only
+  public catalog render URLs may be used.
 
 ### Screen 2: Room Preparation Processing
 
@@ -269,8 +297,13 @@ Visible elements:
 
 Behavior:
 
-- The continuation page polls the status endpoint every 2 seconds.
-- No progress percentage is shown.
+- The continuation page observes job-scoped Realtime progress and uses the
+  status endpoint as fallback.
+- Step-based progress copy may be shown when the backend provides safe progress
+  keys and ordinals. Supported room-preparation keys include
+  `room_validation`, `room_cleaning`, `room_corners`, and
+  `awaiting_dimensions`.
+- No progress percentage is shown unless backed by defensible backend state.
 - No cancel button is shown.
 
 ### Screen 3: Dimension Entry
@@ -281,9 +314,13 @@ Visible elements:
 
 - The context strip.
 - A title "Measure your room".
-- The signed dimension guide image (`dimension_guide_overlay.png`) at
-  generous size, with `onError` handler that triggers a refresh of the
-  signed URL via the status endpoint.
+- A labelled measurement workspace that pairs the signed dimension guide image
+  (`dimension_guide_overlay.png`) with the required input form.
+- The signed dimension guide image at generous size, especially on desktop,
+  with `onError` handler that triggers a refresh of the signed URL via the
+  status endpoint.
+- Concise copy explaining that the required measurements should be entered in
+  centimetres.
 - The dimension input form, fields ordered to match the colored guide lines:
     - For `back_wall`: "Width (red)", "Height (blue)",
       "Depth (green)".
@@ -291,6 +328,13 @@ Visible elements:
       "Height (blue)", "Depth (green)".
 - A primary "Continue" button. Disabled until all fields are filled with
   positive numbers below a sensible upper bound (e.g. 20).
+- On desktop, the guide image and input group may sit side by side. On mobile,
+  the same content stacks without text overlap or hidden controls.
+- The heading and guide image must stay compact enough that visitors can
+  discover the measurement fields without guessing that the form is hidden
+  below a full-height image.
+- The input controls use neutral styling; color mapping is communicated through
+  the labels, not colorful input decoration.
 
 Behavior:
 
@@ -319,7 +363,10 @@ progress):
 
 Behavior:
 
-- Polling continues every 2 seconds.
+- Realtime progress observation continues with bounded fallback polling.
+- Step-based progress copy may be shown for the `placement_generation`
+  progress key.
+- The status endpoint remains the only source for signed result URLs.
 - The destructive full-screen loading pattern is forbidden when a previous
   result exists.
 
@@ -330,16 +377,28 @@ Trigger: status is `succeeded`.
 Visible elements:
 
 - The context strip.
-- The signed latest result image (`output-{n}.png`), as the primary visual.
+- A responsive result workspace pairing the signed latest result image
+  (`output-{n}.png`) with the action area.
+- The signed latest result image, as the primary visual. It remains large and
+  inspectable without pushing the available actions below excessive whitespace.
+- A compact action panel beside the image on desktop and below the image on
+  mobile.
+- A discreet generated-result count using the public three-result cap.
 - A primary action "New generation" when `regeneration_available` is
   true. The action posts to
   `POST /api/public/simulations/{id}/regenerations`.
 - A secondary text link "Back to sofa" that navigates to
   `/sofas/[slug]`.
+- A button "Download image" that downloads the latest result image for the
+  current visitor session without rendering the signed result URL as a link.
 - A short retention notice in muted text:
   "This image will be deleted in 24 hours."
 - When a regeneration has just failed, a small inline error message above
   the actions: "The new generation failed. Showing the previous result."
+- When a download has just failed, a small inline error message above the
+  actions. The previous result remains visible.
+- When the regeneration cap is reached, the regeneration button is absent and
+  the panel shows a discreet limit state.
 
 Behavior:
 
@@ -348,10 +407,13 @@ Behavior:
 - When `regeneration_available` is false, the regeneration button is removed
   from the DOM (not disabled). "Back to sofa" becomes the primary
   action.
+- While a regeneration request is being submitted, the regeneration button shows
+  a submitting state.
+- While the download action is preparing the local file, the download button
+  shows a submitting state.
 
 Forbidden:
 
-- No download button.
 - No share button.
 - No long-term save action.
 - No visible signed URL.
@@ -393,7 +455,8 @@ Forbidden:
 - `in_home_simulation_jobs` is the durable job row keyed by `id`.
 - `simulation_generated_outputs` records each successful placement output.
 - `worker_job_events` logs every status transition.
-- The pgmq queue used for room-prep and placement messages.
+- `in_home_simulation_checkpoint_dispatches` records transactional dispatch
+  intents for claimable worker checkpoints.
 - The `simulation-private-artifacts` bucket holds per-job inputs, guides, and
   outputs. The public catalog bucket holds rendered sofa assets.
 
@@ -485,9 +548,12 @@ under `apps/web/src/app/api/public/simulation*` and `apps/web/src/app/api/public
 They never expose Supabase service-role credentials, OpenAI keys, private
 bucket paths, or another visitor's data to the browser.
 
-### `POST /api/public/simulation/email-verifications` (STUB)
+### `POST /api/public/simulation/email-verifications`
 
-Stub implementation for the development and first-launch period.
+Starts or resends a real email verification attempt for the public simulation
+gate. PLAN-0040 shipped this route as a launch-window stub; PLAN-0074 replaces
+the route body with a Supabase Auth email OTP provider while preserving the
+public response shape consumed by the existing email gate UI.
 
 Request body:
 
@@ -503,20 +569,22 @@ Response:
 
 ```json
 {
-  "verification_request_id": "stub-{uuid}",
+  "verification_request_id": "opaque-verification-id",
   "expires_at": "..."
 }
 ```
 
-The stub does not send any email, does not validate the email shape beyond
-basic format, accepts any consent payload that has `consent_email_use=true`,
-and stores no records. The contract surface matches the SPEC-0010 expectation
-so the catalog owner can replace the implementation without changing
-clients.
+The implementation must validate the email shape, require email-use consent,
+keep optional commercial consent separate, record the normalized email hash,
+record only encrypted raw email needed for the short provider handoff, and call
+Supabase Auth `signInWithOtp`. Supabase Auth owns OTP generation, provider-side
+OTP storage, expiry, delivery, and Auth-side rate limits. The route must not
+return Supabase Auth sessions or reveal whether the email has been used before.
 
-### `POST /api/public/simulation/email-verifications/{verification_request_id}/verify` (STUB)
+### `POST /api/public/simulation/email-verifications/{verification_request_id}/verify`
 
-Stub implementation.
+Verifies the visitor-provided OTP and creates or refreshes the application
+simulation session.
 
 Request body:
 
@@ -530,14 +598,17 @@ Response:
 
 ```json
 {
-  "simulation_access_token": "dev-token-{verification_request_id}",
+  "simulation_access_token": "opaque-application-token",
   "expires_at": "..."
 }
 ```
 
-The stub returns a deterministic access token derived from the request id and
-sets a `simulation_access_token` HTTP-only cookie with `Max-Age=86400`,
-`SameSite=Lax`, and `Secure` outside local development.
+The implementation must verify the OTP through Supabase Auth `verifyOtp`, store
+the returned `auth.users.id` server-side, create or refresh the verified
+`simulation_sessions` row, and set a `simulation_access_token` HTTP-only cookie
+with `Max-Age=86400`, `SameSite=Lax`, and `Secure` outside local development.
+Supabase Auth access tokens and refresh tokens must not be returned to the
+browser for this visitor simulation flow.
 
 ### `POST /api/public/simulations`
 
@@ -575,7 +646,8 @@ Server behavior:
   `retention_deadline = now() + interval '24 hours'`,
   `room_geometry_mode` set as above, and the public-catalog references
   recorded.
-- Enqueue the room-prep work message in the pgmq queue.
+- Make the first room-preparation checkpoint claimable and write the
+  checkpoint dispatch-outbox row in the same transaction.
 - Insert the `idempotency_keys` row pointing at the new `simulation_job_id`.
 - Increment the rate-limit counters.
 
@@ -614,6 +686,8 @@ additions specific to this spec:
 - The signed URL for the latest `output-{n}.png` is included when status is
   `succeeded` or when a previous result remains visible during a
   regeneration.
+- Optional Realtime subscription metadata may be included, but signed URLs must
+  still be fetched through this status endpoint.
 
 ### `POST /api/public/simulations/{simulation_job_id}/dimensions`
 
@@ -647,7 +721,8 @@ Server behavior:
 - Reject if any value is non-positive or above the configured upper bound.
 - Persist into `supplied_dimensions` and transition the job to
   `placement_queued`.
-- Enqueue the placement message.
+- Make the placement checkpoint claimable and write the checkpoint
+  dispatch-outbox row in the same transaction.
 
 ### `POST /api/public/simulations/{simulation_job_id}/regenerations`
 
@@ -660,7 +735,8 @@ Server behavior:
 - Reject if `generated_output_count` has reached three successes.
 - Reserve the next `reserved_generation_index` and transition status to
   `placement_queued`.
-- Enqueue the placement message with the regeneration intent.
+- Make the placement checkpoint claimable and write the checkpoint
+  dispatch-outbox row in the same transaction.
 
 ## Worker Jobs
 
@@ -689,8 +765,8 @@ product decisions:
   usable interior. That provider is unchanged.
 
 The worker's rate-limit awareness is added by the new `simulation_cost_meter`
-check in the claim RPCs. When the meter is paused, the worker dequeues
-nothing and exits cleanly.
+check in the claim RPCs. When the meter is paused, the worker claims no
+checkpoints and exits cleanly.
 
 ## Environment Variables
 
@@ -702,14 +778,12 @@ Web application (`apps/web`):
   invocation when the public anon role is insufficient.
 - `NEXT_PUBLIC_SITE_URL` for token cookie scope and email-link generation
   when the catalog owner ships real verification.
-- `SIMULATION_QUEUE_NAME` consistent with the worker config.
 - `SIMULATION_RATE_LIMIT_IP_PER_DAY=3`.
 - `SIMULATION_RATE_LIMIT_EMAIL_PER_DAY=2`.
 
 In-home simulation worker (`supabase/functions/in-home-simulation-worker`):
 
 - `OPENAI_API_KEY` (required).
-- `IN_HOME_SIMULATION_QUEUE_NAME` (existing).
 - `IN_HOME_SIMULATION_MAX_EDGE_PX=720` (existing).
 - `MAX_PLACEMENT_ATTEMPTS=3` (existing).
 - `PLACEMENT_TOLERANCE_PCT=5` (existing).
@@ -750,10 +824,11 @@ production launch. They are not blockers for development against stubs.
   fail at the corners step when the visitor uploads the actual L-shape
   scene. Mis-tagging is therefore the single biggest catalog risk for
   this flow and must be communicated to the catalog owner explicitly.
-- The verification stub is owned by this spec only for the launch window.
-  When the catalog owner ships real verification, the route handler bodies
-  for the two email-verification endpoints are replaced. The contracts
-  defined in `SPEC-0010` and reaffirmed here remain the boundary.
+- The launch-window verification stub is replaced by PLAN-0074. The two
+  email-verification endpoints remain the stable public boundary, but their
+  route handler bodies delegate to Supabase Auth email OTP with configured SMTP
+  and create application-owned simulation sessions only after provider
+  verification succeeds.
 - The route shapes `/sofas/[slug]/simulate` and `/simulations/[id]` are
   fixed.
 
@@ -762,6 +837,12 @@ production launch. They are not blockers for development against stubs.
 - A verified visitor can complete a full happy path on a `back_wall` test
   sofa from upload through dimension entry, placement, viewing the result,
   and at least one regeneration.
+- A visitor can request a real email OTP, verify that OTP through the public
+  email gate, and start a simulation only after the application has created a
+  verified simulation session.
+- Scheduled cleanup purges encrypted email handoff data after the operational
+  retention window and deletes only Supabase Auth users marked as transient
+  public simulation identities.
 - A verified visitor can complete a full happy path on a `corner` test sofa
   with the dimension form correctly showing four required inputs including
   `room_depth`.
@@ -776,11 +857,18 @@ production launch. They are not blockers for development against stubs.
   with a safe rate-limit message.
 - A duplicate `Idempotency-Key` returns the same `simulation_job_id` and
   does not create a second job or duplicate storage object.
+- The upload screen visibly shows the selected sofa render before photo
+  selection and gives orientation guidance tied to the selected visual position.
 - The L-shape disclaimer is visibly present on the upload screen for any
   sofa whose tags trigger `corner` mode.
+- The dimension-entry screen shows the signed guide image and neutral
+  centimetre inputs inside one responsive measurement workspace.
+- The result screen keeps the signed result image and final actions together in
+  one responsive workspace, including the generation count and regeneration
+  limit state.
 - The result screen never exposes signed URLs in visible text, hidden
-  attributes, or analytics payloads, and no download or share controls are
-  rendered.
+  attributes, persistent download links, or analytics payloads, and no share
+  controls are rendered.
 - The Gemini placement provider, its tests, and `GEMINI_API_KEY`
   dependency are absent from the in-home simulation worker.
 - The scene classifier provider, its tests, and the

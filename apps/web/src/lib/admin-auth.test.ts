@@ -96,7 +96,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "AUTH_REQUIRED"
+        code: "AUTH_REQUIRED",
+        message: "Connectez-vous à nouveau pour continuer."
       },
       ok: false,
       status: 401
@@ -118,7 +119,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "AUTH_INVALID"
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
       },
       ok: false,
       status: 401
@@ -143,7 +145,8 @@ describe("admin auth helpers", () => {
       })
     ).resolves.toMatchObject({
       error: {
-        code: "AUTH_INVALID"
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
       },
       ok: false,
       status: 401
@@ -156,7 +159,8 @@ describe("admin auth helpers", () => {
       })
     ).resolves.toMatchObject({
       error: {
-        code: "AUTH_INVALID"
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
       },
       ok: false,
       status: 401
@@ -181,7 +185,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "ADMIN_REQUIRED"
+        code: "ADMIN_REQUIRED",
+        message: "Ce compte ne peut pas ouvrir l'espace admin."
       },
       ok: false,
       status: 403
@@ -214,7 +219,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "ADMIN_REQUIRED"
+        code: "ADMIN_REQUIRED",
+        message: "Ce compte ne peut pas ouvrir l'espace admin."
       },
       ok: false,
       status: 403
@@ -287,7 +293,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "AUTH_INVALID"
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
       },
       ok: false,
       status: 401
@@ -309,7 +316,8 @@ describe("admin auth helpers", () => {
 
     expect(result).toMatchObject({
       error: {
-        code: "AUTH_REQUIRED"
+        code: "AUTH_REQUIRED",
+        message: "Connectez-vous à nouveau pour continuer."
       },
       ok: false,
       status: 401

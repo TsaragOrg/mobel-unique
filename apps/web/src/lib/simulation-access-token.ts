@@ -1,11 +1,10 @@
 // SPEC-0015 PLAN-0040 simulation access-token helper.
 //
-// The launch-window stub issues a stateless HMAC-signed access token
-// that carries the verification_request_id plus the issued-at
-// timestamp. Validation re-derives the HMAC and rejects tokens older
-// than 24 hours. No database row is involved per SPEC-0015 stub
-// scope; the catalog owner replaces the implementation later when
-// real email verification ships.
+// The public simulation email gate issues an app-owned stateless
+// HMAC-signed access token after Supabase Auth OTP verification. The
+// token carries the verification_request_id plus the issued-at
+// timestamp; create-job handlers validate the token and require a
+// matching active simulation_sessions row before creating work.
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 

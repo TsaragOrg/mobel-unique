@@ -12,6 +12,7 @@ import {
   shapeSofaResponse,
   shapeVisualMatrixColumnResponse,
   validateManualRenderMutationPayload,
+  validateFabricRenderResumePayload,
   validateFabricRenderJobCreatePayload,
   validateFabricCreatePayload,
   validateFabricPatchPayload,
@@ -37,6 +38,8 @@ const sofaRecord = {
   internal_name: "Internal sofa",
   lifecycle_state: "draft",
   manual_public_order: 2,
+  price_cents: 129900,
+  price_currency: "EUR",
   provider_key: "must-not-leak",
   public_description: "Public description",
   public_name: "Public sofa",
@@ -227,6 +230,74 @@ describe("admin catalog validation", () => {
     expect(source).not.toContain("fabric_render_admin_enqueue_job");
   });
 
+  it("validates selected queued render cell resume payloads exclusively", () => {
+    const renderCellId = "00000000-0000-4000-8000-000000000908";
+    const requestId = "00000000-0000-4000-8000-000000000917";
+    const sofaId = "00000000-0000-4000-8000-000000000101";
+
+    const selectedCellResult = validateFabricRenderResumePayload({
+      render_cell_id: renderCellId,
+    });
+
+    expect(selectedCellResult).toMatchObject({
+      ok: true,
+      value: {
+        render_cell_id: renderCellId,
+        request_id: null,
+        sofa_id: null,
+      },
+    });
+
+    for (const payload of [
+      {
+        render_cell_id: renderCellId,
+        request_id: requestId,
+      },
+      {
+        render_cell_id: renderCellId,
+        sofa_id: sofaId,
+      },
+    ]) {
+      const result = validateFabricRenderResumePayload(payload);
+
+      expect(result).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: expect.arrayContaining(Object.keys(payload)),
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
+  });
+
+  it("publishes public render originals and variants through one cleanup-aware flow", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("ensurePublicRenderAssetVariantsForPublication");
+    expect(source).toContain("variant_object_paths");
+    expect(source).toContain("variant_asset_ids");
+    expect(source).toContain("removeUploadedPublicRenderCopies");
+    expect(source).toContain("storage_asset_variants");
+  });
+
+  it("cleans public render originals and variants when unpublishing or archiving", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("collectPublicRenderAssetsForSofa");
+    expect(source).toContain("deactivateAndRemovePublicRenderAssets");
+    expect(source).toContain("admin_unpublish_sofa");
+    expect(source).toContain("admin_archive_sofa");
+  });
+
   it("validates a draft sofa create payload", () => {
     const result = validateSofaCreatePayload({
       depth_cm: 95,
@@ -234,6 +305,7 @@ describe("admin catalog validation", () => {
       internal_name: "  Internal sofa  ",
       length_cm: 220,
       manual_public_order: 1,
+      price_cents: 129900,
       public_name: "  Public sofa  ",
       tag_ids: ["00000000-0000-4000-8000-000000000201"],
     });
@@ -246,6 +318,7 @@ describe("admin catalog validation", () => {
         internal_name: "Internal sofa",
         length_cm: 220,
         manual_public_order: 1,
+        price_cents: 129900,
         public_name: "Public sofa",
         tag_ids: ["00000000-0000-4000-8000-000000000201"],
       },
@@ -304,6 +377,26 @@ describe("admin catalog validation", () => {
       ok: false,
       status: 400,
     });
+  });
+
+  it("rejects invalid sofa price cents", () => {
+    for (const price_cents of [0, -1, 1299.5]) {
+      expect(
+        validateSofaCreatePayload({
+          internal_name: "Internal sofa",
+          price_cents,
+        }),
+      ).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: ["price_cents"],
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
   });
 
   it("validates tag labels and generates customer-facing slugs", () => {
@@ -597,6 +690,77 @@ describe("admin catalog validation", () => {
       },
     });
   });
+
+  it("validates upload content types by purpose", () => {
+    for (const purpose of [
+      "fabric_ai_reference",
+      "sofa_source_photo",
+      "manual_render",
+    ] as const) {
+      const payload: Record<string, unknown> = {
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose,
+      };
+
+      if (purpose === "sofa_source_photo") {
+        payload.original_fabric_id = fabricRecord.id;
+        payload.sofa_id = sofaRecord.id;
+        payload.visual_matrix_column_id = visualMatrixColumnRecord.id;
+      }
+
+      if (purpose === "manual_render") {
+        payload.render_cell_id = fabricRenderJobRecord.render_cell_id;
+      }
+
+      const result = validateUploadCreatePayload(payload);
+
+      expect(result).toMatchObject({
+        error: {
+          code: "VALIDATION_FAILED",
+          details: {
+            fields: ["content_type"],
+          },
+        },
+        ok: false,
+        status: 422,
+      });
+    }
+
+    expect(
+      validateUploadCreatePayload({
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose: "fabric_swatch",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        byte_size: 1200,
+        content_type: "image/webp",
+        purpose: "fabric_swatch",
+      },
+    });
+
+    for (const contentType of ["image/jpeg", "image/png"] as const) {
+      expect(
+        validateUploadCreatePayload({
+          byte_size: 1200,
+          content_type: contentType,
+          purpose: "manual_render",
+          render_cell_id: fabricRenderJobRecord.render_cell_id,
+        }),
+      ).toEqual({
+        ok: true,
+        value: {
+          byte_size: 1200,
+          content_type: contentType,
+          purpose: "manual_render",
+          render_cell_id: fabricRenderJobRecord.render_cell_id,
+        },
+      });
+    }
+  });
 });
 
 describe("admin catalog response shaping", () => {
@@ -621,6 +785,7 @@ describe("admin catalog response shaping", () => {
     const serialized = JSON.stringify(response);
 
     expect(response).toEqual({
+      archived_at: null,
       created_at: "2026-04-28T10:00:00.000Z",
       depth_cm: 95,
       footprint_measurements: {
@@ -632,11 +797,14 @@ describe("admin catalog response shaping", () => {
       internal_name: "Internal sofa",
       lifecycle_state: "draft",
       manual_public_order: 2,
+      price_cents: 129900,
+      price_currency: "EUR",
       public_description: "Public description",
       public_name: "Public sofa",
       public_slug: "public-sofa",
       shopify_order_url: "https://shopify.example/products/public-sofa",
       source_photo_count: 0,
+      source_photo_preview_asset_id: null,
       source_photo_preview_url: null,
       tags: [
         {
@@ -652,6 +820,21 @@ describe("admin catalog response shaping", () => {
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");
     expect(serialized).not.toContain("private_table");
+  });
+
+  it("returns the source photo preview asset id for protected sofa list previews", () => {
+    const previewAssetId = "00000000-0000-4000-8000-000000000904";
+    const response = shapeSofaResponse({
+      ...sofaRecord,
+      source_photo_count: 1,
+      source_photo_preview_asset_id: previewAssetId,
+      source_photo_preview_url: null,
+    });
+    const serialized = JSON.stringify(response);
+
+    expect(response.source_photo_preview_asset_id).toBe(previewAssetId);
+    expect(serialized).not.toContain("catalog-private-assets");
+    expect(serialized).not.toContain("service_role");
   });
 
   it("returns only admin-safe fabric and asset fields", () => {
@@ -764,7 +947,7 @@ describe("admin catalog response shaping", () => {
           id: "00000000-0000-4000-8000-000000000904",
           visibility: "private",
         },
-        preview_url: "https://storage.example/signed/source-photo-preview",
+        preview_url: null,
       },
       id: visualMatrixColumnRecord.id,
       sequence: 1,
@@ -785,6 +968,7 @@ describe("admin catalog response shaping", () => {
       },
     });
     expect(serialized).not.toContain("service_role");
+    expect(serialized).not.toContain("signed/source-photo-preview");
     expect(serialized).not.toContain("object_path");
     expect(serialized).not.toContain("catalog-private-assets");
     expect(serialized).not.toContain("provider_key");

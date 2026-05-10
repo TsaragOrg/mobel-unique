@@ -16,6 +16,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000401",
     length_cm: 240,
     manual_public_order: 2,
+    price_cents: 129900,
+    price_currency: "EUR",
     public_description: "Un canapé modulable pour le salon.",
     public_name: "Canapé Rivoli",
     public_slug: "canape-rivoli",
@@ -30,6 +32,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000402",
     length_cm: 210,
     manual_public_order: 1,
+    price_cents: null,
+    price_currency: "EUR",
     public_description: "Une ligne compacte.",
     public_name: "Canapé Marais",
     public_slug: "canape-marais",
@@ -44,6 +48,8 @@ const sofas = [
     id: "00000000-0000-4000-8000-000000000403",
     length_cm: null,
     manual_public_order: null,
+    price_cents: null,
+    price_currency: "EUR",
     public_description: "Incomplete sofa should stay hidden.",
     public_name: "Canapé Incomplet",
     public_slug: "canape-incomplet",
@@ -134,52 +140,71 @@ const visualPositions = [
   },
 ];
 
+function createRenderCell(input: {
+  fabric_id: string;
+  original_path: string;
+  render_cell_id: string;
+  sofa_id: string;
+  visual_matrix_column_id: string;
+}) {
+  const mediumPath = input.original_path.replace(".png", "-medium.jpg");
+
+  return {
+    fabric_id: input.fabric_id,
+    public_render_content_type: "image/jpeg",
+    public_render_height_px: 960,
+    public_render_object_path: mediumPath,
+    public_render_width_px: 1280,
+    render_cell_id: input.render_cell_id,
+    render_medium_content_type: "image/jpeg",
+    render_medium_height_px: 960,
+    render_medium_object_path: mediumPath,
+    render_medium_width_px: 1280,
+    render_original_content_type: "image/png",
+    render_original_height_px: 1200,
+    render_original_object_path: input.original_path,
+    render_original_width_px: 1600,
+    sofa_id: input.sofa_id,
+    visual_matrix_column_id: input.visual_matrix_column_id,
+  };
+}
+
 const renderCells = [
-  {
+  createRenderCell({
     fabric_id: fabrics[0].id,
-    public_render_height_px: 1200,
-    public_render_object_path: "catalog/sofas/canape-rivoli/boucle/front.png",
-    public_render_width_px: 1600,
+    original_path: "catalog/sofas/canape-rivoli/boucle/front.png",
     render_cell_id: "00000000-0000-4000-8000-000000000701",
     sofa_id: sofas[0].id,
     visual_matrix_column_id: visualPositions[0].id,
-  },
-  {
+  }),
+  createRenderCell({
     fabric_id: fabrics[0].id,
-    public_render_height_px: 1200,
-    public_render_object_path: "catalog/sofas/canape-rivoli/boucle/angle.png",
-    public_render_width_px: 1600,
+    original_path: "catalog/sofas/canape-rivoli/boucle/angle.png",
     render_cell_id: "00000000-0000-4000-8000-000000000702",
     sofa_id: sofas[0].id,
     visual_matrix_column_id: visualPositions[1].id,
-  },
-  {
+  }),
+  createRenderCell({
     fabric_id: fabrics[1].id,
-    public_render_height_px: 1200,
-    public_render_object_path: "catalog/sofas/canape-rivoli/sauge/front.png",
-    public_render_width_px: 1600,
+    original_path: "catalog/sofas/canape-rivoli/sauge/front.png",
     render_cell_id: "00000000-0000-4000-8000-000000000703",
     sofa_id: sofas[0].id,
     visual_matrix_column_id: visualPositions[0].id,
-  },
-  {
+  }),
+  createRenderCell({
     fabric_id: fabrics[1].id,
-    public_render_height_px: 1200,
-    public_render_object_path: "catalog/sofas/canape-rivoli/sauge/angle.png",
-    public_render_width_px: 1600,
+    original_path: "catalog/sofas/canape-rivoli/sauge/angle.png",
     render_cell_id: "00000000-0000-4000-8000-000000000704",
     sofa_id: sofas[0].id,
     visual_matrix_column_id: visualPositions[1].id,
-  },
-  {
+  }),
+  createRenderCell({
     fabric_id: fabrics[2].id,
-    public_render_height_px: 1200,
-    public_render_object_path: "catalog/sofas/canape-marais/lin/front.png",
-    public_render_width_px: 1600,
+    original_path: "catalog/sofas/canape-marais/lin/front.png",
     render_cell_id: "00000000-0000-4000-8000-000000000705",
     sofa_id: sofas[1].id,
     visual_matrix_column_id: visualPositions[2].id,
-  },
+  }),
 ];
 
 function createFakeStore(): PublicCatalogStore {
@@ -258,6 +283,10 @@ describe("public catalog route handlers", () => {
     expect(body.data.items[0]).toMatchObject({
       default_fabric_id: fabrics[0].id,
       default_visual_position_id: visualPositions[0].id,
+      price: {
+        amount_cents: 129900,
+        currency: "EUR",
+      },
       public_name: "Canapé Rivoli",
       public_slug: "canape-rivoli",
       tags: [
@@ -273,6 +302,17 @@ describe("public catalog route handlers", () => {
     });
     expect(body.data.items[0].default_render_url).toContain(
       "/storage/v1/object/public/catalog-public-assets/",
+    );
+    expect(body.data.items[0]).toMatchObject({
+      default_render_medium_content_type: "image/jpeg",
+      default_render_medium_height_px: 960,
+      default_render_medium_width_px: 1280,
+    });
+    expect(body.data.items[0].default_render_medium_url).toContain(
+      "front-medium.jpg",
+    );
+    expect(body.data.items[0].default_render_url).toBe(
+      body.data.items[0].default_render_medium_url,
     );
     expect(JSON.stringify(body)).not.toContain("internal_name");
     expect(JSON.stringify(body)).not.toContain("public_render_object_path");
@@ -311,6 +351,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     const body = await response.json();
 
     expect(body.data.defaults).toEqual({
@@ -327,6 +368,28 @@ describe("public catalog route handlers", () => {
     expect(body.data.renders[0].render_url).toContain(
       "/storage/v1/object/public/catalog-public-assets/",
     );
+    expect(body.data.renders[0]).toMatchObject({
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_width_px: 1280,
+      render_original_content_type: "image/png",
+      render_original_height_px: 1200,
+      render_original_width_px: 1600,
+    });
+    expect(body.data.renders[0].render_medium_url).toContain(
+      "front-medium.jpg",
+    );
+    expect(body.data.renders[0].render_original_url).toContain("front.png");
+    expect(body.data.renders[0].render_original_url).not.toContain(
+      "front-medium.jpg",
+    );
+    expect(body.data.renders[0].render_url).toBe(
+      body.data.renders[0].render_original_url,
+    );
+    expect(body.data.sofa.price).toEqual({
+      amount_cents: 129900,
+      currency: "EUR",
+    });
     expect(JSON.stringify(body)).not.toContain("render_cell_id");
     expect(JSON.stringify(body)).not.toContain("object_path");
     expect(JSON.stringify(body)).not.toContain("service_role");

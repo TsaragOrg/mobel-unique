@@ -2,20 +2,23 @@
 
 /*
 RU: Этот файл нужен для страниц админского каталога.
-RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений и публикацию.
-RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать и снимать публикацию.
+RU: На экране админ видит диваны, ткани, формы, загрузку фото, подготовку изображений, публикацию, архив и фильтры.
+RU: Здесь можно менять данные, запускать создание изображений, улучшать вариант, выбирать готовую картинку, публиковать, снимать публикацию, архивировать, возвращать из архива и фильтровать списки.
 FR: Ce fichier sert aux pages du catalogue admin.
-FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images et publication.
-FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier et retirer la publication.
+FR: A l'ecran, l'admin voit les canapes, tissus, formulaires, envois de photos, preparation d'images, publication, archive et filtres.
+FR: Ici, on peut modifier les donnees, lancer la creation d'images, ameliorer une option, choisir l'image finale, publier, retirer la publication, archiver, remettre depuis l'archive et filtrer les listes.
 */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  type CSSProperties,
   type ChangeEvent,
   FormEvent,
   ReactNode,
   type PointerEvent as ReactPointerEvent,
+  type UIEvent as ReactUIEvent,
+  type WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -44,6 +47,13 @@ import {
   formatAdminPublicationBlockerLabel,
   formatRenderCellBlockerLabel,
 } from "./admin-error-messages";
+import {
+  ADMIN_COPY,
+  formatAdminLifecycleLabel,
+  formatAdminReadinessLabel,
+  formatRenderCellStatusLabel,
+  formatSourceTypeLabel,
+} from "./admin-copy";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type AdminPageState = "checking" | "forbidden" | "ready";
@@ -56,6 +66,23 @@ const FABRIC_SWATCH_ZOOM_MAX_PERCENT = 500;
 // FR: Ce nombre limite la liste des etiquettes trouvees pour qu'elle reste courte.
 const TAG_SEARCH_RESULT_LIMIT = 8;
 
+// RU: Это правило пропускает только целые евро без нуля в начале.
+// FR: Cette regle accepte seulement les euros entiers sans zero au debut.
+const WHOLE_EURO_PRICE_PATTERN = /^[1-9][0-9]*$/;
+
+type SofaStatusFilter = "draft" | "published" | "archived";
+
+// RU: Эти варианты дают быстрый выбор статуса дивана в списке.
+// FR: Ces choix donnent un filtre rapide par statut de canape dans la liste.
+const SOFA_STATUS_FILTER_OPTIONS: Array<{
+  label: string;
+  value: SofaStatusFilter;
+}> = [
+  { label: ADMIN_COPY.sofaLifecycle.draft, value: "draft" },
+  { label: ADMIN_COPY.sofaLifecycle.published, value: "published" },
+  { label: ADMIN_COPY.sofaLifecycle.archived, value: "archived" },
+];
+
 export interface AdminCatalogTag {
   id: string;
   public_label: string;
@@ -63,6 +90,7 @@ export interface AdminCatalogTag {
 }
 
 export interface AdminCatalogSofa {
+  archived_at: string | null;
   created_at: string;
   depth_cm: number | null;
   footprint_measurements: unknown;
@@ -72,11 +100,14 @@ export interface AdminCatalogSofa {
   internal_name: string;
   lifecycle_state: string;
   manual_public_order: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description: string | null;
   public_name: string | null;
   public_slug: string | null;
   shopify_order_url: string | null;
   source_photo_count?: number | null;
+  source_photo_preview_asset_id?: string | null;
   source_photo_preview_url?: string | null;
   tags: AdminCatalogTag[];
   updated_at: string;
@@ -149,23 +180,23 @@ export interface AdminCatalogSofaSourcePhoto {
 // RU: Этот список задает шаги страницы дивана в верхней панели.
 // FR: Cette liste fixe les etapes de la page du canape dans la barre du haut.
 const SOFA_EDIT_TABS = [
-  { key: "basics", label: "Basics" },
-  { key: "fabrics", label: "Fabric lines" },
-  { key: "visual_matrix", label: "View columns" },
-  { key: "renders", label: "Renders" },
-  { key: "publish", label: "Publish" },
+  { key: "basics", label: ADMIN_COPY.catalog.labels.sofaBasics },
+  { key: "fabrics", label: ADMIN_COPY.catalog.labels.fabricAssignments },
+  { key: "visual_matrix", label: ADMIN_COPY.catalog.labels.viewColumns },
+  { key: "renders", label: ADMIN_COPY.catalog.labels.renders },
+  { key: "publish", label: "Publication" },
 ] as const;
 
 // RU: Эти подписи показывают, в каком положении находится ячейка картинки.
 // FR: Ces libelles indiquent la situation d'une case image.
 const RENDER_CELL_STATUS_LABELS: Record<RenderCellDisplayStatus, string> = {
-  blocked: "Blocked",
-  candidate: "Candidate",
-  failed: "Failed",
-  missing: "Missing",
-  processing: "Processing",
-  queued: "Queued",
-  ready: "Ready",
+  blocked: ADMIN_COPY.renderCellStatuses.blocked,
+  candidate: ADMIN_COPY.renderCellStatuses.candidate,
+  failed: ADMIN_COPY.renderCellStatuses.failed,
+  missing: ADMIN_COPY.renderCellStatuses.missing,
+  processing: ADMIN_COPY.renderCellStatuses.processing,
+  queued: ADMIN_COPY.renderCellStatuses.queued,
+  ready: ADMIN_COPY.renderCellStatuses.ready,
 };
 
 // RU: Этот порядок держит легенду одинаковой на каждом экране.
@@ -179,18 +210,6 @@ const RENDER_CELL_STATUS_ORDER: RenderCellDisplayStatus[] = [
   "processing",
   "failed",
 ];
-
-// RU: Эти короткие знаки помогают отличать ячейки без опоры только на цвет.
-// FR: Ces signes courts aident a distinguer les cases sans compter seulement sur la couleur.
-const RENDER_CELL_STATUS_MARKERS: Record<RenderCellDisplayStatus, string> = {
-  blocked: "B",
-  candidate: "C",
-  failed: "F",
-  missing: "M",
-  processing: "P",
-  queued: "Q",
-  ready: "R",
-};
 
 export interface AdminCatalogVisualMatrixColumn {
   admin_label: string | null;
@@ -286,8 +305,17 @@ export interface AdminSofaRenderExport {
 
 type AdminLargeImagePreview = {
   alt: string;
+  assetId?: string;
   src: string;
   title: string;
+};
+
+type AdminStorageAssetPreviewVariant = "small" | "medium" | "original";
+
+type AdminStorageAssetPreviewRequest = {
+  assetId: string;
+  key: string;
+  variant: AdminStorageAssetPreviewVariant;
 };
 
 type AdminBadgeTone = "danger" | "muted" | "neutral" | "ready" | "warning";
@@ -297,6 +325,7 @@ export interface SofaMutationInput {
   height_cm?: number;
   internal_name?: string;
   manual_public_order?: number;
+  price_cents?: number | null;
   public_description?: string;
   public_name?: string;
   shopify_order_url?: string;
@@ -399,21 +428,38 @@ export interface FabricRenderJobBatchResult {
 
 export type FabricRenderResumeInput =
   | {
+      render_cell_id?: null;
       request_id: string;
       sofa_id?: null;
     }
   | {
+      render_cell_id?: null;
       request_id?: null;
       sofa_id: string;
+    }
+  | {
+      render_cell_id: string;
+      request_id?: null;
+      sofa_id?: null;
     };
 
 export interface FabricRenderResumeResult {
+  preferred_job_id?: string | null;
+  render_cell_id?: string | null;
   request_ids: string[];
   status: "noop" | "started";
   total_requests: number;
 }
 
 export interface AdminCatalogPageDependencies {
+  archiveSofa(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogSofa>;
+  unarchiveSofa(
+    accessToken: string,
+    sofaId: string,
+  ): Promise<AdminCatalogSofa>;
   archiveFabric(
     accessToken: string,
     fabricId: string,
@@ -452,6 +498,7 @@ export interface AdminCatalogPageDependencies {
   createStorageAssetPreviewUrl(
     accessToken: string,
     assetId: string,
+    variant?: AdminStorageAssetPreviewVariant,
   ): Promise<string>;
   createFabricRenderJob(
     accessToken: string,
@@ -710,6 +757,28 @@ export function createDefaultAdminCatalogDependencies(
   redirect: (path: string) => void,
 ): AdminCatalogPageDependencies {
   return {
+    async archiveSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/archive`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
+    },
+    async unarchiveSofa(accessToken, sofaId) {
+      const data = await requestAdminJson(
+        accessToken,
+        `/api/admin/sofas/${sofaId}/unarchive`,
+        {
+          method: "POST",
+        },
+      );
+
+      return data.sofa as AdminCatalogSofa;
+    },
     async archiveFabric(accessToken, fabricId) {
       const data = await requestAdminJson(
         accessToken,
@@ -792,9 +861,15 @@ export function createDefaultAdminCatalogDependencies(
 
       return data.upload as AdminCatalogUpload;
     },
-    async createStorageAssetPreviewUrl(accessToken, assetId) {
+    async createStorageAssetPreviewUrl(
+      accessToken,
+      assetId,
+      variant = "original",
+    ) {
       const response = await fetch(
-        `/api/admin/storage-assets/${encodeURIComponent(assetId)}/preview`,
+        `/api/admin/storage-assets/${encodeURIComponent(
+          assetId,
+        )}/preview?variant=${encodeURIComponent(variant)}`,
         {
           cache: "no-store",
           credentials: "same-origin",
@@ -1267,7 +1342,7 @@ function ProtectedAdminCatalogPage({
       <AdminShell showNavigation={false} variant="auth">
         <section className="admin-auth-card" aria-live="polite">
           <p className="admin-status-text" role="status">
-            Checking admin session.
+            Vérification de la session admin.
           </p>
         </section>
       </AdminShell>
@@ -1282,9 +1357,9 @@ function ProtectedAdminCatalogPage({
           aria-labelledby="admin-denied-title"
         >
           <AdminPageHeader
-            description="This account is not authorized for the admin area."
-            eyebrow="Secure workspace"
-            title="Admin access unavailable"
+            description="Ce compte n'est pas autorisé à ouvrir l'espace admin."
+            eyebrow="Espace sécurisé"
+            title="Accès admin indisponible"
             titleId="admin-denied-title"
           />
         </section>
@@ -1306,10 +1381,52 @@ function SofaListContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения показывают ошибку, загрузку, список диванов, видимость архива и выбранный статус.
+  // FR: Ces valeurs affichent une erreur, le chargement, la liste des canapes, la vue archive et le statut choisi.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sofas, setSofas] = useState<AdminCatalogSofa[]>([]);
+  const [showArchivedSofas, setShowArchivedSofas] = useState(false);
+  const [sofaStatusFilter, setSofaStatusFilter] =
+    useState<SofaStatusFilter | null>(null);
 
+  // RU: Этот список применяет выбранный статус, а без него сохраняет прежнее правило кнопки Archive.
+  // FR: Cette liste applique le statut choisi, et sans lui garde l'ancienne regle du bouton Archive.
+  const visibleSofas = sofaStatusFilter
+    ? sofas.filter((sofa) => sofa.lifecycle_state === sofaStatusFilter)
+    : showArchivedSofas
+      ? sofas
+      : sofas.filter((sofa) => sofa.lifecycle_state !== "archived");
+
+  // RU: Эти адреса показывают маленькие закрытые фото диванов через защищенный путь.
+  // FR: Ces adresses montrent les petites photos privees des canapes par le chemin protege.
+  const [sourcePhotoPreviewUrls, setSourcePhotoPreviewUrls] = useState<
+    Record<string, string>
+  >({});
+  // RU: Этот список помогает закрывать старые адреса маленьких фото.
+  // FR: Cette liste aide a fermer les anciennes adresses des petites photos.
+  const sourcePhotoPreviewUrlsRef = useRef<Record<string, string>>({});
+
+  // RU: Эти данные говорят, какие маленькие фото нужны открытому списку диванов.
+  // FR: Ces donnees disent quelles petites photos sont utiles a la liste ouverte.
+  const sourcePhotoPreviewRequests = useMemo(() => {
+    const requests = visibleSofas
+      .map((sofa) =>
+        createStorageAssetPreviewRequest(
+          sofa.source_photo_preview_asset_id,
+          "small",
+        ),
+      )
+      .filter(
+        (request): request is AdminStorageAssetPreviewRequest =>
+          request !== null,
+      );
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [visibleSofas]);
+
+  // RU: Этот автоматический блок загружает диваны при открытии списка.
+  // FR: Ce bloc automatique charge les canapes a l'ouverture de la liste.
   useEffect(() => {
     let isCurrent = true;
 
@@ -1339,6 +1456,87 @@ function SofaListContent({
     };
   }, [accessToken, dependencies]);
 
+  // RU: Этот автоматический блок загружает маленькие фото списка через защищенный путь.
+  // FR: Ce bloc automatique charge les petites photos de la liste par le chemin protege.
+  useEffect(() => {
+    let isCurrent = true;
+    const neededPreviewKeys = new Set(
+      sourcePhotoPreviewRequests.map((request) => request.key),
+    );
+    const currentUrls = sourcePhotoPreviewUrlsRef.current;
+    const nextUrls = { ...currentUrls };
+    let hasChanged = false;
+
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+        delete nextUrls[previewKey];
+        hasChanged = true;
+      }
+    }
+
+    if (hasChanged) {
+      sourcePhotoPreviewUrlsRef.current = nextUrls;
+      setSourcePhotoPreviewUrls(nextUrls);
+    }
+
+    for (const request of sourcePhotoPreviewRequests) {
+      if (nextUrls[request.key]) {
+        continue;
+      }
+
+      void dependencies
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
+        .then((url) => {
+          if (!isCurrent) {
+            dependencies.revokeStorageAssetPreviewUrl(url);
+            return;
+          }
+
+          sourcePhotoPreviewUrlsRef.current = {
+            ...sourcePhotoPreviewUrlsRef.current,
+            [request.key]: url,
+          };
+          setSourcePhotoPreviewUrls(sourcePhotoPreviewUrlsRef.current);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, sourcePhotoPreviewRequests]);
+
+  // RU: Этот автоматический блок закрывает маленькие фото, когда админ уходит со списка.
+  // FR: Ce bloc automatique ferme les petites photos quand l'admin quitte la liste.
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(sourcePhotoPreviewUrlsRef.current)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+      }
+
+      sourcePhotoPreviewUrlsRef.current = {};
+    };
+  }, [dependencies]);
+
+  // RU: Это действие показывает или снова прячет архивные диваны в списке.
+  // FR: Cette action affiche ou cache a nouveau les canapes archives dans la liste.
+  function handleArchiveListToggle() {
+    setShowArchivedSofas((currentValue) => !currentValue);
+  }
+
+  // RU: Это действие выбирает статус или убирает выбор при повторном нажатии.
+  // FR: Cette action choisit un statut ou retire le choix au second clic.
+  function handleStatusFilterClick(nextFilter: SofaStatusFilter) {
+    setSofaStatusFilter((currentFilter) =>
+      currentFilter === nextFilter ? null : nextFilter,
+    );
+  }
+
   return (
     <section
       aria-labelledby="sofas-title"
@@ -1346,13 +1544,23 @@ function SofaListContent({
     >
       <AdminPageHeader
         actions={
-          <Link className="admin-primary-link" href="/admin/sofas/new">
-            New sofa
-          </Link>
+          <>
+            <button
+              aria-pressed={showArchivedSofas}
+              className="admin-secondary-button"
+              onClick={handleArchiveListToggle}
+              type="button"
+            >
+              Archive
+            </button>
+            <Link className="admin-primary-link" href="/admin/sofas/new">
+              Nouveau canapé
+            </Link>
+          </>
         }
-        description="Review sofa records, source imagery, publishing state, and recent catalog updates."
-        eyebrow="Catalog"
-        title="Sofas"
+        description="Vérifiez les canapés, les images sources, la publication et les dernières mises à jour."
+        eyebrow="Catalogue"
+        title="Canapés"
         titleId="sofas-title"
       />
       {errorMessage ? (
@@ -1362,17 +1570,60 @@ function SofaListContent({
       ) : null}
       {isLoading ? (
         <p className="admin-list-feedback" role="status">
-          Loading sofas.
+          Chargement des canapés.
         </p>
       ) : null}
       {!isLoading && sofas.length === 0 ? (
-        <p className="admin-list-feedback">No sofa records yet.</p>
+        <p className="admin-list-feedback">Aucun canapé pour le moment.</p>
       ) : null}
-      {sofas.length > 0 ? (
+      {/* RU: Этот блок стоит сверху слева над списком, подписывает фильтры и выбирает статус диванов.
+          FR: Ce bloc reste en haut a gauche au-dessus de la liste, nomme les filtres et choisit le statut des canapes. */}
+      {!isLoading && sofas.length > 0 ? (
+        <div className="admin-sofa-status-filter" aria-label="Filtres des canapés">
+          <span className="admin-sofa-status-filter-label">Filtres</span>
+          <span className="admin-sofa-status-filter-buttons">
+            {SOFA_STATUS_FILTER_OPTIONS.map((option) => {
+              const isActive = sofaStatusFilter === option.value;
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={`admin-sofa-status-filter-button${
+                    isActive ? " admin-sofa-status-filter-button-active" : ""
+                  }`}
+                  key={option.value}
+                  onClick={() => handleStatusFilterClick(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </span>
+        </div>
+      ) : null}
+      {!isLoading && sofas.length > 0 && visibleSofas.length === 0 ? (
+        <p className="admin-list-feedback">
+          {sofaStatusFilter
+            ? "Aucun canapé ne correspond au statut sélectionné."
+            : "Aucun canapé visible. Utilisez Archive pour afficher les canapés archivés."}
+        </p>
+      ) : null}
+      {visibleSofas.length > 0 ? (
         <div className="admin-sofa-list" role="list">
-          {sofas.map((sofa) => {
+          {visibleSofas.map((sofa) => {
+            // RU: Эти данные выбирают имя, число фото и маленький адрес картинки для карточки.
+            // FR: Ces donnees choisissent le nom, le nombre de photos et la petite adresse pour la fiche.
             const sofaDisplayName = sofa.public_name ?? sofa.internal_name;
             const sourcePhotoCount = sofa.source_photo_count ?? 0;
+            const protectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+              sourcePhotoPreviewUrls,
+              sofa.source_photo_preview_asset_id,
+              "small",
+            );
+            const sourcePhotoPreviewUrl = sofa.source_photo_preview_asset_id
+              ? protectedSourcePhotoPreviewUrl
+              : (sofa.source_photo_preview_url ?? null);
 
             return (
               <article
@@ -1381,18 +1632,18 @@ function SofaListContent({
                 role="listitem"
               >
                 <Link
-                  aria-label={`Open ${sofaDisplayName}`}
+                  aria-label={`Ouvrir ${sofaDisplayName}`}
                   className="admin-sofa-list-link"
                   href={`/admin/sofas/${sofa.id}`}
                 >
                   <span className="admin-sofa-list-preview">
-                    {sofa.source_photo_preview_url ? (
+                    {sourcePhotoPreviewUrl ? (
                       <img
-                        alt={`Source photo for ${sofaDisplayName}`}
-                        src={sofa.source_photo_preview_url}
+                        alt={`Photo source pour ${sofaDisplayName}`}
+                        src={sourcePhotoPreviewUrl}
                       />
                     ) : (
-                      <span>No source image</span>
+                      <span>Aucune image source</span>
                     )}
                   </span>
                   <span className="admin-sofa-list-body">
@@ -1408,7 +1659,7 @@ function SofaListContent({
                     </span>
                     <span className="admin-sofa-list-details">
                       <span>
-                        <small>Status</small>
+                        <small>Statut</small>
                         <span
                           className={`admin-sofa-list-lifecycle admin-sofa-list-lifecycle-${sofa.lifecycle_state}`}
                         >
@@ -1419,14 +1670,20 @@ function SofaListContent({
                         <small>Sources</small>
                         <span>
                           {sourcePhotoCount > 0
-                            ? `${sourcePhotoCount} source ${
-                                sourcePhotoCount === 1 ? "photo" : "photos"
+                            ? `${sourcePhotoCount} ${
+                                sourcePhotoCount === 1
+                                  ? "photo source"
+                                  : "photos sources"
                               }`
-                            : "No source photo"}
+                            : "Aucune photo source"}
                         </span>
                       </span>
                       <span>
-                        <small>Updated</small>
+                        <small>Prix</small>
+                        <span>{formatWholeEuroPrice(sofa.price_cents)}</span>
+                      </span>
+                      <span>
+                        <small>Mis à jour</small>
                         <span>{formatTimestamp(sofa.updated_at)}</span>
                       </span>
                     </span>
@@ -1489,12 +1746,12 @@ function FabricListContent({
       <AdminPageHeader
         actions={
           <Link className="admin-primary-link" href="/admin/fabrics/new">
-            New fabric
+            Nouveau tissu
           </Link>
         }
-        description="Review fabric swatches, catalog names, lifecycle state, and AI readiness."
-        eyebrow="Catalog"
-        title="Fabrics"
+        description="Vérifiez les échantillons, les noms publics, l'état et la préparation IA."
+        eyebrow="Catalogue"
+        title="Tissus"
         titleId="fabrics-title"
       />
       {errorMessage ? (
@@ -1504,11 +1761,11 @@ function FabricListContent({
       ) : null}
       {isLoading ? (
         <p className="admin-list-feedback" role="status">
-          Loading fabrics.
+          Chargement des tissus.
         </p>
       ) : null}
       {!isLoading && fabrics.length === 0 ? (
-        <p className="admin-list-feedback">No fabric records yet.</p>
+        <p className="admin-list-feedback">Aucun tissu pour le moment.</p>
       ) : null}
       {fabrics.length > 0 ? (
         <div className="admin-fabric-list" role="list">
@@ -1523,7 +1780,7 @@ function FabricListContent({
                 role="listitem"
               >
                 <Link
-                  aria-label={`Open ${fabricDisplayName}`}
+                  aria-label={`Ouvrir ${fabricDisplayName}`}
                   className="admin-fabric-list-link"
                   href={`/admin/fabrics/${fabric.id}`}
                 >
@@ -1534,7 +1791,7 @@ function FabricListContent({
                         src={fabric.swatch_preview_url}
                       />
                     ) : (
-                      <span>No swatch</span>
+                      <span>Aucun échantillon</span>
                     )}
                   </span>
                   <span className="admin-fabric-list-body">
@@ -1544,7 +1801,7 @@ function FabricListContent({
                     </span>
                     <span className="admin-fabric-list-details">
                       <span>
-                        <small>Status</small>
+                        <small>Statut</small>
                         <span
                           className={`admin-sofa-list-lifecycle admin-sofa-list-lifecycle-${fabric.lifecycle_state}`}
                         >
@@ -1552,7 +1809,7 @@ function FabricListContent({
                         </span>
                       </span>
                       <span>
-                        <small>AI reference</small>
+                        <small>Référence IA</small>
                         <span
                           className={`admin-fabric-list-readiness ${
                             fabric.ai_reference_asset
@@ -1560,7 +1817,7 @@ function FabricListContent({
                               : "is-missing"
                           }`}
                         >
-                          {fabric.ai_reference_asset ? "Ready" : "Missing"}
+                          {fabric.ai_reference_asset ? "Prêt" : "Manquant"}
                         </span>
                       </span>
                       <span>
@@ -1646,13 +1903,13 @@ function FabricCreateContent({
       className="admin-section admin-form-page"
     >
       <AdminPageHeader
-        description="Create a fabric record with required swatch and AI reference assets."
-        eyebrow="Catalog"
-        title="Create fabric"
+        description="Créez une fiche tissu avec un échantillon et une image de référence IA."
+        eyebrow="Catalogue"
+        title="Créer un tissu"
         titleId="create-fabric-title"
       />
       <FabricForm
-        buttonLabel={isSubmitting ? "Creating" : "Create fabric"}
+        buttonLabel={isSubmitting ? "Création" : "Créer un tissu"}
         errorMessage={errorMessage}
         onSubmit={handleSubmit}
         selectedSwatchCrop={selectedSwatchCrop}
@@ -1791,15 +2048,15 @@ function FabricEditContent({
       className="admin-section admin-form-page"
     >
       <AdminPageHeader
-        description="Update fabric naming, readiness assets, and archive state."
-        eyebrow="Catalog"
-        title={fabric?.internal_name ?? "Fabric"}
+        description="Mettez à jour les noms, les images nécessaires et l'état d'archive du tissu."
+        eyebrow="Catalogue"
+        title={fabric?.internal_name ?? "Tissu"}
         titleId="edit-fabric-title"
       />
       {fabric ? (
         <div className="admin-grid">
           <FabricForm
-            buttonLabel={isSubmitting ? "Saving" : "Save fabric"}
+            buttonLabel={isSubmitting ? "Enregistrement" : "Enregistrer le tissu"}
             errorMessage={errorMessage}
             fabric={fabric}
             onSubmit={handleSubmit}
@@ -1808,12 +2065,12 @@ function FabricEditContent({
             uploadInfoMessage={uploadInfoMessage}
           />
           <aside className="admin-aside" aria-labelledby="fabric-state-title">
-            <h2 id="fabric-state-title">Fabric state</h2>
+            <h2 id="fabric-state-title">État du tissu</h2>
             <p>{fabric.lifecycle_state}</p>
             <p>
-              Swatch: {fabric.swatch_asset ? "Ready" : "Missing"}
+              Échantillon : {fabric.swatch_asset ? "Prêt" : "Manquant"}
               <br />
-              AI reference: {fabric.ai_reference_asset ? "Ready" : "Missing"}
+              Référence IA : {fabric.ai_reference_asset ? "Prêt" : "Manquant"}
             </p>
             {fabric.lifecycle_state === "active" ? (
               pendingArchive ? (
@@ -1822,11 +2079,11 @@ function FabricEditContent({
                   onClick={() => void handleArchive()}
                   type="button"
                 >
-                  Confirm archive
+                  Confirmer l'archivage
                 </button>
               ) : (
                 <button onClick={() => setPendingArchive(true)} type="button">
-                  Archive fabric
+                  Archiver le tissu
                 </button>
               )
             ) : null}
@@ -1863,10 +2120,9 @@ function SofaCreateContent({
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
-    const payload = buildSofaPayload(formData, selectedTagIds);
-
     try {
+      const formData = new FormData(event.currentTarget);
+      const payload = buildSofaPayload(formData, selectedTagIds);
       const sofa = await dependencies.createSofa(accessToken, payload);
       dependencies.navigate(`/admin/sofas/${sofa.id}`);
     } catch (error) {
@@ -1882,13 +2138,13 @@ function SofaCreateContent({
       className="admin-section admin-form-page"
     >
       <AdminPageHeader
-        description="Create a draft sofa record before assigning fabrics and render coverage."
-        eyebrow="Catalog"
-        title="Create sofa"
+        description="Créez un brouillon avant d'associer les tissus et les rendus."
+        eyebrow="Catalogue"
+        title="Créer un canapé"
         titleId="create-sofa-title"
       />
       <SofaForm
-        buttonLabel={isSubmitting ? "Creating" : "Create draft"}
+        buttonLabel={isSubmitting ? "Création" : "Créer le brouillon"}
         errorMessage={errorMessage}
         onSelectedTagIdsChange={setSelectedTagIds}
         onSubmit={handleSubmit}
@@ -1998,10 +2254,9 @@ function SofaEditContent({
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
-    const payload = buildSofaPayload(formData, selectedTagIds);
-
     try {
+      const formData = new FormData(event.currentTarget);
+      const payload = buildSofaPayload(formData, selectedTagIds);
       const nextSofa = await dependencies.updateSofa(
         accessToken,
         sofaId,
@@ -2125,7 +2380,7 @@ function SofaEditContent({
   if (!sofa && !errorMessage) {
     return (
       <section className="admin-section" aria-live="polite">
-        <p role="status">Loading sofa.</p>
+        <p role="status">Chargement du canapé.</p>
       </section>
     );
   }
@@ -2145,7 +2400,7 @@ function SofaEditContent({
             actions={
               aggregateReadiness ? (
                 <div className="admin-sofa-edit-readiness">
-                  <span>Workflow</span>
+                  <span>Parcours</span>
                   <span
                     className={`admin-readiness-chip admin-readiness-chip-${aggregateReadiness}`}
                   >
@@ -2154,8 +2409,8 @@ function SofaEditContent({
                 </div>
               ) : undefined
             }
-            description="Manage basics, fabric lines, view columns, render coverage, and publishing readiness."
-            eyebrow="Catalog"
+            description="Gérez les infos, les tissus, les colonnes de vue, les rendus et la préparation à la publication."
+            eyebrow="Catalogue"
             title={sofa.internal_name}
             titleId="edit-sofa-title"
           />
@@ -2163,11 +2418,11 @@ function SofaEditContent({
             <span className="admin-lifecycle-badge">
               {formatLifecycleState(sofa.lifecycle_state)}
             </span>
-            <span>{sofa.public_name ?? "No public name"}</span>
+            <span>{sofa.public_name ?? "Aucun nom public"}</span>
           </div>
 
           <div
-            aria-label="Sofa edit workflow"
+            aria-label="Parcours de modification du canapé"
             className="admin-sofa-edit-tabs"
             role="tablist"
           >
@@ -2202,7 +2457,8 @@ function SofaEditContent({
             })}
           </div>
 
-          {/* This area renders the selected workflow tab. */}
+          {/* RU: Этот большой блок показывает выбранный шаг работы с диваном. */}
+          {/* FR: Ce grand bloc montre l'etape choisie pour le canape. */}
           <div
             aria-labelledby={`sofa-edit-tab-${activeTab}`}
             className="admin-sofa-edit-panel"
@@ -2218,10 +2474,10 @@ function SofaEditContent({
                 <SectionStepHeading
                   headingId="sofa-basics-title"
                   number="1"
-                  title="Sofa basics"
+                  title="Infos du canapé"
                 />
                 <SofaForm
-                  buttonLabel={isSubmitting ? "Saving" : "Save sofa"}
+                  buttonLabel={isSubmitting ? "Enregistrement" : "Enregistrer le canapé"}
                   errorMessage={errorMessage}
                   onSelectedTagIdsChange={setSelectedTagIds}
                   onSubmit={handleSubmit}
@@ -2285,11 +2541,40 @@ function SofaEditContent({
 }
 
 function formatLifecycleState(lifecycleState: string) {
-  return lifecycleState
-    .split("_")
-    .filter(Boolean)
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(" ");
+  return formatAdminLifecycleLabel(lifecycleState);
+}
+
+function formatWholeEuroPrice(priceCents: number | null | undefined) {
+  if (
+    typeof priceCents !== "number" ||
+    !Number.isInteger(priceCents) ||
+    priceCents <= 0
+  ) {
+    return "Prix non renseigné";
+  }
+
+  return `${formatWholeEuroAmount(priceCents / 100)} €`;
+}
+
+function formatWholeEuroAmount(amount: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 0,
+  })
+    .format(amount)
+    .replace(/\u202f|\u00a0/g, " ");
+}
+
+function formatPriceEurosForInput(priceCents: number | null | undefined) {
+  if (
+    typeof priceCents !== "number" ||
+    !Number.isInteger(priceCents) ||
+    priceCents <= 0 ||
+    priceCents % 100 !== 0
+  ) {
+    return "";
+  }
+
+  return String(priceCents / 100);
 }
 
 function AdminStateBadge({
@@ -2325,16 +2610,7 @@ function getReadinessBadgeTone(isReady: boolean): AdminBadgeTone {
 }
 
 function formatReadinessKind(kind: SofaEditReadinessKind) {
-  switch (kind) {
-    case "blocked":
-      return "Blocked";
-    case "missing":
-      return "Missing";
-    case "partial":
-      return "Partial";
-    case "ready":
-      return "Ready";
-  }
+  return formatAdminReadinessLabel(kind);
 }
 
 function getSofaEditAggregateReadiness(
@@ -2376,17 +2652,19 @@ function PublicationReadinessSection({
   sofa: AdminCatalogSofa;
   sofaId: string;
 }) {
-  // RU: Эти значения показывают ошибку и занятость кнопок публикации.
-  // FR: Ces valeurs affichent l'erreur et l'occupation des boutons de publication.
+  // RU: Эти значения показывают ошибку, занятость кнопок и подтверждение архива.
+  // FR: Ces valeurs affichent l'erreur, l'occupation des boutons et la confirmation d'archive.
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(
     null,
   );
   const [isPublicationActionBusy, setIsPublicationActionBusy] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState(false);
 
-  // RU: Эти данные говорят, виден ли диван на публичном сайте.
-  // FR: Ces donnees indiquent si le canape est visible sur le site public.
+  // RU: Эти данные говорят, виден ли диван на публичном сайте или уже в архиве.
+  // FR: Ces donnees indiquent si le canape est public ou deja archive.
   const isPublished = sofa.lifecycle_state === "published";
-  const lifecycleLabel = isPublished ? "Published" : "Draft";
+  const isArchived = sofa.lifecycle_state === "archived";
+  const lifecycleLabel = formatLifecycleState(sofa.lifecycle_state);
 
   // RU: Это действие обновляет проверку готовности после публикации.
   // FR: Cette action actualise la verification apres la publication.
@@ -2402,6 +2680,7 @@ function PublicationReadinessSection({
   // FR: Cette action rend le canape visible sur le site public.
   async function handlePublish() {
     setActionErrorMessage(null);
+    setPendingArchive(false);
     setIsPublicationActionBusy(true);
 
     try {
@@ -2419,6 +2698,7 @@ function PublicationReadinessSection({
   // FR: Cette action retire le canape du site public.
   async function handleUnpublish() {
     setActionErrorMessage(null);
+    setPendingArchive(false);
     setIsPublicationActionBusy(true);
 
     try {
@@ -2432,6 +2712,54 @@ function PublicationReadinessSection({
     }
   }
 
+  // RU: Это действие кладет диван в архив и убирает его с публичного сайта.
+  // FR: Cette action met le canape en archive et le retire du site public.
+  async function handleArchive() {
+    setActionErrorMessage(null);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.archiveSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      setPendingArchive(false);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
+  // RU: Это действие возвращает диван из архива в черновик.
+  // FR: Cette action remet le canape archive en brouillon.
+  async function handleUnarchive() {
+    setActionErrorMessage(null);
+    setPendingArchive(false);
+    setIsPublicationActionBusy(true);
+
+    try {
+      const nextSofa = await dependencies.unarchiveSofa(accessToken, sofaId);
+      onSofaChange(nextSofa);
+      await refreshReadiness();
+    } catch (error) {
+      setActionErrorMessage(readErrorMessage(error));
+    } finally {
+      setIsPublicationActionBusy(false);
+    }
+  }
+
+  // RU: Это действие просит админа подтвердить перенос дивана в архив.
+  // FR: Cette action demande a l'admin de confirmer le passage du canape en archive.
+  function handleStartArchiveConfirm() {
+    setPendingArchive(true);
+  }
+
+  // RU: Это действие отменяет подтверждение архива, если админ передумал.
+  // FR: Cette action annule la confirmation d'archive si l'admin change d'avis.
+  function handleCancelArchiveConfirm() {
+    setPendingArchive(false);
+  }
+
   return (
     <section
       aria-labelledby="readiness-title"
@@ -2440,7 +2768,7 @@ function PublicationReadinessSection({
     >
       <SectionStepHeading
         headingId="readiness-title"
-        title="Publication readiness"
+        title="Préparation à la publication"
       />
       {actionErrorMessage ? (
         <p className="form-error" role="alert">
@@ -2449,11 +2777,11 @@ function PublicationReadinessSection({
       ) : null}
       <dl className="admin-cell-details">
         <div>
-          <dt>Status</dt>
+          <dt>Statut</dt>
           <dd>{lifecycleLabel}</dd>
         </div>
       </dl>
-      {readiness?.ready ? <p>Ready</p> : <p>Blocked</p>}
+      {readiness?.ready ? <p>Prêt</p> : <p>Bloqué</p>}
       {readiness?.errors.length ? (
         <ul className="admin-list">
           {readiness.errors.map((error) => {
@@ -2465,14 +2793,14 @@ function PublicationReadinessSection({
                   <strong>
                     {formatAdminPublicationBlockerLabel(error.code)}
                   </strong>
-                  <span>{formatAdminErrorMessage(error.message)}</span>
+                  <span>Corrigez ce point avant de publier.</span>
                 </div>
                 <button
                   className="admin-secondary-button"
                   onClick={() => onSelectTab(targetTab)}
                   type="button"
                 >
-                  Go to {getSofaEditTabLabel(targetTab)}
+                  Aller à {getSofaEditTabLabel(targetTab)}
                 </button>
               </li>
             );
@@ -2480,25 +2808,66 @@ function PublicationReadinessSection({
         </ul>
       ) : null}
       <div className="admin-actions">
-        {!isPublished ? (
+        {!isArchived && !isPublished ? (
           <button
             className="admin-primary-button"
             disabled={isPublicationActionBusy || !readiness?.ready}
             onClick={() => void handlePublish()}
             type="button"
           >
-            {isPublicationActionBusy ? "Publishing" : "Publish sofa"}
+            {isPublicationActionBusy ? "Publication" : "Publier le canapé"}
           </button>
-        ) : (
+        ) : null}
+        {!isArchived && isPublished ? (
           <button
             className="admin-danger-button"
             disabled={isPublicationActionBusy}
             onClick={() => void handleUnpublish()}
             type="button"
           >
-            {isPublicationActionBusy ? "Unpublishing" : "Unpublish sofa"}
+            {isPublicationActionBusy ? "Retrait de la publication" : "Retirer la publication"}
           </button>
-        )}
+        ) : null}
+        {!isArchived && pendingArchive ? (
+          <>
+            <button
+              className="admin-danger-button"
+              disabled={isPublicationActionBusy}
+              onClick={() => void handleArchive()}
+              type="button"
+            >
+              {isPublicationActionBusy ? "Archivage" : "Confirmer l'archivage"}
+            </button>
+            <button
+              className="admin-secondary-button"
+              disabled={isPublicationActionBusy}
+              onClick={handleCancelArchiveConfirm}
+              type="button"
+            >
+              Annuler
+            </button>
+          </>
+        ) : null}
+        {!isArchived && !pendingArchive ? (
+          <button
+            className="admin-danger-button"
+            disabled={isPublicationActionBusy}
+            onClick={handleStartArchiveConfirm}
+            type="button"
+          >
+            Archiver le canapé
+          </button>
+        ) : null}
+        {isArchived ? (
+          <button
+            className="admin-secondary-button"
+            disabled={isPublicationActionBusy}
+            onClick={() => void handleUnarchive()}
+            type="button"
+          >
+            {isPublicationActionBusy ? "Restauration" : "Restaurer depuis l'archive"}
+          </button>
+        ) : null}
       </div>
     </section>
   );
@@ -2519,6 +2888,63 @@ function SectionStepHeading({
   );
 }
 
+// RU: Этот знак показывает удаление без текста на маленьких кнопках.
+// FR: Ce signe montre la suppression sans texte sur les petits boutons.
+function AdminDeleteIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-delete-icon">
+      <path d="M8 8.25h8a1 1 0 0 1 1 1v1.25H7V9.25a1 1 0 0 1 1-1Z" />
+      <path d="M10.5 8.25v-1.5h3v1.5" />
+      <path d="M8.5 10.5h7l-.65 7.3a1.6 1.6 0 0 1-1.6 1.45h-2.5a1.6 1.6 0 0 1-1.6-1.45L8.5 10.5Z" />
+      <path className="admin-delete-icon-mark" d="M10.4 13.1 13.6 16.3M13.6 13.1 10.4 16.3" />
+    </svg>
+  );
+}
+
+// RU: Этот знак показывает правку без слова Edit на маленьких кнопках.
+// FR: Ce signe montre la modification sans le mot Edit sur les petits boutons.
+function AdminEditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-edit-icon">
+      <path d="M14.25 4.75H6.5a2 2 0 0 0-2 2v10.75a2 2 0 0 0 2 2h10.75a2 2 0 0 0 2-2V9.75" />
+      <path d="M13.4 16.15 8.2 17.6l1.45-5.2 7.65-7.65a1.85 1.85 0 0 1 2.62 0l.43.43a1.85 1.85 0 0 1 0 2.62l-7.65 7.65Z" />
+      <path d="m15.95 6.1 2.35 2.35" />
+      <path d="m9.65 12.4 3.05 3.05" />
+    </svg>
+  );
+}
+
+// RU: Этот знак закрывает окно без слова Close на маленьких кнопках.
+// FR: Ce signe ferme la fenetre sans le mot Close sur les petits boutons.
+function AdminCloseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="admin-close-icon">
+      <path d="M6.75 6.75 17.25 17.25M17.25 6.75 6.75 17.25" />
+    </svg>
+  );
+}
+
+// RU: Этот знак показывает переход к прошлому или следующему варианту без длинного текста.
+// FR: Ce signe montre le passage vers le choix avant ou apres sans long texte.
+function AdminArrowIcon({ direction }: { direction: "previous" | "next" }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={`admin-arrow-icon admin-arrow-icon-${direction}`}
+    >
+      <path
+        d={
+          direction === "previous"
+            ? "M14.5 6.5 9 12l5.5 5.5"
+            : "M9.5 6.5 15 12l-5.5 5.5"
+        }
+      />
+      <path d={direction === "previous" ? "M9.5 12h9" : "M5.5 12h9"} />
+    </svg>
+  );
+}
+
 function TagManagerContent({
   accessToken,
   dependencies,
@@ -2526,6 +2952,8 @@ function TagManagerContent({
   accessToken: string;
   dependencies: AdminCatalogPageDependencies;
 }) {
+  // RU: Эти значения хранят сообщения, загрузку, отправку и список тегов на странице.
+  // FR: Ces valeurs gardent les messages, le chargement, l'envoi et la liste des etiquettes sur la page.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2535,6 +2963,8 @@ function TagManagerContent({
   const [submittingTagId, setSubmittingTagId] = useState<string | null>(null);
   const [tags, setTags] = useState<AdminCatalogTag[]>([]);
 
+  // RU: Эта команда заново берет теги с сервера.
+  // FR: Cette action reprend les etiquettes depuis le serveur.
   async function loadTags() {
     setIsLoading(true);
 
@@ -2546,24 +2976,29 @@ function TagManagerContent({
     }
   }
 
+  // RU: Этот автоматический блок загружает теги при открытии страницы или смене доступа.
+  // FR: Ce bloc automatique charge les etiquettes quand la page s'ouvre ou quand l'acces change.
   useEffect(() => {
     void loadTags().catch((error) => setErrorMessage(readErrorMessage(error)));
   }, [accessToken, dependencies]);
 
+  // RU: Эта команда создает тег, чистит поле и сразу добавляет тег в список.
+  // FR: Cette action cree une etiquette, vide le champ et ajoute tout de suite l'etiquette a la liste.
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setErrorMessage(null);
     setIsSubmitting(true);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const publicLabel = String(formData.get("public_label") ?? "").trim();
 
     try {
-      await dependencies.createTag(accessToken, {
+      const createdTag = await dependencies.createTag(accessToken, {
         public_label: publicLabel,
       });
-      event.currentTarget.reset();
-      await loadTags();
+      form.reset();
+      setTags((currentTags) => mergeAdminTagList(currentTags, createdTag));
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
     } finally {
@@ -2571,6 +3006,8 @@ function TagManagerContent({
     }
   }
 
+  // RU: Эта команда сохраняет новое имя тега.
+  // FR: Cette action enregistre le nouveau nom de l'etiquette.
   async function handleUpdate(tag: AdminCatalogTag, form: HTMLFormElement) {
     setErrorMessage(null);
     setSubmittingTagId(tag.id);
@@ -2589,6 +3026,8 @@ function TagManagerContent({
     }
   }
 
+  // RU: Эта команда удаляет тег после подтверждения.
+  // FR: Cette action supprime l'etiquette apres la confirmation.
   async function handleDelete(tag: AdminCatalogTag) {
     setErrorMessage(null);
     setSubmittingTagId(tag.id);
@@ -2610,9 +3049,9 @@ function TagManagerContent({
       className="admin-section admin-list-page"
     >
       <AdminPageHeader
-        description="Create and maintain the public tags used to organize catalog filters."
-        eyebrow="Catalog"
-        title="Tags"
+        description="Créez et maintenez les étiquettes publiques utilisées pour organiser les filtres du catalogue."
+        eyebrow="Catalogue"
+        title="Étiquettes"
         titleId="tags-title"
       />
       {errorMessage ? (
@@ -2620,32 +3059,36 @@ function TagManagerContent({
           {errorMessage}
         </p>
       ) : null}
+      {/* RU: Эта форма добавляет новый тег в каталог. */}
+      {/* FR: Cette partie ajoute une nouvelle etiquette au catalogue. */}
       <form
         aria-busy={isSubmitting}
         className="admin-inline-form admin-tag-create-form"
         onSubmit={handleCreate}
       >
         <label className="field admin-tag-create-field">
-          <span>New tag</span>
+          <span>Nouvelle étiquette</span>
           <input name="public_label" required />
         </label>
         <button
-          aria-label="Create tag"
+          aria-label="Créer l'étiquette"
           className="admin-primary-button"
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Creating" : "Create"}
+          {isSubmitting ? "Création" : "Créer"}
         </button>
       </form>
       {isLoading ? (
         <p className="admin-list-feedback" role="status">
-          Loading tags.
+          Chargement des étiquettes.
         </p>
       ) : null}
       {!isLoading && tags.length === 0 ? (
-        <p className="admin-list-feedback">No tags yet.</p>
+        <p className="admin-list-feedback">Aucune étiquette.</p>
       ) : null}
+      {/* RU: Этот список показывает все теги и дает менять или удалять каждый тег. */}
+      {/* FR: Cette liste montre toutes les etiquettes et permet de changer ou supprimer chaque etiquette. */}
       {tags.length > 0 ? (
         <div className="admin-list admin-tag-list">
           {tags.map((tag) => {
@@ -2655,7 +3098,7 @@ function TagManagerContent({
             return (
               <form
                 aria-busy={isTagSubmitting}
-                aria-label={`Edit tag ${tag.public_label}`}
+                aria-label={`Modifier l'étiquette ${tag.public_label}`}
                 className="admin-list-row admin-tag-row"
                 key={tag.id}
                 onSubmit={(event) => {
@@ -2664,9 +3107,9 @@ function TagManagerContent({
                 }}
               >
                 <label className="field admin-tag-name-field">
-                  <span>Name</span>
+                  <span>Nom</span>
                   <input
-                    aria-label={`Tag name for ${tag.public_label}`}
+                    aria-label={`Nom de l'étiquette ${tag.public_label}`}
                     defaultValue={tag.public_label}
                     disabled={isTagSubmitting}
                     name={`tag-${tag.id}`}
@@ -2674,51 +3117,55 @@ function TagManagerContent({
                   />
                 </label>
                 <span
-                  aria-label={`Slug ${tag.slug}`}
+                  aria-label={`Adresse ${tag.slug}`}
                   className="admin-tag-slug"
                 >
-                  <span>Slug</span>
+                  <span>Adresse</span>
                   <code>{tag.slug}</code>
                 </span>
                 <div className="admin-row-actions admin-tag-row-actions">
                   <button
-                    aria-label={`Save ${tag.public_label}`}
+                    aria-label={`Enregistrer ${tag.public_label}`}
                     className="admin-quiet-button"
                     disabled={isTagSubmitting}
                     type="submit"
                   >
-                    {isTagSubmitting ? "Saving" : "Save"}
+                    {isTagSubmitting ? "Enregistrement" : "Enregistrer"}
                   </button>
                   {isConfirmingDelete ? (
                     <>
                       <button
-                        aria-label={`Confirm delete ${tag.public_label}`}
-                        className="admin-danger-button"
+                        aria-label={
+                          isTagSubmitting
+                            ? `Suppression de ${tag.public_label}`
+                            : `Confirmer la suppression de ${tag.public_label}`
+                        }
+                        className="admin-danger-button admin-icon-button"
                         disabled={isTagSubmitting}
                         onClick={() => void handleDelete(tag)}
                         type="button"
                       >
-                        {isTagSubmitting ? "Deleting" : "Confirm"}
+                        <AdminDeleteIcon />
                       </button>
                       <button
-                        aria-label={`Cancel delete ${tag.public_label}`}
+                        aria-label={`Annuler la suppression de ${tag.public_label}`}
                         className="admin-secondary-button admin-tag-cancel-button"
                         disabled={isTagSubmitting}
                         onClick={() => setPendingDeleteTagId(null)}
                         type="button"
                       >
-                        Cancel
+                        Annuler
                       </button>
                     </>
                   ) : (
                     <button
-                      aria-label={`Delete ${tag.public_label}`}
-                      className="admin-quiet-button"
+                      aria-label={`Supprimer ${tag.public_label}`}
+                      className="admin-quiet-button admin-icon-button"
                       disabled={isTagSubmitting}
                       onClick={() => setPendingDeleteTagId(tag.id)}
                       type="button"
                     >
-                      Delete
+                      <AdminDeleteIcon />
                     </button>
                   )}
                 </div>
@@ -2728,6 +3175,30 @@ function TagManagerContent({
         </div>
       ) : null}
     </section>
+  );
+}
+
+// RU: Эта помощь кладет новый тег в список один раз и держит порядок по имени.
+// FR: Cette aide met la nouvelle etiquette une seule fois et garde l'ordre par nom.
+function mergeAdminTagList(
+  tags: AdminCatalogTag[],
+  tag: AdminCatalogTag,
+): AdminCatalogTag[] {
+  const nextTags = tags.filter((currentTag) => currentTag.id !== tag.id);
+
+  nextTags.push(tag);
+  nextTags.sort(compareAdminTags);
+
+  return nextTags;
+}
+
+// RU: Эта помощь сравнивает теги по имени, потом по короткому адресу, потом по номеру.
+// FR: Cette aide compare les etiquettes par nom, puis par adresse courte, puis par numero.
+function compareAdminTags(first: AdminCatalogTag, second: AdminCatalogTag) {
+  return (
+    first.public_label.localeCompare(second.public_label) ||
+    first.slug.localeCompare(second.slug) ||
+    first.id.localeCompare(second.id)
   );
 }
 
@@ -2853,7 +3324,7 @@ function SofaFabricAssignmentSection({
       const duplicateOrder = findDuplicateSofaFabricPublicOrder(desiredOrders);
 
       if (duplicateOrder !== null) {
-        setErrorMessage("Another fabric already uses this public order.");
+        setErrorMessage("Un autre tissu utilise déjà cet ordre public.");
 
         return;
       }
@@ -2958,14 +3429,14 @@ function SofaFabricAssignmentSection({
     >
       <SectionStepHeading
         headingId="sofa-fabrics-title"
-        title="Fabric assignments"
+        title="Tissus associés"
       />
       {errorMessage ? (
         <p className="form-error" role="alert">
           {errorMessage}
         </p>
       ) : null}
-      {sofaFabrics.length === 0 ? <p>No assigned fabrics.</p> : null}
+      {sofaFabrics.length === 0 ? <p>Aucun tissu associé.</p> : null}
       {sofaFabrics.length > 0 ? (
         <>
           <div className="admin-fabric-order-row">
@@ -2975,14 +3446,14 @@ function SofaFabricAssignmentSection({
               onClick={() => void handleSaveOrder()}
               type="button"
             >
-              Save order
+              Enregistrer l'ordre
             </button>
             <button
               className="admin-quiet-button"
               onClick={handleResetOrder}
               type="button"
             >
-              Reset order
+              Réinitialiser l'ordre
             </button>
           </div>
           {/* RU: Этот список показывает ткани дивана и их порядок.
@@ -3005,9 +3476,9 @@ function SofaFabricAssignmentSection({
                     <span>{assignment.fabric_id}</span>
                   )}
                   <label className="field admin-order-field">
-                    <span>Order</span>
+                    <span>Ordre</span>
                     <input
-                      aria-label={`Public order for ${fabricLabel}`}
+                      aria-label={`Ordre public pour ${fabricLabel}`}
                       inputMode="numeric"
                       min="0"
                       onChange={(event) =>
@@ -3022,11 +3493,12 @@ function SofaFabricAssignmentSection({
                     />
                   </label>
                   <button
-                    className="admin-danger-button"
+                    aria-label={`Supprimer l'association du tissu ${fabricLabel}`}
+                    className="admin-danger-button admin-icon-button"
                     onClick={() => void handleRemove(assignment)}
                     type="button"
                   >
-                    Delete
+                    <AdminDeleteIcon />
                   </button>
                 </div>
               );
@@ -3036,9 +3508,9 @@ function SofaFabricAssignmentSection({
       ) : null}
       <form className="admin-add-fabric-form" onSubmit={handleAssign}>
         <label className="field">
-          <span>Assign fabric</span>
+          <span>Associer un tissu</span>
           <select name="fabric_id" required>
-            <option value="">Select fabric</option>
+            <option value="">Choisir un tissu</option>
             {assignableFabrics.map((fabric) => (
               <option key={fabric.id} value={fabric.id}>
                 {fabric.internal_name}
@@ -3047,7 +3519,7 @@ function SofaFabricAssignmentSection({
           </select>
         </label>
         <label className="field admin-order-field">
-          <span>Public order</span>
+          <span>Ordre public</span>
           <input
             inputMode="numeric"
             min="0"
@@ -3061,7 +3533,7 @@ function SofaFabricAssignmentSection({
           disabled={isSubmitting}
           type="submit"
         >
-          Assign fabric
+          Associer un tissu
         </button>
       </form>
     </section>
@@ -3115,20 +3587,20 @@ function AdminFabricCard({ fabric }: { fabric: AdminCatalogFabric }) {
     <article className="admin-fabric-card">
       {fabric.swatch_preview_url ? (
         <img
-          alt={`Swatch for ${fabric.public_name}`}
+          alt={`Échantillon pour ${fabric.public_name}`}
           className="admin-fabric-swatch"
           src={fabric.swatch_preview_url}
         />
       ) : (
-        <span className="admin-fabric-swatch-empty">No swatch</span>
+        <span className="admin-fabric-swatch-empty">Aucun échantillon</span>
       )}
       <div className="admin-fabric-card-body">
         <strong className="admin-fabric-name">{fabric.public_name}</strong>
         <span className="admin-fabric-meta">
-          Internal: {fabric.internal_name}
+          Interne : {fabric.internal_name}
         </span>
         <span className="admin-fabric-meta">
-          AI ref: {fabric.ai_reference_asset ? "Ready" : "Missing"}
+          Référence IA : {fabric.ai_reference_asset ? "Prêt" : "Manquant"}
         </span>
         {fabric.is_premium ? (
           <span className="admin-fabric-premium">Premium</span>
@@ -3143,18 +3615,18 @@ function AdminFabricCompact({ fabric }: { fabric: AdminCatalogFabric }) {
     <article className="admin-fabric-compact">
       {fabric.swatch_preview_url ? (
         <img
-          alt={`Swatch for ${fabric.public_name}`}
+          alt={`Échantillon pour ${fabric.public_name}`}
           className="admin-fabric-compact-swatch"
           src={fabric.swatch_preview_url}
         />
       ) : (
         <span className="admin-fabric-compact-swatch admin-fabric-compact-empty">
-          No swatch
+          Aucun échantillon
         </span>
       )}
       <div>
         <strong>{fabric.public_name}</strong>
-        <span>{fabric.ai_reference_asset ? "AI ready" : "AI missing"}</span>
+        <span>{fabric.ai_reference_asset ? "IA prête" : "IA manquante"}</span>
       </div>
     </article>
   );
@@ -3215,6 +3687,51 @@ function VisualMatrixSection({
     ? columns.find((column) => column.id === pendingDeleteColumnId)
     : null;
 
+  // RU: Эти адреса показывают закрытые фото колонок через защищенный путь.
+  // FR: Ces adresses montrent les photos privees des colonnes par le chemin protege.
+  const [sourcePhotoPreviewUrls, setSourcePhotoPreviewUrls] = useState<
+    Record<string, string>
+  >({});
+  // RU: Этот список помогает закрывать старые адреса фото колонок.
+  // FR: Cette liste aide a fermer les anciennes adresses des photos de colonnes.
+  const sourcePhotoPreviewUrlsRef = useRef<Record<string, string>>({});
+
+  // RU: Эти данные говорят, какие фото и размеры нужны списку колонок и открытому окну.
+  // FR: Ces donnees disent quelles photos et quelles tailles servent a la liste et a la fenetre ouverte.
+  const sourcePhotoPreviewRequests = useMemo(() => {
+    const requests: AdminStorageAssetPreviewRequest[] = [];
+
+    for (const column of columns) {
+      const request = createStorageAssetPreviewRequest(
+        column.current_source_photo?.asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
+      }
+    }
+
+    const activeColumnRequest =
+      activeColumnDrawerMode === "edit" && !selectedSourcePhotoPreviewUrl
+        ? createStorageAssetPreviewRequest(
+            activeColumn?.current_source_photo?.asset_id,
+            "medium",
+          )
+        : null;
+
+    if (activeColumnRequest) {
+      requests.push(activeColumnRequest);
+    }
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [
+    activeColumn?.current_source_photo?.asset_id,
+    activeColumnDrawerMode,
+    columns,
+    selectedSourcePhotoPreviewUrl,
+  ]);
+
   // RU: Этот автоматический блок убирает быстрый адрес фото, когда он уже не нужен.
   // FR: Ce bloc automatique retire l'adresse rapide de la photo quand elle n'est plus utile.
   useEffect(() => {
@@ -3224,6 +3741,73 @@ function VisualMatrixSection({
       }
     };
   }, [selectedSourcePhotoPreviewUrl]);
+
+  // RU: Этот автоматический блок загружает фото колонок в нужном размере через защищенный путь.
+  // FR: Ce bloc automatique charge les photos des colonnes a la bonne taille par le chemin protege.
+  useEffect(() => {
+    let isCurrent = true;
+    const neededPreviewKeys = new Set(
+      sourcePhotoPreviewRequests.map((request) => request.key),
+    );
+    const currentUrls = sourcePhotoPreviewUrlsRef.current;
+    const nextUrls = { ...currentUrls };
+    let hasChanged = false;
+
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+        delete nextUrls[previewKey];
+        hasChanged = true;
+      }
+    }
+
+    if (hasChanged) {
+      sourcePhotoPreviewUrlsRef.current = nextUrls;
+      setSourcePhotoPreviewUrls(nextUrls);
+    }
+
+    for (const request of sourcePhotoPreviewRequests) {
+      if (nextUrls[request.key]) {
+        continue;
+      }
+
+      void dependencies
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
+        .then((url) => {
+          if (!isCurrent) {
+            dependencies.revokeStorageAssetPreviewUrl(url);
+            return;
+          }
+
+          sourcePhotoPreviewUrlsRef.current = {
+            ...sourcePhotoPreviewUrlsRef.current,
+            [request.key]: url,
+          };
+          setSourcePhotoPreviewUrls(sourcePhotoPreviewUrlsRef.current);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, dependencies, sourcePhotoPreviewRequests]);
+
+  // RU: Этот автоматический блок закрывает адреса фото колонок при уходе с экрана.
+  // FR: Ce bloc automatique ferme les adresses des photos de colonnes au depart.
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(sourcePhotoPreviewUrlsRef.current)) {
+        dependencies.revokeStorageAssetPreviewUrl(url);
+      }
+
+      sourcePhotoPreviewUrlsRef.current = {};
+    };
+  }, [dependencies]);
 
   // RU: Это действие открывает центральное окно для колонки.
   // FR: Cette action ouvre la fenetre centrale pour une colonne.
@@ -3244,8 +3828,8 @@ function VisualMatrixSection({
     setActiveColumnId(column?.id ?? null);
   }
 
-  // RU: Это действие прячет центральное окно Visual matrix.
-  // FR: Cette action cache la fenetre centrale de Visual matrix.
+  // RU: Это действие прячет центральное окно колонок вида.
+  // FR: Cette action cache la fenetre centrale des colonnes de vue.
   function closeColumnDrawer() {
     setErrorMessage(null);
     setSelectedSourcePhotoFileName(null);
@@ -3351,7 +3935,7 @@ function VisualMatrixSection({
 
     if (!originalFabricId && (file || column.current_source_photo)) {
       setErrorMessage(
-        "Choose a source fabric before saving this source image.",
+        "Choisissez un tissu source avant d'enregistrer cette image source.",
       );
       setIsSubmitting(false);
       return;
@@ -3359,7 +3943,7 @@ function VisualMatrixSection({
 
     if (!file && sourceFabricChanged && !column.current_source_photo) {
       setErrorMessage(
-        "Upload a source image before assigning a source fabric to this view column.",
+        "Envoyez une image source avant d'associer un tissu source à cette colonne.",
       );
       setIsSubmitting(false);
       return;
@@ -3419,7 +4003,7 @@ function VisualMatrixSection({
     return (
       assignment?.fabric?.public_name ??
       assignment?.fabric?.internal_name ??
-      "No original fabric"
+      "Aucun tissu source"
     );
   }
 
@@ -3442,10 +4026,16 @@ function VisualMatrixSection({
   const activeOriginalFabricName = getFabricAssignmentName(
     activeOriginalFabricAssignment,
   );
+  const activeProtectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+    sourcePhotoPreviewUrls,
+    activeColumn?.current_source_photo?.asset_id,
+    "medium",
+  );
   const activeSourcePhotoPreviewUrl =
     selectedSourcePhotoPreviewUrl ??
-    activeColumn?.current_source_photo?.preview_url ??
-    null;
+    (activeColumn?.current_source_photo?.asset_id
+      ? activeProtectedSourcePhotoPreviewUrl
+      : (activeColumn?.current_source_photo?.preview_url ?? null));
 
   // RU: Это значение решает, где показывать сообщение: в окне или над списком.
   // FR: Cette valeur decide ou montrer le message: dans la fenetre ou au-dessus de la liste.
@@ -3460,7 +4050,7 @@ function VisualMatrixSection({
     >
       <SectionStepHeading
         headingId="visual-matrix-title"
-        title="View columns"
+        title="Colonnes de vue"
       />
       {shouldShowSectionFeedback && errorMessage ? (
         <p className="form-error" role="alert">
@@ -3474,32 +4064,40 @@ function VisualMatrixSection({
       ) : null}
       <div className="admin-visual-matrix-toolbar">
         <div>
-          <h3>View columns</h3>
-          <p>Configures positions. Renders shows coverage.</p>
+          <h3>Colonnes de vue</h3>
+          <p>Configure les positions. Rendus montre la couverture.</p>
         </div>
         <button
           className="admin-secondary-button"
           onClick={() => openColumnDrawer("add")}
           type="button"
         >
-          Add column
+          Ajouter une colonne
         </button>
       </div>
-      {columns.length === 0 ? <p>No visual columns.</p> : null}
+      {columns.length === 0 ? <p>Aucune colonne de vue.</p> : null}
       {columns.length > 0 ? (
         <div className="admin-visual-matrix-list">
           {columns.map((column) => {
+            // RU: Эти данные выбирают ткань и маленькое фото для строки колонки.
+            // FR: Ces donnees choisissent le tissu et la petite photo pour la ligne de colonne.
             const originalFabricAssignment =
               getOriginalFabricAssignment(column);
             const originalFabric = originalFabricAssignment?.fabric ?? null;
             const originalFabricName = getOriginalFabricName(column);
-            const sourcePhotoPreviewUrl =
-              column.current_source_photo?.preview_url ?? null;
+            const protectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
+              sourcePhotoPreviewUrls,
+              column.current_source_photo?.asset_id,
+              "small",
+            );
+            const sourcePhotoPreviewUrl = column.current_source_photo?.asset_id
+              ? protectedSourcePhotoPreviewUrl
+              : (column.current_source_photo?.preview_url ?? null);
 
             return (
               <article className="admin-visual-matrix-row" key={column.id}>
                 <button
-                  aria-label={`Edit source image column ${column.sequence}`}
+                  aria-label={`Modifier l'image source de la colonne ${column.sequence}`}
                   className="admin-visual-matrix-source-preview admin-visual-matrix-source-button"
                   onClick={() => openColumnDrawer("edit", column)}
                   type="button"
@@ -3508,11 +4106,17 @@ function VisualMatrixSection({
                     <img alt="" src={sourcePhotoPreviewUrl} />
                   ) : (
                     <span className="admin-visual-matrix-source-empty">
-                      Upload
+                      Envoyer
                     </span>
                   )}
-                  <span className="admin-visual-matrix-source-action">
-                    {sourcePhotoPreviewUrl ? "Edit" : "Upload"}
+                  <span
+                    className={
+                      sourcePhotoPreviewUrl
+                        ? "admin-visual-matrix-source-action admin-visual-matrix-source-action--icon"
+                        : "admin-visual-matrix-source-action"
+                    }
+                  >
+                    {sourcePhotoPreviewUrl ? <AdminEditIcon /> : "Envoyer"}
                   </span>
                 </button>
                 <div className="admin-visual-matrix-copy">
@@ -3520,31 +4124,31 @@ function VisualMatrixSection({
                     Position {String(column.sequence).padStart(2, "0")}
                   </span>
                   <strong>
-                    {column.public_label ?? `Column ${column.sequence}`}
+                    {column.public_label ?? `Colonne ${column.sequence}`}
                   </strong>
-                  <span>{column.admin_label ?? "No admin label"}</span>
+                  <span>{column.admin_label ?? "Aucun libellé admin"}</span>
                 </div>
                 <div
-                  aria-label={`Source fabric ${originalFabricName}`}
+                  aria-label={`Tissu source ${originalFabricName}`}
                   className="admin-visual-matrix-fabric-preview"
                 >
                   {originalFabric?.swatch_preview_url ? (
                     <img
-                      alt={`Swatch for ${originalFabricName}`}
+                      alt={`Échantillon pour ${originalFabricName}`}
                       src={originalFabric.swatch_preview_url}
                     />
                   ) : (
-                    <span>{originalFabric ? "No swatch" : "No fabric"}</span>
+                    <span>{originalFabric ? "Aucun échantillon" : "Aucun tissu"}</span>
                   )}
                 </div>
                 <div className="admin-visual-matrix-actions admin-visual-matrix-action-bar">
                   <button
-                    aria-label={`Edit column ${column.sequence}`}
+                    aria-label={`Modifier la colonne ${column.sequence}`}
                     className="admin-quiet-button admin-visual-matrix-action-button"
                     onClick={() => openColumnDrawer("edit", column)}
                     type="button"
                   >
-                    Edit
+                    Modifier
                   </button>
                 </div>
               </article>
@@ -3555,7 +4159,7 @@ function VisualMatrixSection({
       {activeColumnDrawerMode === "add" ? (
         <div className="admin-dialog-scrim admin-render-workbench-scrim">
           <div
-            aria-label="Add column"
+            aria-label="Ajouter une colonne"
             aria-modal="true"
             aria-busy={isSubmitting}
             className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
@@ -3563,17 +4167,17 @@ function VisualMatrixSection({
           >
             <header className="admin-render-cell-sheet-header">
               <div>
-                <p className="eyebrow">View columns</p>
-                <h3>Add column</h3>
+                <p className="eyebrow">Colonnes de vue</p>
+                <h3>Ajouter une colonne</h3>
               </div>
               <button
-                aria-label="Close View columns dialog"
-                className="admin-quiet-button admin-render-cell-close-button"
+                aria-label="Fermer la fenêtre des colonnes"
+                className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                 disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
-                Close
+                <AdminCloseIcon />
               </button>
             </header>
             <form
@@ -3591,20 +4195,20 @@ function VisualMatrixSection({
                 disabled={isSubmitting}
               >
                 <label className="field">
-                  <span>Order</span>
+                  <span>Ordre</span>
                   <input min="1" name="sequence" required type="number" />
                 </label>
                 <label className="field">
-                  <span>Admin label</span>
+                  <span>Libellé admin</span>
                   <input name="admin_label" />
                 </label>
                 <label className="field">
-                  <span>Public label</span>
+                  <span>Libellé public</span>
                   <input name="public_label" />
                 </label>
                 <div className="admin-actions">
                   <button className="admin-primary-button" type="submit">
-                    {isSubmitting ? "Adding" : "Add column"}
+                    {isSubmitting ? "Ajout" : "Ajouter une colonne"}
                   </button>
                 </div>
               </fieldset>
@@ -3615,7 +4219,7 @@ function VisualMatrixSection({
       {activeColumnDrawerMode === "edit" && activeColumn ? (
         <div className="admin-dialog-scrim admin-render-workbench-scrim">
           <div
-            aria-label={`Edit column ${activeColumn.sequence}`}
+            aria-label={`Modifier la colonne ${activeColumn.sequence}`}
             aria-modal="true"
             aria-busy={isSubmitting}
             className="admin-drawer admin-render-cell-sheet admin-render-cell-workbench"
@@ -3623,21 +4227,21 @@ function VisualMatrixSection({
           >
             <header className="admin-render-cell-sheet-header">
               <div>
-                <p className="eyebrow">View columns</p>
-                <h3>Edit column {activeColumn.sequence}</h3>
+                <p className="eyebrow">Colonnes de vue</p>
+                <h3>Modifier la colonne {activeColumn.sequence}</h3>
                 <p className="admin-muted">
                   {activeColumn.public_label ??
-                    `Column ${activeColumn.sequence}`}
+                    `Colonne ${activeColumn.sequence}`}
                 </p>
               </div>
               <button
-                aria-label="Close View columns dialog"
-                className="admin-quiet-button admin-render-cell-close-button"
+                aria-label="Fermer la fenêtre des colonnes"
+                className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                 disabled={isSubmitting}
                 onClick={closeColumnDrawer}
                 type="button"
               >
-                Close
+                <AdminCloseIcon />
               </button>
             </header>
             <form
@@ -3670,14 +4274,14 @@ function VisualMatrixSection({
                           {activeSourcePhotoPreviewUrl ? (
                             <img alt="" src={activeSourcePhotoPreviewUrl} />
                           ) : (
-                            <span>No source image</span>
+                            <span>Aucune image source</span>
                           )}
                         </span>
                         <span className="admin-view-column-source-action">
                           <strong>
                             {activeSourcePhotoPreviewUrl
-                              ? "Edit image"
-                              : "Upload image"}
+                              ? "Modifier l'image"
+                              : "Envoyer une image"}
                           </strong>
                           <small>
                             {selectedSourcePhotoFileName ?? "PNG, JPG, WEBP"}
@@ -3685,7 +4289,7 @@ function VisualMatrixSection({
                         </span>
                         <input
                           accept="image/png,image/jpeg,image/webp"
-                          aria-label={`Source photo ${activeColumn.sequence}`}
+                          aria-label={`Photo source ${activeColumn.sequence}`}
                           className="admin-view-column-file-input"
                           name={`source_photo_${activeColumn.id}`}
                           onChange={handleSourcePhotoFileChange}
@@ -3693,17 +4297,17 @@ function VisualMatrixSection({
                         />
                       </label>
                       <div
-                        aria-label={`Current source fabric ${activeOriginalFabricName}`}
+                        aria-label={`Tissu source actuel ${activeOriginalFabricName}`}
                         className="admin-view-column-fabric-preview"
                       >
                         {activeOriginalFabric?.swatch_preview_url ? (
                           <img
-                            alt={`Swatch for ${activeOriginalFabricName}`}
+                            alt={`Échantillon pour ${activeOriginalFabricName}`}
                             src={activeOriginalFabric.swatch_preview_url}
                           />
                         ) : (
                           <span>
-                            {activeOriginalFabric ? "No swatch" : "No fabric"}
+                            {activeOriginalFabric ? "Aucun échantillon" : "Aucun tissu"}
                           </span>
                         )}
                       </div>
@@ -3711,10 +4315,10 @@ function VisualMatrixSection({
                   </div>
                   <div
                     className="admin-view-column-fields"
-                    aria-label={`Column ${activeColumn.sequence} settings`}
+                    aria-label={`Réglages de la colonne ${activeColumn.sequence}`}
                   >
                     <label className="field">
-                      <span>Order {activeColumn.sequence}</span>
+                      <span>Ordre {activeColumn.sequence}</span>
                       <input
                         defaultValue={activeColumn.sequence}
                         min="1"
@@ -3723,27 +4327,27 @@ function VisualMatrixSection({
                       />
                     </label>
                     <label className="field">
-                      <span>Public label {activeColumn.sequence}</span>
+                      <span>Libellé public {activeColumn.sequence}</span>
                       <input
                         defaultValue={activeColumn.public_label ?? ""}
                         name={`public_label_${activeColumn.id}`}
                       />
                     </label>
                     <label className="field">
-                      <span>Admin label {activeColumn.sequence}</span>
+                      <span>Libellé admin {activeColumn.sequence}</span>
                       <input
                         defaultValue={activeColumn.admin_label ?? ""}
                         name={`admin_label_${activeColumn.id}`}
                       />
                     </label>
                     <label className="field">
-                      <span>Source fabric {activeColumn.sequence}</span>
+                      <span>Tissu source {activeColumn.sequence}</span>
                       <select
                         onChange={handleSourceFabricChange}
                         value={activeSelectedSourceFabricId}
                         name={`source_fabric_${activeColumn.id}`}
                       >
-                        <option value="">Select fabric</option>
+                        <option value="">Choisir un tissu</option>
                         {sofaFabrics.map((assignment) => (
                           <option
                             key={assignment.fabric_id}
@@ -3759,17 +4363,18 @@ function VisualMatrixSection({
                 </div>
                 <div className="admin-actions admin-view-column-editor-actions">
                   <button className="admin-primary-button" type="submit">
-                    {isSubmitting ? "Saving" : "Save"}
+                    {isSubmitting ? "Enregistrement" : "Enregistrer"}
                   </button>
                   <button
-                    className="admin-danger-button"
+                    aria-label={`Supprimer la colonne ${activeColumn.sequence}`}
+                    className="admin-danger-button admin-icon-button"
                     onClick={() => {
                       closeColumnDrawer();
                       setPendingDeleteColumnId(activeColumn.id);
                     }}
                     type="button"
                   >
-                    Delete
+                    <AdminDeleteIcon />
                   </button>
                 </div>
               </fieldset>
@@ -3780,14 +4385,14 @@ function VisualMatrixSection({
       {pendingDeleteColumn ? (
         <div className="admin-dialog-scrim">
           <div
-            aria-label={`Delete column ${pendingDeleteColumn.sequence}`}
+            aria-label={`Supprimer la colonne ${pendingDeleteColumn.sequence}`}
             aria-modal="true"
             aria-busy={isSubmitting}
             className="admin-alert-dialog"
             role="alertdialog"
           >
-            <h3>Delete column {pendingDeleteColumn.sequence}</h3>
-            <p>Deleting this column affects all fabrics for this sofa.</p>
+            <h3>Supprimer la colonne {pendingDeleteColumn.sequence}</h3>
+            <p>Supprimer cette colonne touche tous les tissus de ce canapé.</p>
             {errorMessage ? (
               <p className="form-error admin-dialog-feedback" role="alert">
                 {errorMessage}
@@ -3795,14 +4400,17 @@ function VisualMatrixSection({
             ) : null}
             <div className="admin-actions">
               <button
-                className="admin-danger-button"
+                aria-label={
+                  isSubmitting
+                    ? `Suppression de la colonne ${pendingDeleteColumn.sequence}`
+                    : `Confirmer la suppression de la colonne ${pendingDeleteColumn.sequence}`
+                }
+                className="admin-danger-button admin-icon-button"
                 disabled={isSubmitting}
                 onClick={() => void handleDelete(pendingDeleteColumn)}
                 type="button"
               >
-                {isSubmitting
-                  ? "Deleting"
-                  : `Confirm delete column ${pendingDeleteColumn.sequence}`}
+                <AdminDeleteIcon />
               </button>
               <button
                 className="admin-secondary-button"
@@ -3810,7 +4418,7 @@ function VisualMatrixSection({
                 onClick={() => setPendingDeleteColumnId(null)}
                 type="button"
               >
-                Cancel
+                Annuler
               </button>
             </div>
           </div>
@@ -3821,19 +4429,7 @@ function VisualMatrixSection({
 }
 
 function renderSourceTypeLabel(sourceType: string) {
-  if (sourceType === "source_photo") {
-    return "Source photo";
-  }
-
-  if (sourceType === "manual_upload") {
-    return "Manual upload";
-  }
-
-  if (sourceType === "ai_generated") {
-    return "AI generated";
-  }
-
-  return sourceType || "Unknown";
+  return formatSourceTypeLabel(sourceType);
 }
 
 function renderCellSourceDetailLabel(
@@ -3841,7 +4437,7 @@ function renderCellSourceDetailLabel(
   status: RenderCellDisplayStatus,
 ) {
   if (status === "missing" || status === "blocked") {
-    return "No source yet";
+    return "Aucune source pour le moment";
   }
 
   return renderSourceTypeLabel(cell.source_type);
@@ -3851,9 +4447,36 @@ function getRenderCellStatusLabel(status: RenderCellDisplayStatus) {
   return RENDER_CELL_STATUS_LABELS[status];
 }
 
+function getRenderCellButtonAriaLabel({
+  cell,
+  columnName,
+  fabricName,
+  isMobile = false,
+  status,
+}: {
+  cell: AdminCatalogRenderCell | null;
+  columnName: string;
+  fabricName: string;
+  isMobile?: boolean;
+  status: RenderCellDisplayStatus;
+}) {
+  // RU: Эта часть добавляет подсказку для случая, когда картинка взята из исходного фото.
+  // FR: Cette partie ajoute un indice quand l'image vient de la photo source.
+  const sourcePhotoSuffix =
+    cell && isSourcePhotoCompleteCell(cell) ? ", photo source" : "";
+
+  return isMobile
+    ? `Cellule mobile ${columnName} pour ${fabricName} : ${getRenderCellStatusLabel(
+        status,
+      )}${sourcePhotoSuffix}`
+    : `${fabricName}, ${columnName} : ${getRenderCellStatusLabel(
+        status,
+      )}${sourcePhotoSuffix}`;
+}
+
 function getVisualMatrixColumnLabel(column: AdminCatalogVisualMatrixColumn) {
   return (
-    column.public_label ?? column.admin_label ?? `Column ${column.sequence}`
+    column.public_label ?? column.admin_label ?? `Colonne ${column.sequence}`
   );
 }
 
@@ -3872,9 +4495,6 @@ function getSofaEditTabLabel(tab: SofaEditTabKey) {
 function RenderStatusChip({ status }: { status: RenderCellDisplayStatus }) {
   return (
     <span className={`admin-status-chip admin-status-chip-${status}`}>
-      <span aria-hidden="true" className="admin-status-chip-marker">
-        {RENDER_CELL_STATUS_MARKERS[status]}
-      </span>
       {getRenderCellStatusLabel(status)}
     </span>
   );
@@ -3891,22 +4511,22 @@ function RenderCellEmptyPreview({
   // FR: Ces mots expliquent pourquoi il n'y a pas encore d'image finale a gauche.
   const emptyPreviewCopy = hasCurrentAsset
     ? {
-        description: "The image exists, but the preview cannot be loaded here.",
-        title: "Preview unavailable",
+        description: "L'image existe, mais l'aperçu ne peut pas être chargé ici.",
+        title: "Aperçu indisponible",
       }
     : status === "blocked"
       ? {
-          description: "Complete the missing render input first.",
-          title: "Render blocked",
+          description: "Complétez d'abord l'entrée de rendu manquante.",
+          title: "Rendu bloqué",
         }
       : status === "missing"
         ? {
-            description: "This cell has no current render yet.",
-            title: "Render missing",
+            description: "Cette cellule n'a pas encore de rendu actuel.",
+            title: "Rendu manquant",
           }
         : {
-            description: "No current preview is available for this cell.",
-            title: "Render unavailable",
+            description: "Aucun aperçu actuel n'est disponible pour cette cellule.",
+            title: "Rendu indisponible",
           };
 
   // RU: Этот блок рисует спокойную заглушку вместо пустого места.
@@ -3937,30 +4557,42 @@ function RenderCellButtonContent({
   previewUrl: string | null;
   status: RenderCellDisplayStatus;
 }) {
+  // RU: Эти значения выбирают текст и подсказки внутри клетки.
+  // FR: Ces valeurs choisissent le texte et les indices dans la case.
   const hasPreview = Boolean(previewUrl);
   const latestJobStatus = cell.latest_job?.status ?? null;
   const displayBlockers = getRenderCellDisplayBlockers(cell.blockers);
+  // RU: Эта отметка говорит, что текущая картинка взята из исходного фото.
+  // FR: Ce repere dit que l'image actuelle vient de la photo source.
+  const isSourcePhotoCurrent = isSourcePhotoCompleteCell(cell);
 
   return (
-    <span className="admin-render-cell-content">
-      <span className="admin-render-cell-media" aria-hidden="true">
-        {hasPreview ? <img alt="" src={previewUrl ?? ""} /> : <span />}
-      </span>
-      <span className="admin-render-cell-copy">
-        <RenderStatusChip status={status} />
-        <span className="admin-render-cell-meta">
-          {cell.candidate_count > 0
-            ? `${cell.candidate_count} candidates`
-            : latestJobStatus
-              ? `Job ${latestJobStatus}`
-              : displayBlockers.length > 0
-                ? `${displayBlockers.length} blockers`
-                : hasPreview
-                  ? "Current render"
-                  : "Open details"}
+    <>
+      {isSourcePhotoCurrent ? (
+        <span aria-hidden="true" className="admin-render-cell-source-badge">
+          SI
+        </span>
+      ) : null}
+      <span className="admin-render-cell-content">
+        <span className="admin-render-cell-media" aria-hidden="true">
+          {hasPreview ? <img alt="" src={previewUrl ?? ""} /> : <span />}
+        </span>
+        <span className="admin-render-cell-copy">
+          <RenderStatusChip status={status} />
+          <span className="admin-render-cell-meta">
+            {cell.candidate_count > 0
+              ? `${cell.candidate_count} variantes`
+              : latestJobStatus
+                ? `Tâche ${latestJobStatus}`
+                : displayBlockers.length > 0
+                  ? `${displayBlockers.length} blocages`
+                  : hasPreview
+                    ? "Rendu actuel"
+                    : "Ouvrir le détail"}
+          </span>
         </span>
       </span>
-    </span>
+    </>
   );
 }
 
@@ -3995,11 +4627,41 @@ function isTerminalFabricRenderJobStatus(status: string) {
   return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
+function storageAssetPreviewKey(
+  assetId: string,
+  variant: AdminStorageAssetPreviewVariant,
+) {
+  return `${assetId}:${variant}`;
+}
+
 function assetPreviewUrlFor(
   urls: Record<string, string>,
   assetId: string | null | undefined,
+  variant: AdminStorageAssetPreviewVariant = "original",
 ) {
-  return assetId ? (urls[assetId] ?? null) : null;
+  return assetId
+    ? (urls[storageAssetPreviewKey(assetId, variant)] ?? null)
+    : null;
+}
+
+function dedupeStorageAssetPreviewRequests(
+  requests: AdminStorageAssetPreviewRequest[],
+) {
+  return [...new Map(requests.map((request) => [request.key, request])).values()]
+    .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function createStorageAssetPreviewRequest(
+  assetId: string | null | undefined,
+  variant: AdminStorageAssetPreviewVariant,
+): AdminStorageAssetPreviewRequest | null {
+  return assetId
+    ? {
+        assetId,
+        key: storageAssetPreviewKey(assetId, variant),
+        variant,
+      }
+    : null;
 }
 
 function RenderCoverageSection({
@@ -4024,6 +4686,11 @@ function RenderCoverageSection({
   // RU: Эти значения хранят сообщение, выбранную ячейку и список картинок для проверки.
   // FR: Ces valeurs gardent le message, la case choisie et la liste d'images a verifier.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // RU: Эта строка хранит короткое сообщение о подготовке ручной картинки.
+  // FR: Cette ligne garde un court message sur la preparation de l'image manuelle.
+  const [uploadInfoMessage, setUploadInfoMessage] = useState<string | null>(
+    null,
+  );
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [reviewCellId, setReviewCellId] = useState<string | null>(null);
@@ -4062,7 +4729,8 @@ function RenderCoverageSection({
   const [renderExport, setRenderExport] =
     useState<AdminSofaRenderExport | null>(null);
   // RU: Эти адреса показывают закрытые картинки без временных ссылок Supabase.
-  // FR: Ces adresses montrent les images privees sans liens temporaires Supabase.
+  // FR: Ces adresses montrent les images privees a la bonne taille sans liens temporaires Supabase.
+  // RU: Здесь ключ хранит номер картинки вместе с размером: small, medium или original.
   const [assetPreviewUrls, setAssetPreviewUrls] = useState<
     Record<string, string>
   >({});
@@ -4071,9 +4739,11 @@ function RenderCoverageSection({
   // FR: Ce repere sert a stopper la verification si l'admin quitte la page.
   const isAliveRef = useRef(true);
   // RU: Этот список помогает закрывать старые адреса, когда картинка больше не нужна.
-  // FR: Cette liste aide a fermer les anciennes adresses quand l'image n'est plus utile.
+  // FR: Cette liste aide a fermer les anciennes adresses pour l'image et sa taille.
+  // RU: Здесь старые адреса закрываются отдельно для каждой картинки и каждого размера.
   const assetPreviewUrlsRef = useRef<Record<string, string>>({});
-  // Return keyboard focus to the cell that opened the sheet after close.
+    // RU: После закрытия курсор возвращается к ячейке, откуда открыли окно.
+    // FR: Apres la fermeture, le curseur revient a la case qui a ouvert la fenetre.
   const renderCellOpenerRef = useRef<HTMLButtonElement | null>(null);
   const renderCellCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -4087,12 +4757,13 @@ function RenderCoverageSection({
     };
   }, []);
 
+  // RU: Этот автоматический блок переносит фокус на кнопку закрытия, когда открывается окно ячейки.
+  // FR: Ce bloc automatique place le curseur sur le bouton de fermeture quand la fenetre de case s'ouvre.
   useEffect(() => {
     if (!selectedCellId) {
       return;
     }
 
-    // Move focus into the dialog as soon as the render cell sheet opens.
     renderCellCloseButtonRef.current?.focus();
   }, [selectedCellId]);
 
@@ -4173,45 +4844,108 @@ function RenderCoverageSection({
   const renderCells = coverage?.render_cells ?? [];
   // RU: Эти номера говорят, какие закрытые картинки нужны открытому экрану.
   // FR: Ces numeros disent quelles images privees sont utiles a l'ecran ouvert.
-  const previewAssetIds = useMemo(() => {
-    const assetIds = new Set<string>();
+  // RU: Эти записи говорят, какие закрытые картинки и размеры нужны открытому экрану.
+  // FR: Ces lignes disent quelles images privees et quelles tailles sont utiles a l'ecran ouvert.
+  const previewAssetRequests = useMemo(() => {
+    const requests: AdminStorageAssetPreviewRequest[] = [];
 
     for (const cell of renderCells) {
-      if (cell.current_private_asset_id) {
-        assetIds.add(cell.current_private_asset_id);
+      const request = createStorageAssetPreviewRequest(
+        cell.current_private_asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
       }
     }
 
-    for (const column of visualMatrixColumns) {
-      const sourceAssetId = column.current_source_photo?.asset_id;
+    const selectedPreviewCell =
+      selectedCellId === "__generate_all__"
+        ? null
+        : (renderCells.find((cell) => cell.id === selectedCellId) ?? null);
+    const selectedPreviewColumn = selectedPreviewCell
+      ? (visualMatrixColumns.find(
+          (column) =>
+            column.id === selectedPreviewCell.visual_matrix_column_id,
+        ) ?? null)
+      : null;
+    const selectedCellRequest = createStorageAssetPreviewRequest(
+      selectedPreviewCell?.current_private_asset_id,
+      "medium",
+    );
 
-      if (sourceAssetId) {
-        assetIds.add(sourceAssetId);
-      }
+    if (selectedCellRequest) {
+      requests.push(selectedCellRequest);
     }
 
     for (const candidate of reviewCandidates) {
-      if (candidate.asset_id) {
-        assetIds.add(candidate.asset_id);
+      const request = createStorageAssetPreviewRequest(
+        candidate.asset_id,
+        "small",
+      );
+
+      if (request) {
+        requests.push(request);
       }
     }
 
-    return [...assetIds].sort();
-  }, [renderCells, reviewCandidates, visualMatrixColumns]);
+    const compareCandidateAssetId =
+      compareCandidateId === null
+        ? null
+        : (reviewCandidates.find(
+            (candidate) => candidate.id === compareCandidateId,
+          )?.asset_id ?? null);
+    const compareCandidateRequest = createStorageAssetPreviewRequest(
+      compareCandidateAssetId,
+      "medium",
+    );
+    const compareSourceRequest = createStorageAssetPreviewRequest(
+      compareCandidateId === null
+        ? null
+        : selectedPreviewColumn?.current_source_photo?.asset_id,
+      "medium",
+    );
+    const largeImageRequest = createStorageAssetPreviewRequest(
+      largeImagePreview?.assetId,
+      "original",
+    );
+
+    for (const request of [
+      compareCandidateRequest,
+      compareSourceRequest,
+      largeImageRequest,
+    ]) {
+      if (request) {
+        requests.push(request);
+      }
+    }
+
+    return dedupeStorageAssetPreviewRequests(requests);
+  }, [
+    compareCandidateId,
+    largeImagePreview?.assetId,
+    renderCells,
+    reviewCandidates,
+    selectedCellId,
+    visualMatrixColumns,
+  ]);
 
   // RU: Этот автоматический блок загружает закрытые картинки через защищенный путь.
   // FR: Ce bloc automatique charge les images privees par le chemin protege.
   useEffect(() => {
     let isCurrent = true;
-    const neededAssetIds = new Set(previewAssetIds);
+    const neededPreviewKeys = new Set(
+      previewAssetRequests.map((request) => request.key),
+    );
     const currentUrls = assetPreviewUrlsRef.current;
     const nextUrls = { ...currentUrls };
     let hasChanged = false;
 
-    for (const [assetId, url] of Object.entries(currentUrls)) {
-      if (!neededAssetIds.has(assetId)) {
+    for (const [previewKey, url] of Object.entries(currentUrls)) {
+      if (!neededPreviewKeys.has(previewKey)) {
         dependencies.revokeStorageAssetPreviewUrl(url);
-        delete nextUrls[assetId];
+        delete nextUrls[previewKey];
         hasChanged = true;
       }
     }
@@ -4221,13 +4955,17 @@ function RenderCoverageSection({
       setAssetPreviewUrls(nextUrls);
     }
 
-    for (const assetId of previewAssetIds) {
-      if (nextUrls[assetId]) {
+    for (const request of previewAssetRequests) {
+      if (nextUrls[request.key]) {
         continue;
       }
 
       void dependencies
-        .createStorageAssetPreviewUrl(accessToken, assetId)
+        .createStorageAssetPreviewUrl(
+          accessToken,
+          request.assetId,
+          request.variant,
+        )
         .then((url) => {
           if (!isCurrent) {
             dependencies.revokeStorageAssetPreviewUrl(url);
@@ -4236,7 +4974,7 @@ function RenderCoverageSection({
 
           assetPreviewUrlsRef.current = {
             ...assetPreviewUrlsRef.current,
-            [assetId]: url,
+            [request.key]: url,
           };
           setAssetPreviewUrls(assetPreviewUrlsRef.current);
         })
@@ -4246,7 +4984,7 @@ function RenderCoverageSection({
     return () => {
       isCurrent = false;
     };
-  }, [accessToken, dependencies, previewAssetIds]);
+  }, [accessToken, dependencies, previewAssetRequests]);
 
   // RU: Этот автоматический блок закрывает локальные адреса при уходе со страницы.
   // FR: Ce bloc automatique ferme les adresses locales au depart de la page.
@@ -4262,15 +5000,6 @@ function RenderCoverageSection({
 
   const canGenerateAll = renderCells.some(
     (cell) => cell.can_generate_initial && !cell.current_private_asset_id,
-  );
-  const hasQueuedJobs = renderCells.some(
-    (cell) => cell.latest_job?.status === "queued",
-  );
-  const hasProcessingJobs = renderCells.some(
-    (cell) => cell.latest_job?.status === "processing",
-  );
-  const canResumeQueuedJobs = Boolean(
-    coverage && hasQueuedJobs && !hasProcessingJobs,
   );
   const renderStatusCounts = RENDER_CELL_STATUS_ORDER.reduce(
     (counts, status) => ({
@@ -4306,12 +5035,14 @@ function RenderCoverageSection({
   const selectedSourcePhotoPreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     selectedColumn?.current_source_photo?.asset_id,
+    "medium",
   );
   // RU: Этот адрес показывает текущую картинку выбранной ячейки.
   // FR: Cette adresse montre l'image actuelle de la case choisie.
   const selectedCellPreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     selectedCell?.current_private_asset_id,
+    "medium",
   );
   const selectedStatus = selectedCell
     ? getRenderCellDisplayStatus(selectedCell)
@@ -4346,7 +5077,9 @@ function RenderCoverageSection({
     ? reviewCandidates.filter(
         (candidate) =>
           candidate.render_cell_id === selectedCell.id &&
-          Boolean(assetPreviewUrlFor(assetPreviewUrls, candidate.asset_id)),
+          Boolean(
+            assetPreviewUrlFor(assetPreviewUrls, candidate.asset_id, "small"),
+          ),
       )
     : [];
   const compareCandidate =
@@ -4355,10 +5088,33 @@ function RenderCoverageSection({
       : (comparableCandidates.find(
           (candidate) => candidate.id === compareCandidateId,
         ) ?? null);
+  // RU: Этот адрес показывает выбранный вариант в списке, пока большой размер еще грузится.
+  // FR: Cette adresse montre l'option choisie dans la liste pendant que la taille plus grande charge.
+  const compareCandidateSmallPreviewUrl = assetPreviewUrlFor(
+    assetPreviewUrls,
+    compareCandidate?.asset_id,
+    "small",
+  );
+  // RU: Этот адрес показывает выбранный вариант в сравнении, лучше в среднем размере, иначе маленьким.
+  // FR: Cette adresse montre l'option choisie dans la comparaison, en taille moyenne si possible, sinon petite.
   const compareCandidatePreviewUrl = assetPreviewUrlFor(
     assetPreviewUrls,
     compareCandidate?.asset_id,
+    "medium",
   );
+  // RU: Этот адрес нужен, чтобы окно сравнения не было пустым во время загрузки среднего размера.
+  // FR: Cette adresse evite une fenetre vide pendant le chargement de la taille moyenne.
+  const compareCandidateDisplayPreviewUrl =
+    compareCandidatePreviewUrl ?? compareCandidateSmallPreviewUrl;
+  // RU: Этот адрес показывает большую картинку в исходном размере, когда она уже загружена.
+  // FR: Cette adresse montre la grande image en taille originale quand elle est chargee.
+  const largeImagePreviewSrc = largeImagePreview?.assetId
+    ? (assetPreviewUrlFor(
+        assetPreviewUrls,
+        largeImagePreview.assetId,
+        "original",
+      ) ?? largeImagePreview.src)
+    : (largeImagePreview?.src ?? null);
   async function handleGenerateAll() {
     if (!coverage) {
       return;
@@ -4395,18 +5151,15 @@ function RenderCoverageSection({
     void handleReviewCandidates(selectedCell);
   }, [activeCellId, reviewCellId, selectedCell, selectedStatus]);
 
-  async function handleResumeQueuedJobs() {
-    if (!coverage) {
-      return;
-    }
-
+  // RU: Это действие запускает выбранную ячейку из очереди, если другая картинка не создается.
+  // FR: Cette action lance la case choisie depuis la file si aucune autre image n'est en cours.
+  async function handleResumeQueuedCell(cell: AdminCatalogRenderCell) {
     setErrorMessage(null);
-    setActiveCellId("__resume__");
+    setActiveCellId(cell.id);
 
     try {
       await dependencies.resumeFabricRenderJobs(accessToken, {
-        request_id: null,
-        sofa_id: coverage.sofa_id,
+        render_cell_id: cell.id,
       });
       await onRefresh();
     } catch (error) {
@@ -4514,10 +5267,10 @@ function RenderCoverageSection({
     }
   }
 
-  // RU: Это действие открывает сравнение исходного фото и варианта после клика по фото.
-  // FR: Cette action ouvre la comparaison entre la photo source et l'option apres un clic sur l'image.
+  // RU: Это действие открывает сравнение, а нужные размеры картинок могут догрузиться сразу после клика.
+  // FR: Cette action ouvre la comparaison, et les bonnes tailles peuvent charger juste apres le clic.
   function handleCompareCandidate(candidate: AdminCatalogRenderCandidate) {
-    if (!selectedSourcePhotoPreviewUrl) {
+    if (!selectedColumn?.current_source_photo?.asset_id) {
       return;
     }
 
@@ -4655,11 +5408,14 @@ function RenderCoverageSection({
 
   // RU: Это действие загружает картинку вручную для выбранной ячейки.
   // FR: Cette action envoie une image manuelle pour la case choisie.
+  // RU: Перед отправкой картинка может стать меньше или сменить WebP на JPEG.
+  // FR: Avant l'envoi, l'image peut devenir plus petite ou passer de WebP a JPEG.
   async function handleManualRenderUpload(
     cell: AdminCatalogRenderCell,
     form: HTMLFormElement,
   ) {
     setErrorMessage(null);
+    setUploadInfoMessage(null);
     setActiveCellId(cell.id);
 
     const formData = new FormData(form);
@@ -4672,13 +5428,23 @@ function RenderCoverageSection({
     }
 
     try {
+      const preparedUpload = await prepareAdminImageUploadFile({
+        file,
+        purpose: "manual_render",
+      });
+      const uploadFile = preparedUpload.file;
+
+      if (preparedUpload.message) {
+        setUploadInfoMessage(preparedUpload.message);
+      }
+
       const upload = await dependencies.createUpload(accessToken, {
-        byte_size: file.size,
-        content_type: file.type,
+        byte_size: uploadFile.size,
+        content_type: uploadFile.type,
         purpose: "manual_render",
         render_cell_id: cell.id,
       });
-      await dependencies.uploadToSignedUrl(upload, file);
+      await dependencies.uploadToSignedUrl(upload, uploadFile);
       const asset = await dependencies.completeUpload(
         accessToken,
         upload.upload_id,
@@ -4726,7 +5492,7 @@ function RenderCoverageSection({
 
     if (
       status === "ready" &&
-      assetPreviewUrlFor(assetPreviewUrls, cell.current_private_asset_id)
+      assetPreviewUrlFor(assetPreviewUrls, cell.current_private_asset_id, "medium")
     ) {
       handleOpenCurrentRenderPreview();
       return;
@@ -4734,6 +5500,11 @@ function RenderCoverageSection({
 
     if (status === "failed" && cell.latest_job) {
       void handleRetryJob(cell.latest_job);
+      return;
+    }
+
+    if (status === "queued") {
+      void handleResumeQueuedCell(cell);
       return;
     }
 
@@ -4770,7 +5541,7 @@ function RenderCoverageSection({
 
     return (
       <div
-        aria-label="Generate action"
+        aria-label="Action de génération"
         className="admin-generation-action"
         role="group"
       >
@@ -4789,16 +5560,16 @@ function RenderCoverageSection({
           onClick={() => handleTogglePromptNote(cell.id)}
           type="button"
         >
-          {isPromptNoteOpen ? "Hide optional note" : "Add optional note"}
+          {isPromptNoteOpen ? "Masquer la note" : "Ajouter une note"}
         </button>
         {isPromptNoteOpen ? (
           <div className="admin-optional-note-panel">
             <p className="admin-muted">
-              The standard generation prompt is used automatically. Add this
-              only when you want an extra instruction.
+              La demande standard est utilisée automatiquement. Ajoutez ceci
+              seulement si une indication en plus est nécessaire.
             </p>
             <label className="field" htmlFor={promptNoteId}>
-              <span>Optional note</span>
+              <span>Note facultative</span>
               <textarea
                 id={promptNoteId}
                 name={promptNoteId}
@@ -4823,34 +5594,34 @@ function RenderCoverageSection({
     >
       <SectionStepHeading
         headingId="render-coverage-title"
-        title="Render coverage"
+        title="Couverture des rendus"
       />
       <div className="admin-render-operations">
         <div
-          aria-label="Render coverage summary"
+          aria-label="Résumé de la couverture des rendus"
           className="admin-render-summary"
         >
           <div>
             <strong>{renderStatusCounts.ready}</strong>
-            <span>Ready</span>
+            <span>Prêt</span>
           </div>
           <div>
             <strong>{renderStatusCounts.candidate}</strong>
-            <span>Candidates</span>
+            <span>Variantes</span>
           </div>
           <div>
             <strong>{renderStatusCounts.missing}</strong>
-            <span>Missing</span>
+            <span>Manquant</span>
           </div>
           <div>
             <strong>{renderStatusCounts.blocked}</strong>
-            <span>Blocked</span>
+            <span>Bloqué</span>
           </div>
           <div>
             <strong>
               {renderStatusCounts.queued + renderStatusCounts.processing}
             </strong>
-            <span>Active jobs</span>
+            <span>Tâches actives</span>
           </div>
           <div>
             <strong>{totalRenderCellCount}</strong>
@@ -4866,20 +5637,8 @@ function RenderCoverageSection({
               type="button"
             >
               {activeCellId === "__generate_all__"
-                ? "Queueing"
-                : "Generate missing"}
-            </button>
-          ) : null}
-          {canResumeQueuedJobs ? (
-            <button
-              className="admin-secondary-button"
-              disabled={activeCellId === "__resume__"}
-              onClick={() => void handleResumeQueuedJobs()}
-              type="button"
-            >
-              {activeCellId === "__resume__"
-                ? "Resuming"
-                : "Resume queued jobs"}
+                ? "Mise en file"
+                : "Générer les rendus manquants"}
             </button>
           ) : null}
         </div>
@@ -4889,10 +5648,15 @@ function RenderCoverageSection({
           {errorMessage}
         </p>
       ) : null}
+      {uploadInfoMessage ? (
+        <p className="form-info" role="status">
+          {uploadInfoMessage}
+        </p>
+      ) : null}
       {!coverage ||
       sofaFabrics.length === 0 ||
       visualMatrixColumns.length === 0 ? (
-        <p>No render coverage.</p>
+        <p>Aucune couverture de rendu.</p>
       ) : (
         <>
           {/* RU: Эта секция показывает компактную таблицу готовности картинок. */}
@@ -4901,7 +5665,7 @@ function RenderCoverageSection({
             <table className="admin-render-matrix">
               <thead>
                 <tr>
-                  <th>Fabric</th>
+                  <th>Tissu</th>
                   {visualMatrixColumns.map((column) => (
                     <th key={column.id}>
                       {getVisualMatrixColumnLabel(column)}
@@ -4929,11 +5693,13 @@ function RenderCoverageSection({
                         <td key={column.id}>
                           {cell && status ? (
                             <button
-                              aria-label={`${getSofaFabricDisplayName(
-                                assignment,
-                              )}, ${getVisualMatrixColumnLabel(
-                                column,
-                              )}: ${getRenderCellStatusLabel(status)}`}
+                              aria-label={getRenderCellButtonAriaLabel({
+                                cell,
+                                columnName: getVisualMatrixColumnLabel(column),
+                                fabricName:
+                                  getSofaFabricDisplayName(assignment),
+                                status,
+                              })}
                               className="admin-render-cell-button"
                               onClick={(event) =>
                                 handleOpenRenderCell(cell, event.currentTarget)
@@ -4945,6 +5711,7 @@ function RenderCoverageSection({
                                 previewUrl={assetPreviewUrlFor(
                                   assetPreviewUrls,
                                   cell.current_private_asset_id,
+                                  "small",
                                 )}
                                 status={status}
                               />
@@ -4980,11 +5747,13 @@ function RenderCoverageSection({
 
                     return (
                       <button
-                        aria-label={`Mobile cell ${getVisualMatrixColumnLabel(
-                          column,
-                        )} for ${getSofaFabricDisplayName(
-                          assignment,
-                        )} is ${getRenderCellStatusLabel(status)}`}
+                        aria-label={getRenderCellButtonAriaLabel({
+                          cell: cell ?? null,
+                          columnName: getVisualMatrixColumnLabel(column),
+                          fabricName: getSofaFabricDisplayName(assignment),
+                          isMobile: true,
+                          status,
+                        })}
                         className="admin-render-cell-button"
                         disabled={!cell}
                         key={column.id}
@@ -5004,6 +5773,7 @@ function RenderCoverageSection({
                             previewUrl={assetPreviewUrlFor(
                               assetPreviewUrls,
                               cell.current_private_asset_id,
+                              "small",
                             )}
                             status={status}
                           />
@@ -5018,8 +5788,8 @@ function RenderCoverageSection({
             ))}
           </div>
           <details className="admin-status-key">
-            <summary>Status key</summary>
-            <div aria-label="Status key details">
+            <summary>Légende des statuts</summary>
+            <div aria-label="Détail de la légende des statuts">
               {RENDER_CELL_STATUS_ORDER.map((status) => (
                 <RenderStatusChip key={status} status={status} />
               ))}
@@ -5031,7 +5801,7 @@ function RenderCoverageSection({
           selectedStatus ? (
             <div className="admin-dialog-scrim admin-render-workbench-scrim">
               <aside
-                aria-label={`Render cell: ${getSofaFabricDisplayName(
+                aria-label={`Cellule de rendu : ${getSofaFabricDisplayName(
                   selectedAssignment,
                 )}, ${getVisualMatrixColumnLabel(selectedColumn)}`}
                 className={`admin-drawer admin-render-cell-sheet admin-render-cell-workbench${
@@ -5043,42 +5813,46 @@ function RenderCoverageSection({
               >
                 <header className="admin-render-cell-sheet-header">
                   <div>
-                    <p className="eyebrow">Render cell</p>
+                    <p className="eyebrow">Cellule de rendu</p>
                     <h3>
                       {getSofaFabricDisplayName(selectedAssignment)} /{" "}
                       {getVisualMatrixColumnLabel(selectedColumn)}
                     </h3>
                   </div>
                   <button
-                    aria-label="Close render cell"
-                    className="admin-quiet-button admin-render-cell-close-button"
+                    aria-label="Fermer la cellule de rendu"
+                    className="admin-quiet-button admin-icon-button admin-render-cell-close-button"
                     onClick={handleCloseRenderCell}
                     ref={renderCellCloseButtonRef}
                     type="button"
                   >
-                    Close
+                    <AdminCloseIcon />
                   </button>
                 </header>
                 <div className="admin-render-cell-sheet-body">
                   <div className="admin-render-cell-preview-pane">
-                    {/* This block shows the current ready image for the selected cell. */}
+                    {/* RU: Этот блок показывает текущую готовую картинку выбранной ячейки. */}
+                    {/* FR: Ce bloc montre l'image prete de la case choisie. */}
                     {selectedCellPreviewUrl ? (
                       <figure className="admin-current-render-preview">
-                        <figcaption>Current render</figcaption>
+                        <figcaption>Rendu actuel</figcaption>
                         <button
-                          aria-label="Open current render preview larger"
+                          aria-label="Ouvrir le rendu actuel en grand"
                           className="admin-image-preview-button"
                           onClick={() =>
                             handleOpenLargeImagePreview({
-                              alt: "Current render preview",
+                              alt: "Aperçu du rendu actuel",
+                              assetId:
+                                selectedCell.current_private_asset_id ??
+                                undefined,
                               src: selectedCellPreviewUrl,
-                              title: "Current render",
+                              title: "Rendu actuel",
                             })
                           }
                           type="button"
                         >
                           <img
-                            alt="Current render preview"
+                            alt="Aperçu du rendu actuel"
                             className="admin-preview-image"
                             src={selectedCellPreviewUrl}
                           />
@@ -5117,11 +5891,11 @@ function RenderCoverageSection({
                         </dd>
                       </div>
                       <div>
-                        <dt>Job</dt>
-                        <dd>{selectedCell.latest_job?.status ?? "No job"}</dd>
+                        <dt>Tâche</dt>
+                        <dd>{selectedCell.latest_job?.status ?? "Aucune tâche"}</dd>
                       </div>
                       <div>
-                        <dt>Candidates</dt>
+                        <dt>Variantes</dt>
                         <dd>{selectedCell.candidate_count}</dd>
                       </div>
                     </dl>
@@ -5136,7 +5910,7 @@ function RenderCoverageSection({
                         }
                         type="button"
                       >
-                        Review candidates
+                        Voir les variantes
                       </button>
                     ) : null}
                     {errorMessage ? (
@@ -5147,11 +5921,12 @@ function RenderCoverageSection({
                     {canGenerateNewCandidate &&
                     reviewCellId !== selectedCell.id ? (
                       <>
-                        {/* The primary generation action stays visible while optional instructions stay collapsed. */}
+                        {/* RU: Главная кнопка генерации видна сразу, а подсказка остается свернутой. */}
+                        {/* FR: Le bouton principal de generation reste visible, et l'aide reste fermee. */}
                         {buildGenerateAction({
-                          busyLabel: "Queueing",
+                          busyLabel: "Mise en file",
                           cell: selectedCell,
-                          label: "Generate new candidate",
+                          label: "Générer une nouvelle variante",
                           onGenerate: () =>
                             void handleGenerateNewCandidate(selectedCell),
                         })}
@@ -5159,13 +5934,13 @@ function RenderCoverageSection({
                     ) : null}
                     {selectedDisplayBlockers.length > 0 ? (
                       <div className="admin-cell-blockers">
-                        <strong>Blockers</strong>
+                        <strong>Blocages</strong>
                         <span>{selectedDisplayBlockers.join(", ")}</span>
                       </div>
                     ) : null}
                     {selectedCell.latest_job?.status === "failed" ? (
                       <div className="admin-cell-blockers">
-                        <strong>Generation failed</strong>
+                        <strong>Échec de la génération</strong>
                         <span>
                           {formatAdminErrorMessage(
                             selectedCell.latest_job.last_error_message ??
@@ -5176,14 +5951,15 @@ function RenderCoverageSection({
                     ) : null}
                     {isSourcePhotoCompleteCell(selectedCell) ? (
                       <span className="admin-muted">
-                        Source photo is current
+                        La photo source est le rendu actuel
                       </span>
                     ) : null}
                     {selectedStatus === "missing" && selectedPrimaryAction ? (
                       <>
-                        {/* Creation starts immediately, while the optional note remains collapsed. */}
+                        {/* RU: Создание начинается сразу, а поле заметки остается закрытым. */}
+                        {/* FR: La creation commence tout de suite, et la note reste fermee. */}
                         {buildGenerateAction({
-                          busyLabel: "Working",
+                          busyLabel: "Travail en cours",
                           cell: selectedCell,
                           label: selectedPrimaryAction.label,
                           onGenerate: () =>
@@ -5194,43 +5970,48 @@ function RenderCoverageSection({
                         })}
                       </>
                     ) : null}
-                    {/* This list shows ready candidate options for the selected cell. */}
+                    {/* RU: Этот список показывает готовые варианты для выбранной ячейки. */}
+                    {/* FR: Cette liste montre les options pretes pour la case choisie. */}
                     {reviewCellId === selectedCell.id ? (
                       <div
-                        aria-label="Review candidates"
+                        aria-label="Voir les variantes"
                         className="admin-candidate-list"
                         role="group"
                       >
                         <div className="admin-candidate-list-header">
                           <div>
-                            <h4>Candidates</h4>
+                            <h4>Variantes</h4>
                             <p className="admin-muted">
-                              Choose the image that should become current, or
-                              ask for a focused refinement.
+                              Choisissez l'image qui doit devenir actuelle, ou
+                              demandez une amélioration ciblée.
                             </p>
                           </div>
                           <span>{reviewCandidates.length}</span>
                         </div>
                         {reviewCandidates.length === 0 ? (
-                          <span className="admin-muted">No candidates</span>
+                          <span className="admin-muted">Aucune variante</span>
                         ) : null}
                         {reviewCandidates.map((candidate) => {
                           const candidatePreviewUrl = assetPreviewUrlFor(
                             assetPreviewUrls,
                             candidate.asset_id,
+                            "small",
+                          );
+                          const canCompareCandidate = Boolean(
+                            selectedColumn?.current_source_photo?.asset_id,
                           );
 
                           return (
                             <article
-                              aria-label={`Candidate ${candidate.id}`}
+                              aria-label={`Variante ${candidate.id}`}
                               className="admin-candidate-row"
                               key={candidate.id}
                             >
                               <div className="admin-candidate-media">
                                 {candidatePreviewUrl ? (
-                                  selectedSourcePhotoPreviewUrl ? (
+                                  canCompareCandidate ? (
                                     <button
-                                      aria-label={`Open candidate preview ${candidate.id} in comparison`}
+                                      aria-label={`Comparer la variante ${candidate.id}`}
                                       className="admin-image-preview-button admin-candidate-compare-button"
                                       onClick={() =>
                                         handleCompareCandidate(candidate)
@@ -5238,14 +6019,14 @@ function RenderCoverageSection({
                                       type="button"
                                     >
                                       <img
-                                        alt={`Candidate preview ${candidate.id}`}
+                                        alt={`Aperçu de la variante ${candidate.id}`}
                                         className="admin-preview-image"
                                         src={candidatePreviewUrl}
                                       />
                                     </button>
                                   ) : (
                                     <img
-                                      alt={`Candidate preview ${candidate.id}`}
+                                      alt={`Aperçu de la variante ${candidate.id}`}
                                       className="admin-preview-image"
                                       src={candidatePreviewUrl}
                                     />
@@ -5253,16 +6034,16 @@ function RenderCoverageSection({
                                 ) : (
                                   <span className="admin-preview-image admin-preview-image-empty">
                                     {candidate.asset_id
-                                      ? "Preview loading"
-                                      : "No preview"}
+                                      ? "Chargement de l'aperçu"
+                                      : "Aucun aperçu"}
                                   </span>
                                 )}
                               </div>
                               <div className="admin-candidate-body">
                                 <strong>
                                   {candidate.is_current
-                                    ? "Current candidate"
-                                    : "Candidate"}
+                                    ? "Variante actuelle"
+                                    : "Variante"}
                                 </strong>
                                 <span>
                                   {candidate.generation_mode} -{" "}
@@ -5270,8 +6051,8 @@ function RenderCoverageSection({
                                 </span>
                                 <span className="admin-muted">
                                   {candidate.is_current
-                                    ? "Current"
-                                    : "Candidate"}
+                                    ? "Actuel"
+                                    : "Variante"}
                                 </span>
                                 <div className="admin-candidate-actions">
                                   <button
@@ -5285,7 +6066,7 @@ function RenderCoverageSection({
                                     }
                                     type="button"
                                   >
-                                    Use candidate
+                                    Utiliser la variante
                                   </button>
                                   {openRefineCandidateId !== candidate.id ? (
                                     <button
@@ -5298,7 +6079,7 @@ function RenderCoverageSection({
                                       }
                                       type="button"
                                     >
-                                      Refine candidate
+                                      Améliorer la variante
                                     </button>
                                   ) : null}
                                 </div>
@@ -5319,7 +6100,7 @@ function RenderCoverageSection({
                                     }}
                                   >
                                     <label className="field">
-                                      <span>Refine prompt</span>
+                                      <span>Demande d'amélioration</span>
                                       <textarea
                                         name="refine_prompt"
                                         required
@@ -5333,7 +6114,7 @@ function RenderCoverageSection({
                                       }
                                       type="submit"
                                     >
-                                      Refine
+                                      Améliorer
                                     </button>
                                     <button
                                       className="admin-secondary-button"
@@ -5343,7 +6124,7 @@ function RenderCoverageSection({
                                       onClick={handleCloseRefineCandidate}
                                       type="button"
                                     >
-                                      Cancel refine
+                                      Annuler l'amélioration
                                     </button>
                                   </form>
                                 </>
@@ -5353,22 +6134,23 @@ function RenderCoverageSection({
                         })}
                         {canGenerateNewCandidate ? (
                           <div
-                            aria-label="Candidate follow-up actions"
+                            aria-label="Actions suivantes pour les variantes"
                             className="admin-candidate-followup-action"
                             role="group"
                           >
                             <div>
-                              <strong>Need another option?</strong>
+                              <strong>Besoin d'une autre option ?</strong>
                               <p className="admin-muted">
-                                Queue a new candidate without changing the
-                                current selection.
+                                Mettez une nouvelle variante en file sans
+                                changer la sélection actuelle.
                               </p>
                             </div>
-                            {/* The admin can request another option and optionally add guidance. */}
+                            {/* RU: Админ может запросить еще один вариант и добавить короткую подсказку. */}
+                            {/* FR: L'admin peut demander une autre option et ajouter une courte indication. */}
                             {buildGenerateAction({
-                              busyLabel: "Queueing",
+                              busyLabel: "Mise en file",
                               cell: selectedCell,
-                              label: "Generate new candidate",
+                              label: "Générer une nouvelle variante",
                               onGenerate: () =>
                                 void handleGenerateNewCandidate(selectedCell),
                             })}
@@ -5391,7 +6173,7 @@ function RenderCoverageSection({
                         }}
                       >
                         <label className="field">
-                          <span>Manual render</span>
+                          <span>Rendu manuel</span>
                           <input
                             accept="image/png,image/jpeg,image/webp"
                             name={`manual_render_${selectedCell.id}`}
@@ -5403,7 +6185,7 @@ function RenderCoverageSection({
                           disabled={activeCellId === selectedCell.id}
                           type="submit"
                         >
-                          Upload manual render
+                          Envoyer un rendu manuel
                         </button>
                       </form>
                     ) : null}
@@ -5430,7 +6212,7 @@ function RenderCoverageSection({
                       type="button"
                     >
                       {activeCellId === selectedCell.id
-                        ? "Working"
+                        ? "Travail en cours"
                         : selectedPrimaryAction.label}
                     </button>
                   </footer>
@@ -5438,24 +6220,24 @@ function RenderCoverageSection({
               </aside>
               {/* RU: Это окно показывает выбранную картинку крупно по центру. */}
               {/* FR: Cette fenetre montre l'image choisie en grand au centre. */}
-              {largeImagePreview ? (
+              {largeImagePreview && largeImagePreviewSrc ? (
                 <section
-                  aria-label={`Large image: ${largeImagePreview.title}`}
+                  aria-label={`Grande image : ${largeImagePreview.title}`}
                   className="admin-alert-dialog admin-image-lightbox-dialog"
                   role="dialog"
                 >
                   <header className="admin-render-cell-sheet-header">
                     <div>
-                      <p className="eyebrow">Large image</p>
+                      <p className="eyebrow">Grande image</p>
                       <h3>{largeImagePreview.title}</h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
-                      aria-label="Close large image"
+                      aria-label="Fermer la grande image"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseLargeImagePreview}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <figure className="admin-image-lightbox-frame">
@@ -5463,14 +6245,14 @@ function RenderCoverageSection({
                     <img
                       alt={largeImagePreview.alt}
                       className="admin-image-lightbox-image"
-                      src={largeImagePreview.src}
+                      src={largeImagePreviewSrc}
                     />
                   </figure>
                 </section>
               ) : null}
               {isCurrentRenderPreviewOpen && selectedCellPreviewUrl ? (
                 <section
-                  aria-label={`Current render: ${getSofaFabricDisplayName(
+                  aria-label={`Rendu actuel : ${getSofaFabricDisplayName(
                     selectedAssignment,
                   )}, ${getVisualMatrixColumnLabel(selectedColumn)}`}
                   className="admin-alert-dialog admin-render-compare-dialog"
@@ -5478,37 +6260,39 @@ function RenderCoverageSection({
                 >
                   <header className="admin-render-cell-sheet-header">
                     <div>
-                      <p className="eyebrow">Current render</p>
+                      <p className="eyebrow">Rendu actuel</p>
                       <h3>
                         {getSofaFabricDisplayName(selectedAssignment)} /{" "}
                         {getVisualMatrixColumnLabel(selectedColumn)}
                       </h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
-                      aria-label="Close current render"
+                      aria-label="Fermer le rendu actuel"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseCurrentRenderPreview}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <figure className="admin-render-compare-frame">
-                    <figcaption>Current render</figcaption>
+                    <figcaption>Rendu actuel</figcaption>
                     <button
-                      aria-label="Open current render preview larger"
+                      aria-label="Ouvrir le rendu actuel en grand"
                       className="admin-image-preview-button"
                       onClick={() =>
                         handleOpenLargeImagePreview({
-                          alt: "Current render preview",
+                          alt: "Aperçu du rendu actuel",
+                          assetId:
+                            selectedCell.current_private_asset_id ?? undefined,
                           src: selectedCellPreviewUrl,
-                          title: "Current render",
+                          title: "Rendu actuel",
                         })
                       }
                       type="button"
                     >
                       <img
-                        alt="Current render preview"
+                        alt="Aperçu du rendu actuel"
                         className="admin-preview-image"
                         src={selectedCellPreviewUrl}
                       />
@@ -5525,98 +6309,118 @@ function RenderCoverageSection({
                         type="button"
                       >
                         {activeCellId === selectedCell.id
-                          ? "Queueing"
-                          : "Generate new candidate"}
+                          ? "Mise en file"
+                          : "Générer une nouvelle variante"}
                       </button>
                     </footer>
                   ) : null}
                 </section>
               ) : null}
-              {compareCandidate &&
-              selectedSourcePhotoPreviewUrl &&
-              compareCandidatePreviewUrl ? (
+              {compareCandidate ? (
                 <section
-                  aria-label={`Compare render candidate ${compareCandidate.id}`}
+                  aria-label={`Comparer la variante de rendu ${compareCandidate.id}`}
                   className="admin-alert-dialog admin-render-compare-dialog"
                   role="dialog"
                 >
                   <header className="admin-render-cell-sheet-header">
                     <div>
-                      <p className="eyebrow">Compare render candidate</p>
+                      <p className="eyebrow">Comparer la variante de rendu</p>
                       <h3>
                         {getSofaFabricDisplayName(selectedAssignment)} /{" "}
                         {getVisualMatrixColumnLabel(selectedColumn)}
                       </h3>
                     </div>
                     <button
-                      className="admin-quiet-button"
-                      aria-label="Close comparison"
+                      aria-label="Fermer la comparaison"
+                      className="admin-quiet-button admin-icon-button"
                       onClick={handleCloseCompareCandidate}
                       type="button"
                     >
-                      Close
+                      <AdminCloseIcon />
                     </button>
                   </header>
                   <div className="admin-render-compare-grid">
                     <figure className="admin-render-compare-frame">
-                      <figcaption>Source photo</figcaption>
-                      <button
-                        aria-label="Open source photo preview larger"
-                        className="admin-image-preview-button"
-                        onClick={() =>
-                          handleOpenLargeImagePreview({
-                            alt: "Source photo preview",
-                            src: selectedSourcePhotoPreviewUrl,
-                            title: "Source photo",
-                          })
-                        }
-                        type="button"
-                      >
-                        <img
-                          alt="Source photo preview"
-                          className="admin-preview-image"
-                          src={selectedSourcePhotoPreviewUrl}
-                        />
-                      </button>
+                      <figcaption>Photo source</figcaption>
+                      {selectedSourcePhotoPreviewUrl ? (
+                        <button
+                          aria-label="Ouvrir la photo source en grand"
+                          className="admin-image-preview-button"
+                          onClick={() =>
+                            handleOpenLargeImagePreview({
+                              alt: "Aperçu de la photo source",
+                              assetId:
+                                selectedColumn?.current_source_photo
+                                  ?.asset_id ?? undefined,
+                              src: selectedSourcePhotoPreviewUrl,
+                              title: "Photo source",
+                            })
+                          }
+                          type="button"
+                        >
+                          <img
+                            alt="Aperçu de la photo source"
+                            className="admin-preview-image"
+                            src={selectedSourcePhotoPreviewUrl}
+                          />
+                        </button>
+                      ) : (
+                        <span className="admin-preview-image admin-preview-image-empty">
+                          {selectedColumn?.current_source_photo?.asset_id
+                            ? "Chargement de l'aperçu"
+                            : "Aucun aperçu"}
+                        </span>
+                      )}
                     </figure>
                     <figure className="admin-render-compare-frame">
-                      <figcaption>Candidate</figcaption>
-                      <button
-                        aria-label={`Open candidate preview ${compareCandidate.id} larger`}
-                        className="admin-image-preview-button"
-                        onClick={() =>
-                          handleOpenLargeImagePreview({
-                            alt: `Candidate preview ${compareCandidate.id}`,
-                            src: compareCandidatePreviewUrl,
-                            title: "Candidate",
-                          })
-                        }
-                        type="button"
-                      >
-                        <img
-                          alt={`Candidate preview ${compareCandidate.id}`}
-                          className="admin-preview-image"
-                          src={compareCandidatePreviewUrl}
-                        />
-                      </button>
+                      <figcaption>Variante</figcaption>
+                      {compareCandidateDisplayPreviewUrl ? (
+                        <button
+                          aria-label={`Ouvrir la variante ${compareCandidate.id} en grand`}
+                          className="admin-image-preview-button"
+                          onClick={() =>
+                            handleOpenLargeImagePreview({
+                              alt: `Aperçu de la variante ${compareCandidate.id}`,
+                              assetId: compareCandidate.asset_id ?? undefined,
+                              src: compareCandidateDisplayPreviewUrl,
+                              title: "Variante",
+                            })
+                          }
+                          type="button"
+                        >
+                          <img
+                            alt={`Aperçu de la variante ${compareCandidate.id}`}
+                            className="admin-preview-image"
+                            src={compareCandidateDisplayPreviewUrl}
+                          />
+                        </button>
+                      ) : (
+                        <span className="admin-preview-image admin-preview-image-empty">
+                          {compareCandidate.asset_id
+                            ? "Chargement de l'aperçu"
+                            : "Aucun aperçu"}
+                        </span>
+                      )}
                     </figure>
                   </div>
                   <footer className="admin-render-cell-sheet-footer">
                     <button
-                      className="admin-secondary-button"
+                      aria-label="Variante précédente"
+                      className="admin-secondary-button admin-icon-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(-1)}
                       type="button"
                     >
-                      Previous candidate
+                      <AdminArrowIcon direction="previous" />
                     </button>
                     <button
-                      className="admin-secondary-button"
+                      aria-label="Variante suivante"
+                      className="admin-secondary-button admin-icon-button"
                       disabled={comparableCandidates.length < 2}
                       onClick={() => handleMoveCompareCandidate(1)}
                       type="button"
                     >
-                      Next candidate
+                      <AdminArrowIcon direction="next" />
                     </button>
                     <button
                       className="admin-primary-button"
@@ -5627,7 +6431,7 @@ function RenderCoverageSection({
                       onClick={() => void handleUseCandidate(compareCandidate)}
                       type="button"
                     >
-                      Use candidate
+                      Utiliser la variante
                     </button>
                   </footer>
                 </section>
@@ -5637,13 +6441,13 @@ function RenderCoverageSection({
         </>
       )}
       <div
-        aria-label="Render ZIP export"
+        aria-label="Export ZIP des rendus"
         className="admin-render-export-panel"
         role="group"
       >
         <div className="admin-render-export-copy">
           <strong>Export ZIP</strong>
-          <span>Current render assets</span>
+          <span>Images de rendu actuelles</span>
         </div>
         <button
           className="admin-quiet-button admin-render-export-button"
@@ -5651,16 +6455,16 @@ function RenderCoverageSection({
           onClick={() => void handleCreateRenderExport()}
           type="button"
         >
-          {isRenderExportBusy ? "Preparing ZIP export" : "Create ZIP export"}
+          {isRenderExportBusy ? "Préparation de l'export ZIP" : "Créer l'export ZIP"}
         </button>
         {renderExport ? (
           <div className="admin-export-result">
             <p>
               {renderExport.included_render_count ?? 0}{" "}
               {(renderExport.included_render_count ?? 0) === 1
-                ? "render"
-                : "renders"}{" "}
-              included.
+                ? "rendu"
+                : "rendus"}{" "}
+              inclus.
             </p>
             {renderExport.download_url ? (
               <a
@@ -5669,11 +6473,11 @@ function RenderCoverageSection({
                 rel="noreferrer"
                 target="_blank"
               >
-                Download ZIP export
+                Télécharger l'export ZIP
               </a>
             ) : (
               <p className="admin-muted">
-                Export status: {renderExport.status}
+                Statut de l'export : {renderExport.status}
               </p>
             )}
           </div>
@@ -5718,14 +6522,11 @@ function FabricForm({
     distance: number;
     zoomPercent: number;
   } | null>(null);
-  // RU: Эти данные дают прямой доступ к квадратной рамке для колесика мыши.
-  // FR: Ces donnees donnent un acces direct au cadre carre pour la molette de la souris.
-  const swatchCropFrameRef = useRef<HTMLDivElement | null>(null);
   // RU: Эти данные показывают, что админ уже подтвердил выбранный квадрат.
   // FR: Ces donnees montrent que l'admin a deja confirme le carre choisi.
   const [isSwatchCropSaved, setIsSwatchCropSaved] = useState(false);
-  // RU: Эти данные показывают выбранную AI reference картинку прямо в форме.
-  // FR: Ces donnees montrent l'image AI reference choisie directement dans le formulaire.
+  // RU: Эти данные показывают выбранную картинку-референс IA прямо в форме.
+  // FR: Ces donnees montrent l'image de reference IA choisie directement dans le formulaire.
   const [selectedAiReferencePreview, setSelectedAiReferencePreview] =
     useState<FabricImagePreview | null>(null);
 
@@ -5740,45 +6541,8 @@ function FabricForm({
       }
     : undefined;
 
-  // RU: Этот автоматический блок включает колесико мыши над квадратной рамкой.
-  // FR: Ce bloc automatique active la molette de la souris au-dessus du cadre carre.
-  useEffect(() => {
-    const cropFrame = swatchCropFrameRef.current;
-
-    if (!cropFrame || !selectedSwatchCrop) {
-      return;
-    }
-
-    const activeSwatchCrop = selectedSwatchCrop;
-
-    function handleWheel(event: WheelEvent) {
-      if (event.deltaY === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      const zoomStep = event.deltaY < 0 ? 10 : -10;
-
-      setIsSwatchCropSaved(false);
-      onSelectedSwatchCropChange(
-        updateFabricSwatchSelectionZoom(
-          activeSwatchCrop,
-          activeSwatchCrop.zoomPercent + zoomStep,
-        ),
-      );
-    }
-
-    cropFrame.addEventListener("wheel", handleWheel, {
-      passive: false,
-    });
-
-    return () => {
-      cropFrame.removeEventListener("wheel", handleWheel);
-    };
-  }, [onSelectedSwatchCropChange, selectedSwatchCrop]);
-
-  // RU: Этот автоматический блок убирает временную ссылку на AI reference картинку.
-  // FR: Ce bloc automatique supprime le lien temporaire vers l'image AI reference.
+  // RU: Этот автоматический блок убирает временную ссылку на картинку-референс IA.
+  // FR: Ce bloc automatique supprime le lien temporaire vers l'image de reference IA.
   useEffect(() => {
     const preview = selectedAiReferencePreview;
 
@@ -5837,6 +6601,23 @@ function FabricForm({
     );
   }
 
+  function handleSwatchCropWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (!selectedSwatchCrop || event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const zoomStep = event.deltaY < 0 ? 10 : -10;
+
+    setIsSwatchCropSaved(false);
+    onSelectedSwatchCropChange(
+      updateFabricSwatchSelectionZoom(
+        selectedSwatchCrop,
+        selectedSwatchCrop.zoomPercent + zoomStep,
+      ),
+    );
+  }
+
   // RU: Это действие подтверждает текущий квадрат и оставляет его для сохранения формы.
   // FR: Cette action confirme le carre actuel et le garde pour enregistrer le formulaire.
   function handleSaveSwatchCrop() {
@@ -5848,8 +6629,8 @@ function FabricForm({
     setIsSwatchCropSaved(true);
   }
 
-  // RU: Это действие показывает выбранную AI reference картинку под полем файла.
-  // FR: Cette action montre l'image AI reference choisie sous le champ fichier.
+  // RU: Это действие показывает выбранную картинку-референс IA под полем файла.
+  // FR: Cette action montre l'image de reference IA choisie sous le champ fichier.
   function handleAiReferenceFileChange(event: FormEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null;
 
@@ -6015,7 +6796,7 @@ function FabricForm({
         </p>
       ) : null}
       <label className="field">
-        <span>Internal fabric name</span>
+        <span>Nom interne du tissu</span>
         <input
           defaultValue={fabric?.internal_name ?? ""}
           name="internal_name"
@@ -6023,7 +6804,7 @@ function FabricForm({
         />
       </label>
       <label className="field">
-        <span>Public fabric name</span>
+        <span>Nom public du tissu</span>
         <input
           defaultValue={fabric?.public_name ?? ""}
           name="public_name"
@@ -6036,10 +6817,10 @@ function FabricForm({
           name="is_premium"
           type="checkbox"
         />
-        <span>Premium fabric</span>
+        <span>Tissu premium</span>
       </label>
       <label className="field">
-        <span>Swatch image</span>
+        <span>Image d'échantillon</span>
         <input
           accept="image/png,image/jpeg,image/webp"
           name="swatch_file"
@@ -6051,16 +6832,16 @@ function FabricForm({
       {/* FR: Ce grand bloc montre le choix carre pour le nouvel echantillon de tissu. */}
       {selectedSwatchCrop ? (
         <fieldset className="admin-fieldset admin-swatch-cropper">
-          <legend>Swatch crop</legend>
+          <legend>Recadrage de l'échantillon</legend>
           <div className="admin-swatch-cropper-grid">
             <div
-              aria-label="Swatch crop preview"
+              aria-label="Aperçu du recadrage de l'échantillon"
               className="admin-swatch-crop-frame"
               onPointerCancel={handleSwatchCropPointerEnd}
               onPointerDown={handleSwatchCropPointerDown}
               onPointerMove={handleSwatchCropPointerMove}
               onPointerUp={handleSwatchCropPointerEnd}
-              ref={swatchCropFrameRef}
+              onWheel={handleSwatchCropWheel}
               role="img"
             >
               <img
@@ -6074,7 +6855,7 @@ function FabricForm({
             </div>
             <div className="admin-swatch-crop-controls">
               <label className="field admin-swatch-zoom-field">
-                <span>Swatch zoom</span>
+                <span>Zoom de l'échantillon</span>
                 <input
                   max={FABRIC_SWATCH_ZOOM_MAX_PERCENT}
                   min="100"
@@ -6092,14 +6873,14 @@ function FabricForm({
                 onClick={handleSaveSwatchCrop}
                 type="button"
               >
-                {isSwatchCropSaved ? "Crop saved" : "Save crop"}
+                {isSwatchCropSaved ? "Recadrage enregistré" : "Enregistrer le recadrage"}
               </button>
             </div>
           </div>
         </fieldset>
       ) : null}
       <label className="field">
-        <span>AI reference image</span>
+        <span>Image de référence IA</span>
         <input
           accept="image/png,image/jpeg,image/webp"
           name="ai_reference_file"
@@ -6107,14 +6888,14 @@ function FabricForm({
           type="file"
         />
       </label>
-      {/* RU: Этот большой блок показывает выбранную AI reference картинку перед сохранением ткани. */}
-      {/* FR: Ce grand bloc montre l'image AI reference choisie avant d'enregistrer le tissu. */}
+      {/* RU: Этот большой блок показывает выбранную картинку-референс IA перед сохранением ткани. */}
+      {/* FR: Ce grand bloc montre l'image de reference IA choisie avant d'enregistrer le tissu. */}
       {selectedAiReferencePreview ? (
         <fieldset className="admin-fieldset admin-ai-reference-preview">
-          <legend>AI reference preview</legend>
+          <legend>Aperçu de la référence IA</legend>
           <div className="admin-ai-reference-preview-grid">
             <div
-              aria-label="AI reference image preview"
+              aria-label="Aperçu de la référence IA"
               className="admin-ai-reference-preview-frame"
               role="img"
             >
@@ -6126,7 +6907,7 @@ function FabricForm({
             </div>
             <div className="admin-ai-reference-preview-copy">
               <strong>{selectedAiReferencePreview.fileName}</strong>
-              <span>Selected AI reference image</span>
+              <span>Image de référence IA sélectionnée</span>
             </div>
           </div>
         </fieldset>
@@ -6314,6 +7095,26 @@ function SofaForm({
   // FR: Cette valeur garde le texte que l'admin ecrit pour chercher une etiquette.
   const [tagSearch, setTagSearch] = useState("");
 
+  // RU: Это значение задает место и размер маленькой палочки под выбранными тегами.
+  // FR: Cette valeur fixe la place et la taille de la petite barre sous les etiquettes choisies.
+  const [tagRailScrollbar, setTagRailScrollbar] = useState({
+    isVisible: false,
+    leftPercent: 0,
+    widthPercent: 40,
+  });
+
+  // RU: Это место указывает на ряд выбранных тегов, чтобы измерить его ширину.
+  // FR: Cet endroit pointe vers la ligne des etiquettes choisies pour mesurer sa largeur.
+  const tagRailRef = useRef<HTMLDivElement | null>(null);
+
+  // RU: Это место помнит, откуда админ начал тянуть ряд выбранных тегов.
+  // FR: Cet endroit garde le depart quand l'admin tire la ligne des etiquettes choisies.
+  const tagRailDragRef = useRef<{
+    pointerId: number;
+    scrollLeft: number;
+    startX: number;
+  } | null>(null);
+
   // RU: Эти данные помогают быстро находить выбранные теги и не показывать их в подсказках.
   // FR: Ces donnees aident a retrouver les etiquettes choisies et a les cacher des suggestions.
   const selectedTagIdSet = useMemo(
@@ -6383,6 +7184,151 @@ function SofaForm({
     onSelectedTagIdsChange(selectedTagIds.filter((id) => id !== tagId));
   }
 
+  // RU: Эта команда обновляет маленькую палочку под рядом выбранных тегов.
+  // FR: Cette action met a jour la petite barre sous la ligne des etiquettes choisies.
+  function updateTagRailScrollbar(rail = tagRailRef.current) {
+    if (!rail) {
+      setTagRailScrollbar((currentValue) => ({
+        ...currentValue,
+        isVisible: false,
+      }));
+      return;
+    }
+
+    const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
+
+    if (maxScrollLeft <= 1) {
+      setTagRailScrollbar((currentValue) => ({
+        ...currentValue,
+        isVisible: false,
+        leftPercent: 0,
+        widthPercent: 40,
+      }));
+      return;
+    }
+
+    const widthPercent = clampNumber(
+      (rail.clientWidth / rail.scrollWidth) * 100,
+      24,
+      70,
+    );
+    const maxLeftPercent = 100 - widthPercent;
+    const leftPercent =
+      (clampNumber(rail.scrollLeft, 0, maxScrollLeft) / maxScrollLeft) *
+      maxLeftPercent;
+
+    setTagRailScrollbar({
+      isVisible: true,
+      leftPercent: Math.round(leftPercent * 100) / 100,
+      widthPercent: Math.round(widthPercent * 100) / 100,
+    });
+  }
+
+  // RU: Эта команда берет точку по ширине экрана для движения ряда тегов.
+  // FR: Cette action prend le point horizontal pour deplacer la ligne des etiquettes.
+  function readTagRailPointerX(event: ReactPointerEvent<HTMLDivElement>) {
+    return Number.isFinite(event.clientX) ? event.clientX : event.pageX;
+  }
+
+  // RU: Эта команда начинает движение ряда тегов мышкой или пальцем.
+  // FR: Cette action commence le deplacement de la ligne avec la souris ou le doigt.
+  function handleTagRailPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (event.pointerType !== "touch" && event.button > 0) {
+      return;
+    }
+
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button")
+    ) {
+      return;
+    }
+
+    const rail = event.currentTarget;
+
+    tagRailDragRef.current = {
+      pointerId: event.pointerId,
+      scrollLeft: rail.scrollLeft,
+      startX: readTagRailPointerX(event),
+    };
+    rail.dataset.dragging = "true";
+
+    if (typeof rail.setPointerCapture === "function") {
+      rail.setPointerCapture(event.pointerId);
+    }
+  }
+
+  // RU: Эта команда двигает ряд вслед за рукой или мышкой.
+  // FR: Cette action deplace la ligne avec la main ou la souris.
+  function handleTagRailPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag = tagRailDragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.scrollLeft =
+      drag.scrollLeft - (readTagRailPointerX(event) - drag.startX);
+    updateTagRailScrollbar(event.currentTarget);
+  }
+
+  // RU: Эта команда завершает движение ряда тегов.
+  // FR: Cette action termine le deplacement de la ligne des etiquettes.
+  function handleTagRailPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = tagRailDragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    tagRailDragRef.current = null;
+    delete event.currentTarget.dataset.dragging;
+
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  // RU: Эта команда двигает маленькую палочку, когда ряд тегов прокручен.
+  // FR: Cette action deplace la petite barre quand la ligne des etiquettes glisse.
+  function handleTagRailScroll(event: ReactUIEvent<HTMLDivElement>) {
+    updateTagRailScrollbar(event.currentTarget);
+  }
+
+  // RU: Этот автоматический блок подгоняет маленькую палочку при изменении выбранных тегов или ширины ряда.
+  // FR: Ce bloc automatique ajuste la petite barre quand les etiquettes choisies ou la largeur changent.
+  useEffect(() => {
+    const rail = tagRailRef.current;
+
+    updateTagRailScrollbar(rail);
+
+    if (!rail || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateTagRailScrollbar(rail);
+    });
+
+    resizeObserver.observe(rail);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [selectedTags.length]);
+
+  // RU: Этот стиль двигает маленькую палочку под выбранными тегами.
+  // FR: Ce style deplace la petite barre sous les etiquettes choisies.
+  const tagRailScrollbarStyle = {
+    "--admin-tag-rail-thumb-left": `${tagRailScrollbar.leftPercent}%`,
+    "--admin-tag-rail-thumb-width": `${tagRailScrollbar.widthPercent}%`,
+  } as CSSProperties;
+
   return (
     <form className="admin-form admin-sofa-form" onSubmit={onSubmit}>
       {errorMessage ? (
@@ -6392,12 +7338,12 @@ function SofaForm({
       ) : null}
       <section className="admin-form-section" aria-labelledby="sofa-identity">
         <div className="admin-form-section-header">
-          <h3 id="sofa-identity">Identity</h3>
-          <p>Internal naming and the public product label.</p>
+          <h3 id="sofa-identity">Identité</h3>
+          <p>Nom interne et nom public du produit.</p>
         </div>
         <div className="admin-form-two-column">
           <label className="field">
-            <span>Internal name</span>
+            <span>Nom interne</span>
             <input
               defaultValue={sofa?.internal_name ?? ""}
               name="internal_name"
@@ -6405,18 +7351,18 @@ function SofaForm({
             />
           </label>
           <label className="field">
-            <span>Public name</span>
+            <span>Nom public</span>
             <input defaultValue={sofa?.public_name ?? ""} name="public_name" />
           </label>
         </div>
       </section>
       <section className="admin-form-section" aria-labelledby="sofa-public">
         <div className="admin-form-section-header">
-          <h3 id="sofa-public">Public content</h3>
-          <p>Content reused by the storefront and operational handoff.</p>
+          <h3 id="sofa-public">Contenu public</h3>
+          <p>Contenu utilisé par la boutique et le suivi interne.</p>
         </div>
         <label className="field">
-          <span>Shopify order URL</span>
+          <span>URL de commande Shopify</span>
           <input
             defaultValue={sofa?.shopify_order_url ?? ""}
             name="shopify_order_url"
@@ -6424,7 +7370,7 @@ function SofaForm({
           />
         </label>
         <label className="field">
-          <span>Public description</span>
+          <span>Description publique</span>
           <textarea
             defaultValue={sofa?.public_description ?? ""}
             name="public_description"
@@ -6432,76 +7378,47 @@ function SofaForm({
           />
         </label>
       </section>
-      <section className="admin-form-section" aria-labelledby="sofa-dimensions">
-        <div className="admin-form-section-header">
-          <h3 id="sofa-dimensions">Dimensions</h3>
-          <p>Centimeter values used for catalog checks.</p>
-        </div>
-        <div className="admin-form-grid admin-dimension-grid">
-          <label className="field admin-unit-field">
-            <span>Length</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.length_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="length_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-          <label className="field admin-unit-field">
-            <span>Depth</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.depth_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="depth_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-          <label className="field admin-unit-field">
-            <span>Height</span>
-            <span className="admin-unit-control">
-              <input
-                defaultValue={sofa?.height_cm ?? ""}
-                inputMode="numeric"
-                min="1"
-                name="height_cm"
-                pattern="[0-9]*"
-                type="text"
-              />
-              <span aria-hidden="true">cm</span>
-            </span>
-          </label>
-        </div>
-      </section>
       {/* RU: Этот раздел дает поиск по тегам и показывает выбранные метки. */}
       {/* FR: Cette partie donne la recherche des etiquettes et montre les choix. */}
-      <section className="admin-form-section" aria-labelledby="sofa-tags">
+      {/* RU: Выбранные теги идут в одну строку, чтобы длинный список не растягивал страницу вниз. */}
+      {/* FR: Les etiquettes choisies restent sur une ligne, afin qu'une longue liste n'allonge pas la page. */}
+      <section
+        className="admin-form-section admin-sofa-tags-section"
+        aria-labelledby="sofa-tags"
+      >
         <div className="admin-form-section-header">
-          <h3 id="sofa-tags">Tags</h3>
-          <p>Public grouping and readiness behavior.</p>
+          <h3 id="sofa-tags">Étiquettes</h3>
+          <p>Groupes publics et préparation.</p>
         </div>
         {tags.length === 0 ? (
-          <p className="admin-tag-picker-empty">No tags.</p>
+          <p className="admin-tag-picker-empty">Aucune étiquette.</p>
         ) : (
           <div className="admin-tag-picker">
             <div className="admin-selected-tags" aria-live="polite">
-              <p className="admin-tag-picker-label">Selected tags</p>
+              <p className="admin-tag-picker-label">Étiquettes sélectionnées</p>
               {selectedTags.length > 0 ? (
-                <div className="admin-tag-chip-list" aria-label="Selected tags">
+                <>
+                <div
+                  aria-label="Étiquettes sélectionnées"
+                  className="admin-tag-chip-list admin-tag-chip-rail"
+                  onPointerCancel={handleTagRailPointerEnd}
+                  onPointerDown={handleTagRailPointerDown}
+                  onPointerMove={handleTagRailPointerMove}
+                  onPointerUp={handleTagRailPointerEnd}
+                  onScroll={handleTagRailScroll}
+                  ref={tagRailRef}
+                  role="list"
+                  tabIndex={0}
+                >
                   {selectedTags.map((tag) => (
-                    <span className="admin-tag-chip" key={tag.id}>
+                    <span
+                      className="admin-tag-chip"
+                      key={tag.id}
+                      role="listitem"
+                    >
                       <span>{tag.public_label}</span>
                       <button
-                        aria-label={`Remove ${tag.public_label} tag`}
+                        aria-label={`Retirer l'étiquette ${tag.public_label}`}
                         className="admin-tag-chip-remove"
                         onClick={() => handleTagRemove(tag.id)}
                         type="button"
@@ -6511,27 +7428,39 @@ function SofaForm({
                     </span>
                   ))}
                 </div>
+                {/* RU: Эта маленькая палочка показывает, где админ находится в длинном ряду выбранных тегов. */}
+                {/* FR: Cette petite barre montre la place de l'admin dans la longue ligne des etiquettes choisies. */}
+                <div
+                  aria-hidden="true"
+                  className={`admin-tag-rail-scrollbar${
+                    tagRailScrollbar.isVisible
+                      ? ""
+                      : " admin-tag-rail-scrollbar-hidden"
+                  }`}
+                  style={tagRailScrollbarStyle}
+                />
+                </>
               ) : (
                 <p className="admin-tag-picker-empty">
-                  No tags selected yet.
+                  Aucune étiquette sélectionnée.
                 </p>
               )}
             </div>
             <label className="field admin-tag-search-field">
-              <span>Search tags</span>
+              <span>Rechercher des étiquettes</span>
               <input
                 aria-controls="sofa-tag-results"
                 aria-expanded={Boolean(normalizedTagSearch)}
                 autoComplete="off"
                 onChange={handleTagSearchChange}
-                placeholder="Type a tag name"
+                placeholder="Tapez un nom d'étiquette"
                 type="search"
                 value={tagSearch}
               />
             </label>
             {normalizedTagSearch ? (
               <div
-                aria-label="Matching tags"
+                aria-label="Étiquettes trouvées"
                 className="admin-tag-results"
                 id="sofa-tag-results"
                 role="listbox"
@@ -6539,7 +7468,7 @@ function SofaForm({
                 {matchingTags.length > 0 ? (
                   matchingTags.map((tag) => (
                     <button
-                      aria-label={`Add ${tag.public_label} tag`}
+                      aria-label={`Ajouter l'étiquette ${tag.public_label}`}
                       aria-selected="false"
                       className="admin-tag-result"
                       key={tag.id}
@@ -6554,12 +7483,92 @@ function SofaForm({
                     </button>
                   ))
                 ) : (
-                  <p className="admin-tag-picker-empty">No matching tags.</p>
+                  <p className="admin-tag-picker-empty">Aucune étiquette trouvée.</p>
                 )}
               </div>
             ) : null}
           </div>
         )}
+      </section>
+      {/* RU: Этот раздел дает цену дивана целыми евро для админа и сайта. */}
+      {/* FR: Cette partie donne le prix du canape en euros entiers pour l'admin et le site. */}
+      <section
+        className="admin-form-section admin-sofa-price-section"
+        aria-labelledby="sofa-price"
+      >
+        <div className="admin-form-section-header">
+          <h3 id="sofa-price">Prix</h3>
+          <p>Prix entier en euros affiché sur la fiche publique du canapé.</p>
+        </div>
+        <label className="field admin-unit-field admin-price-field">
+          <span>Prix</span>
+          <span className="admin-unit-control">
+            <input
+              defaultValue={formatPriceEurosForInput(sofa?.price_cents)}
+              inputMode="numeric"
+              min="1"
+              name="price_eur"
+              pattern="[1-9][0-9]*"
+              type="text"
+            />
+            <span aria-hidden="true">EUR</span>
+          </span>
+        </label>
+      </section>
+      {/* RU: Этот раздел дает размеры дивана в сантиметрах для проверки каталога. */}
+      {/* FR: Cette partie donne les tailles du canape en centimetres pour verifier le catalogue. */}
+      <section
+        className="admin-form-section admin-sofa-dimensions-section"
+        aria-labelledby="sofa-dimensions"
+      >
+        <div className="admin-form-section-header">
+          <h3 id="sofa-dimensions">Dimensions</h3>
+          <p>Valeurs en centimètres utilisées pour vérifier le catalogue.</p>
+        </div>
+        <div className="admin-form-grid admin-dimension-grid">
+          <label className="field admin-unit-field">
+            <span>Longueur</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.length_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="length_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Profondeur</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.depth_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="depth_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+          <label className="field admin-unit-field">
+            <span>Hauteur</span>
+            <span className="admin-unit-control">
+              <input
+                defaultValue={sofa?.height_cm ?? ""}
+                inputMode="numeric"
+                min="1"
+                name="height_cm"
+                pattern="[0-9]*"
+                type="text"
+              />
+              <span aria-hidden="true">cm</span>
+            </span>
+          </label>
+        </div>
       </section>
       <footer className="admin-form-footer">
         <button className="admin-primary-button" type="submit">
@@ -6594,7 +7603,7 @@ async function buildFabricPayload({
   const aiReferenceFile = readFileField(form, formData, "ai_reference_file");
 
   if (requireFiles && (!swatchFile || !aiReferenceFile)) {
-    throw new Error("Fabric images are required.");
+    throw new Error("Les images du tissu sont obligatoires.");
   }
 
   const [swatchAsset, aiReferenceAsset] = await Promise.all([
@@ -6620,7 +7629,7 @@ async function buildFabricPayload({
   ]);
 
   if (!swatchAsset || !aiReferenceAsset) {
-    throw new Error("Fabric images are required.");
+    throw new Error("Les images du tissu sont obligatoires.");
   }
 
   return {
@@ -6729,6 +7738,16 @@ function buildSofaPayload(
     }
   }
 
+  if (formData.has("price_eur")) {
+    const priceEuros = String(formData.get("price_eur") ?? "").trim();
+
+    if (priceEuros && !WHOLE_EURO_PRICE_PATTERN.test(priceEuros)) {
+      throw new Error("Le prix doit être un montant entier en euros.");
+    }
+
+    payload.price_cents = priceEuros ? Number(priceEuros) * 100 : null;
+  }
+
   return payload;
 }
 
@@ -6750,7 +7769,7 @@ async function requestAdminJson(
 
   if (response.status === 204) {
     if (!response.ok) {
-      throw new Error("Request failed.");
+      throw new Error("La demande a échoué.");
     }
 
     return {};
@@ -6776,7 +7795,7 @@ function formatTimestamp(value: string) {
     return value;
   }
 
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString("fr-FR", {
     dateStyle: "medium",
     timeStyle: "short",
   });

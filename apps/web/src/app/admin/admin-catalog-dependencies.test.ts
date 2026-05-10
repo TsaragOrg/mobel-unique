@@ -6,7 +6,7 @@ describe("admin catalog dependencies", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses server error messages instead of technical error codes", async () => {
+  it("uses French admin messages instead of technical error codes", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -37,6 +37,41 @@ describe("admin catalog dependencies", () => {
       dependencies.createTag("admin-token", {
         public_label: "Angle premium",
       }),
-    ).rejects.toThrow("A tag with this label or slug already exists.");
+    ).rejects.toThrow("Une étiquette utilise déjà ce libellé ou cette adresse.");
+  });
+
+  it("builds protected admin preview URLs with the requested variant", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Blob(["preview"], { type: "image/png" }), {
+          headers: {
+            "Content-Type": "image/png",
+          },
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...globalThis.URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+    });
+
+    const dependencies = createDefaultAdminCatalogDependencies(
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await dependencies.createStorageAssetPreviewUrl(
+      "admin-token",
+      "00000000-0000-4000-8000-000000000907",
+      "small",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview?variant=small",
+      expect.objectContaining({
+        cache: "no-store",
+      }),
+    );
   });
 });

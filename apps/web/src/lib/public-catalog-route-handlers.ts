@@ -125,6 +125,7 @@ function catalogErrorResponse(error: PublicCatalogOperationErrorData) {
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
     headers: {
+      "Cache-Control": "no-store",
       "Content-Type": "application/json",
     },
     status,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createAdminAuth, type AdminAuthUser } from "./admin-auth";
 import {
   handleAdminLogoutRequest,
+  handleAdminAuthUnavailableRequest,
   handleAdminSessionRequest,
   handleTrustedDeviceRegistrationRequest
 } from "./admin-route-handlers";
@@ -78,7 +79,8 @@ describe("admin route handlers", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       error: {
-        code: "AUTH_REQUIRED"
+        code: "AUTH_REQUIRED",
+        message: "Connectez-vous à nouveau pour continuer."
       }
     });
   });
@@ -95,7 +97,8 @@ describe("admin route handlers", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       error: {
-        code: "ADMIN_REQUIRED"
+        code: "ADMIN_REQUIRED",
+        message: "Ce compte ne peut pas ouvrir l'espace admin."
       }
     });
   });
@@ -112,7 +115,20 @@ describe("admin route handlers", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       error: {
-        code: "AUTH_INVALID"
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
+      }
+    });
+  });
+
+  it("returns a French auth failure when admin auth is unavailable", async () => {
+    const response = handleAdminAuthUnavailableRequest();
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "AUTH_INVALID",
+        message: "Votre session admin a expiré. Connectez-vous à nouveau."
       }
     });
   });

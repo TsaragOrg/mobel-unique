@@ -86,9 +86,10 @@ non-negotiable acceptance criterion.
       catalog-owner contract, and a one-page rollback procedure.
 - [ ] Update `docs/roadmap/web.md` and `docs/roadmap/supabase.md` to
       reflect SPEC-0015 launch readiness.
-- [ ] Move PLAN-0038, PLAN-0039, PLAN-0040, PLAN-0041, and PLAN-0042
-      from `docs/plans/active` to `docs/plans/done` once their
-      acceptance criteria are met.
+- [ ] Keep PLAN-0042 in `docs/plans/active` until production launch sign-off.
+      PLAN-0038, PLAN-0039, PLAN-0040, and PLAN-0041 were already moved to
+      `docs/plans/done` during the 2026-05-08 plan hygiene pass; any remaining
+      launch-level parity or manual verification belongs here.
 - [ ] Run `pnpm spec:check`.
 - [ ] Sign off (Ahmed) on production launch.
 

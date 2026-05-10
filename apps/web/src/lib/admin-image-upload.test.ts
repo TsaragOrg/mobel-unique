@@ -75,33 +75,53 @@ describe("admin image upload preparation", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("returns webp render input uploads unchanged when the longest edge is within 2048 px", async () => {
-    const close = vi.fn();
-    const createImageBitmapMock = vi.fn(async () => ({
-      close,
-      height: 1200,
-      width: 1600,
-    }));
-    const createElementSpy = vi.spyOn(document, "createElement");
-    vi.stubGlobal("createImageBitmap", createImageBitmapMock);
-    const file = new File(["webp-reference"], "reference.webp", {
-      type: "image/webp",
-    });
+  it.each([
+    ["fabric_ai_reference", "reference.webp"],
+    ["sofa_source_photo", "source_photo_front.webp"],
+    ["manual_render", "manual_render_front.webp"],
+  ] as const)(
+    "converts small %s webp uploads to jpeg before signed upload creation",
+    async (purpose, fileName) => {
+      const { canvas, close, drawImage, toBlob } = mockCanvasPreparation({
+        height: 1200,
+        width: 1600,
+      });
+      const file = new File(["webp-reference"], fileName, {
+        lastModified: 42,
+        type: "image/webp",
+      });
 
-    const result = await prepareAdminImageUploadFile({
-      file,
-      purpose: "fabric_ai_reference",
-    });
+      const result = await prepareAdminImageUploadFile({
+        file,
+        purpose,
+      });
 
-    expect(result).toEqual({
-      file,
-      message: null,
-      resized: false,
-    });
-    expect(createImageBitmapMock).toHaveBeenCalledWith(file);
-    expect(createElementSpy).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledOnce();
-  });
+      expect(result.file).not.toBe(file);
+      expect(result.file.name).toBe(fileName.replace(/\.webp$/, ".jpg"));
+      expect(result.file.type).toBe("image/jpeg");
+      expect(result.file.lastModified).toBe(42);
+      expect(result.file.size).toBe(8);
+      expect(result.resized).toBe(true);
+      expect(result.message).toBe(
+        "L'image a été convertie de WebP en JPEG avant l'envoi.",
+      );
+      expect(canvas.width).toBe(1600);
+      expect(canvas.height).toBe(1200);
+      expect(drawImage).toHaveBeenCalledWith(
+        expect.any(Object),
+        0,
+        0,
+        1600,
+        1200,
+      );
+      expect(toBlob).toHaveBeenCalledWith(
+        expect.any(Function),
+        "image/jpeg",
+        0.9,
+      );
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
 
   it("resizes oversized render input uploads before signed upload creation", async () => {
     const close = vi.fn();
@@ -149,11 +169,90 @@ describe("admin image upload preparation", () => {
     expect(result.file.size).toBe(7);
     expect(result.resized).toBe(true);
     expect(result.message).toBe(
-      "Image resized from 4000x3000 to 2048x1536 before upload.",
+      "L'image a été réduite de 4000x3000 à 2048x1536 avant l'envoi.",
     );
     expect(canvas.width).toBe(2048);
     expect(canvas.height).toBe(1536);
     expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 2048, 1536);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["image/jpeg", "manual-render.jpg"],
+    ["image/png", "manual-render.png"],
+  ] as const)(
+    "resizes oversized manual render %s uploads before signed upload creation",
+    async (contentType, fileName) => {
+      const { canvas, close, drawImage, toBlob } = mockCanvasPreparation({
+        height: 4096,
+        width: 3072,
+      });
+      const file = new File(["manual-large"], fileName, {
+        lastModified: 86,
+        type: contentType,
+      });
+
+      const result = await prepareAdminImageUploadFile({
+        file,
+        purpose: "manual_render",
+      });
+
+      expect(result.file).not.toBe(file);
+      expect(result.file.name).toBe(fileName);
+      expect(result.file.type).toBe(contentType);
+      expect(result.file.lastModified).toBe(86);
+      expect(result.file.size).toBe(8);
+      expect(result.resized).toBe(true);
+      expect(result.message).toBe(
+        "L'image a été réduite de 3072x4096 à 1536x2048 avant l'envoi.",
+      );
+      expect(canvas.width).toBe(1536);
+      expect(canvas.height).toBe(2048);
+      expect(drawImage).toHaveBeenCalledWith(
+        expect.any(Object),
+        0,
+        0,
+        1536,
+        2048,
+      );
+      expect(toBlob).toHaveBeenCalledWith(
+        expect.any(Function),
+        contentType,
+        0.9,
+      );
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("resizes and converts oversized webp generation inputs in one canvas pass", async () => {
+    const { canvas, close, drawImage, toBlob } = mockCanvasPreparation({
+      height: 3000,
+      width: 4000,
+    });
+    const file = new File(["large-webp"], "large-reference.webp", {
+      lastModified: 64,
+      type: "image/webp",
+    });
+
+    const result = await prepareAdminImageUploadFile({
+      file,
+      purpose: "fabric_ai_reference",
+    });
+
+    expect(result.file).not.toBe(file);
+    expect(result.file.name).toBe("large-reference.jpg");
+    expect(result.file.type).toBe("image/jpeg");
+    expect(result.file.lastModified).toBe(64);
+    expect(result.file.size).toBe(8);
+    expect(result.resized).toBe(true);
+    expect(result.message).toBe(
+      "L'image a été convertie de WebP en JPEG et réduite de 4000x3000 à 2048x1536 avant l'envoi.",
+    );
+    expect(canvas.width).toBe(2048);
+    expect(canvas.height).toBe(1536);
+    expect(drawImage).toHaveBeenCalledOnce();
+    expect(toBlob).toHaveBeenCalledOnce();
+    expect(toBlob).toHaveBeenCalledWith(expect.any(Function), "image/jpeg", 0.9);
     expect(close).toHaveBeenCalledOnce();
   });
 
@@ -207,7 +306,7 @@ describe("admin image upload preparation", () => {
     expect(result.file.type).toBe("image/png");
     expect(result.file.size).toBe(7);
     expect(result.resized).toBe(true);
-    expect(result.message).toBe("Swatch cropped to a 512x512 square before upload.");
+    expect(result.message).toBe("L'échantillon a été recadré en carré 512x512 avant l'envoi.");
     expect(canvas.width).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(canvas.height).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
     expect(drawImage).toHaveBeenCalledWith(
@@ -223,4 +322,88 @@ describe("admin image upload preparation", () => {
     );
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it("keeps webp fabric swatch crop output as webp", async () => {
+    const { canvas, close, drawImage, toBlob } = mockCanvasPreparation({
+      height: 900,
+      width: 1200,
+    });
+    const file = new File(["raw-webp-swatch"], "swatch.webp", {
+      lastModified: 84,
+      type: "image/webp",
+    });
+
+    const result = await prepareAdminImageUploadFile({
+      fabricSwatchCrop: {
+        sourceSize: 1000,
+        sourceX: -50,
+        sourceY: 200,
+      },
+      file,
+      purpose: "fabric_swatch",
+    });
+
+    expect(result.file).not.toBe(file);
+    expect(result.file.name).toBe("swatch.webp");
+    expect(result.file.type).toBe("image/webp");
+    expect(result.file.size).toBe(8);
+    expect(result.resized).toBe(true);
+    expect(result.message).toBe("L'échantillon a été recadré en carré 512x512 avant l'envoi.");
+    expect(canvas.width).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
+    expect(canvas.height).toBe(ADMIN_FABRIC_SWATCH_OUTPUT_PX);
+    expect(drawImage).toHaveBeenCalledWith(
+      expect.any(Object),
+      0,
+      0,
+      900,
+      900,
+      0,
+      0,
+      ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+      ADMIN_FABRIC_SWATCH_OUTPUT_PX,
+    );
+    expect(toBlob).toHaveBeenCalledWith(
+      expect.any(Function),
+      "image/webp",
+      0.9,
+    );
+    expect(close).toHaveBeenCalledOnce();
+  });
 });
+
+function mockCanvasPreparation(input: { height: number; width: number }) {
+  const close = vi.fn();
+  const bitmap = {
+    close,
+    height: input.height,
+    width: input.width,
+  };
+  const createImageBitmapMock = vi.fn(async () => bitmap);
+  const drawImage = vi.fn();
+  const toBlob = vi.fn(
+    (callback: BlobCallback, type?: string, quality?: number) => {
+      expect(quality).toBe(0.9);
+      callback(new Blob(["prepared"], { type }));
+    },
+  );
+  const canvas = {
+    getContext: vi.fn(() => ({
+      drawImage,
+    })),
+    height: 0,
+    toBlob,
+    width: 0,
+  } as unknown as HTMLCanvasElement;
+
+  vi.stubGlobal("createImageBitmap", createImageBitmapMock);
+  vi.spyOn(document, "createElement").mockReturnValue(canvas);
+
+  return {
+    bitmap,
+    canvas,
+    close,
+    createImageBitmapMock,
+    drawImage,
+    toBlob,
+  };
+}

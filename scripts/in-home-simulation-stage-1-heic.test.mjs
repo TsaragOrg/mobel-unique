@@ -6,22 +6,27 @@ import {
   shouldConvertHeic
 } from "../supabase/functions/in-home-simulation-worker/lib/heic.ts";
 
-function buildFtypBox(brand) {
+function buildFtypBox(brand, compatibleBrands = [brand]) {
   // Minimal ISO base media file with an ftyp box at offset 0:
   //   bytes 0..3   box size (placeholder)
   //   bytes 4..7   "ftyp"
   //   bytes 8..11  major brand
   //   bytes 12..15 minor version
-  //   bytes 16..19 compatible brand
+  //   bytes 16..n  compatible brands
   if (brand.length !== 4) {
     throw new Error("brand must be exactly four ASCII characters");
   }
-  const buffer = new Uint8Array(20);
-  // size = 20
-  buffer[0] = 0x00;
-  buffer[1] = 0x00;
-  buffer[2] = 0x00;
-  buffer[3] = 0x14;
+  for (const compatibleBrand of compatibleBrands) {
+    if (compatibleBrand.length !== 4) {
+      throw new Error("compatible brand must be exactly four ASCII characters");
+    }
+  }
+  const size = 16 + compatibleBrands.length * 4;
+  const buffer = new Uint8Array(size);
+  buffer[0] = (size >>> 24) & 0xff;
+  buffer[1] = (size >>> 16) & 0xff;
+  buffer[2] = (size >>> 8) & 0xff;
+  buffer[3] = size & 0xff;
   buffer[4] = "f".charCodeAt(0);
   buffer[5] = "t".charCodeAt(0);
   buffer[6] = "y".charCodeAt(0);
@@ -32,8 +37,12 @@ function buildFtypBox(brand) {
   // minor version = 0
   for (let i = 0; i < 4; i++) {
     buffer[12 + i] = 0;
-    buffer[16 + i] = brand.charCodeAt(i);
   }
+  compatibleBrands.forEach((compatibleBrand, brandIndex) => {
+    for (let i = 0; i < 4; i++) {
+      buffer[16 + brandIndex * 4 + i] = compatibleBrand.charCodeAt(i);
+    }
+  });
   return buffer;
 }
 
@@ -72,6 +81,11 @@ describe("detectHeicMagic", () => {
     expect(detectHeicMagic(buildFtypBox("hevx"))).toBe(true);
     expect(detectHeicMagic(buildFtypBox("hevm"))).toBe(true);
     expect(detectHeicMagic(buildFtypBox("hevs"))).toBe(true);
+  });
+
+  it("returns true when HEIC appears as a compatible ftyp brand", () => {
+    expect(detectHeicMagic(buildFtypBox("isom", ["iso8", "heic"]))).toBe(true);
+    expect(detectHeicMagic(buildFtypBox("isom", ["iso8", "mif1"]))).toBe(true);
   });
 
   it("returns false for an MP4 ftyp box", () => {

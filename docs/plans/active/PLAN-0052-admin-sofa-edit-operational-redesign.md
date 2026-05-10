@@ -154,6 +154,7 @@ workbench structure proves correct in browser QA.
 - [x] Restructure Basics into Identity, Public content, Dimensions, and Tags.
 - [x] Replace dimension number inputs with unit-aware controls that do not depend on native spinner arrows.
 - [x] Redesign tag and checkbox controls to match the admin visual system.
+- [x] Keep selected tags compact when many tags are attached to the sofa.
 - [x] Keep `Save sofa` as the only primary action in Basics.
 - [x] Update Basics tests for changed markup and controls.
 
@@ -233,6 +234,24 @@ workbench structure proves correct in browser QA.
 - Follow-up fix: Basics tag assignment now uses a local search picker with
   pinned selected tag chips and remove actions instead of showing every tag as
   a persistent checkbox, keeping the form usable when the tag list grows.
+- Follow-up fix: Basics selected tag chips now stay in a compact horizontal
+  rail with a visible scroll affordance, so a sofa with many selected tags does
+  not make the form grow vertically.
+- Follow-up fix: View Columns source-photo thumbnails now keep the visible
+  row-level Edit action while replacing the image overlay text with a subtle
+  square edit icon attached to the top-right image corner.
+- Follow-up fix: Admin dashboard catalog cards and compact destructive actions
+  now use quiet SVG icons while preserving accessible button and link names.
+- Follow-up fix: Admin modal close actions now use compact close icons, and
+  render candidate previous/next controls now use arrow icons while preserving
+  accessible button names.
+- Follow-up fix: Sofa edit render status chips now show only status text,
+  removing the previous one-letter markers from render cells, the status key,
+  and the render cell sheet.
+- Follow-up fix: Sofa edit Renders cells now show a gray SI source-image marker
+  in the top-right corner of the render cell when the current cell image is the
+  source photo, including the accessible cell label, so admins can identify
+  source-photo cells without opening the detail sheet.
 
 ## Acceptance Criteria
 

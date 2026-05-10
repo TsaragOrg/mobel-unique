@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdminAuth, type AdminAuthUser } from "./admin-auth";
 import {
   handleArchiveFabricRequest,
+  handleArchiveSofaRequest,
   handleAssignSofaFabricRequest,
   handleCompleteUploadRequest,
   handleCreateFabricRequest,
@@ -38,6 +39,7 @@ import {
   handleUpdateTagRequest,
   handleUpdateVisualMatrixColumnRequest,
   handleSetManualRenderRequest,
+  handleUnarchiveSofaRequest,
   handleUnpublishSofaRequest,
   handleUseRenderCandidateRequest,
   type AdminCatalogStore,
@@ -214,6 +216,41 @@ function createFakeStore(): AdminCatalogStore {
         updated_at: "2026-04-28T10:10:00.000Z",
       };
       fabrics.set(fabricId, next);
+
+      return next;
+    },
+    async archiveSofa(sofaId) {
+      const existing = sofas.get(sofaId);
+
+      if (!existing) {
+        return null;
+      }
+
+      const next = {
+        ...existing,
+        archived_at: "2026-04-28T10:55:00.000Z",
+        lifecycle_state: "archived",
+        published_at: null,
+        updated_at: "2026-04-28T10:55:00.000Z",
+      };
+      sofas.set(sofaId, next);
+
+      return next;
+    },
+    async unarchiveSofa(sofaId) {
+      const existing = sofas.get(sofaId);
+
+      if (!existing) {
+        return null;
+      }
+
+      const next = {
+        ...existing,
+        archived_at: null,
+        lifecycle_state: "draft",
+        updated_at: "2026-04-28T11:05:00.000Z",
+      };
+      sofas.set(sofaId, next);
 
       return next;
     },
@@ -1323,6 +1360,93 @@ describe("admin catalog route handlers", () => {
     );
   });
 
+  it("passes original, small, and medium preview variants to the admin facade", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const assetId = "00000000-0000-4000-8000-000000000902";
+    const previewSpy = vi
+      .spyOn(store, "getStorageAssetPreview")
+      .mockImplementation(async (requestedAssetId, variant = "original") => ({
+        body: new NodeBlob([`preview:${requestedAssetId}:${variant}`], {
+          type: "image/jpeg",
+        }) as unknown as Blob,
+        content_type: "image/jpeg",
+      }));
+
+    for (const variant of ["original", "small", "medium"] as const) {
+      const response = await handleGetStorageAssetPreviewRequest({
+        ...input,
+        assetId,
+        variant,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      await expect(response.text()).resolves.toBe(
+        `preview:${assetId}:${variant}`,
+      );
+    }
+
+    expect(previewSpy).toHaveBeenNthCalledWith(1, assetId, "original");
+    expect(previewSpy).toHaveBeenNthCalledWith(2, assetId, "small");
+    expect(previewSpy).toHaveBeenNthCalledWith(3, assetId, "medium");
+  });
+
+  it("returns a safe validation error for unsupported preview variants", async () => {
+    const store = createFakeStore();
+    const previewSpy = vi.spyOn(store, "getStorageAssetPreview");
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...createInput(store),
+      assetId: "00000000-0000-4000-8000-000000000902",
+      variant: "large",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "INVALID_STORAGE_ASSET_VARIANT",
+        message: "Cette variante d'aperçu n'est pas disponible.",
+      },
+    });
+    expect(previewSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns safe not-found for missing preview variants without using original bytes", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const assetId = "00000000-0000-4000-8000-000000000902";
+    const previewSpy = vi
+      .spyOn(store, "getStorageAssetPreview")
+      .mockImplementation(async (requestedAssetId, variant = "original") => {
+        if (variant !== "original") {
+          return null;
+        }
+
+        return {
+          body: new NodeBlob([`preview:${requestedAssetId}:original`], {
+            type: "image/jpeg",
+          }) as unknown as Blob,
+          content_type: "image/jpeg",
+        };
+      });
+
+    const response = await handleGetStorageAssetPreviewRequest({
+      ...input,
+      assetId,
+      variant: "small",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "STORAGE_ASSET_NOT_FOUND",
+        message: "L'image enregistrée est introuvable.",
+      },
+    });
+    expect(previewSpy).toHaveBeenCalledWith(assetId, "small");
+  });
+
   it("does not serve public or unsupported assets through the private preview endpoint", async () => {
     const store = createFakeStore();
     const input = createInput(store);
@@ -1446,6 +1570,45 @@ describe("admin catalog route handlers", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
+        request_ids: [requestId],
+        status: "started",
+        total_requests: 1,
+      },
+    });
+  });
+
+  it("resumes a queued fabric render job from one selected render cell", async () => {
+    const renderCellId = "00000000-0000-4000-8000-000000003012";
+    const preferredJobId = "00000000-0000-4000-8000-000000003013";
+    const requestId = "00000000-0000-4000-8000-000000003014";
+    const resumeFabricRenderJobs = vi.fn(async () => ({
+      preferred_job_id: preferredJobId,
+      render_cell_id: renderCellId,
+      request_ids: [requestId],
+      status: "started" as const,
+      total_requests: 1,
+    }));
+    const store = {
+      resumeFabricRenderJobs,
+    } as unknown as AdminCatalogStore;
+
+    const response = await handleResumeFabricRenderJobsRequest({
+      ...createInput(store),
+      request: jsonRequest({
+        render_cell_id: renderCellId,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(resumeFabricRenderJobs).toHaveBeenCalledWith({
+      render_cell_id: renderCellId,
+      request_id: null,
+      sofa_id: null,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        preferred_job_id: preferredJobId,
+        render_cell_id: renderCellId,
         request_ids: [requestId],
         status: "started",
         total_requests: 1,
@@ -1659,6 +1822,119 @@ describe("admin catalog route handlers", () => {
         },
       },
       meta: {},
+    });
+  });
+
+  it("archives a published sofa through the admin boundary", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Internal sofa",
+          public_name: "Public sofa",
+          shopify_order_url: "https://shopify.example/products/public-sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+
+    await handlePublishSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    const archiveResponse = await handleArchiveSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    expect(archiveResponse.status).toBe(200);
+    await expect(archiveResponse.json()).resolves.toMatchObject({
+      data: {
+        sofa: {
+          archived_at: "2026-04-28T10:55:00.000Z",
+          id: sofaId,
+          lifecycle_state: "archived",
+          public_slug: "public-sofa",
+        },
+      },
+      meta: {},
+    });
+  });
+
+  it("returns not found when archiving an unknown sofa", async () => {
+    const response = await handleArchiveSofaRequest({
+      ...createInput(createFakeStore()),
+      sofaId: "00000000-0000-4000-8000-000000009999",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "SOFA_NOT_FOUND",
+      },
+    });
+  });
+
+  it("unarchives an archived sofa through the admin boundary", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Internal sofa",
+          public_name: "Public sofa",
+          shopify_order_url: "https://shopify.example/products/public-sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+
+    await handlePublishSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    await handleArchiveSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    const unarchiveResponse = await handleUnarchiveSofaRequest({
+      ...input,
+      sofaId,
+    });
+
+    expect(unarchiveResponse.status).toBe(200);
+    await expect(unarchiveResponse.json()).resolves.toMatchObject({
+      data: {
+        sofa: {
+          archived_at: null,
+          id: sofaId,
+          lifecycle_state: "draft",
+          public_slug: "public-sofa",
+        },
+      },
+      meta: {},
+    });
+  });
+
+  it("returns not found when unarchiving an unknown sofa", async () => {
+    const response = await handleUnarchiveSofaRequest({
+      ...createInput(createFakeStore()),
+      sofaId: "00000000-0000-4000-8000-000000009999",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "SOFA_NOT_FOUND",
+      },
     });
   });
 

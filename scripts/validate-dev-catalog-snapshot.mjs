@@ -15,6 +15,7 @@ export const ALLOWED_PUBLIC_TABLES = new Set([
   "sofa_source_photos",
   "sofa_tags",
   "sofas",
+  "storage_asset_variants",
   "storage_assets",
   "visual_matrix_columns",
 ]);
@@ -96,7 +97,134 @@ export function validateSnapshotText(text, path) {
     );
   }
 
+  errors.push(...validateStorageAssetVariantRows(text));
+
   return errors;
+}
+
+function validateStorageAssetVariantRows(text) {
+  const errors = [];
+  const storageAssetIds = collectInsertedColumnValues(text, "storage_assets", "id");
+  const variantRows = collectInsertedRows(text, "storage_asset_variants");
+  const missingAssetIds = new Set();
+
+  for (const row of variantRows) {
+    const originalAssetId = row.original_asset_id;
+    const variantAssetId = row.variant_asset_id;
+
+    if (!originalAssetId || !variantAssetId) {
+      continue;
+    }
+
+    if (originalAssetId === variantAssetId) {
+      errors.push(
+        "storage_asset_variants must not point an original asset at itself",
+      );
+    }
+
+    if (!storageAssetIds.has(originalAssetId)) {
+      missingAssetIds.add(originalAssetId);
+    }
+
+    if (!storageAssetIds.has(variantAssetId)) {
+      missingAssetIds.add(variantAssetId);
+    }
+  }
+
+  if (missingAssetIds.size > 0) {
+    errors.push(
+      `storage_asset_variants references storage asset ids missing from the snapshot: ${[
+        ...missingAssetIds,
+      ]
+        .sort()
+        .join(", ")}`,
+    );
+  }
+
+  return errors;
+}
+
+function collectInsertedColumnValues(text, tableName, columnName) {
+  return new Set(
+    collectInsertedRows(text, tableName)
+      .map((row) => row[columnName])
+      .filter(Boolean),
+  );
+}
+
+function collectInsertedRows(text, tableName) {
+  const rows = [];
+  const pattern = new RegExp(
+    `insert\\s+into\\s+public\\.${tableName}\\s*\\(([^)]*)\\)\\s*values\\s*([\\s\\S]*?);`,
+    "gi",
+  );
+
+  for (const match of text.matchAll(pattern)) {
+    const columns = match[1].split(",").map((column) => column.trim());
+    const valuesBlock = match[2];
+
+    for (const rowMatch of valuesBlock.matchAll(/\(([^()]*)\)/g)) {
+      const values = splitSqlTuple(rowMatch[1]);
+      const row = {};
+
+      for (const [index, column] of columns.entries()) {
+        row[column] = unquoteSqlValue(values[index]);
+      }
+
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function splitSqlTuple(tuple) {
+  const values = [];
+  let current = "";
+  let isQuoted = false;
+
+  for (let index = 0; index < tuple.length; index += 1) {
+    const character = tuple[index];
+    const nextCharacter = tuple[index + 1];
+
+    if (character === "'" && nextCharacter === "'") {
+      current += "''";
+      index += 1;
+      continue;
+    }
+
+    if (character === "'") {
+      isQuoted = !isQuoted;
+      current += character;
+      continue;
+    }
+
+    if (character === "," && !isQuoted) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  values.push(current.trim());
+
+  return values;
+}
+
+function unquoteSqlValue(value) {
+  if (!value || /^null$/i.test(value)) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replaceAll("''", "'");
+  }
+
+  return trimmed;
 }
 
 export function validateSnapshotFile(path) {

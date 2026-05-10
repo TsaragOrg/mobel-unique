@@ -1,7 +1,9 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import React from "react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PublicSimulationContinuation } from "./PublicSimulationContinuation";
+import type { SubscribeToSimulationProgressArgs } from "../../../lib/simulation-client/realtime";
 import type {
   SimulationJobStatus,
   SimulationStatusResponse
@@ -11,7 +13,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() })
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const baseContext = {
   slug: "canape-rivoli",
@@ -34,6 +39,12 @@ function snapshot(
     regeneration_available: false,
     ...overrides
   };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 describe("PublicSimulationContinuation", () => {
@@ -139,6 +150,50 @@ describe("PublicSimulationContinuation", () => {
     ).toHaveAttribute("href", "/sofas/canape-rivoli/simulate");
   });
 
+  it("passes a safe failed-job diagnostic to Screen 6", async () => {
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={async () =>
+          snapshot("failed", {
+            last_error:
+              "Could not convert HEIC/HEIF input: libheif could not load: Module not found: https://esm.sh/libheif-js@1.18.1?bundle"
+          })
+        }
+        loadJobContext={() => baseContext}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("simulation-screen-error")).toBeInTheDocument()
+    );
+
+    const text = screen.getByTestId("simulation-screen-error").textContent ?? "";
+    expect(text).toMatch(/HEIC\/HEIF n'a pas pu être converti/i);
+    expect(text).not.toMatch(/libheif|esm\.sh|https?:\/\//i);
+  });
+
+  it("renders an error screen when the initial status read fails", async () => {
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={async () => {
+          throw new Error("status request failed (401)");
+        }}
+        loadJobContext={() => baseContext}
+        subscribeProgress={() => () => undefined}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("simulation-screen-error")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByText(/cela prend environ une minute/i)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/diagnostic/i)).not.toBeInTheDocument();
+  });
+
   it("renders Screen 6 expired variant on expired status without a Restart action", async () => {
     render(
       <PublicSimulationContinuation
@@ -176,5 +231,237 @@ describe("PublicSimulationContinuation", () => {
     expect(
       screen.getByRole("link", { name: /retour au canapé/i })
     ).toHaveAttribute("href", "/catalog");
+  });
+
+  it("refreshes the signed status payload when a Realtime progress event arrives", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(
+        snapshot("awaiting_dimensions", {
+          dimension_guide_overlay_url: "https://signed.example/guide.png"
+        })
+      );
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+    expect(subscribeProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "sim-1" })
+    );
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "awaiting_dimensions",
+        progress_step_key: "awaiting_dimensions",
+        progress_step_ordinal: 3,
+        progress_total_steps: 4,
+        visitor_action_required: true,
+        guide_available: true,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:01:00.000Z"
+      });
+    });
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(2));
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent(/mesurez votre pièce/i);
+  });
+
+  it("uses Realtime step details to make room preparation loading copy specific", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(snapshot("room_prep_processing"));
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "room_prep_processing",
+        progress_step_key: "room_cleaning",
+        progress_step_ordinal: 2,
+        progress_total_steps: 4,
+        visitor_action_required: false,
+        guide_available: false,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:01:00.000Z"
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1 })
+      ).toHaveTextContent("Préparation de votre image")
+    );
+    expect(screen.getByText("Étape 2 sur 4")).toBeInTheDocument();
+  });
+
+  it("uses Realtime step details to make placement loading copy specific", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("placement_queued"))
+      .mockResolvedValueOnce(snapshot("placement_processing"));
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "placement_processing",
+        progress_step_key: "placement_generation",
+        progress_step_ordinal: 4,
+        progress_total_steps: 4,
+        visitor_action_required: false,
+        guide_available: false,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:03:00.000Z"
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1 })
+      ).toHaveTextContent("Placement du canapé dans votre pièce")
+    );
+    expect(screen.getByText("Étape 4 sur 4")).toBeInTheDocument();
+  });
+
+  it("keeps a slow reconciliation read once Realtime is connected", async () => {
+    vi.useFakeTimers();
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    let connectionCallback:
+      | NonNullable<SubscribeToSimulationProgressArgs["onConnectionState"]>
+      | null = null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      connectionCallback = args.onConnectionState ?? null;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(snapshot("queued"))
+      .mockResolvedValueOnce(
+        snapshot("awaiting_dimensions", {
+          dimension_guide_overlay_url: "https://signed.example/guide.png"
+        })
+      );
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      connectionCallback?.("connected");
+      await flushMicrotasks();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(29_999);
+      await flushMicrotasks();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await flushMicrotasks();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(3);
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent(/mesurez votre pièce/i);
+
+    fetchStatus.mockResolvedValueOnce(
+      snapshot("awaiting_dimensions", {
+        dimension_guide_overlay_url: "https://signed.example/guide.png"
+      })
+    );
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "awaiting_dimensions",
+        progress_step_key: "awaiting_dimensions",
+        progress_step_ordinal: 3,
+        progress_total_steps: 4,
+        visitor_action_required: true,
+        guide_available: true,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:01:00.000Z"
+      });
+      await flushMicrotasks();
+    });
+
+    expect(fetchStatus).toHaveBeenCalledTimes(4);
+    expect(
+      screen.getByRole("heading", { level: 1 })
+    ).toHaveTextContent(/mesurez votre pièce/i);
   });
 });

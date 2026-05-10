@@ -30,6 +30,8 @@ This spec also incorporates the accepted change requests that affect API behavio
 - `CR-SPEC-0003 Visual Matrix And Render Publication Alignment`;
 - `CR-SPEC-0004-SPEC-0005 MVP Catalog Metadata Scope`;
 - `CR-SPEC-0009 Resolve Open Questions`.
+- `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
+  Pump And Realtime Progress`.
 
 ## Goal
 
@@ -243,6 +245,10 @@ The implementation should organize Edge Functions by security boundary:
 - internal cleanup and worker-control functions must require scheduler or service authorization;
 - worker functions must use service-side credentials and must not be invoked by public UI;
 - fabric render worker functions should be invoked by service-side orchestration after explicit admin actions, not by scheduler-first pickup.
+- in-home simulation worker functions should be invoked by service-side
+  orchestration immediately after public simulation create, dimension submit,
+  and regeneration actions, with scheduler invocation reserved for recovery and
+  backlog pickup.
 
 The final function names may differ from the logical route groups if an implementation plan documents the mapping. The logical contracts in this spec remain the product-facing contract.
 
@@ -385,6 +391,14 @@ The API must support email verification before simulation generation.
 
 Exact retention durations, resend limits, verification attempt limits, email copy, consent wording, and abuse thresholds belong to the privacy, retention, and abuse protection spec. This API spec defines the contract shape required by the product flow.
 
+`CR-SPEC-0009-SPEC-0010-SPEC-0015-public-simulation-supabase-auth-otp-smtp`
+authorizes Supabase Auth email OTP with a configured SMTP provider as the
+verification engine behind this public API facade. The route contract remains
+application-owned: browsers receive the public simulation response shape and
+the application `simulation_access_token`, not Supabase Auth access tokens,
+refresh tokens, service-role credentials, SMTP credentials, or private Auth
+metadata.
+
 ### `POST /api/public/simulation/email-verifications`
 
 Starts or resends an email verification attempt.
@@ -413,6 +427,10 @@ Rules:
 - optional commercial contact consent must be stored separately from required email-use consent;
 - the API must normalize and hash email addresses before storing lookup values;
 - plaintext verification codes must never be stored;
+- when Supabase Auth backs OTP delivery, code generation, code storage, expiry,
+  resend limits, and OTP verification may be delegated to Supabase Auth while
+  the application still records consent, email hash, provider user id, and
+  simulation-session state;
 - the response must not reveal whether an email has been used before;
 - rejected optional commercial consent must not block simulation.
 
@@ -453,6 +471,8 @@ Rules:
 - the token returned to the browser must be opaque;
 - only a hash of the access token may be stored;
 - the token authorizes only simulation actions allowed by this spec;
+- Supabase Auth sessions returned by provider verification must remain
+  server-side implementation details for this flow;
 - failed verification attempts must not expose plaintext code or email data.
 
 ## Public In-Home Simulation API
@@ -497,7 +517,15 @@ Response:
 }
 ```
 
-The API must enqueue the durable simulation job for worker processing. The queue message must contain only the minimum information required to find the durable job row and intended stage.
+The API must make the durable simulation job claimable for worker processing
+and write the transactional dispatch outbox intent in the same database
+mutation. Queue messages may be used as wake-up hints, but the durable job,
+checkpoint state, and dispatch outbox remain authoritative. After the database
+mutation commits, the public route handler must wake the internal worker
+dispatcher with a short service-side call. It must not run checkpoint/provider
+work, must not use request-time pump mode, and must fail safely if the worker
+cannot be woken. The browser must not receive worker function names, queue ids,
+dispatch ids, or service invocation details.
 
 ### `GET /api/public/simulations/{simulation_job_id}`
 
@@ -557,6 +585,12 @@ The API must return short-lived signed URLs for private simulation guide and res
 
 If a regeneration fails after at least one successful output exists, the response must keep the latest successful result available while retained and may include a readable regeneration error.
 
+The status response may include Realtime subscription metadata or point the
+client to a dedicated Realtime access endpoint. Realtime metadata must be scoped
+to the current simulation job and verified session and must not contain private
+storage paths, signed URLs, service credentials, worker function names, or queue
+identifiers.
+
 ### `POST /api/public/simulations/{simulation_job_id}/dimensions`
 
 Submits dimensions for a job in `awaiting_dimensions`.
@@ -592,7 +626,9 @@ Rules:
 - the submitted geometry mode must match the job's detected mode;
 - all required dimensions for the mode must be present and positive;
 - extra dimension fields must be rejected for MVP unless a later spec adds them;
-- successful submission must transition the job toward placement processing and enqueue the placement stage.
+- successful submission must transition the job toward placement processing,
+  make the placement checkpoint claimable, and write the dispatch outbox intent
+  without waiting for worker acknowledgement.
 
 Response:
 
@@ -614,6 +650,9 @@ Rules:
 - the total successful output count must not exceed three for the MVP;
 - failed regeneration must not increment successful output count;
 - regeneration must not require re-uploading the room photo or re-entering dimensions while retained.
+- successful regeneration request must make the placement checkpoint claimable
+  and write the dispatch outbox intent without waiting for worker
+  acknowledgement.
 
 Response:
 
@@ -622,6 +661,33 @@ Response:
   "simulation_job_id": "opaque-job-id",
   "status": "placement_queued",
   "reserved_generation_index": 1
+}
+```
+
+### `POST /api/public/simulations/{simulation_job_id}/realtime-token`
+
+Optional implementation endpoint for Realtime progress access. An
+implementation may instead include equivalent metadata in the status endpoint.
+
+Rules:
+
+- the job must belong to the verified simulation session;
+- the response must authorize only the visitor-safe simulation progress surface
+  for this one job;
+- the token or channel metadata must expire no later than the simulation access
+  session or retention deadline;
+- the response must not expose private storage paths, signed URLs, service-role
+  credentials, provider keys, worker function names, raw table names when they
+  weaken access control, queue ids, or another visitor's state.
+
+Response example:
+
+```json
+{
+  "simulation_job_id": "opaque-job-id",
+  "channel": "simulation-progress",
+  "topic": "job-scoped-topic-or-table-filter",
+  "expires_at": "2026-05-07T12:00:00Z"
 }
 ```
 

@@ -7,6 +7,10 @@ import {
 import { readImageDimensions } from "./image-metadata.ts";
 import { normalizeGeneratedOutput } from "./image-normalization.ts";
 import {
+  generateFabricRenderCandidateImageVariants,
+  type FabricRenderCandidateImageVariant,
+} from "./image-variants.ts";
+import {
   buildFabricRenderCandidateOutputPath,
   validateFabricRenderJobInputs,
 } from "./job.ts";
@@ -17,6 +21,7 @@ import {
 import {
   base64ToUint8Array,
   downloadStorageObject,
+  removeStorageObjects,
   uint8ArrayToBase64,
   uploadStorageObject,
 } from "./storage.ts";
@@ -38,6 +43,7 @@ type CapacityScope = "request" | "global";
 
 type WorkerRequestBody = {
   mode: WorkerMode;
+  preferredJobId?: string;
   requestId: string;
 };
 
@@ -53,6 +59,7 @@ type WorkerResponse = {
   failed?: number;
   canceled?: number;
   started_count?: number;
+  preferred_job_id?: string;
   max_concurrent_jobs?: number;
   active_processing?: number;
   capacity_scope?: CapacityScope;
@@ -123,7 +130,7 @@ const GENERATED_BUCKET = "catalog-private-assets";
 const MOCK_INPUT_IMAGE_BASE64 =
   "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9U6KKKAP/2Q==";
 const MOCK_OUTPUT_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==";
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com";
 
 const denoScratchFs: ScratchFileSystem = {
@@ -223,6 +230,7 @@ Deno.serve(async (request) => {
 
     if (parsedRequest.mode === "pump") {
       return await handlePumpMode({
+        preferredJobId: parsedRequest.preferredJobId,
         requestId,
         serviceRoleKey,
         supabaseUrl,
@@ -230,6 +238,7 @@ Deno.serve(async (request) => {
     }
 
     return await handleJobMode({
+      preferredJobId: parsedRequest.preferredJobId,
       requestId,
       serviceRoleKey,
       supabaseUrl,
@@ -273,17 +282,36 @@ async function parseWorkerRequestBody(
 
   const requestId = body.request_id;
   if (typeof requestId !== "string" || requestId.trim().length === 0) {
+    return jsonResponse({ error: "Fabric render request_id is required" }, 400);
+  }
+
+  const preferredJobId = body.preferred_job_id;
+  if (
+    preferredJobId !== undefined &&
+    (typeof preferredJobId !== "string" || preferredJobId.trim().length === 0)
+  ) {
     return jsonResponse(
-      { error: "Fabric render request_id is required" },
+      { error: "Fabric render preferred_job_id must be a string" },
       400,
     );
   }
 
+  const parsedPreferredJobId =
+    typeof preferredJobId === "string" ? preferredJobId.trim() : undefined;
+
   if (mode === "pump") {
-    return { mode: "pump", requestId: requestId.trim() };
+    return {
+      mode: "pump",
+      preferredJobId: parsedPreferredJobId,
+      requestId: requestId.trim(),
+    };
   }
 
-  return { mode: "job", requestId: requestId.trim() };
+  return {
+    mode: "job",
+    preferredJobId: parsedPreferredJobId,
+    requestId: requestId.trim(),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -356,6 +384,7 @@ async function handlePumpMode(input: {
   supabaseUrl: string;
   serviceRoleKey: string;
   requestId: string;
+  preferredJobId?: string;
 }): Promise<Response> {
   const providerConfig = resolveWorkerProviderConfig();
   const maxConcurrentJobs = resolveMaxConcurrentJobs(providerConfig);
@@ -376,11 +405,17 @@ async function handlePumpMode(input: {
     "active_processing",
   );
   const availableSlots = Math.max(maxConcurrentJobs - activeProcessingCount, 0);
-  const startedCount = Math.min(queuedCount, availableSlots);
+  const requestedStartCount = input.preferredJobId ? 1 : queuedCount;
+  const startedCount = Math.min(
+    queuedCount,
+    requestedStartCount,
+    availableSlots,
+  );
 
   for (let index = 0; index < startedCount; index += 1) {
     deferWorkerInvocation(
       invokeWorkerJob({
+        preferredJobId: input.preferredJobId,
         requestId: input.requestId,
         supabaseUrl: input.supabaseUrl,
       }),
@@ -396,6 +431,7 @@ async function handlePumpMode(input: {
     mode: "pump",
     processing: processingCount,
     queued: queuedCount,
+    preferred_job_id: input.preferredJobId,
     request_id: input.requestId,
     started_count: startedCount,
     status: startedCount > 0 ? "started" : "idle",
@@ -407,6 +443,7 @@ async function handleJobMode(input: {
   supabaseUrl: string;
   serviceRoleKey: string;
   requestId: string;
+  preferredJobId?: string;
 }): Promise<Response> {
   const providerConfig = resolveWorkerProviderConfig();
   if (!providerConfig) {
@@ -441,15 +478,13 @@ async function handleJobMode(input: {
       claim_provider_name: providerConfig.providerName,
       p_capacity_scope: capacityScope,
       p_max_concurrent_jobs: maxConcurrentJobs,
+      p_preferred_job_id: input.preferredJobId,
       p_request_id: input.requestId,
       worker_id: `fabric-render-worker-${crypto.randomUUID()}`,
     },
   );
 
-  if (
-    claimedJob.status === "empty" ||
-    claimedJob.status === "capacity_full"
-  ) {
+  if (claimedJob.status === "empty" || claimedJob.status === "capacity_full") {
     return jsonResponse({
       capacity_scope: capacityScope,
       max_concurrent_jobs: maxConcurrentJobs,
@@ -471,16 +506,16 @@ async function handleJobMode(input: {
     );
   }
 
-  try {
-    return await processClaimedJob({
-      geminiApiKey,
-      jobId: claimedJob.job_id,
-      providerConfig,
-      requestId: input.requestId,
-      serviceRoleKey: input.serviceRoleKey,
-      supabaseUrl: input.supabaseUrl,
-    });
-  } finally {
+  const response = await processClaimedJob({
+    geminiApiKey,
+    jobId: claimedJob.job_id,
+    providerConfig,
+    requestId: input.requestId,
+    serviceRoleKey: input.serviceRoleKey,
+    supabaseUrl: input.supabaseUrl,
+  });
+
+  if (response.ok) {
     deferWorkerInvocation(
       invokeNextWorkerPump({
         capacityScope,
@@ -490,6 +525,8 @@ async function handleJobMode(input: {
       }),
     );
   }
+
+  return response;
 }
 
 function readRequestStatusCount(
@@ -604,9 +641,11 @@ async function readNextRequestId(input: {
 async function invokeWorkerJob(input: {
   supabaseUrl: string;
   requestId: string;
+  preferredJobId?: string;
 }): Promise<void> {
   await invokeWorker({
     mode: "job",
+    preferredJobId: input.preferredJobId,
     requestId: input.requestId,
     supabaseUrl: input.supabaseUrl,
   });
@@ -615,13 +654,20 @@ async function invokeWorkerJob(input: {
 async function invokeWorker(input: {
   supabaseUrl: string;
   requestId: string;
+  preferredJobId?: string;
   mode: WorkerMode;
 }): Promise<void> {
+  const body: Record<string, string> = {
+    mode: input.mode,
+    request_id: input.requestId,
+  };
+
+  if (input.preferredJobId) {
+    body.preferred_job_id = input.preferredJobId;
+  }
+
   const response = await fetch(resolveWorkerFunctionUrl(input.supabaseUrl), {
-    body: JSON.stringify({
-      mode: input.mode,
-      request_id: input.requestId,
-    }),
+    body: JSON.stringify(body),
     headers: buildWorkerInvocationHeaders(),
     method: "POST",
   });
@@ -678,9 +724,7 @@ function buildWorkerInvocationHeaders(): Record<string, string> {
 
 function deferWorkerInvocation(promise: Promise<void>): void {
   const handledPromise = promise.catch((error) => {
-    console.error(
-      error instanceof Error ? error.message : String(error),
-    );
+    console.error(error instanceof Error ? error.message : String(error));
   });
 
   if (
@@ -776,6 +820,7 @@ async function processClaimedJob(input: {
     },
   );
   const scratchDir = buildScratchDir(input.jobId);
+  const uploadedOutputObjectPaths: string[] = [];
 
   try {
     validateFabricRenderJobInputs({
@@ -840,7 +885,7 @@ async function processClaimedJob(input: {
     const normalizationTarget = selectNormalizationTarget(resolvedJob);
     const normalizedImage =
       input.providerConfig.providerName === "gemini" &&
-        shouldNormalizeGeneratedOutput()
+      shouldNormalizeGeneratedOutput()
         ? await normalizeGeneratedOutput({
             outputBytes: generatedImage.outputBytes,
             outputContentType: generatedImage.contentType,
@@ -866,6 +911,12 @@ async function processClaimedJob(input: {
       throw new Error("normalized output metadata did not match image bytes");
     }
 
+    const outputVariants = await generateFabricRenderCandidateImageVariants({
+      outputBytes: normalizedImage.outputBytes,
+      outputContentType: normalizedImage.contentType,
+      outputPath,
+    });
+
     await uploadStorageObject({
       body: normalizedImage.outputBytes,
       bucketId: GENERATED_BUCKET,
@@ -875,6 +926,20 @@ async function processClaimedJob(input: {
       serviceRoleKey: input.serviceRoleKey,
       supabaseUrl: input.supabaseUrl,
     });
+    uploadedOutputObjectPaths.push(outputPath);
+
+    for (const variant of outputVariants) {
+      await uploadStorageObject({
+        body: variant.bytes,
+        bucketId: GENERATED_BUCKET,
+        contentType: variant.content_type,
+        fetchImpl: (url, init) => fetch(url, init),
+        objectPath: variant.object_path,
+        serviceRoleKey: input.serviceRoleKey,
+        supabaseUrl: input.supabaseUrl,
+      });
+      uploadedOutputObjectPaths.push(variant.object_path);
+    }
 
     await callRpc(
       input.supabaseUrl,
@@ -887,6 +952,9 @@ async function processClaimedJob(input: {
         output_height_px: normalizedImage.normalizedHeightPx,
         output_path: outputPath,
         output_width_px: normalizedImage.normalizedWidthPx,
+        p_output_variants: outputVariants.map(
+          shapeFabricRenderOutputVariantRpcPayload,
+        ),
       },
     );
 
@@ -909,6 +977,18 @@ async function processClaimedJob(input: {
       errorMessage: message,
       fs: denoScratchFs,
       scratchDir,
+    });
+
+    await removeUploadedFabricRenderOutputObjects({
+      objectPaths: uploadedOutputObjectPaths,
+      serviceRoleKey: input.serviceRoleKey,
+      supabaseUrl: input.supabaseUrl,
+    }).catch((cleanupError) => {
+      console.error(
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError),
+      );
     });
 
     await callRpc(
@@ -945,6 +1025,38 @@ async function downloadResolvedAsset(
     objectPath: asset.object_path,
     serviceRoleKey,
     supabaseUrl,
+  });
+}
+
+function shapeFabricRenderOutputVariantRpcPayload(
+  variant: FabricRenderCandidateImageVariant,
+) {
+  return {
+    byte_size: variant.byte_size,
+    content_type: variant.content_type,
+    height_px: variant.height_px,
+    object_path: variant.object_path,
+    variant_asset_id: variant.variant_asset_id,
+    variant_kind: variant.variant_kind,
+    width_px: variant.width_px,
+  };
+}
+
+async function removeUploadedFabricRenderOutputObjects(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  objectPaths: string[];
+}): Promise<void> {
+  if (input.objectPaths.length === 0) {
+    return;
+  }
+
+  await removeStorageObjects({
+    bucketId: GENERATED_BUCKET,
+    fetchImpl: (url, init) => fetch(url, init),
+    objectPaths: input.objectPaths,
+    serviceRoleKey: input.serviceRoleKey,
+    supabaseUrl: input.supabaseUrl,
   });
 }
 

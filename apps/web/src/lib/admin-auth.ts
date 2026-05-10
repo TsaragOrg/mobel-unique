@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { ADMIN_ERROR_MESSAGES } from "../app/admin/admin-copy";
 
 export const ADMIN_ROLE = "admin";
 export const ADMIN_TRUSTED_DEVICE_COOKIE = "__Host-mobel_admin_device";
@@ -247,7 +248,7 @@ function authRequired(): AdminAuthFailure {
   return {
     error: {
       code: "AUTH_REQUIRED",
-      message: "Authentication is required."
+      message: ADMIN_ERROR_MESSAGES.AUTH_REQUIRED
     },
     ok: false,
     status: 401
@@ -258,7 +259,7 @@ function authInvalid(): AdminAuthFailure {
   return {
     error: {
       code: "AUTH_INVALID",
-      message: "Authentication is invalid."
+      message: ADMIN_ERROR_MESSAGES.AUTH_INVALID
     },
     ok: false,
     status: 401
@@ -269,7 +270,7 @@ function adminRequired(): AdminAuthFailure {
   return {
     error: {
       code: "ADMIN_REQUIRED",
-      message: "Admin access is required."
+      message: ADMIN_ERROR_MESSAGES.ADMIN_REQUIRED
     },
     ok: false,
     status: 403

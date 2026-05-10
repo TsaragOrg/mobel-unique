@@ -28,6 +28,11 @@ This spec is expected to feed later specs and plans for:
 - environment and deployment;
 - Supabase migrations, RLS policies, and storage policies.
 
+This spec also incorporates
+`CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint Pump
+And Realtime Progress`, which adds durable in-home simulation checkpoint state
+and a public-safe Realtime progress surface.
+
 Accepted specs already define the product behavior. This spec defines the storage shape needed to support that behavior without approving API route names, UI layouts, provider prompts, or final privacy wording.
 
 ## Goal
@@ -149,6 +154,12 @@ The first production migration must define these logical enum sets, either as Po
 - `fabric_render_job_status`: `queued`, `processing`, `succeeded`, `failed`, `canceled`.
 - `simulation_job_status`: `queued`, `room_prep_processing`, `awaiting_dimensions`, `placement_queued`, `placement_processing`, `succeeded`, `failed`, `canceled`, `expired`.
 - `room_geometry_mode`: `back_wall`, `corner`.
+- `simulation_checkpoint_key`: `room_validation`, `room_cleaning`,
+  `room_corners`, `dimension_guide`, `awaiting_dimensions`,
+  `placement_generation`, `placement_measurement`, `placement_finalize`,
+  `completed`, `failed`, `expired`.
+- `simulation_checkpoint_status`: `queued`, `processing`, `succeeded`,
+  `retrying`, `failed`, `canceled`, `expired`.
 - `consent_type`: `email_verification_required`, `commercial_contact_optional`, `analytics_optional`.
 - `consent_decision`: `granted`, `rejected`, `revoked`.
 - `worker_job_type`: `fabric_render_generation`, `in_home_simulation`.
@@ -554,15 +565,20 @@ Rules:
 Fields:
 
 - `id` uuid primary key;
+- `auth_user_id` uuid nullable reference to `auth.users` when Supabase Auth
+  backs the OTP verification provider;
 - `email_address_encrypted` text or bytea, nullable only if the privacy implementation uses an equivalent secure delivery mechanism;
 - `email_normalized_hash` text, required;
-- `verification_code_hash` text, required;
+- `verification_code_hash` text, nullable only when Supabase Auth owns OTP
+  generation, storage, expiry, and verification; required for any
+  application-managed OTP provider;
 - `status` text, required;
 - `send_count` integer;
 - `failed_attempt_count` integer;
 - `expires_at` timestamp;
 - `verified_at` timestamp;
 - `last_sent_at` timestamp;
+- `email_purged_at` timestamp nullable;
 - `request_ip_hash` text nullable;
 - `user_agent_hash` text nullable;
 - `created_at` timestamp;
@@ -571,9 +587,14 @@ Fields:
 Rules:
 
 - plaintext verification codes must never be stored;
+- when Supabase Auth backs email OTP, application tables must not duplicate the
+  provider's OTP hash or expose Auth tokens to public clients;
 - unhashed normalized email addresses must not be stored in plain text;
 - exact expiry, resend limits, attempt limits, and deletion behavior belong to the privacy, retention, abuse protection, and API contracts specs;
 - the table must support abuse checks without exposing personal data to analytics or public clients.
+- transient Supabase Auth users created only for public simulation verification
+  must be eligible for scheduled cleanup after the operational retention window
+  unless a later accepted customer-account spec promotes the identity.
 
 ### `consent_records`
 
@@ -582,6 +603,8 @@ Rules:
 Fields:
 
 - `id` uuid primary key;
+- `email_verification_request_id` uuid nullable reference to
+  `email_verification_requests`;
 - `consent_type` with values from `consent_type`;
 - `decision` with values from `consent_decision`;
 - `email_normalized_hash` text nullable;
@@ -595,6 +618,8 @@ Fields:
 
 Rules:
 
+- required email-use consent must be captured before an OTP is sent and may be
+  linked to the verification request that captured it;
 - required email verification consent and optional commercial contact consent must be separate records;
 - rejecting analytics consent must not block browsing, email verification, simulation, result viewing, or Shopify redirect;
 - final wording and retention policy belong to the privacy spec.
@@ -607,6 +632,8 @@ Fields:
 
 - `id` uuid primary key;
 - `email_verification_request_id` uuid reference to `email_verification_requests`;
+- `auth_user_id` uuid nullable reference to `auth.users` when the verified
+  identity came from Supabase Auth OTP;
 - `email_normalized_hash` text, required;
 - `required_email_consent_record_id` uuid reference to `consent_records`;
 - `optional_commercial_consent_record_id` uuid nullable reference to `consent_records`;
@@ -621,6 +648,9 @@ Fields:
 Rules:
 
 - browsers receive only opaque simulation access identifiers or tokens, never direct table ids when that would weaken access control;
+- Supabase Auth user ids may be retained only as server-side provenance for the
+  verified OTP event and must not replace the application-owned access-token
+  hash authorization model;
 - API logic uses this table to enforce verified-session requirements and visitor-session anti-abuse limits before creating jobs or accepting regenerations;
 - the session `access_token_hash` is the public access capability for simulation job creation, polling, dimension submission, regeneration, and signed result access within that verified session;
 - exact session lifetime and cross-job throttles belong to privacy, abuse, and API contracts specs.
@@ -664,6 +694,12 @@ Fields:
 - `claimed_by` text;
 - `claimed_at` timestamp;
 - `claim_expires_at` timestamp;
+- current checkpoint key;
+- current checkpoint status;
+- current progress step key;
+- progress step ordinal;
+- progress total steps;
+- progress updated timestamp;
 - `last_error_code` text;
 - `last_error_message` text;
 - `last_regeneration_error_message` text;
@@ -704,6 +740,144 @@ Rules:
 - when a job expires, private artifact paths must be cleared, redacted, or made operationally useless after purge so retained metadata does not reference private image content;
 - abandoned `awaiting_dimensions` jobs remain recoverable until `retention_deadline`;
 - only successfully persisted outputs increment `generated_output_count`.
+
+### `in_home_simulation_checkpoints`
+
+`in_home_simulation_checkpoints` stores durable checkpoint attempts for the
+database-dispatched checkpoint worker defined by `SPEC-0007`.
+
+Fields:
+
+- `id` uuid primary key;
+- `in_home_simulation_job_id` uuid reference to `in_home_simulation_jobs`;
+- `checkpoint_key` with values from `simulation_checkpoint_key`;
+- `status` with values from `simulation_checkpoint_status`;
+- `attempt_number` integer;
+- `max_attempts` integer;
+- `generation_index` integer nullable for placement checkpoints;
+- `claimed_by` text nullable;
+- `claimed_at` timestamp nullable;
+- `claim_expires_at` timestamp nullable;
+- `started_at` timestamp nullable;
+- `completed_at` timestamp nullable;
+- `retryable` boolean nullable;
+- `safe_error_code` text nullable;
+- `safe_error_message` text nullable;
+- `metadata` jsonb;
+- `created_at` timestamp;
+- `updated_at` timestamp.
+
+Required constraints and indexes:
+
+- unique or server-side guard ensuring only one active row for the same job,
+  checkpoint key, and generation index when the checkpoint is not terminal;
+- index on `(status, created_at)` for claimable checkpoint pickup;
+- partial index on `claim_expires_at` where `status = 'processing'`;
+- index on `in_home_simulation_job_id`;
+- check constraints preventing non-positive attempt counts and invalid
+  generation indexes.
+
+Rules:
+
+- checkpoint rows are operational and must not be directly readable by public
+  visitors;
+- the durable job row remains the source of truth for public status and
+  retention;
+- queue messages may reference checkpoint work, but losing a queue message must
+  not make a claimable checkpoint undiscoverable;
+- every worker-claimable checkpoint must have one durable dispatch outbox
+  intent that can be drained by API-woken worker dispatch or operator recovery;
+- expired checkpoint claims must be recoverable by dispatch or operator recovery
+  logic;
+- retryable checkpoint failures may create or update a later attempt row until
+  attempts are exhausted;
+- non-retryable terminal checkpoint failure must update the owning simulation
+  job according to `SPEC-0007` failure and regeneration rules.
+
+### `in_home_simulation_checkpoint_dispatch_outbox`
+
+`in_home_simulation_checkpoint_dispatch_outbox` stores the transactional handoff
+from durable checkpoint state to worker invocation. It is operational state and
+must be service-role-only.
+
+Fields:
+
+- `id` uuid primary key;
+- `checkpoint_id` uuid unique reference to `in_home_simulation_checkpoints`;
+- `in_home_simulation_job_id` uuid reference to `in_home_simulation_jobs`;
+- `checkpoint_key` with values from `simulation_checkpoint_key`;
+- `status` with values `pending`, `dispatching`, `dispatched`, `retrying`, and
+  `failed`;
+- `attempt_count` integer;
+- `max_attempts` integer;
+- `next_attempt_at` timestamp;
+- `last_attempt_at` timestamp nullable;
+- `dispatch_started_at` timestamp nullable;
+- `dispatched_at` timestamp nullable;
+- `locked_by` text nullable;
+- `lock_expires_at` timestamp nullable;
+- `last_error_code` text nullable;
+- `last_error_message` text nullable;
+- `reason` text;
+- `created_at` timestamp;
+- `updated_at` timestamp.
+
+Required constraints and indexes:
+
+- unique index on `checkpoint_id` so there is one dispatch intent per
+  checkpoint;
+- due-work index on `next_attempt_at`, `created_at`, and `id` for pending and
+  retrying rows;
+- stale-lock index on `lock_expires_at` for `dispatching` rows;
+- index on `in_home_simulation_job_id`;
+- check constraints for valid status, positive max attempts, non-negative
+  attempt count, non-blank reason, and required lock fields while dispatching.
+
+Rules:
+
+- the same transaction that makes a worker checkpoint claimable must insert or
+  upsert the dispatch outbox row;
+- `awaiting_dimensions`, `completed`, `failed`, and `expired` checkpoints must
+  not create worker dispatch intents;
+- dispatcher locks must be short-lived and reclaimable by dispatch recovery;
+- duplicate public API retries and duplicate dispatcher wake-ups must not create
+  more than one outbox row for the same checkpoint;
+- public visitors must never read dispatch outbox rows or receive dispatch ids.
+
+### `simulation_public_progress`
+
+`simulation_public_progress` is the public-safe Realtime projection for one
+visitor's simulation progress. It may be a table maintained by API and worker
+transactions, or an equivalent Realtime-safe projection if the implementation
+documents the same privacy guarantees.
+
+Fields:
+
+- `simulation_job_id` uuid primary key or unique reference to
+  `in_home_simulation_jobs`;
+- `simulation_session_id` uuid reference to `simulation_sessions`;
+- `status` with values from `simulation_job_status`;
+- `progress_step_key` text;
+- `progress_step_ordinal` integer;
+- `progress_total_steps` integer;
+- `visitor_action_required` boolean;
+- `guide_available` boolean;
+- `latest_result_available` boolean;
+- `regeneration_available` boolean;
+- `retention_deadline` timestamp;
+- `updated_at` timestamp.
+
+Rules:
+
+- public visitors may subscribe only to rows authorized by their verified
+  simulation session capability;
+- the row must not contain private storage paths, signed URLs, provider
+  metadata, prompt versions, raw worker errors, queue ids, service identifiers,
+  or another visitor's state;
+- signed guide and result URLs remain available only through authorized API
+  status responses;
+- when a simulation expires, the projection must stop indicating that guide or
+  result artifacts are available.
 
 ### `simulation_generated_outputs`
 
@@ -1063,6 +1237,9 @@ The implementation plan must add tests or smoke checks for:
 - In-home simulation job state supports the statuses, stage attempts, geometry, dimensions, regeneration indices, output count, latest output index, and retention deadline required by `SPEC-0007`.
 - In-home simulation output metadata tracks generation index, provider, model, prompt version, dimensions, and private output path while retained.
 - Public in-home simulation access uses the verified `simulation_sessions.access_token_hash` plus opaque job identifiers for job creation, polling, dimension submission, regeneration, and signed result access.
+- Supabase Auth-backed OTP verification can link verification requests and
+  simulation sessions to transient Auth user ids without exposing Auth sessions
+  or retaining raw email beyond the operational retention window.
 - Simulation storage uses one private prefix per job under `simulation-private-artifacts`.
 - Customer room photos, intermediate artifacts, and generated simulation outputs are private and purged within the 24-hour MVP retention maximum.
 - Email verification tables do not store plaintext verification codes.

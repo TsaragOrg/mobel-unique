@@ -8,17 +8,25 @@ pnpm seed:local:admin-fixtures
 
 `pnpm supabase:reset` also runs that seed after migrations and `supabase/seed.sql`.
 
-By default, the seed script creates a small catalog with placeholder PNG assets:
+By default, the seed script creates a local scenario catalog with deterministic
+generated images:
 
 - 3 fabrics;
-- 2 sofas;
-- 2 visual positions per sofa;
-- source-photo render cells for the first fabric;
-- missing render cells for the other fabrics, so `Generate all` has work to do.
+- 5 sofas;
+- multiple published sofas plus draft and archived lifecycle states;
+- complete public render coverage for the published sofa;
+- complete private render coverage for one draft sofa;
+- source-only render coverage for one draft sofa, so `Generate all` has work to do;
+- one draft sofa with no source or render images.
 
 To use real images locally, copy `manifest.example.json` to `manifest.json` and
 place the referenced images under `images/`. Both `manifest.json` and `images/`
 are ignored by Git so local product images do not get committed accidentally.
+If a referenced file is missing, the seed script generates a deterministic local
+image for that asset instead of failing the reset.
+When a complete render scenario has a source photo, the seed reuses that sofa
+photo for the generated fabric render cells so local public thumbnails stay
+visually sofa-like instead of falling back to geometric placeholders.
 
 The current clean local image layout is:
 
@@ -57,9 +65,18 @@ not as manifest inputs for fabric render testing.
 Required real fixture inputs:
 
 - at least 3 fabrics;
-- for each fabric, a swatch image and an AI reference image;
+- for each fabric, a swatch image and an AI reference image, or let the seed
+  generate them;
 - at least 2 sofas;
 - for each sofa, metadata, assigned fabric slugs, and a source fabric slug;
-- for each sofa visual position, a source photo showing that source fabric.
+- for each sofa visual position, a source photo showing that source fabric, or
+  `skip_source_photo: true` for explicit no-image scenarios.
 
 Supported image formats are PNG, JPEG, and WebP.
+
+Sofa scenario fields:
+
+- `lifecycle_state`: `published`, `draft`, or `archived`;
+- `render_coverage`: `complete`, `source-only`, or `none`;
+- `manual_public_order`: optional ordering for published sofas;
+- `skip_source_photo`: optional visual-position flag for no-image scenarios.

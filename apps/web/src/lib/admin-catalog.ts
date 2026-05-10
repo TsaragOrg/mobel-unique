@@ -1,5 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  CATALOG_IMAGE_VARIANT_KINDS,
+  ensureCatalogImageVariants,
+  resolveCatalogImageDeliveryAsset,
+  type CatalogImageDeliveryVariant,
+  type CatalogImageVariantRepository,
+  type CatalogImageVariantStorage,
+  type CatalogStorageAssetRecord,
+} from "./catalog-image-variants";
 
 type JsonObject = Record<string, unknown>;
 type SupabaseCatalogClient = any;
@@ -26,7 +35,8 @@ export type AdminCatalogErrorCode =
   | "TAG_NOT_FOUND"
   | "VISUAL_MATRIX_COLUMN_CONFLICT"
   | "VISUAL_MATRIX_COLUMN_NOT_FOUND"
-  | "UPLOAD_NOT_FOUND";
+  | "UPLOAD_NOT_FOUND"
+  | "UPLOAD_VARIANTS_FAILED";
 
 export interface AdminCatalogOperationErrorData {
   code: AdminCatalogErrorCode | string;
@@ -55,6 +65,7 @@ export interface AdminTagRecord {
 }
 
 export interface AdminSofaRecord {
+  archived_at?: string | null;
   created_at: string;
   depth_cm?: number | null;
   footprint_measurements?: unknown;
@@ -64,11 +75,14 @@ export interface AdminSofaRecord {
   internal_name: string;
   lifecycle_state: string;
   manual_public_order?: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
   public_description?: string | null;
   public_name?: string | null;
   public_slug?: string | null;
   shopify_order_url?: string | null;
   source_photo_count?: number | null;
+  source_photo_preview_asset_id?: string | null;
   source_photo_preview_url?: string | null;
   tags?: AdminTagRecord[];
   updated_at: string;
@@ -182,6 +196,8 @@ export interface AdminFabricRenderJobBatchRecord {
 }
 
 export interface AdminFabricRenderResumeRecord {
+  preferred_job_id?: string | null;
+  render_cell_id?: string | null;
   request_ids: string[];
   status: "noop" | "started";
   total_requests: number;
@@ -247,6 +263,16 @@ export interface AdminSofaRenderExportRecord {
 }
 
 export interface AdminCatalogStore {
+  archiveSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
+  unarchiveSofa(
+    sofaId: string,
+  ): Promise<
+    AdminSofaRecord | JsonObject | AdminCatalogOperationErrorData | null
+  >;
   archiveFabric(
     fabricId: string,
   ): Promise<AdminFabricRecord | JsonObject | null>;
@@ -317,6 +343,7 @@ export interface AdminCatalogStore {
   getSofa(sofaId: string): Promise<AdminSofaRecord | JsonObject | null>;
   getStorageAssetPreview(
     assetId: string,
+    variant?: CatalogImageDeliveryVariant,
   ): Promise<AdminStorageAssetPreviewRecord | null>;
   getSofaPublicationReadiness(
     sofaId: string,
@@ -420,6 +447,7 @@ export interface SofaMutationInput {
   height_cm?: number | null;
   internal_name: string;
   manual_public_order?: number | null;
+  price_cents?: number | null;
   public_description?: string | null;
   public_name?: string | null;
   shopify_order_url?: string | null;
@@ -504,12 +532,19 @@ export type FabricRenderJobCreateInput =
 
 export type FabricRenderResumeInput =
   | {
+      render_cell_id?: null;
       request_id: string;
       sofa_id?: null;
     }
   | {
+      render_cell_id?: null;
       request_id?: null;
       sofa_id: string;
+    }
+  | {
+      render_cell_id: string;
+      request_id?: null;
+      sofa_id?: null;
     };
 
 const SOFA_FIELDS = [
@@ -520,6 +555,7 @@ const SOFA_FIELDS = [
   "length_cm",
   "depth_cm",
   "height_cm",
+  "price_cents",
   "footprint_type",
   "footprint_measurements",
   "manual_public_order",
@@ -572,7 +608,11 @@ const FABRIC_RENDER_JOB_FIELDS = [
   "refine_prompt",
 ] as const;
 
-const FABRIC_RENDER_RESUME_FIELDS = ["request_id", "sofa_id"] as const;
+const FABRIC_RENDER_RESUME_FIELDS = [
+  "request_id",
+  "sofa_id",
+  "render_cell_id",
+] as const;
 
 const UPLOAD_PURPOSES = [
   "fabric_swatch",
@@ -582,6 +622,15 @@ const UPLOAD_PURPOSES = [
 ] as const;
 
 const IMAGE_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const GENERATION_INPUT_IMAGE_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+] as const;
+const GENERATION_INPUT_UPLOAD_PURPOSES = [
+  "fabric_ai_reference",
+  "manual_render",
+  "sofa_source_photo",
+] as const;
 
 const MAX_ADMIN_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_RENDER_INPUT_EDGE_PX = 2048;
@@ -722,7 +771,7 @@ export function validateUploadCreatePayload(
 
   if (
     !contentType ||
-    !(IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)
+    !isUploadContentTypeAllowedForPurpose(purpose, contentType)
   ) {
     fields.push("content_type");
   }
@@ -1071,6 +1120,9 @@ export function validateFabricRenderResumePayload(
   const sofaId = readUuidField(payload, "sofa_id", {
     required: false,
   });
+  const renderCellId = readUuidField(payload, "render_cell_id", {
+    required: false,
+  });
   const fields: string[] = [];
 
   if (!requestId.ok) {
@@ -1081,11 +1133,21 @@ export function validateFabricRenderResumePayload(
     fields.push("sofa_id");
   }
 
-  if (requestId.present && sofaId.present) {
-    fields.push("request_id", "sofa_id");
+  if (!renderCellId.ok) {
+    fields.push("render_cell_id");
   }
 
-  if (!requestId.present && !sofaId.present) {
+  const presentFields = [
+    requestId.present ? "request_id" : null,
+    sofaId.present ? "sofa_id" : null,
+    renderCellId.present ? "render_cell_id" : null,
+  ].filter((field): field is string => field !== null);
+
+  if (presentFields.length > 1) {
+    fields.push(...presentFields);
+  }
+
+  if (presentFields.length === 0) {
     fields.push("request_id");
   }
 
@@ -1093,21 +1155,36 @@ export function validateFabricRenderResumePayload(
     return validationFailed([...new Set(fields)]);
   }
 
-  return requestId.present
-    ? {
-        ok: true,
-        value: {
-          request_id: requestId.value ?? "",
-          sofa_id: null,
-        },
-      }
-    : {
-        ok: true,
-        value: {
-          request_id: null,
-          sofa_id: sofaId.value ?? "",
-        },
-      };
+  if (requestId.present) {
+    return {
+      ok: true,
+      value: {
+        render_cell_id: null,
+        request_id: requestId.value ?? "",
+        sofa_id: null,
+      },
+    };
+  }
+
+  if (sofaId.present) {
+    return {
+      ok: true,
+      value: {
+        render_cell_id: null,
+        request_id: null,
+        sofa_id: sofaId.value ?? "",
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      render_cell_id: renderCellId.value ?? "",
+      request_id: null,
+      sofa_id: null,
+    },
+  };
 }
 
 export function buildPublicTagSlug(value: string) {
@@ -1134,6 +1211,7 @@ export function buildPublicRenderAssetObjectPath(input: {
 
 export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
   return {
+    archived_at: stringOrNull(record.archived_at),
     created_at: stringOrNull(record.created_at),
     depth_cm: numberOrNull(record.depth_cm),
     footprint_measurements:
@@ -1146,11 +1224,16 @@ export function shapeSofaResponse(record: AdminSofaRecord | JsonObject) {
     internal_name: stringOrNull(record.internal_name),
     lifecycle_state: stringOrNull(record.lifecycle_state),
     manual_public_order: numberOrNull(record.manual_public_order),
+    price_cents: numberOrNull(record.price_cents),
+    price_currency: stringOrNull(record.price_currency),
     public_description: stringOrNull(record.public_description),
     public_name: stringOrNull(record.public_name),
     public_slug: stringOrNull(record.public_slug),
     shopify_order_url: stringOrNull(record.shopify_order_url),
     source_photo_count: numberOrNull(record.source_photo_count) ?? 0,
+    source_photo_preview_asset_id: stringOrNull(
+      record.source_photo_preview_asset_id,
+    ),
     source_photo_preview_url: stringOrNull(record.source_photo_preview_url),
     tags: readTags(record.tags),
     updated_at: stringOrNull(record.updated_at),
@@ -1273,7 +1356,7 @@ export function shapeSofaSourcePhotoResponse(
     created_at: stringOrNull(record.created_at),
     id: stringOrNull(record.id),
     original_fabric_id: stringOrNull(record.original_fabric_id),
-    preview_url: stringOrNull(record.preview_url),
+    preview_url: null,
     sofa_id: stringOrNull(record.sofa_id),
     updated_at: stringOrNull(record.updated_at),
     visual_matrix_column_id: stringOrNull(record.visual_matrix_column_id),
@@ -1487,6 +1570,51 @@ export function createSupabaseAdminCatalogStore(
   }) as SupabaseCatalogClient;
 
   return {
+    async archiveSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const publicRenderAssets = await collectPublicRenderAssetsForSofa(
+        client,
+        sofaId,
+      );
+
+      const { error } = await client.rpc("admin_archive_sofa", {
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be archived.",
+        });
+      }
+
+      await deactivateAndRemovePublicRenderAssets(client, publicRenderAssets);
+
+      return fetchSofaWithTags(client, sofaId);
+    },
+    async unarchiveSofa(sofaId) {
+      const sofa = await fetchSofaWithTags(client, sofaId);
+
+      if (!sofa) {
+        return null;
+      }
+
+      const { error } = await client.rpc("admin_unarchive_sofa", {
+        p_sofa_id: sofaId,
+      });
+
+      if (error) {
+        throw mapSofaPublicationRpcError(error, {
+          conflictMessage: "Sofa could not be restored from archive.",
+        });
+      }
+
+      return fetchSofaWithTags(client, sofaId);
+    },
     async archiveFabric(fabricId) {
       const existing = await fetchFabricWithAssets(client, fabricId);
 
@@ -1600,8 +1728,7 @@ export function createSupabaseAdminCatalogStore(
       }
 
       if (
-        (descriptor.purpose === "fabric_ai_reference" ||
-          descriptor.purpose === "sofa_source_photo") &&
+        isGenerationInputUploadPurpose(descriptor.purpose) &&
         Math.max(imageMetadata.width_px, imageMetadata.height_px) >
           MAX_RENDER_INPUT_EDGE_PX
       ) {
@@ -1652,6 +1779,17 @@ export function createSupabaseAdminCatalogStore(
 
       if (error) {
         throw mapSupabaseError(error);
+      }
+
+      if (uploadPurposeRequiresCatalogImageVariants(descriptor.purpose)) {
+        const variantError = await ensureUploadCatalogImageVariants(client, {
+          bytes,
+          originalAsset: data as AdminStorageAssetRecord,
+        });
+
+        if (variantError) {
+          return variantError;
+        }
       }
 
       if (descriptor.purpose === "sofa_source_photo") {
@@ -2069,6 +2207,60 @@ export function createSupabaseAdminCatalogStore(
       };
     },
     async resumeFabricRenderJobs(input) {
+      if (input.render_cell_id) {
+        const queuedJob = await fetchQueuedFabricRenderJobForCell(
+          client,
+          input.render_cell_id,
+        );
+
+        if (!queuedJob) {
+          return {
+            code: "FABRIC_RENDER_QUEUED_JOB_NOT_FOUND",
+            message: "Selected render cell has no queued image generation job.",
+            status: 409,
+          };
+        }
+
+        await markExpiredFabricRenderJobsForSofa(client, queuedJob.sofa_id);
+
+        const processingJob = await fetchProcessingFabricRenderJobForSofa(
+          client,
+          queuedJob.sofa_id,
+        );
+
+        if (processingJob) {
+          return {
+            code: "FABRIC_RENDER_SOFA_PROCESSING_CONFLICT",
+            message:
+              "Another image generation is already running. Wait for it to finish before resuming a queued cell.",
+            status: 409,
+          };
+        }
+
+        try {
+          await invokeFabricRenderPump({
+            env,
+            preferredJobId: queuedJob.id,
+            requestId: queuedJob.request_id,
+            supabaseUrl,
+          });
+        } catch (error) {
+          await markFabricRenderRequestStartFailed(
+            client,
+            queuedJob.request_id,
+          );
+          throw error;
+        }
+
+        return {
+          preferred_job_id: queuedJob.id,
+          render_cell_id: input.render_cell_id,
+          request_ids: [queuedJob.request_id],
+          status: "started",
+          total_requests: 1,
+        };
+      }
+
       const requestIds = await fetchQueuedFabricRenderRequestIds(client, input);
 
       if (requestIds.length === 0) {
@@ -2190,7 +2382,7 @@ export function createSupabaseAdminCatalogStore(
         return mapVisualMatrixColumnMutationError(error);
       }
 
-      const [column] = await attachSourcePhotosToColumns(client, [data], env);
+      const [column] = await attachSourcePhotosToColumns(client, [data]);
 
       return column;
     },
@@ -2293,8 +2485,18 @@ export function createSupabaseAdminCatalogStore(
     async getSofa(sofaId) {
       return fetchSofaWithTags(client, sofaId);
     },
-    async getStorageAssetPreview(assetId) {
-      const asset = (await fetchAssetsByIds(client, [assetId])).get(assetId);
+    async getStorageAssetPreview(assetId, variant = "original") {
+      let asset: CatalogStorageAssetRecord;
+
+      try {
+        asset = await resolveCatalogImageDeliveryAsset({
+          originalAssetId: assetId,
+          repository: createSupabaseCatalogImageVariantRepository(client),
+          variant,
+        });
+      } catch {
+        return null;
+      }
 
       if (!isAdminPreviewablePrivateImageAsset(asset)) {
         return null;
@@ -2424,6 +2626,11 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
+      const publicRenderAssets = await collectPublicRenderAssetsForSofa(
+        client,
+        sofaId,
+      );
+
       const { error } = await client.rpc("admin_unpublish_sofa", {
         p_sofa_id: sofaId,
       });
@@ -2433,6 +2640,8 @@ export function createSupabaseAdminCatalogStore(
           conflictMessage: "Sofa could not be unpublished.",
         });
       }
+
+      await deactivateAndRemovePublicRenderAssets(client, publicRenderAssets);
 
       return fetchSofaWithTags(client, sofaId);
     },
@@ -2577,6 +2786,18 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
+      const variantError = await requireCatalogImageVariantsForAsset(
+        client,
+        input.asset_id,
+        "MANUAL_RENDER_NOT_FOUND",
+        "Manual render asset was not found.",
+        422,
+      );
+
+      if (variantError) {
+        return variantError;
+      }
+
       const { data, error } = await client
         .from("sofa_render_cells")
         .update({
@@ -2663,6 +2884,38 @@ export function createSupabaseAdminCatalogStore(
       }
 
       if (existing.lifecycle_state !== "draft") {
+        if (existing.lifecycle_state === "published") {
+          const publishedUpdate = buildPublishedSofaLiveUpdatePayload(
+            existing,
+            input,
+          );
+
+          if (!publishedUpdate.ok) {
+            throw new AdminCatalogOperationError({
+              code: "SOFA_CONFLICT",
+              details: {
+                fields: publishedUpdate.fields,
+              },
+              message:
+                "Only price can be changed while the sofa is published. Unpublish the sofa to edit other basics.",
+              status: 409,
+            });
+          }
+
+          if (Object.keys(publishedUpdate.value).length > 0) {
+            const { error } = await client
+              .from("sofas")
+              .update(publishedUpdate.value)
+              .eq("id", sofaId);
+
+            if (error) {
+              throw mapSupabaseError(error);
+            }
+          }
+
+          return fetchSofaWithTags(client, sofaId);
+        }
+
         throw new AdminCatalogOperationError({
           code: "SOFA_CONFLICT",
           message: "Only draft sofas can be edited in this API slice.",
@@ -2881,6 +3134,18 @@ export function createSupabaseAdminCatalogStore(
         };
       }
 
+      const variantError = await requireCatalogImageVariantsForAsset(
+        client,
+        candidate.asset_id,
+        "FABRIC_RENDER_CANDIDATE_NOT_FOUND",
+        "Fabric render candidate was not found.",
+        404,
+      );
+
+      if (variantError) {
+        return variantError;
+      }
+
       const now = new Date().toISOString();
       const { error: clearError } = await client
         .from("fabric_render_candidates")
@@ -2941,6 +3206,7 @@ export function createSupabaseAdminCatalogStore(
 const SOFA_SELECT = [
   "id",
   "lifecycle_state",
+  "archived_at",
   "internal_name",
   "public_name",
   "public_slug",
@@ -2949,6 +3215,8 @@ const SOFA_SELECT = [
   "length_cm",
   "depth_cm",
   "height_cm",
+  "price_cents",
+  "price_currency",
   "footprint_type",
   "footprint_measurements",
   "manual_public_order",
@@ -3157,6 +3425,16 @@ function validateSofaPayload(
     value.manual_public_order = manualOrder.value;
   }
 
+  const priceCents = readPositiveNumberField(payload, "price_cents", {
+    integer: true,
+  });
+
+  if (!priceCents.ok) {
+    fields.push("price_cents");
+  } else if (priceCents.present) {
+    value.price_cents = priceCents.value;
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, "footprint_measurements")) {
     const measurements = payload.footprint_measurements;
 
@@ -3186,6 +3464,93 @@ function validateSofaPayload(
     ok: true,
     value,
   };
+}
+
+function buildPublishedSofaLiveUpdatePayload(
+  existing: AdminSofaRecord,
+  input: Partial<SofaMutationInput>,
+):
+  | {
+      fields: string[];
+      ok: false;
+      value?: never;
+    }
+  | {
+      fields?: never;
+      ok: true;
+      value: JsonObject;
+    } {
+  const { tag_ids: tagIds, ...sofaInput } = input;
+  const blockedFields: string[] = [];
+  const value: JsonObject = {};
+
+  for (const [field, nextValue] of Object.entries(
+    removeUndefinedValues(sofaInput),
+  )) {
+    if (field === "price_cents") {
+      if (!sameCatalogValue(existing.price_cents ?? null, nextValue)) {
+        value.price_cents = nextValue;
+      }
+
+      continue;
+    }
+
+    if (!sameCatalogValue(existing[field as keyof AdminSofaRecord], nextValue)) {
+      blockedFields.push(field);
+    }
+  }
+
+  if (
+    tagIds &&
+    !sameTagIdSet(
+      (existing.tags ?? []).map((tag) => tag.id),
+      tagIds,
+    )
+  ) {
+    blockedFields.push("tag_ids");
+  }
+
+  if (blockedFields.length > 0) {
+    return {
+      fields: blockedFields,
+      ok: false,
+    };
+  }
+
+  return {
+    ok: true,
+    value,
+  };
+}
+
+function sameTagIdSet(current: string[], next: string[]) {
+  if (current.length !== next.length) {
+    return false;
+  }
+
+  const currentSet = new Set(current);
+
+  return next.every((tagId) => currentSet.has(tagId));
+}
+
+function sameCatalogValue(current: unknown, next: unknown) {
+  if (Object.is(current, next)) {
+    return true;
+  }
+
+  if (current === undefined && next === null) {
+    return true;
+  }
+
+  if (current === null && next === undefined) {
+    return true;
+  }
+
+  if (typeof current === "object" || typeof next === "object") {
+    return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+  }
+
+  return false;
 }
 
 function validateFabricPayload(
@@ -3683,6 +4048,35 @@ function readStringList(value: unknown) {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function isUploadContentTypeAllowedForPurpose(
+  purpose: UploadPurpose | null,
+  contentType: string,
+) {
+  if (!(IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)) {
+    return false;
+  }
+
+  if (!purpose) {
+    return true;
+  }
+
+  if (isGenerationInputUploadPurpose(purpose)) {
+    return (GENERATION_INPUT_IMAGE_CONTENT_TYPES as readonly string[]).includes(
+      contentType,
+    );
+  }
+
+  return true;
+}
+
+function isGenerationInputUploadPurpose(
+  purpose: UploadPurpose,
+): purpose is (typeof GENERATION_INPUT_UPLOAD_PURPOSES)[number] {
+  return (GENERATION_INPUT_UPLOAD_PURPOSES as readonly string[]).includes(
+    purpose,
+  );
+}
+
 interface UploadDescriptor extends UploadCreateInput {
   bucket_id: string;
   expires_at: string;
@@ -3743,6 +4137,174 @@ function uploadTtlMs(env: NodeJS.ProcessEnv) {
     : 60 * 60 * 2 * 1000;
 }
 
+function uploadPurposeRequiresCatalogImageVariants(
+  purpose: UploadCreateInput["purpose"],
+) {
+  return purpose === "sofa_source_photo" || purpose === "manual_render";
+}
+
+async function ensureUploadCatalogImageVariants(
+  client: SupabaseCatalogClient,
+  input: {
+    bytes: Uint8Array;
+    originalAsset: AdminStorageAssetRecord;
+  },
+): Promise<AdminCatalogOperationErrorData | null> {
+  try {
+    await ensureCatalogImageVariants({
+      bytes: input.bytes,
+      originalAsset: input.originalAsset as CatalogStorageAssetRecord,
+      repository: createSupabaseCatalogImageVariantRepository(client),
+      storage: createSupabaseCatalogImageVariantStorage(client),
+    });
+
+    return null;
+  } catch {
+    await tryMarkStorageAssetDeleted(client, input.originalAsset.id);
+
+    return {
+      code: "UPLOAD_VARIANTS_FAILED",
+      message: "Image preview variants could not be created.",
+      status: 500,
+    };
+  }
+}
+
+async function requireCatalogImageVariantsForAsset(
+  client: SupabaseCatalogClient,
+  assetId: string,
+  code: AdminCatalogErrorCode,
+  message: string,
+  status: AdminCatalogErrorStatus,
+): Promise<AdminCatalogOperationErrorData | null> {
+  const repository = createSupabaseCatalogImageVariantRepository(client);
+
+  try {
+    await Promise.all([
+      resolveCatalogImageDeliveryAsset({
+        originalAssetId: assetId,
+        repository,
+        variant: "small",
+      }),
+      resolveCatalogImageDeliveryAsset({
+        originalAssetId: assetId,
+        repository,
+        variant: "medium",
+      }),
+    ]);
+
+    return null;
+  } catch {
+    return {
+      code,
+      message,
+      status,
+    };
+  }
+}
+
+function createSupabaseCatalogImageVariantRepository(
+  client: SupabaseCatalogClient,
+): CatalogImageVariantRepository {
+  return {
+    async findActiveVariantAsset(originalAssetId, variantKind) {
+      const { data, error } = await client
+        .from("storage_asset_variants")
+        .select("variant_asset_id")
+        .eq("original_asset_id", originalAssetId)
+        .eq("variant_kind", variantKind)
+        .maybeSingle();
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+
+      if (!data || typeof data.variant_asset_id !== "string") {
+        return null;
+      }
+
+      const variantAsset = (
+        await fetchAssetsByIds(client, [data.variant_asset_id])
+      ).get(data.variant_asset_id);
+
+      return variantAsset?.lifecycle_state === "active"
+        ? (variantAsset as CatalogStorageAssetRecord)
+        : null;
+    },
+    async findStorageAssetById(assetId) {
+      return (
+        ((await fetchAssetsByIds(client, [assetId])).get(assetId) as
+          | CatalogStorageAssetRecord
+          | undefined) ?? null
+      );
+    },
+    async insertStorageAsset(asset) {
+      const { error } = await client.from("storage_assets").insert(asset);
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+    },
+    async upsertVariantLink(input) {
+      const { error } = await client.from("storage_asset_variants").upsert({
+        generation_kind: input.generationKind,
+        original_asset_id: input.originalAssetId,
+        variant_asset_id: input.variantAssetId,
+        variant_kind: input.variantKind,
+      });
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+    },
+  };
+}
+
+function createSupabaseCatalogImageVariantStorage(
+  client: SupabaseCatalogClient,
+): CatalogImageVariantStorage {
+  return {
+    async removeObjects(input) {
+      const { error } = await client.storage
+        .from(input.bucketId)
+        .remove(input.objectPaths);
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+    },
+    async uploadObject(input) {
+      const { error } = await client.storage
+        .from(input.bucketId)
+        .upload(input.objectPath, input.body, {
+          contentType: input.contentType,
+          upsert: true,
+        });
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+    },
+  };
+}
+
+async function tryMarkStorageAssetDeleted(
+  client: SupabaseCatalogClient,
+  assetId: string,
+) {
+  try {
+    await client
+      .from("storage_assets")
+      .update({
+        deleted_at: new Date().toISOString(),
+        lifecycle_state: "deleted",
+      })
+      .eq("id", assetId);
+  } catch {
+    // The upload response must stay safe even when best-effort cleanup fails.
+  }
+}
+
 function signUploadDescriptor(
   descriptor: UploadDescriptor,
   env: NodeJS.ProcessEnv,
@@ -3801,6 +4363,13 @@ function readUploadDescriptor(
       return null;
     }
 
+    const purpose = parsed.purpose as UploadPurpose;
+    const contentType = parsed.content_type.trim().toLowerCase();
+
+    if (!isUploadContentTypeAllowedForPurpose(purpose, contentType)) {
+      return null;
+    }
+
     if (
       parsed.purpose === "sofa_source_photo" &&
       (typeof parsed.sofa_id !== "string" ||
@@ -3817,7 +4386,11 @@ function readUploadDescriptor(
       return null;
     }
 
-    return parsed as unknown as UploadDescriptor;
+    return {
+      ...parsed,
+      content_type: contentType,
+      purpose,
+    } as unknown as UploadDescriptor;
   } catch {
     return null;
   }
@@ -4457,7 +5030,7 @@ async function fetchVisualMatrixColumns(
     throw mapSupabaseError(error);
   }
 
-  return attachSourcePhotosToColumns(client, data ?? [], env);
+  return attachSourcePhotosToColumns(client, data ?? []);
 }
 
 async function fetchVisualMatrixColumn(
@@ -4479,7 +5052,7 @@ async function fetchVisualMatrixColumn(
     return null;
   }
 
-  const [column] = await attachSourcePhotosToColumns(client, [data], env);
+  const [column] = await attachSourcePhotosToColumns(client, [data]);
 
   return column ?? null;
 }
@@ -4487,7 +5060,6 @@ async function fetchVisualMatrixColumn(
 async function attachSourcePhotosToColumns(
   client: SupabaseCatalogClient,
   columns: JsonObject[],
-  env?: NodeJS.ProcessEnv,
 ) {
   const sourcePhotoIds = columns
     .map((column) => column.current_source_photo_id)
@@ -4495,7 +5067,6 @@ async function attachSourcePhotosToColumns(
   const sourcePhotoMap = await fetchSourcePhotosByIds(
     client,
     sourcePhotoIds,
-    env,
   );
 
   return columns.map(
@@ -4513,7 +5084,6 @@ async function attachSourcePhotosToColumns(
 async function fetchSourcePhotosByIds(
   client: SupabaseCatalogClient,
   sourcePhotoIds: string[],
-  env?: NodeJS.ProcessEnv,
 ) {
   const sourcePhotoMap = new Map<string, AdminSofaSourcePhotoRecord>();
 
@@ -4542,15 +5112,10 @@ async function fetchSourcePhotosByIds(
           typeof sourcePhoto.asset_id === "string"
             ? (assetMap.get(sourcePhoto.asset_id) ?? null)
             : null;
-        const previewUrl =
-          env && asset
-            ? await createPrivateAssetSignedUrl(client, asset, env)
-            : null;
-
         sourcePhotoMap.set(sourcePhoto.id, {
           ...sourcePhoto,
           asset,
-          preview_url: previewUrl,
+          preview_url: null,
         } as AdminSofaSourcePhotoRecord);
       }
     }),
@@ -5176,10 +5741,13 @@ async function fetchQueuedFabricRenderRequestIds(
     .select("request_id")
     .eq("status", "queued");
 
-  query =
-    input.request_id !== null && input.request_id !== undefined
-      ? query.eq("request_id", input.request_id)
-      : query.eq("sofa_id", input.sofa_id);
+  if (input.request_id !== null && input.request_id !== undefined) {
+    query = query.eq("request_id", input.request_id);
+  } else if (input.sofa_id !== null && input.sofa_id !== undefined) {
+    query = query.eq("sofa_id", input.sofa_id);
+  } else {
+    return [];
+  }
 
   const { data, error } = await query;
 
@@ -5197,6 +5765,60 @@ async function fetchQueuedFabricRenderRequestIds(
         ),
     ),
   ];
+}
+
+async function fetchQueuedFabricRenderJobForCell(
+  client: SupabaseCatalogClient,
+  renderCellId: string,
+) {
+  const { data, error } = await client
+    .from("fabric_render_jobs")
+    .select(FABRIC_RENDER_JOB_SELECT)
+    .eq("render_cell_id", renderCellId)
+    .eq("status", "queued")
+    .order("queued_at", {
+      ascending: true,
+      nullsFirst: true,
+    })
+    .order("created_at", {
+      ascending: true,
+    })
+    .order("id", {
+      ascending: true,
+    })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as AdminFabricRenderJobRecord | null;
+}
+
+async function fetchProcessingFabricRenderJobForSofa(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+) {
+  const { data, error } = await client
+    .from("fabric_render_jobs")
+    .select("id")
+    .eq("sofa_id", sofaId)
+    .eq("status", "processing")
+    .order("last_attempt_started_at", {
+      ascending: true,
+    })
+    .order("created_at", {
+      ascending: true,
+    })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  return data as JsonObject | null;
 }
 
 async function fetchCandidateCountsByRenderCellIds(
@@ -5386,7 +6008,22 @@ type PublicationRenderAssetMapping = {
   private_asset_id: string;
   public_asset_id: string;
   render_cell_id: string;
+  variant_asset_ids: string[];
+  variant_object_paths: string[];
   width_px: number;
+};
+
+type PublicRenderAssetCleanupTarget = {
+  assetIds: string[];
+  objectPaths: string[];
+};
+
+type ActivePublicCatalogAsset = (
+  | AdminStorageAssetRecord
+  | CatalogStorageAssetRecord
+) & {
+  bucket_id: "catalog-public-assets";
+  object_path: string;
 };
 
 async function createPublicRenderAssetCopiesForPublication(
@@ -5464,7 +6101,19 @@ async function createPublicRenderAssetCopiesForPublication(
         throw mapSupabaseError(uploadError);
       }
 
-      mappings.push({
+      const publicAsset: AdminStorageAssetRecord = {
+        asset_kind: "published_sofa_render",
+        bucket_id: "catalog-public-assets",
+        byte_size: bytes.byteLength,
+        content_type: asset.content_type,
+        height_px: asset.height_px,
+        id: publicAssetId,
+        lifecycle_state: "active",
+        object_path: objectPath,
+        visibility: "public",
+        width_px: asset.width_px,
+      };
+      const mapping: PublicationRenderAssetMapping = {
         byte_size: bytes.byteLength,
         content_type: asset.content_type,
         height_px: asset.height_px,
@@ -5472,8 +6121,24 @@ async function createPublicRenderAssetCopiesForPublication(
         private_asset_id: privateAssetId,
         public_asset_id: publicAssetId,
         render_cell_id: cell.id,
+        variant_asset_ids: [],
+        variant_object_paths: [],
         width_px: asset.width_px,
-      });
+      };
+
+      mappings.push(mapping);
+      await insertPublicStorageAssetForPublication(client, publicAsset);
+
+      const publicVariants = await ensurePublicRenderAssetVariantsForPublication(
+        client,
+        {
+          bytes,
+          originalAsset: publicAsset,
+        },
+      );
+
+      mapping.variant_asset_ids = publicVariants.variant_asset_ids;
+      mapping.variant_object_paths = publicVariants.variant_object_paths;
     }
   } catch (error) {
     await removeUploadedPublicRenderCopies(client, mappings);
@@ -5481,6 +6146,38 @@ async function createPublicRenderAssetCopiesForPublication(
   }
 
   return mappings;
+}
+
+async function insertPublicStorageAssetForPublication(
+  client: SupabaseCatalogClient,
+  publicAsset: AdminStorageAssetRecord,
+) {
+  const { error } = await client.from("storage_assets").upsert(publicAsset);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+}
+
+async function ensurePublicRenderAssetVariantsForPublication(
+  client: SupabaseCatalogClient,
+  input: {
+    bytes: Uint8Array;
+    originalAsset: AdminStorageAssetRecord;
+  },
+) {
+  const result = await ensureCatalogImageVariants({
+    bytes: input.bytes,
+    originalAsset: input.originalAsset as CatalogStorageAssetRecord,
+    repository: createSupabaseCatalogImageVariantRepository(client),
+    storage: createSupabaseCatalogImageVariantStorage(client),
+  });
+  const variants = Object.values(result.variants);
+
+  return {
+    variant_asset_ids: variants.map((variant) => variant.id),
+    variant_object_paths: variants.map((variant) => variant.object_path),
+  };
 }
 
 function publicationRenderCells(coverage: AdminRenderCoverageRecord) {
@@ -5539,13 +6236,122 @@ async function removeUploadedPublicRenderCopies(
   client: SupabaseCatalogClient,
   mappings: PublicationRenderAssetMapping[],
 ) {
-  const objectPaths = mappings.map((mapping) => mapping.object_path);
+  const objectPaths = mappings.flatMap((mapping) => [
+    mapping.object_path,
+    ...mapping.variant_object_paths,
+  ]);
 
   if (objectPaths.length === 0) {
     return;
   }
 
-  await client.storage.from("catalog-public-assets").remove(objectPaths);
+  const assetIds = mappings.flatMap((mapping) => [
+    mapping.public_asset_id,
+    ...mapping.variant_asset_ids,
+  ]);
+
+  await deactivateAndRemovePublicRenderAssets(client, {
+    assetIds,
+    objectPaths,
+  });
+}
+
+async function collectPublicRenderAssetsForSofa(
+  client: SupabaseCatalogClient,
+  sofaId: string,
+): Promise<PublicRenderAssetCleanupTarget> {
+  const { data, error } = await client
+    .from("sofa_render_cells")
+    .select("current_public_asset_id")
+    .eq("sofa_id", sofaId);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  const publicAssetIds = [
+    ...new Set<string>(
+      (data ?? []).flatMap((row: { current_public_asset_id?: unknown }) =>
+        typeof row.current_public_asset_id === "string"
+          ? [row.current_public_asset_id]
+          : [],
+      ),
+    ),
+  ];
+  const assetMap = await fetchAssetsByIds(client, publicAssetIds);
+  const repository = createSupabaseCatalogImageVariantRepository(client);
+  const assetIds: string[] = [];
+  const objectPaths: string[] = [];
+
+  for (const assetId of publicAssetIds) {
+    const asset = assetMap.get(assetId);
+
+    if (!isActivePublicCatalogAsset(asset)) {
+      continue;
+    }
+
+    assetIds.push(asset.id);
+    objectPaths.push(asset.object_path);
+
+    for (const variantKind of CATALOG_IMAGE_VARIANT_KINDS) {
+      const variantAsset = await repository.findActiveVariantAsset(
+        asset.id,
+        variantKind,
+      );
+
+      if (isActivePublicCatalogAsset(variantAsset)) {
+        assetIds.push(variantAsset.id);
+        objectPaths.push(variantAsset.object_path);
+      }
+    }
+  }
+
+  return {
+    assetIds: [...new Set(assetIds)],
+    objectPaths: [...new Set(objectPaths)],
+  };
+}
+
+async function deactivateAndRemovePublicRenderAssets(
+  client: SupabaseCatalogClient,
+  target: PublicRenderAssetCleanupTarget,
+) {
+  if (target.objectPaths.length > 0) {
+    const { error } = await client.storage
+      .from("catalog-public-assets")
+      .remove(target.objectPaths);
+
+    if (error) {
+      throw mapSupabaseError(error);
+    }
+  }
+
+  if (target.assetIds.length > 0) {
+    const { error } = await client
+      .from("storage_assets")
+      .update({
+        deleted_at: new Date().toISOString(),
+        lifecycle_state: "deleted",
+      })
+      .in("id", target.assetIds);
+
+    if (error) {
+      throw mapSupabaseError(error);
+    }
+  }
+}
+
+function isActivePublicCatalogAsset(
+  asset: AdminStorageAssetRecord | CatalogStorageAssetRecord | null | undefined,
+) : asset is ActivePublicCatalogAsset {
+  return Boolean(
+    asset &&
+      asset.visibility === "public" &&
+      asset.bucket_id === "catalog-public-assets" &&
+      asset.lifecycle_state === "active" &&
+      typeof asset.object_path === "string" &&
+      asset.object_path.length > 0,
+  );
 }
 
 function renderCellKey(fabricId: string, visualMatrixColumnId: string) {
@@ -5985,6 +6791,8 @@ async function attachSofaListDataToSofas(
     return {
       ...sofa,
       source_photo_count: sourcePhotoSummary?.count ?? 0,
+      source_photo_preview_asset_id:
+        sourcePhotoSummary?.previewAssetId ?? null,
       source_photo_preview_url: sourcePhotoSummary?.previewUrl ?? null,
       tags: sofaId ? (tagMap.get(sofaId) ?? []) : [],
     } as AdminSofaRecord;
@@ -6000,6 +6808,7 @@ async function fetchSofaListSourcePhotoSummaries(
     string,
     {
       count: number;
+      previewAssetId: string | null;
       previewUrl: string | null;
     }
   >();
@@ -6041,24 +6850,54 @@ async function fetchSofaListSourcePhotoSummaries(
     sourcePhotoIdsBySofa.set(row.sofa_id, sourcePhotoIds);
   }
 
-  const sourcePhotoMap = await fetchSourcePhotosByIds(
+  const sourcePhotoAssetIdMap = await fetchSourcePhotoAssetIdsByIds(
     client,
     [...sourcePhotoIdsBySofa.values()].flat(),
-    env,
   );
 
   for (const [sofaId, sourcePhotoIds] of sourcePhotoIdsBySofa) {
-    const previewSourcePhoto = sourcePhotoIds
-      .map((sourcePhotoId) => sourcePhotoMap.get(sourcePhotoId) ?? null)
-      .find((sourcePhoto) => Boolean(sourcePhoto?.preview_url));
+    const previewAssetId =
+      sourcePhotoIds
+        .map((sourcePhotoId) => sourcePhotoAssetIdMap.get(sourcePhotoId) ?? null)
+        .find((assetId) => Boolean(assetId)) ?? null;
 
     summaryMap.set(sofaId, {
       count: sourcePhotoIds.length,
-      previewUrl: previewSourcePhoto?.preview_url ?? null,
+      previewAssetId,
+      previewUrl: null,
     });
   }
 
   return summaryMap;
+}
+
+async function fetchSourcePhotoAssetIdsByIds(
+  client: SupabaseCatalogClient,
+  sourcePhotoIds: string[],
+) {
+  const assetIdMap = new Map<string, string>();
+  const uniqueSourcePhotoIds = [...new Set(sourcePhotoIds)];
+
+  if (uniqueSourcePhotoIds.length === 0) {
+    return assetIdMap;
+  }
+
+  const { data, error } = await client
+    .from("sofa_source_photos")
+    .select("id,asset_id")
+    .in("id", uniqueSourcePhotoIds);
+
+  if (error) {
+    throw mapSupabaseError(error);
+  }
+
+  for (const row of data ?? []) {
+    if (typeof row.id === "string" && typeof row.asset_id === "string") {
+      assetIdMap.set(row.id, row.asset_id);
+    }
+  }
+
+  return assetIdMap;
 }
 
 async function fetchTagsBySofaIds(
@@ -6338,19 +7177,25 @@ function mapVisualMatrixColumnSourceFabricMutationError(error: {
 
 async function invokeFabricRenderPump(input: {
   env: NodeJS.ProcessEnv;
+  preferredJobId?: string;
   requestId: string;
   supabaseUrl: string;
 }) {
   let response: Response;
+  const body: Record<string, string> = {
+    mode: "pump",
+    request_id: input.requestId,
+  };
+
+  if (input.preferredJobId) {
+    body.preferred_job_id = input.preferredJobId;
+  }
 
   try {
     response = await fetch(
       fabricRenderWorkerFunctionUrl(input.env, input.supabaseUrl),
       {
-        body: JSON.stringify({
-          mode: "pump",
-          request_id: input.requestId,
-        }),
+        body: JSON.stringify(body),
         headers: fabricRenderWorkerInvocationHeaders(input.env),
         method: "POST",
       },

@@ -25,6 +25,7 @@ const REQUIRED_TABLES = [
   "public_tags",
   "sofa_tags",
   "storage_assets",
+  "storage_asset_variants",
   "fabrics",
   "sofa_fabrics",
   "visual_matrix_columns",
@@ -68,6 +69,8 @@ const REQUIRED_INDEXES = [
   "sofa_render_cells_unique_idx",
   "fabric_render_jobs_status_queued_idx",
   "fabric_render_jobs_claim_expires_idx",
+  "storage_asset_variants_variant_asset_id_unique_idx",
+  "storage_asset_variants_original_kind_idx",
   "in_home_simulation_jobs_status_queued_idx",
   "in_home_simulation_jobs_claim_expires_idx",
   "simulation_generated_outputs_job_index_unique_idx",
@@ -89,6 +92,10 @@ const REQUIRED_FUNCTIONS = [
   "spec_0009_mark_simulation_job_purged",
   "spec_0009_expired_zip_exports",
   "spec_0009_public_render_assets_for_unavailable_sofas",
+  "deactivate_storage_asset_variants",
+  "create_public_simulation_email_verification_request",
+  "verify_public_simulation_auth_otp_session",
+  "purge_public_simulation_email_handoffs",
 ];
 
 function values(items) {
@@ -192,6 +199,18 @@ failures as (
     from pg_indexes i
     where i.schemaname = 'public'
       and i.indexname = required_indexes.index_name
+  )
+
+  union all
+
+  select 'missing storage asset variant uniqueness rule'
+  where not exists (
+    select 1
+    from pg_indexes i
+    where i.schemaname = 'public'
+      and i.indexname = 'storage_asset_variants_variant_asset_id_unique_idx'
+      and i.indexdef ilike '%unique%'
+      and i.indexdef ilike '%variant_asset_id%'
   )
 
   union all
@@ -318,6 +337,18 @@ values
     10
   ),
   (
+    '00000000-0000-4000-8000-000000000106',
+    'catalog-public-assets',
+    'variants/00000000-0000-4000-8000-000000000104/medium/00000000-0000-4000-8000-000000000106.jpg',
+    'public',
+    'active',
+    'published_sofa_render_variant',
+    'image/jpeg',
+    5,
+    8,
+    8
+  ),
+  (
     '00000000-0000-4000-8000-000000000105',
     'catalog-private-assets',
     'spec-0009/prepared-sofa.png',
@@ -329,6 +360,17 @@ values
     10,
     10
   );
+
+insert into public.storage_asset_variants (
+  original_asset_id,
+  variant_kind,
+  variant_asset_id
+)
+values (
+  '00000000-0000-4000-8000-000000000104',
+  'medium',
+  '00000000-0000-4000-8000-000000000106'
+);
 
 insert into public.sofas (
   id,
@@ -472,6 +514,41 @@ where exists (
   from public.public_catalog_sofas
   where id = '00000000-0000-4000-8000-000000000202'
 );
+
+insert into spec_0009_smoke_failures (failure)
+select 'public render view does not expose medium render metadata'
+where not exists (
+  select 1
+  from public.public_sofa_render_cells
+  where render_cell_id = '00000000-0000-4000-8000-000000000501'
+    and render_original_asset_id = '00000000-0000-4000-8000-000000000104'
+    and render_original_content_type = 'image/png'
+    and render_medium_asset_id = '00000000-0000-4000-8000-000000000106'
+    and render_medium_content_type = 'image/jpeg'
+);
+
+update public.storage_assets
+set
+  lifecycle_state = 'deleted',
+  deleted_at = now()
+where id = '00000000-0000-4000-8000-000000000106';
+
+-- public render safety joins use medium_variant.variant_kind = 'medium',
+-- original_asset.lifecycle_state = 'active', and
+-- medium_asset.lifecycle_state = 'active'.
+insert into spec_0009_smoke_failures (failure)
+select 'public render view exposes inactive medium variant assets'
+where exists (
+  select 1
+  from public.public_sofa_render_cells
+  where render_cell_id = '00000000-0000-4000-8000-000000000501'
+);
+
+update public.storage_assets
+set
+  lifecycle_state = 'active',
+  deleted_at = null
+where id = '00000000-0000-4000-8000-000000000106';
 
 do $smoke$
 begin

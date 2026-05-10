@@ -11,12 +11,20 @@ const providerOwnershipMigrationPath =
   "supabase/migrations/20260429000300_fabric_render_worker_provider_ownership.sql";
 const adminPublicationMigrationPath =
   "supabase/migrations/20260430000100_admin_sofa_publication.sql";
+const adminSofaArchiveMigrationPath =
+  "supabase/migrations/20260505000100_admin_sofa_archive.sql";
+const adminSofaUnarchiveMigrationPath =
+  "supabase/migrations/20260505000200_admin_sofa_unarchive.sql";
 const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 const manualPumpRealtimeMigrationPath =
   "supabase/migrations/20260430000300_manual_fabric_render_pump_realtime.sql";
 const globalCapacityMigrationPath =
   "supabase/migrations/20260501000100_fabric_render_worker_global_capacity.sql";
+const catalogImageVariantsMigrationPath =
+  "supabase/migrations/20260507000100_catalog_image_variants.sql";
+const selectedQueueResumeMigrationPath =
+  "supabase/migrations/20260509000100_fabric_render_selected_queue_resume.sql";
 
 describe("fabric render worker foundation migration", () => {
   it("defines the required local queue, job table, and worker helper functions", async () => {
@@ -114,6 +122,34 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("lifecycle_state = 'draft'");
   });
 
+  it("adds an admin sofa archive helper that removes public references", async () => {
+    const sql = await readFile(adminSofaArchiveMigrationPath, "utf8");
+
+    expect(sql).toContain("public.admin_archive_sofa");
+    expect(sql).toContain("for update");
+    expect(sql).toContain("current_public_asset_id = null");
+    expect(sql).toContain("lifecycle_state = 'archived'");
+    expect(sql).toContain("published_at = null");
+    expect(sql).toContain("archived_at = coalesce");
+    expect(sql).toContain(
+      "grant execute on function public.admin_archive_sofa(uuid) to service_role",
+    );
+  });
+
+  it("adds an admin sofa unarchive helper that restores draft state", async () => {
+    const sql = await readFile(adminSofaUnarchiveMigrationPath, "utf8");
+
+    expect(sql).toContain("public.admin_unarchive_sofa");
+    expect(sql).toContain("for update");
+    expect(sql).toContain("target_sofa.lifecycle_state <> 'archived'");
+    expect(sql).toContain("lifecycle_state = 'draft'");
+    expect(sql).toContain("archived_at = null");
+    expect(sql).toContain("published_at = null");
+    expect(sql).toContain(
+      "grant execute on function public.admin_unarchive_sofa(uuid) to service_role",
+    );
+  });
+
   it("adds admin prompt notes and refine prompts to render job persistence", async () => {
     const sql = await readFile(adminRenderPromptRefineMigrationPath, "utf8");
 
@@ -135,7 +171,9 @@ describe("fabric render worker foundation migration", () => {
     const sql = await readFile(manualPumpRealtimeMigrationPath, "utf8");
 
     expect(sql).toContain("add column if not exists request_id uuid");
-    expect(sql).toContain("alter column request_id set default gen_random_uuid()");
+    expect(sql).toContain(
+      "alter column request_id set default gen_random_uuid()",
+    );
     expect(sql).toContain("set request_id = id");
     expect(sql).toContain("alter column request_id set not null");
     expect(sql).toContain("fabric_render_jobs_request_status_idx");
@@ -153,9 +191,7 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain(
       "grant select on public.fabric_render_jobs to authenticated",
     );
-    expect(sql).toContain(
-      "spec_0031_admin_fabric_render_jobs_realtime_select",
-    );
+    expect(sql).toContain("spec_0031_admin_fabric_render_jobs_realtime_select");
     expect(sql).toContain(
       "auth.jwt() -> 'app_metadata' -> 'mobel_unique' ->> 'role'",
     );
@@ -178,8 +214,45 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("status = 'queued'");
     expect(sql).toContain("job.request_id <> p_current_request_id");
     expect(sql).toContain("active_job_count >= p_max_concurrent_jobs");
-    expect(sql).toContain("grant execute on function public.fabric_render_worker_request_status(uuid, text)");
-    expect(sql).toContain("grant execute on function public.fabric_render_worker_claim_one_for_request");
-    expect(sql).toContain("grant execute on function public.fabric_render_worker_next_queued_request_id(uuid)");
+    expect(sql).toContain(
+      "grant execute on function public.fabric_render_worker_request_status(uuid, text)",
+    );
+    expect(sql).toContain(
+      "grant execute on function public.fabric_render_worker_claim_one_for_request",
+    );
+    expect(sql).toContain(
+      "grant execute on function public.fabric_render_worker_next_queued_request_id(uuid)",
+    );
+  });
+
+  it("adds preferred queued-job ordering to the request claim helper", async () => {
+    const sql = await readFile(selectedQueueResumeMigrationPath, "utf8");
+
+    expect(sql).toContain("p_preferred_job_id uuid default null");
+    expect(sql).toContain("job.id = p_preferred_job_id");
+    expect(sql).toContain("job.request_id = p_request_id");
+    expect(sql).toContain("job.status = 'queued'");
+    expect(sql).toContain("case when");
+    expect(sql).toContain("then 0");
+    expect(sql).toContain("else 1");
+    expect(sql).toContain(
+      "grant execute on function public.fabric_render_worker_claim_one_for_request",
+    );
+    expect(sql).toContain(
+      "uuid, text, integer, text, text, integer, text, uuid",
+    );
+  });
+
+  it("requires worker success to persist small and medium output variants", async () => {
+    const sql = await readFile(catalogImageVariantsMigrationPath, "utf8");
+
+    expect(sql).toContain("p_output_variants jsonb");
+    expect(sql).toContain(
+      "p_output_variants must include small and medium variants",
+    );
+    expect(sql).toContain("jsonb_array_elements(p_output_variants)");
+    expect(sql).toContain("variant_asset_id");
+    expect(sql).toContain("storage_asset_variants");
+    expect(sql).toContain("'fabric_render_candidate_variant'");
   });
 });

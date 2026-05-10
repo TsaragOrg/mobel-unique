@@ -5,17 +5,19 @@ import { useState } from "react";
 import { SIMULATION_LOCALE } from "../../lib/simulation-client/locale";
 import {
   SIMULATION_DIMENSION_MAX_M,
-  SIMULATION_DIMENSION_MIN_M
+  SIMULATION_DIMENSION_MIN_M,
 } from "../../lib/simulation-dimensions";
 import type {
   BackWallSuppliedDimensions,
   CornerSuppliedDimensions,
   RoomGeometryMode,
-  SuppliedDimensionsBody
+  SuppliedDimensionsBody,
 } from "../../lib/simulation-public-api";
 import { SimulationContextStrip } from "./SimulationContextStrip";
 
-type SubmitOutcome = { ok: true } | { ok: false; code?: string; message?: string };
+type SubmitOutcome =
+  | { ok: true }
+  | { ok: false; code?: string; message?: string };
 
 export interface Screen3DimensionsProps {
   jobId: string;
@@ -26,7 +28,10 @@ export interface Screen3DimensionsProps {
   guideImageUrl: string;
   onGuideImageError: () => void;
   onSubmitted: () => void;
-  submit?: (jobId: string, body: SuppliedDimensionsBody) => Promise<SubmitOutcome>;
+  submit?: (
+    jobId: string,
+    body: SuppliedDimensionsBody,
+  ) => Promise<SubmitOutcome>;
 }
 
 interface FormValues {
@@ -38,22 +43,27 @@ interface FormValues {
   roomDepth: string;
 }
 
+interface DimensionFieldConfig {
+  id: string;
+  key: keyof FormValues;
+  label: string;
+}
+
 const EMPTY_FORM: FormValues = {
   wallWidth: "",
   wallHeight: "",
   leftWallWidth: "",
   rightWallWidth: "",
   roomHeight: "",
-  roomDepth: ""
+  roomDepth: "",
 };
+const DIMENSION_MIN_CM = SIMULATION_DIMENSION_MIN_M * 100;
+const DIMENSION_MAX_CM = SIMULATION_DIMENSION_MAX_M * 100;
 
 export function Screen3Dimensions(props: Screen3DimensionsProps) {
   const submit = props.submit ?? defaultSubmit;
   const copy = SIMULATION_LOCALE.screen3Dimensions;
-  const fields =
-    props.geometryMode === "back_wall"
-      ? copy.fields.backWall
-      : copy.fields.corner;
+  const fieldConfigs = getFieldConfigs(props.geometryMode);
 
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -105,79 +115,59 @@ export function Screen3Dimensions(props: Screen3DimensionsProps) {
         <p>{copy.instruction}</p>
       </header>
 
-      <div className="simulation-dimension-guide">
-        <img
-          alt={copy.guideImageAlt}
-          onError={props.onGuideImageError}
-          src={props.guideImageUrl}
-        />
-      </div>
+      <div
+        aria-label={copy.workspaceAriaLabel}
+        className="simulation-dimension-workspace"
+        role="group"
+      >
+        <figure className="simulation-dimension-guide-panel">
+          <div className="simulation-dimension-guide">
+            <img
+              alt={copy.guideImageAlt}
+              onError={props.onGuideImageError}
+              src={props.guideImageUrl}
+            />
+          </div>
+        </figure>
 
-      <form className="simulation-dimension-form" onSubmit={onSubmit} noValidate>
-        {props.geometryMode === "back_wall" ? (
-          <>
-            <DimensionField
-              id="dim-wall-width"
-              label={(fields as typeof copy.fields.backWall).wallWidth}
-              onChange={(v) => setField("wallWidth", v)}
-              value={values.wallWidth}
-            />
-            <DimensionField
-              id="dim-wall-height"
-              label={(fields as typeof copy.fields.backWall).wallHeight}
-              onChange={(v) => setField("wallHeight", v)}
-              value={values.wallHeight}
-            />
-            <DimensionField
-              id="dim-room-depth"
-              label={(fields as typeof copy.fields.backWall).roomDepth}
-              onChange={(v) => setField("roomDepth", v)}
-              value={values.roomDepth}
-            />
-          </>
-        ) : (
-          <>
-            <DimensionField
-              id="dim-left-wall"
-              label={(fields as typeof copy.fields.corner).leftWallWidth}
-              onChange={(v) => setField("leftWallWidth", v)}
-              value={values.leftWallWidth}
-            />
-            <DimensionField
-              id="dim-right-wall"
-              label={(fields as typeof copy.fields.corner).rightWallWidth}
-              onChange={(v) => setField("rightWallWidth", v)}
-              value={values.rightWallWidth}
-            />
-            <DimensionField
-              id="dim-room-height"
-              label={(fields as typeof copy.fields.corner).roomHeight}
-              onChange={(v) => setField("roomHeight", v)}
-              value={values.roomHeight}
-            />
-            <DimensionField
-              id="dim-room-depth"
-              label={(fields as typeof copy.fields.corner).roomDepth}
-              onChange={(v) => setField("roomDepth", v)}
-              value={values.roomDepth}
-            />
-          </>
-        )}
-
-        {serverError ? (
-          <p className="simulation-dimension-error" role="alert">
-            {serverError}
-          </p>
-        ) : null}
-
-        <button
-          className="public-primary-button"
-          disabled={!isValid || submitting}
-          type="submit"
+        <form
+          className="simulation-dimension-form"
+          onSubmit={onSubmit}
+          noValidate
         >
-          {copy.continueButton}
-        </button>
-      </form>
+          <div className="simulation-dimension-form-heading">
+            <p className="simulation-dimension-section-label">
+              {copy.formEyebrow}
+            </p>
+          </div>
+
+          <div className="simulation-dimension-field-list">
+            {fieldConfigs.map((field) => (
+              <DimensionField
+                id={field.id}
+                key={field.id}
+                label={field.label}
+                onChange={(v) => setField(field.key, v)}
+                value={values[field.key]}
+              />
+            ))}
+          </div>
+
+          {serverError ? (
+            <p className="simulation-dimension-error" role="alert">
+              {serverError}
+            </p>
+          ) : null}
+
+          <button
+            className="public-primary-button"
+            disabled={!isValid || submitting}
+            type="submit"
+          >
+            {copy.continueButton}
+          </button>
+        </form>
+      </div>
     </section>
   );
 }
@@ -190,52 +180,105 @@ function DimensionField(props: {
 }) {
   const copy = SIMULATION_LOCALE.screen3Dimensions;
   return (
-    <label className="simulation-dimension-field" htmlFor={props.id}>
-      <span>{props.label}</span>
+    <div className="simulation-dimension-field">
+      <label htmlFor={props.id}>
+        <span>{props.label}</span>
+      </label>
       <span className="simulation-dimension-input-wrapper">
         <input
           id={props.id}
           inputMode="decimal"
-          max={SIMULATION_DIMENSION_MAX_M}
-          min={SIMULATION_DIMENSION_MIN_M}
+          max={DIMENSION_MAX_CM}
+          min={DIMENSION_MIN_CM}
           onChange={(event) => props.onChange(event.target.value)}
-          step="0.01"
+          step="1"
           type="number"
           value={props.value}
         />
         <span aria-hidden="true">{copy.fieldUnitSuffix}</span>
       </span>
-    </label>
+    </div>
   );
+}
+
+function getFieldConfigs(
+  geometryMode: RoomGeometryMode,
+): DimensionFieldConfig[] {
+  const copy = SIMULATION_LOCALE.screen3Dimensions;
+  if (geometryMode === "back_wall") {
+    return [
+      {
+        id: "dim-wall-width",
+        key: "wallWidth",
+        label: copy.fields.backWall.wallWidth,
+      },
+      {
+        id: "dim-wall-height",
+        key: "wallHeight",
+        label: copy.fields.backWall.wallHeight,
+      },
+      {
+        id: "dim-room-depth",
+        key: "roomDepth",
+        label: copy.fields.backWall.roomDepth,
+      },
+    ];
+  }
+  return [
+    {
+      id: "dim-left-wall",
+      key: "leftWallWidth",
+      label: copy.fields.corner.leftWallWidth,
+    },
+    {
+      id: "dim-right-wall",
+      key: "rightWallWidth",
+      label: copy.fields.corner.rightWallWidth,
+    },
+    {
+      id: "dim-room-height",
+      key: "roomHeight",
+      label: copy.fields.corner.roomHeight,
+    },
+    {
+      id: "dim-room-depth",
+      key: "roomDepth",
+      label: copy.fields.corner.roomDepth,
+    },
+  ];
 }
 
 function isPositiveBounded(raw: string): boolean {
   if (raw.trim() === "") return false;
   const value = Number(raw);
   if (!Number.isFinite(value)) return false;
-  return value >= SIMULATION_DIMENSION_MIN_M && value <= SIMULATION_DIMENSION_MAX_M;
+  return value >= DIMENSION_MIN_CM && value <= DIMENSION_MAX_CM;
 }
 
 function toBackWallBody(values: FormValues): BackWallSuppliedDimensions {
   return {
-    wall_width: Number(values.wallWidth),
-    wall_height: Number(values.wallHeight),
-    room_depth: Number(values.roomDepth)
+    wall_width: centimetersToMeters(values.wallWidth),
+    wall_height: centimetersToMeters(values.wallHeight),
+    room_depth: centimetersToMeters(values.roomDepth),
   };
 }
 
 function toCornerBody(values: FormValues): CornerSuppliedDimensions {
   return {
-    left_wall_width: Number(values.leftWallWidth),
-    right_wall_width: Number(values.rightWallWidth),
-    room_height: Number(values.roomHeight),
-    room_depth: Number(values.roomDepth)
+    left_wall_width: centimetersToMeters(values.leftWallWidth),
+    right_wall_width: centimetersToMeters(values.rightWallWidth),
+    room_height: centimetersToMeters(values.roomHeight),
+    room_depth: centimetersToMeters(values.roomDepth),
   };
+}
+
+function centimetersToMeters(raw: string): number {
+  return Number(raw) / 100;
 }
 
 async function defaultSubmit(
   jobId: string,
-  body: SuppliedDimensionsBody
+  body: SuppliedDimensionsBody,
 ): Promise<SubmitOutcome> {
   try {
     const response = await fetch(
@@ -244,8 +287,8 @@ async function defaultSubmit(
         body: JSON.stringify(body),
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        method: "POST"
-      }
+        method: "POST",
+      },
     );
     if (response.ok) {
       return { ok: true };
@@ -256,7 +299,7 @@ async function defaultSubmit(
     return {
       ok: false,
       code: payload?.error?.code,
-      message: payload?.error?.message
+      message: payload?.error?.message,
     };
   } catch (error) {
     return { ok: false, message: (error as Error).message };
