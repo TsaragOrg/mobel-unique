@@ -1,10 +1,14 @@
 /*
-RU: Этот файл нужен для главной страницы Mobel Unique. Пользователь видит бренд, видео с диваном, путь симуляции и полезные факты. Здесь можно сменить цвет дивана и открыть каталог через основную кнопку.
-FR: Ce fichier sert a la page d'accueil Mobel Unique. L'utilisateur voit la marque, la video du canape, le chemin de simulation et les points utiles. Ici, il peut changer la couleur du canape et ouvrir le catalogue avec le bouton principal.
+RU: Этот файл нужен для главной страницы Mobel Unique. Посетитель видит бренд, видео с диваном, путь симуляции и полезные факты. Здесь можно сменить цвет дивана, открыть каталог через основную кнопку или перейти к политике конфиденциальности внизу.
+FR: Ce fichier sert a la page d'accueil Mobel Unique. Le visiteur voit la marque, la video du canape, le chemin de simulation et les points utiles. Ici, il peut changer la couleur du canape, ouvrir le catalogue avec le bouton principal ou aller a la page de confidentialite en bas.
 */
 
 import type { Metadata } from "next";
 import { HomeHeroVideo } from "./home-hero-video";
+import {
+  PUBLIC_PRIVACY_POLICY_HREF,
+  PUBLIC_PRIVACY_POLICY_LABEL,
+} from "./public-legal-links";
 
 // RU: Эти данные задают заголовок вкладки и описание страницы для поиска.
 // FR: Ces donnees donnent le titre de l'onglet et le texte court pour la recherche.
@@ -112,9 +116,14 @@ export default function Home() {
         tissu.
       </p>
 
+      {/* RU: Нижняя часть показывает знак сайта, короткое обещание и спокойную ссылку на правила конфиденциальности.
+      FR: La partie du bas montre la marque du site, une courte promesse et un lien calme vers les regles de confidentialite. */}
       <footer className="home-footer">
         <span>MÖBEL UNIQUE</span>
         <span>Simulation privée, sélection maîtrisée.</span>
+        <a href={PUBLIC_PRIVACY_POLICY_HREF}>
+          {PUBLIC_PRIVACY_POLICY_LABEL}
+        </a>
       </footer>
     </main>
   );

@@ -433,11 +433,25 @@ button:disabled {
   letter-spacing: 0.28em;
 }
 
+.home-footer a {
+  color: var(--home-muted);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-decoration-color: rgb(82 82 82 / 42%);
+  text-underline-offset: 5px;
+}
+
+.home-footer a:hover {
+  color: var(--home-ink);
+  text-decoration-color: currentColor;
+}
+
 .home-primary-cta:focus-visible,
 .home-preview-pill:focus-visible,
 .home-header-nav a:focus-visible,
 .home-menu-link:focus-visible,
-.home-brand:focus-visible {
+.home-brand:focus-visible,
+.home-footer a:focus-visible {
   outline: 3px solid var(--home-focus);
   outline-offset: 4px;
 }
@@ -691,6 +705,96 @@ button:disabled {
   line-height: 1.58;
   margin: 20px 0 0;
   max-width: 610px;
+}
+
+.privacy-page {
+  margin: 0 auto;
+  padding: clamp(54px, 8vw, 92px) clamp(22px, 5vw, 70px) 72px;
+  width: min(100%, 1320px);
+}
+
+.privacy-hero {
+  border-bottom: 1px solid var(--public-line);
+  padding-bottom: 34px;
+}
+
+.privacy-page h1 {
+  color: var(--public-ink);
+  font-family:
+    "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(2.55rem, 7vw, 5.2rem);
+  font-weight: 200;
+  line-height: 1;
+  margin: 0;
+  max-width: 840px;
+}
+
+.privacy-lede {
+  color: var(--public-muted);
+  font-size: clamp(1rem, 1.8vw, 1.22rem);
+  line-height: 1.58;
+  margin: 22px 0 0;
+  max-width: 760px;
+}
+
+.privacy-section-list {
+  display: grid;
+  gap: 0;
+  max-width: 900px;
+}
+
+.privacy-section,
+.privacy-contact {
+  border-bottom: 1px solid var(--public-line);
+  display: grid;
+  gap: 14px;
+  padding: 28px 0;
+}
+
+.privacy-section h2,
+.privacy-contact h2 {
+  color: var(--public-ink);
+  font-size: 1.04rem;
+  font-weight: 500;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.privacy-section ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.privacy-section li,
+.privacy-contact p {
+  color: var(--public-muted);
+  font-size: 0.98rem;
+  line-height: 1.58;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.privacy-section li::before {
+  color: var(--public-soft);
+  content: "—";
+  margin-right: 8px;
+}
+
+.privacy-contact {
+  max-width: 900px;
+}
+
+.privacy-contact-link {
+  color: var(--public-ink);
+  text-decoration-color: rgb(12 12 12 / 42%);
+  text-underline-offset: 5px;
+}
+
+.privacy-contact-link:hover {
+  text-decoration-color: currentColor;
 }
 
 .catalog-filters {
@@ -1381,6 +1485,19 @@ button:disabled {
   color: var(--public-ink);
   font-weight: 600;
   letter-spacing: 0.28em;
+}
+
+.public-footer a {
+  color: var(--public-muted);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-decoration-color: rgb(85 85 85 / 42%);
+  text-underline-offset: 5px;
+}
+
+.public-footer a:hover {
+  color: var(--public-ink);
+  text-decoration-color: currentColor;
 }
 
 .public-shell a:focus-visible,

@@ -1,12 +1,12 @@
 # SPEC-0018 Public Privacy Policy Page
 
 Spec: SPEC-0018
-Status: draft
+Status: accepted
 Layer: cross-cutting
 Parent Spec: SPEC-0003
 Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012, SPEC-0015
 Areas: web
-Implementation Plans: none yet
+Implementation Plans: PLAN-0077
 
 ## Traceability
 
@@ -34,7 +34,7 @@ This spec follows:
   verification state, 24-hour access token lifetime, download behavior, and
   visitor-safe private artifact handling.
 
-External legal baseline used for this draft:
+External legal baseline used for this spec:
 
 - CNIL guidance says privacy information should cover the data controller,
   purposes, legal basis, required or optional data, recipients, retention,
@@ -47,8 +47,17 @@ External legal baseline used for this draft:
   erasure, portability, human intervention, and restriction rights:
   https://www.cnil.fr/fr/mes-demarches/les-droits-pour-maitriser-vos-donnees-personnelles
 
-This draft must not be accepted until MÖBEL UNIQUE provides the public privacy
-contact and confirms the legal-basis wording for each listed purpose.
+This spec is accepted with these privacy decisions:
+
+- the public privacy contact is `mobel.unique.it@gmail.com`;
+- the privacy page uses a generic privacy contact role and does not claim a
+  data protection officer;
+- analytics tracking is not part of the MVP and must not be described as active;
+- required simulation data is used only to provide the visitor-requested
+  visualization experience and protect access to the result;
+- lightweight operational metadata and anti-abuse data are used under MÖBEL
+  UNIQUE's legitimate interest to run, secure, and troubleshoot the MVP service;
+- optional commercial contact is based only on the visitor's consent.
 
 ## Goal
 
@@ -71,8 +80,7 @@ This spec includes:
 - public/private data boundary messaging;
 - retention messaging for room photos, intermediate files, and generated
   simulation outputs;
-- a draft acceptance blocker for the public privacy contact and legal-basis
-  wording;
+- the approved public privacy contact and legal-basis wording;
 - implementation acceptance criteria and future test expectations.
 
 ## Out Of Scope
@@ -107,7 +115,8 @@ The page must not expose:
 - private storage paths;
 - signed URLs;
 - simulation access tokens;
-- email addresses;
+- visitor or customer email addresses other than the approved public privacy
+  contact;
 - internal IDs;
 - provider names or prompts beyond already public product-level AI messaging;
 - worker errors;
@@ -152,8 +161,8 @@ Required visible content:
    sofa at home and uses personal data only for this limited experience.
 3. Data collected while browsing:
    - basic technical data needed to load the site;
-   - public catalog interactions only when analytics consent is implemented and
-     granted;
+   - no analytics tracking or persistent public catalog interaction tracking in
+     the MVP;
    - no customer account is required for browsing.
 4. Data collected for simulation:
    - email address for simulation verification, anti-abuse, and operational
@@ -172,7 +181,17 @@ Required visible content:
    - limit abuse and repeated generation;
    - keep enough operational metadata to troubleshoot the MVP service;
    - contact the visitor commercially only when optional consent is granted.
-6. Retention:
+6. Legal basis wording:
+   - required email verification, uploaded room photo handling, generated guide
+     image handling, and generated result handling must be described as needed
+     to provide the visualization requested by the visitor and to protect access
+     to the result;
+   - lightweight operational metadata, troubleshooting data, and anti-abuse data
+     must be described as needed for MÖBEL UNIQUE's legitimate interest in
+     running, securing, and improving the MVP service;
+   - optional commercial contact must be described as based only on the
+     visitor's consent and optional for running the simulation.
+7. Retention:
    - room photos, intermediate images, guide images, and generated results are
      private and deleted no later than 24 hours after creation;
    - abandoned simulations are also purged at the retention deadline;
@@ -180,25 +199,29 @@ Required visible content:
      usable private image paths or image content;
    - temporary access cookies or equivalent browser state expire within the
      simulation retention window.
-7. Access and sharing:
+8. Access and sharing:
    - private simulation images are not public catalog assets;
    - the MVP has no public gallery, public sharing link, or customer account;
    - generated result access is limited to the current verified visitor session
      while the result is retained;
    - administrators may use operational metadata, but the MVP must not create a
      default gallery of visitor interiors.
-8. Service providers:
+9. Service providers:
    - the page may state that trusted technical providers process data only to
      host the site, store private simulation artifacts, send verification
      emails when real email delivery is implemented, and generate the requested
      AI visualization;
+   - the page must identify MÖBEL UNIQUE in plain language as the site owner
+     responsible for the visitor experience and privacy contact;
    - the page must not list secrets, internal bucket names, private endpoints,
      or raw provider configuration.
-9. Visitor rights and contact:
+10. Visitor rights and contact:
    - visitors can ask about their data and exercise applicable rights such as
      access, correction, deletion, objection, restriction, and portability;
-   - the exact contact address is a required pre-acceptance decision for this
-     draft;
+   - the page must show `mobel.unique.it@gmail.com` as the public privacy
+     contact;
+   - the page must use a generic privacy contact role and must not mention a
+     data protection officer unless a later accepted spec confirms one;
    - the page may mention that visitors can contact the French data protection
      authority if applicable after MÖBEL UNIQUE confirms final legal wording.
 
@@ -255,9 +278,10 @@ than the 24-hour MVP retention deadline.
 
 No new environment variables are required.
 
-If a later implementation chooses to inject the public privacy contact from
-environment configuration, that must be specified in the implementation plan and
-kept separate between DEV and PROD.
+The approved public privacy contact, `mobel.unique.it@gmail.com`, should be
+repository-authored page copy for the MVP. If a later implementation chooses to
+inject the public privacy contact from environment configuration, that must be
+specified in the implementation plan and kept separate between DEV and PROD.
 
 ## Implementation Guidance
 
@@ -307,16 +331,24 @@ pnpm spec:check
 
 ## Acceptance Criteria
 
-- A draft privacy page route is defined as `/politique-de-confidentialite`.
+- A privacy page route is defined as `/politique-de-confidentialite`.
 - The footer link label is defined as `Politique de confidentialité`.
 - The footer link is required on home and shared public-shell pages.
 - The page content is French, concise, and focused on the MVP visualization
   flow.
 - The page explains browsing data at a high level without implying customer
-  accounts or ecommerce tracking.
+  accounts, active analytics, or ecommerce tracking.
 - The page explains simulation data: email, required consent, optional
   commercial contact consent, room photo, generated guide/result, temporary
   access state, and operational metadata.
+- The page includes the approved public privacy contact:
+  `mobel.unique.it@gmail.com`.
+- The page uses a generic privacy contact role and does not claim a data
+  protection officer.
+- The page uses the approved legal-basis wording: visitor-requested
+  visualization for required simulation processing, legitimate interest for
+  operational metadata and anti-abuse, and consent for optional commercial
+  contact.
 - The page states that private simulation images are deleted no later than
   24 hours after creation.
 - The page states that generated simulation images remain private and are not
@@ -324,6 +356,7 @@ pnpm spec:check
 - The page states that the MVP has no public gallery, public sharing link, or
   customer account.
 - The page avoids private implementation details and secrets.
+- The page does not describe analytics as active in the MVP.
 - The page does not describe Shopify checkout privacy as if Shopify were owned
   by this application.
 - No database, API, worker, environment, analytics, or consent-banner changes
@@ -333,13 +366,4 @@ pnpm spec:check
 
 ## Open Questions
 
-- Which public email address or contact form should visitors use for privacy
-  questions and rights requests?
-- What exact legal-basis wording should be used for required email
-  verification, AI simulation processing, operational metadata, anti-abuse, and
-  optional commercial contact?
-- Should the final accepted page mention a data protection officer, a generic
-  privacy contact, or another role?
-- Should analytics be mentioned as disabled until a future consent-banner
-  implementation, or only mentioned when analytics is actually implemented?
-
+- None.
