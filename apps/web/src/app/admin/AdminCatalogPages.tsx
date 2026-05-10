@@ -18,6 +18,7 @@ import {
   ReactNode,
   type PointerEvent as ReactPointerEvent,
   type UIEvent as ReactUIEvent,
+  type WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -6521,9 +6522,6 @@ function FabricForm({
     distance: number;
     zoomPercent: number;
   } | null>(null);
-  // RU: Эти данные дают прямой доступ к квадратной рамке для колесика мыши.
-  // FR: Ces donnees donnent un acces direct au cadre carre pour la molette de la souris.
-  const swatchCropFrameRef = useRef<HTMLDivElement | null>(null);
   // RU: Эти данные показывают, что админ уже подтвердил выбранный квадрат.
   // FR: Ces donnees montrent que l'admin a deja confirme le carre choisi.
   const [isSwatchCropSaved, setIsSwatchCropSaved] = useState(false);
@@ -6542,43 +6540,6 @@ function FabricForm({
         width: `${(selectedSwatchCrop.imageWidth / selectedSwatchCrop.crop.sourceSize) * 100}%`,
       }
     : undefined;
-
-  // RU: Этот автоматический блок включает колесико мыши над квадратной рамкой.
-  // FR: Ce bloc automatique active la molette de la souris au-dessus du cadre carre.
-  useEffect(() => {
-    const cropFrame = swatchCropFrameRef.current;
-
-    if (!cropFrame || !selectedSwatchCrop) {
-      return;
-    }
-
-    const activeSwatchCrop = selectedSwatchCrop;
-
-    function handleWheel(event: WheelEvent) {
-      if (event.deltaY === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      const zoomStep = event.deltaY < 0 ? 10 : -10;
-
-      setIsSwatchCropSaved(false);
-      onSelectedSwatchCropChange(
-        updateFabricSwatchSelectionZoom(
-          activeSwatchCrop,
-          activeSwatchCrop.zoomPercent + zoomStep,
-        ),
-      );
-    }
-
-    cropFrame.addEventListener("wheel", handleWheel, {
-      passive: false,
-    });
-
-    return () => {
-      cropFrame.removeEventListener("wheel", handleWheel);
-    };
-  }, [onSelectedSwatchCropChange, selectedSwatchCrop]);
 
   // RU: Этот автоматический блок убирает временную ссылку на картинку-референс IA.
   // FR: Ce bloc automatique supprime le lien temporaire vers l'image de reference IA.
@@ -6637,6 +6598,23 @@ function FabricForm({
     setIsSwatchCropSaved(false);
     onSelectedSwatchCropChange(
       updateFabricSwatchSelectionZoom(selectedSwatchCrop, zoomPercent),
+    );
+  }
+
+  function handleSwatchCropWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (!selectedSwatchCrop || event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const zoomStep = event.deltaY < 0 ? 10 : -10;
+
+    setIsSwatchCropSaved(false);
+    onSelectedSwatchCropChange(
+      updateFabricSwatchSelectionZoom(
+        selectedSwatchCrop,
+        selectedSwatchCrop.zoomPercent + zoomStep,
+      ),
     );
   }
 
@@ -6863,7 +6841,7 @@ function FabricForm({
               onPointerDown={handleSwatchCropPointerDown}
               onPointerMove={handleSwatchCropPointerMove}
               onPointerUp={handleSwatchCropPointerEnd}
-              ref={swatchCropFrameRef}
+              onWheel={handleSwatchCropWheel}
               role="img"
             >
               <img
