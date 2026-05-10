@@ -1,6 +1,6 @@
 /*
-RU: Этот файл проверяет главную страницу. Посетитель видит бренд, видео, шаги, кнопку выбора дивана и нижнюю ссылку конфиденциальности. Здесь можно сменить цвет дивана, открыть каталог и перейти к политике конфиденциальности.
-FR: Ce fichier verifie la page d'accueil. Le visiteur voit la marque, la video, les etapes, le bouton pour choisir un canape et le lien de confidentialite en bas. Ici, il peut changer la couleur du canape, ouvrir le catalogue et aller a la page de confidentialite.
+RU: Этот файл проверяет главную страницу. Посетитель видит бренд, видео, шаги, кнопку выбора дивана и нижние правовые ссылки. Здесь можно сменить цвет дивана, открыть каталог, перейти к политике конфиденциальности или открыть юридические сведения.
+FR: Ce fichier verifie la page d'accueil. Le visiteur voit la marque, la video, les etapes, le bouton pour choisir un canape et les liens legaux en bas. Ici, il peut changer la couleur du canape, ouvrir le catalogue, aller a la page de confidentialite ou ouvrir les mentions legales.
 */
 
 import {
@@ -164,6 +164,16 @@ describe("Home page", () => {
       "href",
       "/politique-de-confidentialite",
     );
+  });
+
+  it("links to the legal notice from the home footer", () => {
+    render(<Home />);
+
+    const legalNoticeLink = screen.getByRole("link", {
+      name: "Mentions legales",
+    });
+
+    expect(legalNoticeLink).toHaveAttribute("href", "/mentions-legales");
   });
 
   it("does not autoplay the transformation for reduced motion users", async () => {

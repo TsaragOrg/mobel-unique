@@ -1,6 +1,6 @@
 /*
-RU: Этот файл проверяет общую рамку публичных страниц. Посетитель видит знак MOBEL UNIQUE, содержимое страницы и нижнюю строку сайта. Здесь можно перейти на страницу политики конфиденциальности.
-FR: Ce fichier verifie le cadre commun des pages publiques. Le visiteur voit la marque MOBEL UNIQUE, le contenu de la page et la ligne du bas du site. Ici, il peut ouvrir la page de confidentialite.
+RU: Этот файл проверяет общую рамку публичных страниц. Посетитель видит знак MOBEL UNIQUE, содержимое страницы и нижнюю строку сайта. Здесь можно перейти на страницу политики конфиденциальности или открыть юридические сведения.
+FR: Ce fichier verifie le cadre commun des pages publiques. Le visiteur voit la marque MOBEL UNIQUE, le contenu de la page et la ligne du bas du site. Ici, il peut ouvrir la page de confidentialite ou les mentions legales.
 */
 
 import { render, screen } from "@testing-library/react";
@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { PublicShell } from "./PublicShell";
 
 describe("PublicShell", () => {
-  it("renders a quiet privacy policy link without private surfaces", () => {
+  it("renders quiet legal links without private surfaces", () => {
     render(
       <PublicShell currentPath="catalog">
         <section aria-label="Page publique">
@@ -25,6 +25,11 @@ describe("PublicShell", () => {
       "href",
       "/politique-de-confidentialite",
     );
+
+    expect(
+      screen.getByRole("link", { name: "Mentions legales" }),
+    ).toHaveAttribute("href", "/mentions-legales");
+
     expect(screen.getByText("Simulation privée, sélection maîtrisée."))
       .toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toMatch(
