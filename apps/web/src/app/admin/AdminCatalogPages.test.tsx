@@ -1509,7 +1509,9 @@ describe("Admin catalog pages", () => {
     fireEvent.wheel(cropPreview, {
       deltaY: -120,
     });
-    expect(screen.getByLabelText("Zoom de l'échantillon")).toHaveValue("110");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Zoom de l'échantillon")).toHaveValue("110");
+    });
     fireEvent.change(screen.getByLabelText("Image de référence IA"), {
       target: {
         files: [
