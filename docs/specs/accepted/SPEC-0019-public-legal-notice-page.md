@@ -1,12 +1,12 @@
 # SPEC-0019 Public Legal Notice Page
 
 Spec: SPEC-0019
-Status: draft
+Status: accepted
 Layer: cross-cutting
 Parent Spec: SPEC-0012
-Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0012
+Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0012, SPEC-0018
 Areas: web
-Implementation Plans: none yet
+Implementation Plans: PLAN-0078
 
 ## Traceability
 
@@ -24,9 +24,11 @@ This spec follows:
 - `SPEC-0004`, which requires a simple French public customer experience and
   clear privacy messaging before simulation;
 - `SPEC-0012`, which defines the public route map, public shell, SEO-safe public
-  pages, and footer-link need.
+  pages, and footer-link need;
+- `SPEC-0018`, which defines and implements the public privacy policy route that
+  this legal notice page links to for personal-data details.
 
-External legal baseline used for this draft:
+External legal baseline used for this spec:
 
 - French public guidance says professional websites must make mandatory legal
   notices easy to access and identify the company, registration, contact, VAT
@@ -42,9 +44,38 @@ External legal baseline used for this draft:
   https://www.cnil.fr/fr/rgpd-en-pratique-communiquer-en-ligne
 - Current Vercel public legal contact information is listed by Vercel at:
   https://vercel.com/legal/privacy-policy
+- The current separate Shopify storefront legal notice was confirmed by MOBEL
+  UNIQUE as the approved source for publisher identity, publisher contact, and
+  publication director details:
+  https://www.mobelunique.fr/pages/les-mentions-legales
 
-This draft must not be accepted until MOBEL UNIQUE confirms the exact legal
-publisher details and approves the final hosting-provider contact details.
+This spec is accepted with these legal notice decisions:
+
+- The publisher legal company name is `SARL MOBILIER & ART`.
+- The public trading name is `MOBEL UNIQUE`.
+- The legal form is `SARL`.
+- The registered office address is `8 Rue Danielle Casanova, 95100 Argenteuil,
+  France`.
+- The share capital is `1000 euros`.
+- The registration is `RCS Pontoise 943 675 579`.
+- The SIREN is `943 675 579`; no SIRET is approved for display by this spec.
+- No VAT number is approved for display by this spec because the confirmed
+  Shopify storefront legal notice does not publish one. A later change request
+  must add it if MOBEL UNIQUE confirms that it is required.
+- The public legal contact email is `aide.mobelunique@gmail.com`.
+- The public phone number is `+33 6 58 93 61 06`.
+- The publication director is `Abdul Dzhabrailov`.
+- The privacy pointer must link to `/politique-de-confidentialite`, because
+  `SPEC-0018` is accepted and `PLAN-0077` implemented that route.
+- The Shopify storefront legal notice lists `Automattic Inc.` as the storefront
+  host for `mobelunique.fr`. This value must not be copied as the hosting
+  provider for this application while `SPEC-0001` defines `apps/web` as deployed
+  to Vercel.
+- The hosting provider for this application is `Vercel Inc.` with public address
+  `440 N Barranca Avenue #4133, Covina, CA 91723, United States`.
+- The approved Vercel public contact method is `https://vercel.com/contact`, and
+  `privacy@vercel.com` may be used only as Vercel's public privacy/legal contact
+  if the implementation plan decides a visible email is needed.
 
 ## Goal
 
@@ -54,7 +85,7 @@ publisher and hosting provider of the MOBEL UNIQUE visualization site.
 The page must be useful but not broad. It should provide only the legal identity
 and contact information normally expected from a French professional website,
 while leaving privacy details to the separate privacy policy spec and leaving
-commerce terms to Shopify.
+commerce terms to the separate Shopify storefront.
 
 ## Scope
 
@@ -64,7 +95,7 @@ This spec includes:
 - footer links from public pages to that route;
 - required legal notice content for a French company profile;
 - a short intellectual-property note;
-- a short personal-data pointer to the future privacy policy page;
+- a short personal-data pointer to the public privacy policy page;
 - implementation acceptance criteria and future test expectations.
 
 ## Out Of Scope
@@ -76,9 +107,10 @@ This spec does not require:
 - adding terms of sale, general terms of use, cart terms, checkout terms,
   mediation wording, subscription cancellation wording, or payment terms;
 - adding a cookie banner, analytics consent, or Google Consent Mode;
-- replacing or duplicating the future privacy policy page;
+- replacing or duplicating the public privacy policy page;
 - changing Shopify pages, Shopify checkout, Shopify legal pages, pricing, cart,
-  payment, order handling, stock, or customer accounts;
+  payment, order handling, stock, customer accounts, or the existing Shopify
+  storefront legal notice;
 - adding admin-managed CMS behavior for legal content.
 
 Those topics require separate specs or change requests when they are ready.
@@ -142,23 +174,28 @@ Required visible content:
 
 1. Page title: `Mentions legales`.
 2. Site publisher section:
-   - confirmed legal company name;
-   - confirmed legal form;
-   - confirmed registered office address;
-   - confirmed share capital;
-   - confirmed RCS registration and SIREN or SIRET number;
-   - confirmed VAT number when applicable;
-   - confirmed public email address;
-   - confirmed public phone number.
+   - legal company name `SARL MOBILIER & ART`;
+   - public trading name `MOBEL UNIQUE`;
+   - legal form `SARL`;
+   - registered office address `8 Rue Danielle Casanova, 95100 Argenteuil,
+     France`;
+   - share capital `1000 euros`;
+   - RCS registration `RCS Pontoise 943 675 579`;
+   - SIREN `943 675 579`;
+   - public email address `aide.mobelunique@gmail.com`;
+   - public phone number `+33 6 58 93 61 06`;
+   - no VAT number unless a later accepted change request approves one.
 3. Publication director section:
-   - confirmed publication director name or approved public role.
+   - publication director `Abdul Dzhabrailov`.
 4. Hosting provider section:
-   - hosting provider legal name;
-   - hosting provider postal address;
-   - hosting provider phone number or an approved public support/contact method
-     if the provider does not publish a phone number;
-   - Vercel is the expected provider because `apps/web` is deployed to Vercel,
-     but the final provider details must be rechecked before acceptance.
+   - hosting provider legal name `Vercel Inc.`;
+   - hosting provider postal address `440 N Barranca Avenue #4133, Covina, CA
+     91723, United States`;
+   - public contact method `https://vercel.com/contact`;
+   - optional Vercel privacy/legal contact email `privacy@vercel.com` only if
+     the implementation plan decides that a visible email is needed;
+   - no Shopify storefront host, Automattic host, or Shopify checkout provider
+     details for this separate application.
 5. Intellectual property section:
    - a short note that the site text, visuals, brand marks, catalog assets, and
      generated public-facing presentation belong to MOBEL UNIQUE or are used
@@ -166,16 +203,15 @@ Required visible content:
    - no broad licensing text.
 6. Personal data section:
    - one short sentence saying personal-data handling is explained separately;
-   - link to `/politique-de-confidentialite` only after the privacy policy spec
-     is accepted and implemented;
-   - if the privacy route is not implemented yet, use a neutral temporary note
-     without a broken link.
+   - link to `/politique-de-confidentialite`.
 
 ## Required Exclusions From Page Copy
 
 The legal notice page must not:
 
 - invent company registration, VAT, address, capital, phone, or director data;
+- copy the Shopify storefront hosting provider as the hosting provider for this
+  separate application;
 - duplicate the full privacy policy;
 - promise legal outcomes beyond the confirmed legal notice content;
 - describe Shopify checkout privacy or Shopify sales terms as if they were owned
@@ -258,16 +294,17 @@ pnpm spec:check
 
 ## Acceptance Criteria
 
-- A draft legal notice page route is defined as `/mentions-legales`.
+- A legal notice page route is defined as `/mentions-legales`.
 - The footer link label is defined as `Mentions legales`.
 - The footer link is required on home and shared public-shell pages.
 - The page content is French, concise, and focused on identifying the site
   publisher and hosting provider.
-- The page uses the French company profile selected for this draft.
-- The page requires confirmed publisher details before acceptance.
-- The page requires confirmed hosting-provider details before acceptance.
-- The page includes only a short personal-data pointer and does not duplicate the
-  privacy policy.
+- The page uses the accepted publisher identity, publisher contact, publication
+  director, and Vercel hosting-provider details from this spec.
+- The page treats the existing Shopify storefront legal notice as a source for
+  business identity details only, not as the application hosting provider.
+- The page includes only a short personal-data pointer to
+  `/politique-de-confidentialite` and does not duplicate the privacy policy.
 - The page does not describe Shopify checkout, payments, customer accounts, or
   sales terms as if they were owned by this application.
 - The page avoids private implementation details and secrets.
@@ -278,13 +315,4 @@ pnpm spec:check
 
 ## Open Questions
 
-- What are the confirmed legal company name, legal form, registered office
-  address, share capital, RCS registration, SIREN or SIRET number, VAT number,
-  public email, and public phone number for the site publisher?
-- Who is the confirmed publication director, or what public role should be
-  listed if a name should not be shown?
-- What exact Vercel hosting address, phone number, and public contact method
-  should be used at acceptance time?
-- Should the legal notice link to `/politique-de-confidentialite` immediately
-  after `SPEC-0018` is implemented, or should both pages be accepted and shipped
-  together?
+- None.

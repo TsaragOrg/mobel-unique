@@ -295,6 +295,17 @@
       "implementationPlans": ["PLAN-0077"],
       "path": "docs/specs/accepted/SPEC-0018-public-privacy-policy-page.md",
       "areas": ["web"]
+    },
+    {
+      "id": "SPEC-0019",
+      "title": "Public Legal Notice Page",
+      "status": "accepted",
+      "layer": "cross-cutting",
+      "parent": "SPEC-0012",
+      "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004", "SPEC-0012", "SPEC-0018"],
+      "implementationPlans": ["PLAN-0078"],
+      "path": "docs/specs/accepted/SPEC-0019-public-legal-notice-page.md",
+      "areas": ["web"]
     }
   ]
 }

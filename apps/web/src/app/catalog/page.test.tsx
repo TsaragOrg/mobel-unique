@@ -1,6 +1,6 @@
 /*
-RU: Этот файл проверяет страницу публичного каталога. Посетитель видит список диванов и общую нижнюю строку сайта. Здесь можно выбрать диван и открыть страницу политики конфиденциальности.
-FR: Ce fichier verifie la page du catalogue public. Le visiteur voit la liste des canapes et la ligne du bas du site. Ici, il peut choisir un canape et ouvrir la page de confidentialite.
+RU: Этот файл проверяет страницу публичного каталога. Посетитель видит список диванов и общую нижнюю строку сайта. Здесь можно выбрать диван, открыть страницу политики конфиденциальности или открыть юридические сведения.
+FR: Ce fichier verifie la page du catalogue public. Le visiteur voit la liste des canapes et la ligne du bas du site. Ici, il peut choisir un canape, ouvrir la page de confidentialite ou ouvrir les mentions legales.
 */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -35,6 +35,14 @@ describe("Catalog page", () => {
     expect(
       screen.getByRole("link", { name: "Politique de confidentialité" }),
     ).toHaveAttribute("href", "/politique-de-confidentialite");
+  });
+
+  it("exposes the shared legal notice footer link", () => {
+    render(<CatalogPage />);
+
+    expect(
+      screen.getByRole("link", { name: "Mentions legales" }),
+    ).toHaveAttribute("href", "/mentions-legales");
   });
 
   it("defines indexable public metadata", () => {
