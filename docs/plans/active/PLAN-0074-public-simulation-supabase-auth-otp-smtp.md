@@ -109,6 +109,10 @@ The backend changes behind those routes:
       `email_verification_requests.auth_user_id`,
       `simulation_sessions.auth_user_id`, and an optional
       `consent_records.email_verification_request_id`.
+- [x] Renumber PLAN-0074 public simulation migrations after the rebased
+      `dev` branch introduced `20260509000100_fabric_render_selected_queue_resume.sql`,
+      preserving unique Supabase migration version prefixes and the intended
+      Auth OTP -> purge cron -> worker-cron removal order.
 - [x] Allow `email_verification_requests.verification_code_hash` to be null
       only for Supabase Auth-backed OTP requests.
 - [x] Add indexes for verification request lookup, Auth user cleanup, and

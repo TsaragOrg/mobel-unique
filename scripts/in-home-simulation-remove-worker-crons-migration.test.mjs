@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migrationPath =
-  "supabase/migrations/20260509000300_remove_in_home_simulation_worker_crons.sql";
+  "supabase/migrations/20260509000600_remove_in_home_simulation_worker_crons.sql";
 
 describe("PLAN-0068 in-home simulation worker cron removal migration", () => {
   const sql = readFileSync(migrationPath, "utf8");

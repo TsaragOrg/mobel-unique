@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 const PATH =
   "supabase/migrations/20260502001100_create_in_home_simulation_job_for_visitor.sql";
 const PLAN_0074_PATH =
-  "supabase/migrations/20260509000100_public_simulation_supabase_auth_otp.sql";
+  "supabase/migrations/20260509000400_public_simulation_supabase_auth_otp.sql";
 const PLAN_0074_CRON_PATH =
-  "supabase/migrations/20260509000200_public_simulation_identity_purge_cron.sql";
+  "supabase/migrations/20260509000500_public_simulation_identity_purge_cron.sql";
 
 describe("SPEC-0015 PLAN-0040 production create-job RPC", () => {
   const sql = readFileSync(PATH, "utf8").replace(/\r\n/g, "\n");
