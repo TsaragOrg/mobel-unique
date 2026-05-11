@@ -7,6 +7,7 @@ import {
   createSupabaseSimulationCreateJobStore,
   createSupabaseSimulationDimensionsStore,
   createSupabaseSimulationRegenerationStore,
+  createSupabaseSimulationRealtimeTokenIssuer,
   createSupabaseSimulationSessionAccessReader,
 } from "./simulation-public-server";
 
@@ -175,6 +176,38 @@ describe("public simulation Supabase stores", () => {
     ).resolves.toEqual({ emailNormalizedHash: "email-hash-1" });
   });
 
+  it("mints short-lived Realtime JWTs scoped to one simulation progress row", async () => {
+    const now = () => new Date("2026-05-02T10:00:00.000Z");
+    const retentionDeadline = new Date("2026-05-02T10:02:00.000Z");
+    const issuer = createSupabaseSimulationRealtimeTokenIssuer({
+      jwtSecret: "jwt-secret",
+      now,
+      ttlSeconds: 300,
+    });
+
+    const issued = await issuer.issueProgressToken({
+      jobId: "00000000-0000-4000-8000-000000000001",
+      simulationSessionId: "00000000-0000-4000-8000-000000000002",
+      retentionDeadline,
+    });
+
+    expect(issued.expiresAt).toEqual(retentionDeadline);
+    const payload = decodeJwtPayload(issued.token);
+    expect(payload).toMatchObject({
+      aud: "authenticated",
+      role: "authenticated",
+      sub: "simulation-progress:00000000-0000-4000-8000-000000000001",
+      simulation_progress: {
+        simulation_job_id: "00000000-0000-4000-8000-000000000001",
+        simulation_session_id: "00000000-0000-4000-8000-000000000002",
+      },
+    });
+    expect(payload.exp).toBe(Math.floor(retentionDeadline.getTime() / 1000));
+    expect(JSON.stringify(payload)).not.toMatch(
+      /access_token|refresh_token|storage|signed|bucket|path/i,
+    );
+  });
+
   it("submits dimensions through the dispatch-outbox RPC", async () => {
     const client = {
       rpc: vi.fn().mockResolvedValue({
@@ -284,3 +317,19 @@ describe("public simulation Supabase stores", () => {
     );
   });
 });
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const [, encodedPayload] = token.split(".");
+  if (!encodedPayload) {
+    throw new Error("JWT payload segment missing");
+  }
+  const base64 = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+}

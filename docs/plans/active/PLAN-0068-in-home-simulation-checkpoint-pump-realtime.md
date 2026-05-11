@@ -206,7 +206,7 @@ operator tooling, not part of the visitor workflow.
 
 ### 5. Realtime And Frontend Progress
 
-- [ ] Add Realtime access tests proving one visitor cannot subscribe to another
+- [x] Add Realtime access tests proving one visitor cannot subscribe to another
       visitor's progress.
 - [ ] Add frontend tests for progress rendering, fallback polling, foreground
       refresh, offline/online recovery, and signed URL refresh through the

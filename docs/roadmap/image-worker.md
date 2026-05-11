@@ -31,4 +31,6 @@
 
 ## Next
 
-- Add public publication workflows through later plans.
+- Finish PLAN-0068 worker validation for bounded checkpoint execution,
+  retryable and terminal failures, previous-result preservation during failed
+  regeneration, cost-meter pause behavior, and recovery.

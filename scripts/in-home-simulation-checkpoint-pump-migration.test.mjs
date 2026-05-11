@@ -72,6 +72,12 @@ describe("PLAN-0068 in-home simulation checkpoint pump migration", () => {
     expect(sql).toContain("spec_0068_service_role_all_simulation_public_progress");
     expect(sql).toContain("spec_0068_simulation_public_progress_select_own");
     expect(sql).toContain("auth.jwt()");
+    expect(sql).toContain(
+      "auth.jwt() -> 'simulation_progress' ->> 'simulation_job_id'"
+    );
+    expect(sql).toContain(
+      "auth.jwt() -> 'simulation_progress' ->> 'simulation_session_id'"
+    );
   });
 
   it("adds the public progress table to Supabase Realtime when the publication exists", () => {
