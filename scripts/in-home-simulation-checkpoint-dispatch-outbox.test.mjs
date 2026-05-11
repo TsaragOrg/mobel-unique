@@ -94,6 +94,30 @@ describe("PLAN-0068 in-home simulation checkpoint dispatch outbox migration", ()
     expect(fn).not.toContain("status = 'failed'");
   });
 
+  it("preserves a previous result when recovery exhausts a regeneration checkpoint", () => {
+    const fn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.recover_stale_in_home_simulation_checkpoints",
+      ),
+      sql.indexOf(
+        "grant execute on function public.recover_stale_in_home_simulation_checkpoints",
+      ),
+    );
+    expect(fn).toContain(
+      "and candidate.generated_output_count > 0 then 'succeeded'::public.simulation_job_status",
+    );
+    expect(fn).toContain("last_regeneration_error_message = case");
+    expect(fn).toContain("then coalesce(last_regeneration_error_message, recovery_message)");
+    expect(fn).toContain("reserved_generation_index = case");
+    expect(fn).toContain("then null");
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and candidate.generated_output_count > 0",
+    );
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and candidate.generated_output_count < 3",
+    );
+  });
+
   it("exposes dispatch-outbox API RPC names for public simulation handlers", () => {
     expect(sql).toContain(
       "create or replace function public.create_in_home_simulation_job_for_visitor_dispatch_outbox"

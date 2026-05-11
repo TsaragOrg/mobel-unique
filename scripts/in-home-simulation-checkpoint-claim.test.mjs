@@ -109,6 +109,28 @@ describe("PLAN-0068 in-home simulation checkpoint claim RPC migration", () => {
     expect(sql).toContain("generated_output_count > 0");
   });
 
+  it("preserves a previous result when a regeneration checkpoint fails", () => {
+    const fn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.release_in_home_simulation_checkpoint_claim",
+      ),
+      sql.indexOf("grant execute on function public.enqueue_in_home_simulation_checkpoint"),
+    );
+    expect(fn).toContain(
+      "and job_record.generated_output_count > 0 then 'succeeded'::public.simulation_job_status",
+    );
+    expect(fn).toContain("last_regeneration_error_message = case");
+    expect(fn).toContain("then p_safe_error_message");
+    expect(fn).toContain("reserved_generation_index = case");
+    expect(fn).toContain("then null");
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and job_record.generated_output_count > 0",
+    );
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and job_record.generated_output_count < 3",
+    );
+  });
+
   it("grants all checkpoint helpers to service_role only", () => {
     expect(sql).toContain("grant execute on function public.enqueue_in_home_simulation_checkpoint");
     expect(sql).toContain("grant execute on function public.claim_in_home_simulation_checkpoint");
