@@ -733,7 +733,11 @@ describe("handleGetSimulationStatusRequest", () => {
       deps,
     });
     const body = (await response.json()) as { data: SimulationStatusResponse };
+    expect(body.data.status).toBe("succeeded");
     expect(body.data.last_error).toBe("placement_failed");
+    expect(body.data.latest_output_url).toContain(
+      `simulations/${JOB_ID}/outputs/output-0.png`,
+    );
   });
 
   it("returns minimal payload for an expired job", async () => {

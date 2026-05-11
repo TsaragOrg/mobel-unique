@@ -332,6 +332,53 @@ describe("PublicSimulationContinuation", () => {
     expect(screen.getByText("Étape 2 sur 4")).toBeInTheDocument();
   });
 
+  it("uses Realtime step details for the dimension guide checkpoint", async () => {
+    let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
+      null;
+    const subscribeProgress = vi.fn((args: SubscribeToSimulationProgressArgs) => {
+      progressCallback = args.onProgress;
+      return () => undefined;
+    });
+    const fetchStatus = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot("room_prep_processing"))
+      .mockResolvedValueOnce(snapshot("room_prep_processing"));
+
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={fetchStatus}
+        loadJobContext={() => baseContext}
+        subscribeProgress={subscribeProgress}
+      />
+    );
+
+    await waitFor(() => expect(fetchStatus).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      progressCallback?.({
+        simulation_job_id: "sim-1",
+        status: "room_prep_processing",
+        progress_step_key: "dimension_guide",
+        progress_step_ordinal: 3,
+        progress_total_steps: 4,
+        visitor_action_required: false,
+        guide_available: false,
+        latest_result_available: false,
+        regeneration_available: false,
+        retention_deadline: "2026-05-03T10:00:00.000Z",
+        updated_at: "2026-05-02T10:02:00.000Z"
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1 })
+      ).toHaveTextContent("Préparation du guide de mesures")
+    );
+    expect(screen.getByText("Étape 3 sur 4")).toBeInTheDocument();
+  });
+
   it("uses Realtime step details to make placement loading copy specific", async () => {
     let progressCallback: SubscribeToSimulationProgressArgs["onProgress"] | null =
       null;

@@ -90,9 +90,7 @@ describe("admin sofa edit model", () => {
     expect(getRenderCellPrimaryAction("candidate")).toMatchObject({
       label: "Voir les variantes",
     });
-    expect(getRenderCellPrimaryAction("ready")).toMatchObject({
-      label: "Voir le rendu actuel",
-    });
+    expect(getRenderCellPrimaryAction("ready")).toBeNull();
     expect(getRenderCellPrimaryAction("queued")).toMatchObject({
       label: "Reprendre la génération",
     });

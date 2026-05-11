@@ -83,7 +83,10 @@ describe("PLAN-0068 in-home simulation worker dispatch and checkpoint modes", ()
     expect(source).toContain("room_validation_provider_started");
     expect(source).toContain("room_cleaning_provider_started");
     expect(source).toContain("room_corners_provider_started");
+    expect(source).toContain("dimension_guide_started");
     expect(source).toContain("placement_provider_started");
+    expect(source).toContain("placement_measurement_started");
+    expect(source).toContain("placement_finalize_started");
     expect(source).toContain("placement_persisted");
   });
 
@@ -99,7 +102,10 @@ describe("PLAN-0068 in-home simulation worker dispatch and checkpoint modes", ()
     expect(source).toContain("complete_in_home_simulation_checkpoint_claim");
     expect(source).toContain('nextCheckpointKey: "room_cleaning"');
     expect(source).toContain('nextCheckpointKey: "room_corners"');
+    expect(source).toContain('nextCheckpointKey: "dimension_guide"');
     expect(source).toContain('nextCheckpointKey: "awaiting_dimensions"');
+    expect(source).toContain('nextCheckpointKey: "placement_measurement"');
+    expect(source).toContain('nextCheckpointKey: "placement_finalize"');
   });
 
   it("self-invokes through the in-home worker function URL and secret", () => {

@@ -30,6 +30,42 @@ describe("PLAN-0068 in-home simulation checkpoint claim RPC migration", () => {
     expect(sql).toContain("for update skip locked");
   });
 
+  it("leaves checkpoints queued and recoverable when the cost meter is paused", () => {
+    const globalFn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.claim_in_home_simulation_checkpoint",
+      ),
+      sql.indexOf(
+        "create or replace function public.claim_specific_in_home_simulation_checkpoint",
+      ),
+    );
+    expect(globalFn).toContain(
+      "from public.claim_specific_in_home_simulation_checkpoint",
+    );
+
+    const fn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.claim_specific_in_home_simulation_checkpoint",
+      ),
+      sql.indexOf(
+        "create or replace function public.release_in_home_simulation_checkpoint_claim",
+      ),
+    );
+    const pauseIndex = fn.indexOf("if public.simulation_cost_meter_paused() then");
+    const candidateSelectIndex = fn.indexOf("select c.id");
+    const checkpointUpdateIndex = fn.indexOf(
+      "update public.in_home_simulation_checkpoints as c",
+    );
+    const jobUpdateIndex = fn.indexOf("update public.in_home_simulation_jobs as j");
+
+    expect(pauseIndex).toBeGreaterThan(-1);
+    expect(candidateSelectIndex).toBeGreaterThan(pauseIndex);
+    expect(checkpointUpdateIndex).toBeGreaterThan(pauseIndex);
+    expect(jobUpdateIndex).toBeGreaterThan(pauseIndex);
+    expect(fn).not.toContain("when public.simulation_cost_meter_paused()");
+    expect(fn).not.toContain("'failed'::public.simulation_checkpoint_status");
+  });
+
   it("creates a specific checkpoint claim RPC for queue-message wakeups", () => {
     expect(sql).toContain("create or replace function public.claim_specific_in_home_simulation_checkpoint");
     expect(sql).toContain("p_simulation_job_id uuid");
@@ -71,6 +107,28 @@ describe("PLAN-0068 in-home simulation checkpoint claim RPC migration", () => {
     expect(sql).toContain("next_job_status");
     expect(sql).toContain("last_regeneration_error_message");
     expect(sql).toContain("generated_output_count > 0");
+  });
+
+  it("preserves a previous result when a regeneration checkpoint fails", () => {
+    const fn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.release_in_home_simulation_checkpoint_claim",
+      ),
+      sql.indexOf("grant execute on function public.enqueue_in_home_simulation_checkpoint"),
+    );
+    expect(fn).toContain(
+      "and job_record.generated_output_count > 0 then 'succeeded'::public.simulation_job_status",
+    );
+    expect(fn).toContain("last_regeneration_error_message = case");
+    expect(fn).toContain("then p_safe_error_message");
+    expect(fn).toContain("reserved_generation_index = case");
+    expect(fn).toContain("then null");
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and job_record.generated_output_count > 0",
+    );
+    expect(fn).toContain(
+      "next_job_status = 'succeeded' and job_record.generated_output_count < 3",
+    );
   });
 
   it("grants all checkpoint helpers to service_role only", () => {

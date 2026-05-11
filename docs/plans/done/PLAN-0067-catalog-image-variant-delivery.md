@@ -3,7 +3,7 @@
 Plan: PLAN-0067
 Spec: SPEC-0009
 Change request: CR-SPEC-0009-SPEC-0012-SPEC-0013-catalog-image-variant-delivery
-Status: active
+Status: done
 Owner area: supabase
 Depends on: SPEC-0006, SPEC-0009, SPEC-0010, SPEC-0012, SPEC-0013, PLAN-0021, PLAN-0024, PLAN-0029, PLAN-0054, PLAN-0066
 Affected packages:
@@ -625,6 +625,14 @@ include that flag before writing to PROD.
 - The fabric render worker remains private-output only. It creates candidate
   variants so admin review can be fast, but candidate selection and publication
   remain separate administrator actions.
-- The DEV catalog snapshot file currently has local catalog rows but no variant
-  table. Snapshot export and validation must be updated before relying on
-  snapshot restore for this plan.
+- DEV and PROD catalog image variant backfills were run and validated manually
+  by Ahmed before this plan was closed.
+
+Closure note, 2026-05-11:
+
+- Variant schema, generation, preview routing, public catalog delivery, worker
+  output handling, scripts, and tests have shipped.
+- The DEV and PROD backfill commands were executed by Ahmed, including existing
+  production catalog assets that only had original images before this plan.
+- Follow-up production launch smoke testing for public simulation remains owned
+  by PLAN-0042; no additional catalog-variant plan remains active.

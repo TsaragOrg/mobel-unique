@@ -557,11 +557,13 @@ export class OpenAIPlacementProvider implements PlacementProvider {
     const targets = computeBackWallTargets(inputs);
     const useFeedbackLoop = this.measurementProvider !== null && targets !== null;
 
+    const initialFeedback = inputs.feedback ?? "";
+
     if (!useFeedbackLoop) {
       // Single-attempt path: corner mode, missing measurement provider, or
       // dimensions that prevent computing the target ratios. Behaviour is
       // identical to the v002 provider — one image_edits call, return as-is.
-      return await this.requestOnce(inputs, "");
+      return await this.requestOnce(inputs, initialFeedback);
     }
 
     type AttemptRecord = {
@@ -570,7 +572,7 @@ export class OpenAIPlacementProvider implements PlacementProvider {
       score: number;
     };
     const attempts: AttemptRecord[] = [];
-    let lastFeedback = "";
+    let lastFeedback = initialFeedback;
     let lastFailure: string = "";
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {

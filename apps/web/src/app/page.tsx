@@ -1,10 +1,11 @@
 /*
-RU: Этот файл нужен для главной страницы Mobel Unique. Пользователь видит бренд, видео с диваном, путь симуляции и полезные факты. Здесь можно сменить цвет дивана и открыть каталог через основную кнопку.
-FR: Ce fichier sert a la page d'accueil Mobel Unique. L'utilisateur voit la marque, la video du canape, le chemin de simulation et les points utiles. Ici, il peut changer la couleur du canape et ouvrir le catalogue avec le bouton principal.
+RU: Этот файл нужен для главной страницы Mobel Unique. Посетитель видит бренд, видео с диваном, путь симуляции и полезные факты. Здесь можно сменить цвет дивана, открыть каталог через основную кнопку или перейти к нижним правовым страницам.
+FR: Ce fichier sert a la page d'accueil Mobel Unique. Le visiteur voit la marque, la video du canape, le chemin de simulation et les points utiles. Ici, il peut changer la couleur du canape, ouvrir le catalogue avec le bouton principal ou aller aux pages legales en bas.
 */
 
 import type { Metadata } from "next";
 import { HomeHeroVideo } from "./home-hero-video";
+import { PUBLIC_LEGAL_LINKS } from "./public-legal-links";
 
 // RU: Эти данные задают заголовок вкладки и описание страницы для поиска.
 // FR: Ces donnees donnent le titre de l'onglet et le texte court pour la recherche.
@@ -112,9 +113,18 @@ export default function Home() {
         tissu.
       </p>
 
+      {/* RU: Нижняя часть показывает знак сайта, короткое обещание и спокойные правовые ссылки.
+      FR: La partie du bas montre la marque du site, une courte promesse et des liens legaux discrets. */}
       <footer className="home-footer">
         <span>MÖBEL UNIQUE</span>
         <span>Simulation privée, sélection maîtrisée.</span>
+        <nav className="home-footer-legal-links" aria-label="Liens legaux">
+          {PUBLIC_LEGAL_LINKS.map((link) => (
+            <a href={link.href} key={link.href}>
+              {link.label}
+            </a>
+          ))}
+        </nav>
       </footer>
     </main>
   );

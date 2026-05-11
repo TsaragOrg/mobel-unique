@@ -1,8 +1,17 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+/*
+RU: Этот файл проверяет страницу публичного каталога. Посетитель видит список диванов и общую нижнюю строку сайта. Здесь можно выбрать диван, открыть страницу политики конфиденциальности или открыть юридические сведения.
+FR: Ce fichier verifie la page du catalogue public. Le visiteur voit la liste des canapes et la ligne du bas du site. Ici, il peut choisir un canape, ouvrir la page de confidentialite ou ouvrir les mentions legales.
+*/
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import CatalogPage, { metadata } from "./page";
 
 describe("Catalog page", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders the public catalog shell", () => {
     render(<CatalogPage />);
 
@@ -18,6 +27,22 @@ describe("Catalog page", () => {
     expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/panier|checkout|prix|stock/i)).not.toBeInTheDocument();
+  });
+
+  it("exposes the shared privacy policy footer link", () => {
+    render(<CatalogPage />);
+
+    expect(
+      screen.getByRole("link", { name: "Politique de confidentialité" }),
+    ).toHaveAttribute("href", "/politique-de-confidentialite");
+  });
+
+  it("exposes the shared legal notice footer link", () => {
+    render(<CatalogPage />);
+
+    expect(
+      screen.getByRole("link", { name: "Mentions legales" }),
+    ).toHaveAttribute("href", "/mentions-legales");
   });
 
   it("defines indexable public metadata", () => {

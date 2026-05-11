@@ -9,7 +9,9 @@
 // expired). When the document has been hidden for longer than a
 // configurable grace period, polling pauses to spare the visitor's
 // battery and the worker's pgmq throughput; it resumes and re-fetches
-// as soon as visibility returns.
+// as soon as visibility returns. Browser offline events also pause
+// polling, and the controller refreshes immediately once connectivity
+// returns.
 
 import { useEffect, useRef, useState } from "react";
 
@@ -43,6 +45,11 @@ export interface SimulationPollDeps {
     isHidden: () => boolean;
     addChangeListener: (listener: () => void) => () => void;
   };
+  network?: {
+    isOnline: () => boolean;
+    addOfflineListener: (listener: () => void) => () => void;
+    addOnlineListener: (listener: () => void) => () => void;
+  };
 }
 
 export interface CreateSimulationPollerArgs {
@@ -73,13 +80,19 @@ export function createSimulationPoller(
   let pauseTimeoutHandle: unknown = null;
   let retryTimeoutHandle: unknown = null;
   let visibilityUnsub: (() => void) | null = null;
+  let offlineUnsub: (() => void) | null = null;
+  let onlineUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
   let inFlight = false;
   let consecutiveErrors = 0;
 
+  function isOnline() {
+    return args.deps.network?.isOnline() ?? true;
+  }
+
   function tick() {
-    if (inFlight || stopped) return;
+    if (inFlight || stopped || !isOnline()) return;
     inFlight = true;
     args
       .fetchStatus()
@@ -92,7 +105,11 @@ export function createSimulationPoller(
           clearRetryTimeout();
           return;
         }
-        if (intervalHandle === null && !args.deps.visibility.isHidden()) {
+        if (
+          intervalHandle === null &&
+          !args.deps.visibility.isHidden() &&
+          isOnline()
+        ) {
           startInterval();
         }
       })
@@ -134,7 +151,11 @@ export function createSimulationPoller(
   }
 
   function scheduleRetryAfterError() {
-    if (retryTimeoutHandle !== null || args.deps.visibility.isHidden()) {
+    if (
+      retryTimeoutHandle !== null ||
+      args.deps.visibility.isHidden() ||
+      !isOnline()
+    ) {
       return;
     }
     const delayMs =
@@ -160,10 +181,26 @@ export function createSimulationPoller(
       return;
     }
     clearPauseTimeout();
-    if (intervalHandle === null) {
+    if (intervalHandle === null && isOnline()) {
       startInterval();
       tick();
     }
+  }
+
+  function onOffline() {
+    if (stopped) return;
+    clearActiveInterval();
+    clearRetryTimeout();
+    clearPauseTimeout();
+  }
+
+  function onOnline() {
+    if (stopped || args.deps.visibility.isHidden()) return;
+    clearPauseTimeout();
+    if (intervalHandle === null) {
+      startInterval();
+    }
+    tick();
   }
 
   return {
@@ -171,8 +208,14 @@ export function createSimulationPoller(
       if (started || stopped) return;
       started = true;
       visibilityUnsub = args.deps.visibility.addChangeListener(onVisibilityChange);
-      startInterval();
-      tick();
+      offlineUnsub =
+        args.deps.network?.addOfflineListener(onOffline) ?? null;
+      onlineUnsub =
+        args.deps.network?.addOnlineListener(onOnline) ?? null;
+      if (isOnline()) {
+        startInterval();
+        tick();
+      }
     },
     stop() {
       if (stopped) return;
@@ -184,9 +227,17 @@ export function createSimulationPoller(
         visibilityUnsub();
         visibilityUnsub = null;
       }
+      if (offlineUnsub) {
+        offlineUnsub();
+        offlineUnsub = null;
+      }
+      if (onlineUnsub) {
+        onlineUnsub();
+        onlineUnsub = null;
+      }
     },
     refresh() {
-      if (stopped) return;
+      if (stopped || !isOnline()) return;
       clearRetryTimeout();
       tick();
     }
@@ -294,6 +345,24 @@ function defaultBrowserPollDeps(): SimulationPollDeps {
         }
         document.addEventListener("visibilitychange", listener);
         return () => document.removeEventListener("visibilitychange", listener);
+      }
+    },
+    network: {
+      isOnline: () =>
+        typeof navigator === "undefined" || navigator.onLine !== false,
+      addOfflineListener: (listener) => {
+        if (typeof window === "undefined") {
+          return () => undefined;
+        }
+        window.addEventListener("offline", listener);
+        return () => window.removeEventListener("offline", listener);
+      },
+      addOnlineListener: (listener) => {
+        if (typeof window === "undefined") {
+          return () => undefined;
+        }
+        window.addEventListener("online", listener);
+        return () => window.removeEventListener("online", listener);
       }
     }
   };

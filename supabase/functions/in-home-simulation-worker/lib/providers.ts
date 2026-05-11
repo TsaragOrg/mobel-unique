@@ -27,7 +27,10 @@ import {
   type CornersResult
 } from "./providers/openai-corners.ts";
 import { OpenAIPlacementProvider } from "./providers/openai-placement.ts";
-import { OpenAIPlacementMeasurementProvider } from "./providers/openai-placement-measurement.ts";
+import {
+  OpenAIPlacementMeasurementProvider,
+  type PlacementMeasurementProvider
+} from "./providers/openai-placement-measurement.ts";
 import { resolveOpenAIFetchTimeoutMs } from "./providers/openai-fetch.ts";
 
 export type SceneMode = "back_wall" | "corner";
@@ -67,6 +70,7 @@ export type PlacementInputs = {
   cleanedRoomBytes: Uint8Array;
   cleanedRoomWidth: number;
   cleanedRoomHeight: number;
+  feedback?: string;
   preparedSofaBytes: Uint8Array | null;
   mode: SceneMode;
   suppliedDimensions: Record<string, number>;
@@ -102,6 +106,7 @@ export type Stage1Providers = {
 
 export type Stage2Providers = {
   placement: PlacementProvider;
+  measurement: PlacementMeasurementProvider | null;
 };
 
 export class MockValidationProvider implements ValidationProvider {
@@ -252,7 +257,10 @@ export function selectStage2Providers(
   envGetter: (name: string) => string | undefined = () => undefined
 ): Stage2Providers {
   if (isProviderModeMock(providerMode)) {
-    return { placement: new MockPlacementProvider() };
+    return {
+      placement: new MockPlacementProvider(),
+      measurement: null
+    };
   }
   if (isProviderModeLive(providerMode)) {
     const openaiKey = envGetter("OPENAI_API_KEY");
@@ -271,9 +279,9 @@ export function selectStage2Providers(
     return {
       placement: new OpenAIPlacementProvider({
         apiKey: openaiKey,
-        measurementProvider,
         fetchTimeoutMs
-      })
+      }),
+      measurement: measurementProvider
     };
   }
   throw new Error(

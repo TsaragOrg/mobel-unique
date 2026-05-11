@@ -29,6 +29,13 @@ describe("PLAN-0068 in-home simulation checkpoint pump status migration", () => 
     expect(sql).toContain("'worker_paused'");
   });
 
+  it("keeps queued checkpoints visible while reporting paused capacity", () => {
+    expect(sql).toContain("'queued', claimable_checkpoint_count");
+    expect(sql).toContain("when worker_paused then 0");
+    expect(sql).toContain("when worker_paused then 'paused'");
+    expect(sql).not.toContain("when worker_paused then 'failed'");
+  });
+
   it("counts durable claimable checkpoints without relying on queue messages", () => {
     expect(sql).toContain("from public.in_home_simulation_checkpoints as c");
     expect(sql).toContain("join public.in_home_simulation_jobs as j");

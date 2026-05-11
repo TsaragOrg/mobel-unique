@@ -10,7 +10,3 @@ continues.
 | Plan | Spec | Status | Owner area | Summary |
 | ---- | ---- | ------ | ---------- | ------- |
 | PLAN-0042 | SPEC-0015 | active | workflow | Production launch test, cross-team sign-off, and operations runbook. |
-| PLAN-0052 | SPEC-0014 | active | web | Sofa edit operational redesign for sober admin UX, clearer tab hierarchy, quieter controls, richer render cells, larger cell detail, and export relocation. |
-| PLAN-0067 | SPEC-0009 | active | supabase | Durable stored small and medium catalog image variants for admin render review, public catalog cards, publication, worker output, and backfill. |
-| PLAN-0068 | SPEC-0007 | active | supabase | In-home simulation durable checkpoints and Realtime progress; this remains the target plan for replacing request-time pumping. |
-| PLAN-0074 | SPEC-0015 | active | web | Public simulation email gate replacement using Supabase Auth email OTP with configured SMTP, application-owned simulation sessions, and 24-hour identity cleanup. |

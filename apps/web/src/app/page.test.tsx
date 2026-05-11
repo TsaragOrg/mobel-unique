@@ -1,6 +1,6 @@
 /*
-RU: Этот файл проверяет главную страницу. Пользователь видит бренд, видео, шаги и кнопку выбора дивана. Здесь можно сменить цвет дивана и открыть каталог.
-FR: Ce fichier verifie la page d'accueil. L'utilisateur voit la marque, la video, les etapes et le bouton pour choisir un canape. Ici, il peut changer la couleur du canape et ouvrir le catalogue.
+RU: Этот файл проверяет главную страницу. Посетитель видит бренд, видео, шаги, кнопку выбора дивана и нижние правовые ссылки. Здесь можно сменить цвет дивана, открыть каталог, перейти к политике конфиденциальности или открыть юридические сведения.
+FR: Ce fichier verifie la page d'accueil. Le visiteur voit la marque, la video, les etapes, le bouton pour choisir un canape et les liens legaux en bas. Ici, il peut changer la couleur du canape, ouvrir le catalogue, aller a la page de confidentialite ou ouvrir les mentions legales.
 */
 
 import {
@@ -151,6 +151,29 @@ describe("Home page", () => {
     expect(
       reverseVideo?.querySelector('source[type="video/mp4"]'),
     ).toHaveAttribute("src", "/videos/home-sofa-transform-reverse.mp4");
+  });
+
+  it("links to the privacy policy from the home footer", () => {
+    render(<Home />);
+
+    const privacyLink = screen.getByRole("link", {
+      name: "Politique de confidentialité",
+    });
+
+    expect(privacyLink).toHaveAttribute(
+      "href",
+      "/politique-de-confidentialite",
+    );
+  });
+
+  it("links to the legal notice from the home footer", () => {
+    render(<Home />);
+
+    const legalNoticeLink = screen.getByRole("link", {
+      name: "Mentions legales",
+    });
+
+    expect(legalNoticeLink).toHaveAttribute("href", "/mentions-legales");
   });
 
   it("does not autoplay the transformation for reduced motion users", async () => {
