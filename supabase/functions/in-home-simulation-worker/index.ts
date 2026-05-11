@@ -16,6 +16,12 @@ import {
   selectStage2Providers,
   type SceneMode
 } from "./lib/providers.ts";
+import {
+  buildPlacementFeedback,
+  computeBackWallTargets,
+  isPlacementWithinTolerance,
+  MAX_PLACEMENT_ATTEMPTS
+} from "./lib/providers/openai-placement.ts";
 import { decideStageFailureAction } from "./lib/retry.ts";
 import {
   validateSuppliedBackWallDimensions,
@@ -1804,6 +1810,81 @@ function resolvePlacementOutputArtifact(claim: PlacementClaimRow): {
   };
 }
 
+type PlacementFeedbackState = {
+  attemptCount: number;
+  feedback: string;
+};
+
+function placementFeedbackStatePath(
+  claim: PlacementClaimRow,
+  generationIndex: number
+): string {
+  return `${claim.storage_prefix}/outputs/output-${generationIndex}-feedback.json`;
+}
+
+function parsePlacementFeedbackState(
+  bytes: Uint8Array
+): PlacementFeedbackState | null {
+  try {
+    const raw = new TextDecoder().decode(bytes);
+    const parsed = JSON.parse(raw) as {
+      attempt_count?: unknown;
+      feedback?: unknown;
+    };
+    if (
+      typeof parsed.attempt_count !== "number" ||
+      !Number.isInteger(parsed.attempt_count) ||
+      parsed.attempt_count < 1 ||
+      typeof parsed.feedback !== "string"
+    ) {
+      return null;
+    }
+    return {
+      attemptCount: parsed.attempt_count,
+      feedback: parsed.feedback
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function readPlacementFeedbackState(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  claim: PlacementClaimRow,
+  generationIndex: number
+): Promise<PlacementFeedbackState | null> {
+  try {
+    const bytes = await downloadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      placementFeedbackStatePath(claim, generationIndex)
+    );
+    return parsePlacementFeedbackState(bytes);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function writePlacementFeedbackState(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  claim: PlacementClaimRow,
+  generationIndex: number,
+  state: PlacementFeedbackState
+): Promise<void> {
+  await uploadStorageObject(
+    supabaseUrl,
+    serviceRoleKey,
+    placementFeedbackStatePath(claim, generationIndex),
+    new TextEncoder().encode(JSON.stringify({
+      attempt_count: state.attemptCount,
+      feedback: state.feedback
+    })),
+    "application/json"
+  );
+}
+
 async function processPlacementJob(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -1864,6 +1945,21 @@ async function processPlacementJob(
 
   const scratchDir = await createScratchDir(claim.job_id);
   try {
+    const { generationIndex, outputPath } =
+      resolvePlacementOutputArtifact(claim);
+    const feedbackState = await readPlacementFeedbackState(
+      supabaseUrl,
+      serviceRoleKey,
+      claim,
+      generationIndex
+    );
+    logWorkerStep("placement_feedback_state_loaded", {
+      feedback_attempt_count: feedbackState?.attemptCount ?? 1,
+      has_feedback: Boolean(feedbackState?.feedback),
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+
     logWorkerStep("placement_download_cleaned_started", {
       job_id: claim.job_id,
       worker_identifier: workerIdentifier
@@ -2008,6 +2104,7 @@ async function processPlacementJob(
       cleanedRoomWidth: cleanedImage.width,
       cleanedRoomHeight: cleanedImage.height,
       preparedSofaBytes,
+      feedback: feedbackState?.feedback ?? "",
       mode: claim.room_geometry_mode,
       suppliedDimensions,
       position
@@ -2086,9 +2183,6 @@ async function processPlacementJob(
 
     const outputBytes = await outputImage.encode(0);
     await Deno.writeFile(`${scratchDir}/output.png`, outputBytes);
-
-    const { generationIndex, outputPath } =
-      resolvePlacementOutputArtifact(claim);
 
     logWorkerStep("placement_upload_output_started", {
       byte_length: outputBytes.length,
@@ -2238,6 +2332,189 @@ async function runPlacementFinalizeCheckpoint(
   } finally {
     await removeScratchDir(scratchDir);
   }
+}
+
+async function runPlacementMeasurementCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: PlacementClaimRow,
+  completion: CheckpointCompletion,
+  retryGenerationCompletion: CheckpointCompletion
+): Promise<void> {
+  const { generationIndex, outputPath } = resolvePlacementOutputArtifact(claim);
+  logWorkerStep("placement_measurement_started", {
+    attempt: claim.placement_attempt_count,
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    output_object_path: outputPath,
+    worker_identifier: workerIdentifier
+  });
+
+  const suppliedDimensions = (claim.supplied_dimensions ?? {}) as Record<
+    string,
+    number
+  >;
+  const positionRaw = (claim.supplied_dimensions as
+    | Record<string, unknown>
+    | null)?.position;
+  const position: "left" | "center" | "right" | undefined =
+    positionRaw === "left" || positionRaw === "right" ||
+      positionRaw === "center"
+      ? positionRaw
+      : undefined;
+
+  const targets = computeBackWallTargets({
+    cleanedRoomBytes: new Uint8Array([1]),
+    cleanedRoomWidth: 1,
+    cleanedRoomHeight: 1,
+    preparedSofaBytes: null,
+    mode: claim.room_geometry_mode,
+    suppliedDimensions,
+    position
+  });
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage2Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+
+  if (!targets || !providers.measurement) {
+    logWorkerStep("placement_measurement_skipped", {
+      has_measurement_provider: Boolean(providers.measurement),
+      has_targets: Boolean(targets),
+      job_id: claim.job_id,
+      room_geometry_mode: claim.room_geometry_mode,
+      worker_identifier: workerIdentifier
+    });
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
+    logWorkerStep("placement_measurement_next_checkpoint_ready", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      next_checkpoint_key: completion.nextCheckpointKey,
+      worker_identifier: workerIdentifier
+    });
+    return;
+  }
+
+  logWorkerStep("placement_measurement_download_output_started", {
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    output_object_path: outputPath,
+    worker_identifier: workerIdentifier
+  });
+  const outputBytes = await downloadStorageObject(
+    supabaseUrl,
+    serviceRoleKey,
+    outputPath
+  );
+  logWorkerStep("placement_measurement_download_output_completed", {
+    byte_length: outputBytes.length,
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    worker_identifier: workerIdentifier
+  });
+
+  const measurement = await providers.measurement.measureSofa(outputBytes);
+  const costMeter = makeSupabaseCostMeterClient({
+    supabaseUrl,
+    serviceRoleKey
+  });
+  const dailyCapCents = parseDailyCapCents(
+    Deno.env.get("SIMULATION_DAILY_COST_CAP_USD")
+  );
+  await chargeForRole(
+    costMeter,
+    "placement_measurement",
+    dailyCapCents,
+    (message) => console.warn(message)
+  );
+  logWorkerStep("placement_measurement_provider_completed", {
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    ok: measurement.ok,
+    provider_name: providers.measurement.name,
+    worker_identifier: workerIdentifier
+  });
+
+  if (!measurement.ok) {
+    throw new Error(`placement measurement failed: ${measurement.failureReason}`);
+  }
+
+  const feedbackState = await readPlacementFeedbackState(
+    supabaseUrl,
+    serviceRoleKey,
+    claim,
+    generationIndex
+  );
+  const currentAttemptCount = feedbackState?.attemptCount ?? 1;
+  const withinTolerance = isPlacementWithinTolerance(measurement, targets);
+  if (
+    !withinTolerance &&
+    currentAttemptCount < MAX_PLACEMENT_ATTEMPTS
+  ) {
+    const feedback = buildPlacementFeedback(
+      measurement,
+      targets,
+      "m",
+      Number(suppliedDimensions.sofa_width ?? 0),
+      Number(suppliedDimensions.sofa_height ?? 0)
+    );
+    await writePlacementFeedbackState(
+      supabaseUrl,
+      serviceRoleKey,
+      claim,
+      generationIndex,
+      {
+        attemptCount: currentAttemptCount + 1,
+        feedback
+      }
+    );
+    logWorkerStep("placement_measurement_feedback_written", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      next_attempt_count: currentAttemptCount + 1,
+      worker_identifier: workerIdentifier
+    });
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      retryGenerationCompletion
+    );
+    logWorkerStep("placement_measurement_next_checkpoint_ready", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      next_checkpoint_key: retryGenerationCompletion.nextCheckpointKey,
+      worker_identifier: workerIdentifier
+    });
+    return;
+  }
+
+  logWorkerStep("placement_measurement_accepted", {
+    attempt_count: currentAttemptCount,
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    within_tolerance: withinTolerance,
+    worker_identifier: workerIdentifier
+  });
+  await completeCheckpointClaim(
+    supabaseUrl,
+    serviceRoleKey,
+    workerIdentifier,
+    completion
+  );
+  logWorkerStep("placement_measurement_next_checkpoint_ready", {
+    generation_index: generationIndex,
+    job_id: claim.job_id,
+    next_checkpoint_key: completion.nextCheckpointKey,
+    worker_identifier: workerIdentifier
+  });
 }
 
 function roomPrepClaimFromCheckpoint(
@@ -2401,12 +2678,36 @@ async function processClaimedCheckpoint(
       {
         kind: "checkpoint",
         checkpointId: claim.checkpoint_id,
-        nextCheckpointKey: "placement_finalize",
+        nextCheckpointKey: "placement_measurement",
         progressStepOrdinal: 4,
         progressTotalSteps: 4
       }
     );
     return "placement_generation_completed";
+  }
+
+  if (claim.checkpoint_key === "placement_measurement") {
+    await runPlacementMeasurementCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      placementClaimFromCheckpoint(claim),
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "placement_finalize",
+        progressStepOrdinal: 4,
+        progressTotalSteps: 4
+      },
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "placement_generation",
+        progressStepOrdinal: 4,
+        progressTotalSteps: 4
+      }
+    );
+    return "placement_measurement_completed";
   }
 
   if (claim.checkpoint_key === "placement_finalize") {

@@ -12,9 +12,7 @@ const terminalOrVisitorActionKeys = new Set([
   "expired",
 ]);
 
-const intentionallyUnhandledExecutableKeys = [
-  "placement_measurement",
-];
+const intentionallyUnhandledExecutableKeys = [];
 
 function extractCheckpointKeys(source) {
   const match = source.match(/type SimulationCheckpointKey =([\s\S]*?);/);

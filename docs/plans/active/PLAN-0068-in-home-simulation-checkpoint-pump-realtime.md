@@ -194,7 +194,7 @@ operator tooling, not part of the visitor workflow.
       executable checkpoint.
 - [x] Refactor any remaining broad pump behavior into dispatch-only
       orchestration or remove it from the normal flow.
-- [ ] Refactor room validation, room cleaning, corners, dimension-guide,
+- [x] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
       into bounded checkpoints.
 - [x] Split `dimension_guide` out of `room_corners`: the corners checkpoint now
@@ -207,10 +207,12 @@ operator tooling, not part of the visitor workflow.
       then a separate finalize checkpoint downloads that output, records the
       generated-output row, updates the job result state, and advances to the
       completed sentinel without replaying image generation.
-      Current intentionally unhandled executable checkpoints:
-      - `placement_measurement`: still folded into `placement_generation`;
-        split pending so measurement can fail/retry without replaying image
-        generation.
+- [x] Split `placement_measurement` out of `placement_generation`: the generation
+      checkpoint now runs one placement-provider attempt with optional stored
+      feedback, the measurement checkpoint downloads that output, measures it,
+      writes bounded corrective feedback when needed, and either re-enqueues
+      generation or advances to finalization without replaying generation for
+      measurement-only retries.
 - [ ] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
 - [x] Preserve previous successful output when a regeneration checkpoint fails.
