@@ -38,6 +38,17 @@ describe("PLAN-0057 worker uses supabaseFetchWithTimeout for every internal call
     ).toBeGreaterThanOrEqual(2);
   });
 
+  it("uses service-role apikey headers for storage uploads", async () => {
+    const source = await readFile(workerPath, "utf8");
+    const fnIndex = source.indexOf("async function uploadStorageObject");
+    const nextFnIndex = source.indexOf("\nasync function ", fnIndex + 1);
+    const body = source.slice(fnIndex, nextFnIndex);
+
+    expect(body).toContain('"Authorization": `Bearer ${serviceRoleKey}`');
+    expect(body).toContain('"apikey": serviceRoleKey');
+    expect(body).toContain('"x-upsert": "true"');
+  });
+
   it("wraps recordWorkerEvent through the helper", async () => {
     const source = await readFile(workerPath, "utf8");
     const fnIndex = source.indexOf("async function recordWorkerEvent");

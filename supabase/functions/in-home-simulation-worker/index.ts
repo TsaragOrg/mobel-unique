@@ -649,6 +649,7 @@ async function uploadStorageObject(
       method: "POST",
       headers: {
         "Authorization": `Bearer ${serviceRoleKey}`,
+        "apikey": serviceRoleKey,
         "Content-Type": contentType,
         "x-upsert": "true"
       },

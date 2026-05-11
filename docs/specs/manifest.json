@@ -81,7 +81,7 @@
       "layer": "technical",
       "parent": "SPEC-0004",
       "dependsOn": ["SPEC-0001", "SPEC-0003", "SPEC-0004"],
-      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034", "PLAN-0068"],
+      "implementationPlans": ["PLAN-0010", "PLAN-0011", "PLAN-0012", "PLAN-0016", "PLAN-0034", "PLAN-0068", "PLAN-0079"],
       "path": "docs/specs/accepted/SPEC-0007-in-home-simulation-worker.md",
       "areas": ["api", "supabase"]
     },
