@@ -2945,7 +2945,7 @@ button:disabled {
 .admin-action-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin: 0;
 }
 
@@ -3053,6 +3053,179 @@ button:disabled {
 .admin-icon-button {
   min-width: 36px;
   padding: 7px;
+}
+
+.admin-leads-page {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-leads-filters {
+  background: var(--admin-paper);
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.admin-leads-filter-row {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-leads-filter-row label {
+  color: var(--admin-muted);
+  display: grid;
+  font-size: 0.85rem;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.admin-leads-filter-row button,
+.admin-leads-filter-row input,
+.admin-leads-filter-row select,
+.admin-leads-table button,
+.admin-leads-dialog button {
+  background: #ffffff;
+  border: 1px solid var(--admin-line);
+  border-radius: 999px;
+  color: var(--admin-ink);
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.admin-leads-filter-row input,
+.admin-leads-filter-row select {
+  border-radius: 8px;
+  min-width: 180px;
+}
+
+.admin-leads-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-leads-table-wrap {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.admin-leads-table {
+  background: var(--admin-paper);
+  border-collapse: collapse;
+  min-width: 760px;
+  width: 100%;
+}
+
+.admin-leads-table th,
+.admin-leads-table td {
+  border-bottom: 1px solid var(--admin-line);
+  padding: 14px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-leads-table th {
+  color: var(--admin-soft);
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-leads-delete-confirm {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.admin-leads-delete-confirm p {
+  color: var(--admin-muted);
+  flex-basis: 100%;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.admin-leads-dialog-scrim {
+  align-items: center;
+  background: rgb(23 23 23 / 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.admin-leads-dialog {
+  background: var(--admin-paper);
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.22);
+  display: grid;
+  gap: 16px;
+  max-height: min(760px, calc(100vh - 48px));
+  max-width: 860px;
+  overflow: hidden;
+  padding: 20px;
+  width: min(100%, 860px);
+}
+
+.admin-leads-dialog-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.admin-leads-dialog-header h2 {
+  font-size: 1.35rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.admin-leads-job-list {
+  display: grid;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-leads-job-card {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.admin-leads-preview {
+  align-items: center;
+  aspect-ratio: 4 / 3;
+  background: #f3f1ed;
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  color: var(--admin-muted);
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.admin-leads-preview img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.admin-leads-job-card h3,
+.admin-leads-job-card p {
+  margin: 0 0 6px;
 }
 
 .admin-delete-icon {

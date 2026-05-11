@@ -181,6 +181,7 @@ export const ADMIN_COPY = {
       editFabric: "Modifier le tissu | Mobel Unique",
       editSofa: "Modifier le canapé | Mobel Unique",
       fabrics: "Tissus | Mobel Unique",
+      leads: "Leads simulation | Mobel Unique",
       login: "Connexion admin | Mobel Unique",
       newFabric: "Créer un tissu | Mobel Unique",
       newSofa: "Créer un canapé | Mobel Unique",
@@ -214,6 +215,12 @@ export const ADMIN_COPY = {
         kicker: "Matières",
         label: "Tissus",
       },
+      leads: {
+        description:
+          "Suivre les emails avec accord commercial, les demandes et les suppressions.",
+        kicker: "Simulation",
+        label: "Leads simulation",
+      },
       newSofa: {
         description: "Commencer une nouvelle fiche canapé.",
         kicker: "Création",
@@ -237,6 +244,56 @@ export const ADMIN_COPY = {
     eyebrow: "Espace de travail",
     signOut: "Se déconnecter",
     title: "Tableau de bord admin",
+  },
+  leads: {
+    actions: {
+      applyDates: "Appliquer les dates",
+      cancelDelete: "Annuler",
+      clear: "Effacer",
+      close: "Fermer",
+      confirmDelete: "Confirmer la suppression",
+      delete: "Supprimer",
+      lastDay: "Dernier jour",
+      lastMonth: "Dernier mois",
+      lastWeek: "Dernière semaine",
+      search: "Rechercher",
+    },
+    empty: {
+      noEmailMatch: "Aucun lead pour cet email.",
+      noFilteredLeads: "Aucun lead pour ce filtre.",
+      noPreview: "Aucun aperçu",
+      noRetainedLeads: "Aucun lead conservé.",
+    },
+    errors: {
+      jobsLoadFailed: "Impossible de charger les demandes.",
+      listLoadFailed: "Impossible de charger les leads.",
+    },
+    labels: {
+      customDates: "Dates libres",
+      deleteLead: "Supprimer",
+      email: "Email",
+      exactEmail: "Email exact",
+      from: "Début",
+      jobs: "Demandes",
+      lastSimulation: "Dernière simulation",
+      sort: "Tri",
+      to: "Fin",
+    },
+    page: {
+      description:
+        "Emails avec accord de contact commercial, demandes liées et retrait des traces email du site.",
+      eyebrow: "Simulation",
+      title: "Leads simulation",
+    },
+    sort: {
+      newest: "Plus récents",
+      oldest: "Plus anciens",
+    },
+    text: {
+      deleteConfirm:
+        "Retirer cet email du tableau et des traces email du site ?",
+      loading: "Chargement des leads.",
+    },
   },
   errors: {
     codes: {
@@ -286,6 +343,9 @@ export const ADMIN_COPY = {
       SOFA_NOT_FOUND: "Le canapé est introuvable.",
       SOFA_RENDER_EXPORT_NOT_FOUND: "L'export des rendus est introuvable.",
       STORAGE_ASSET_NOT_FOUND: "L'image enregistrée est introuvable.",
+      SIMULATION_LEAD_NOT_FOUND: "Le lead de simulation est introuvable.",
+      SIMULATION_LEADS_UNAVAILABLE:
+        "Les leads de simulation sont indisponibles. Réessayez.",
       TAG_CONFLICT:
         "Une étiquette utilise déjà ce libellé ou cette adresse.",
       TAG_IN_USE:
@@ -357,6 +417,7 @@ export const ADMIN_COPY = {
     navigation: {
       dashboard: "Tableau de bord",
       fabrics: "Tissus",
+      leads: "Leads",
       sofas: "Canapés",
       tags: "Étiquettes",
     },

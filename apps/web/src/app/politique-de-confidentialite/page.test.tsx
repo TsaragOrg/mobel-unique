@@ -1,6 +1,6 @@
 /*
 RU: Этот файл проверяет публичную страницу политики конфиденциальности. Посетитель видит короткие правила о данных, симуляции и контакте. Здесь можно прочитать, какие данные нужны и как написать по вопросам конфиденциальности.
-FR: Ce fichier verifie la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la simulation et le contact. Ici, il peut lire quelles donnees sont utiles et comment ecrire pour la confidentialite.
+FR: Ce fichier verifie la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la simulation, le contact et les fiches gardees avec accord. Ici, il peut lire quelles donnees sont utiles et comment ecrire pour la confidentialite.
 */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -16,6 +16,8 @@ describe("Privacy policy page", () => {
 
     render(<PrivacyPolicyPage />);
 
+    // RU: Этот текст нужен для проверки слов, которые видит посетитель.
+    // FR: Ce texte sert a verifier les mots vus par le visiteur.
     const pageText = document.body.textContent ?? "";
 
     expect(pageText).not.toContain("MVP");
@@ -58,6 +60,8 @@ describe("Privacy policy page", () => {
 
     render(<PrivacyPolicyPage />);
 
+    // RU: Этот текст нужен для проверки правил и прав посетителя.
+    // FR: Ce texte sert a verifier les regles et les droits du visiteur.
     const pageText = document.body.textContent ?? "";
 
     expect(pageText).toContain("lancer la visualisation demandée");
@@ -90,6 +94,35 @@ describe("Privacy policy page", () => {
     ).toHaveAttribute("href", "mailto:mobel.unique.it@gmail.com");
   });
 
+  it("explains retained commercial contact records and deletion", async () => {
+    const { default: PrivacyPolicyPage } = await import("./page");
+
+    render(<PrivacyPolicyPage />);
+
+    // RU: Этот текст нужен для проверки сохраненной записи при согласии на контакт.
+    // FR: Ce texte sert a verifier la fiche gardee avec accord de contact.
+    const pageText = document.body.textContent ?? "";
+
+    expect(pageText).toContain(
+      "Votre accord facultatif pour un contact commercial peut créer une fiche de contact conservée.",
+    );
+    expect(pageText).toContain(
+      "Cette fiche peut contenir votre e-mail lisible pour une personne autorisée de MÖBEL UNIQUE",
+    );
+    expect(pageText).toContain("canapé choisi");
+    expect(pageText).toContain("tissu choisi");
+    expect(pageText).toContain("position visuelle choisie");
+    expect(pageText).toContain("date de simulation");
+    expect(pageText).toContain("statut sans information privée");
+    expect(pageText).toContain(
+      "Les photos de pièce et les résultats générés restent supprimés au plus tard 24 heures après leur création.",
+    );
+    expect(pageText).toContain("Vous pouvez demander la suppression de cette fiche.");
+    expect(pageText).toContain(
+      "La suppression retire aussi l'identité e-mail gardée par le site.",
+    );
+  });
+
   it("defines safe French metadata without private values", async () => {
     const { metadata } = await import("./page");
     const serializedMetadata = JSON.stringify(metadata);
@@ -109,6 +142,8 @@ describe("Privacy policy page", () => {
 
     render(<PrivacyPolicyPage />);
 
+    // RU: Этот текст нужен для проверки, что страница не раскрывает лишние детали.
+    // FR: Ce texte sert a verifier que la page ne montre pas de details en trop.
     const pageText = document.body.textContent ?? "";
 
     expect(pageText).not.toMatch(

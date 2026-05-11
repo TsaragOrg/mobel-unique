@@ -1,0 +1,35 @@
+import { cookies, headers } from "next/headers";
+import { ADMIN_TRUSTED_DEVICE_COOKIE } from "../../../../lib/admin-auth";
+import { handleListAdminSimulationLeadsRequest } from "../../../../lib/admin-simulation-leads-route-handlers";
+import { createSupabaseAdminSimulationLeadsStore } from "../../../../lib/admin-simulation-leads-server";
+import { handleAdminAuthUnavailableRequest } from "../../../../lib/admin-route-handlers";
+import { createServerAdminAuth } from "../../../../lib/admin-server";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function GET(request: Request) {
+  try {
+    const adminInput = await readAdminInput();
+
+    return handleListAdminSimulationLeadsRequest({
+      ...adminInput,
+      request,
+    });
+  } catch {
+    return handleAdminAuthUnavailableRequest();
+  }
+}
+
+async function readAdminInput() {
+  const headerStore = await headers();
+  const cookieStore = await cookies();
+
+  return {
+    adminAuth: createServerAdminAuth(),
+    authorizationHeader: headerStore.get("authorization") ?? undefined,
+    createStore: createSupabaseAdminSimulationLeadsStore,
+    trustedDeviceSecret:
+      cookieStore.get(ADMIN_TRUSTED_DEVICE_COOKIE)?.value ?? undefined,
+  };
+}

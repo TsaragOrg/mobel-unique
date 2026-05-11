@@ -23,6 +23,8 @@ It follows:
 - `SPEC-0010 API Contracts And Edge Functions`, which defines `/api/admin/*`, upload, render coverage, publication, ZIP export, worker, cleanup, and public route contracts;
 - `SPEC-0011 Admin Authentication And Authorization`, which defines Supabase Auth, trusted admin device sessions, the first-party Next.js admin API facade, and admin authorization boundaries;
 - `SPEC-0012 Public Frontend Experience And Page Flows`, which defines public route behavior that admin copy/open-link flows must target.
+- `SPEC-0020 Admin Simulation Leads Dashboard`, which defines the separate
+  consent-backed lead dashboard route and safe simulation lead data boundaries.
 
 This spec is expected to feed admin web implementation plans, route structure, component planning, frontend tests, and QA scenarios.
 
@@ -42,6 +44,8 @@ Define the MVP admin frontend route map and page-by-page workflow so that the si
 - publish only complete public sofa experiences;
 - copy the public visualization link for Shopify;
 - request and download ZIP exports for draft or published sofas;
+- review consent-backed simulation leads without exposing visitor private image
+  content or technical identifiers;
 - see lightweight operational state without exposing visitor private image content.
 
 The admin frontend must be task-focused, mobile-capable, secure by default, and strict about public/private boundaries.
@@ -63,6 +67,7 @@ This spec includes:
 - render coverage matrix, manual render, generation job, candidate review, and current-render selection flows;
 - publication, unpublication, archive, and destructive confirmation flows;
 - ZIP export request, status, and download flows;
+- protected simulation leads dashboard entry point and route boundary;
 - mobile admin behavior;
 - loading, empty, validation, error, stale data, and conflict states;
 - frontend testing requirements.
@@ -129,6 +134,7 @@ The MVP admin frontend must expose these protected routes:
 | `/admin/fabrics/new`         | Create a fabric.                                                                     |
 | `/admin/fabrics/[fabric_id]` | Edit or archive one fabric.                                                          |
 | `/admin/tags`                | Manage reusable public tags.                                                         |
+| `/admin/leads`               | Consent-backed simulation leads dashboard defined by `SPEC-0020`.                   |
 | `/admin/operations`          | Lightweight operational overview placeholder and future simulation metadata surface. |
 
 The sofa edit route owns the main per-sofa workflow and must expose sections for:
@@ -156,7 +162,7 @@ The protected admin shell must include:
 
 - current authenticated admin state or a compact account indicator;
 - logout action;
-- primary navigation to dashboard, sofas, fabrics, tags, and operations;
+- primary navigation to dashboard, sofas, fabrics, tags, leads, and operations;
 - safe loading state while session validation runs;
 - safe unauthorized state;
 - mobile navigation that does not block core edit actions.
@@ -216,6 +222,7 @@ The dashboard must show:
 - recently updated sofas;
 - render jobs needing attention when available from sofa render coverage data;
 - quick actions to create a sofa, create a fabric, open tags, and open the sofa list;
+- entry point to the simulation leads dashboard defined by `SPEC-0020`;
 - entry point to the lightweight operations page.
 
 Rules:
@@ -711,6 +718,44 @@ The section uses:
 - `expires_at`, when shown, applies only to the generated ZIP artifact cache, not to the admin's ability to request a new export later;
 - export errors must be safe and actionable.
 
+## Page: Simulation Leads `/admin/leads`
+
+### Objective
+
+Provide the consent-backed simulation lead dashboard defined by `SPEC-0020`
+without exposing private visitor image content, private storage details, or
+technical identifiers.
+
+### Contract Owner
+
+`SPEC-0020` owns the detailed lead dashboard behavior, data model, admin API
+contracts, deletion rules, privacy requirements, and test requirements.
+
+This spec records the route and shared admin frontend boundary so the admin
+route map remains complete.
+
+### Required UI
+
+The page must follow `SPEC-0020` and show only the safe lead information needed
+for follow-up:
+
+- one grouped row per opted-in email address;
+- latest matching simulation date;
+- matching jobs count;
+- date filtering, exact email search, and newest or oldest sorting;
+- one central jobs modal with safe catalog sofa render previews;
+- confirmed deletion for removing the email identity from app-owned records.
+
+Rules:
+
+- the page requires the same admin authorization as other protected admin
+  routes;
+- the page must use only the first-party `/api/admin/*` facade;
+- the page must not show customer room photos, generated customer room outputs,
+  private storage paths, signed URLs, internal ids, consent ids, session ids,
+  verification request ids, or service details;
+- the page must not reuse `/admin/operations` as the lead dashboard.
+
 ## Page: Operations `/admin/operations`
 
 ### Objective
@@ -720,6 +765,10 @@ Provide a future lightweight operational overview of simulation jobs and usage w
 ### Current MVP Contract Status
 
 Accepted product and worker specs require a lightweight operational overview, but `SPEC-0010` does not yet define dedicated admin API endpoints for simulation operational listing.
+
+`SPEC-0020` defines a separate consent-backed lead dashboard under
+`/admin/leads`. That dashboard does not turn `/admin/operations` into a private
+simulation job listing.
 
 Until a future privacy, retention, abuse, operations, or API change request defines those endpoints, this page must not display private simulation operational data.
 
@@ -890,6 +939,8 @@ Implementation plans for this spec must add tests for:
 - unpublish and archive require confirmation;
 - ZIP export can be requested for draft and published sofas;
 - ZIP signed download URLs are not persisted as durable browser state;
+- `/admin/leads` follows `SPEC-0020` and does not expose private simulation
+  artifacts, signed URLs, storage paths, or technical identifiers;
 - admin pages never display raw private storage paths, service-role keys, provider keys, or stack traces;
 - operations page does not display private simulation data until a future accepted API/privacy spec defines allowed fields.
 
@@ -917,6 +968,8 @@ Implementation plans for this spec must add tests for:
 - Worker outputs remain private until admin selection and publication logic create public copies.
 - Publication readiness, publish, unpublish, and archive flows are defined.
 - ZIP export request, status, and download flows are defined for draft and published sofas.
+- The `/admin/leads` route is identified as the separate consent-backed lead
+  dashboard owned by `SPEC-0020`.
 - Lightweight simulation operations are identified as a required future API/privacy-dependent surface and must not expose private simulation content before that contract exists.
 - Mobile admin behavior is defined for core maintenance tasks.
 - Admin frontend error, empty, and conflict states are documented.
