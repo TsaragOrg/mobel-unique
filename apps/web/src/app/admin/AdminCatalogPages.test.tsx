@@ -135,6 +135,14 @@ function expectCandidateArrowButton(
   expect(button.querySelector(`.admin-arrow-icon-${direction}`)).not.toBe(null);
 }
 
+function openManualRenderUpload(dialog: HTMLElement) {
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Remplacer manuellement" }),
+  );
+
+  return within(dialog).getByLabelText("Rendu manuel");
+}
+
 // RU: Эта проверка нужна тестам, чтобы у окна была верхняя кнопка закрытия, как в картинках.
 // FR: Cette verification aide les tests a confirmer que la fenetre a le bouton fermer en haut, comme dans les images.
 function closeCenteredVisualMatrixDialog(dialog: HTMLElement) {
@@ -778,18 +786,17 @@ describe("Admin catalog pages", () => {
         name: "Administration",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Nouveau canapé" })).toHaveAttribute(
-      "href",
-      "/admin/sofas/new",
-    );
+    expect(
+      screen.getByRole("link", { name: "Nouveau canapé" }),
+    ).toHaveAttribute("href", "/admin/sofas/new");
     expect(await screen.findByText("Manual test sofa")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Photo source pour Canape test" }),
     ).toHaveAttribute("src", "https://storage.example/source-sofa-preview");
     expect(
-      within(screen.getByRole("link", { name: "Ouvrir Canape test" })).getByText(
-        "Brouillon",
-      ),
+      within(
+        screen.getByRole("link", { name: "Ouvrir Canape test" }),
+      ).getByText("Brouillon"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Shopify missing")).not.toBeInTheDocument();
     expect(screen.queryByText("Open")).not.toBeInTheDocument();
@@ -1104,7 +1111,9 @@ describe("Admin catalog pages", () => {
 
     render(<AdminSofasPage dependencies={emptyDependencies} />);
 
-    expect(await screen.findByText("Aucun canapé pour le moment.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Aucun canapé pour le moment."),
+    ).toBeInTheDocument();
 
     cleanup();
 
@@ -1169,7 +1178,9 @@ describe("Admin catalog pages", () => {
       });
     });
 
-    const convertibleInput = screen.getByLabelText("Nom de l'étiquette Convertible");
+    const convertibleInput = screen.getByLabelText(
+      "Nom de l'étiquette Convertible",
+    );
     const convertibleRow = convertibleInput.closest("form");
 
     expect(convertibleRow).not.toBeNull();
@@ -1198,7 +1209,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(convertibleInput, {
       target: { value: "Angle premium" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer Convertible" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer Convertible" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateTag).toHaveBeenCalled();
@@ -1261,7 +1274,8 @@ describe("Admin catalog pages", () => {
         purpose === "fabric_swatch" && fabricSwatchCrop
           ? {
               file: preparedSwatch,
-              message: "L'échantillon a été recadré en carré 512x512 avant l'envoi.",
+              message:
+                "L'échantillon a été recadré en carré 512x512 avant l'envoi.",
               resized: true,
             }
           : purpose === "fabric_ai_reference"
@@ -1395,7 +1409,9 @@ describe("Admin catalog pages", () => {
     expect(
       screen.queryByRole("button", { name: "Reset crop" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le recadrage" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le recadrage" }),
+    );
     expect(
       screen.getByRole("button", { name: "Recadrage enregistré" }),
     ).toBeInTheDocument();
@@ -1431,7 +1447,9 @@ describe("Admin catalog pages", () => {
     expect(
       screen.getByRole("img", { name: "Aperçu de la référence IA" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("reference.jpg")).toBeInTheDocument();
+    expect(screen.getAllByText("reference.jpg").length).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 
   it("keeps a selected swatch crop when save crop is clicked", async () => {
@@ -1459,7 +1477,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Zoom de l'échantillon"), {
       target: { value: "160" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le recadrage" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le recadrage" }),
+    );
     fireEvent.change(screen.getByLabelText("Image de référence IA"), {
       target: {
         files: [
@@ -1621,7 +1641,10 @@ describe("Admin catalog pages", () => {
       },
     });
     await screen.findByRole("group", { name: "Recadrage de l'échantillon" });
-    expect(screen.getByLabelText("Zoom de l'échantillon")).toHaveAttribute("max", "500");
+    expect(screen.getByLabelText("Zoom de l'échantillon")).toHaveAttribute(
+      "max",
+      "500",
+    );
     fireEvent.change(screen.getByLabelText("Zoom de l'échantillon"), {
       target: { value: "500" },
     });
@@ -1662,7 +1685,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Nom public du tissu"), {
       target: { value: "Boucle naturel" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le tissu" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le tissu" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateFabric).toHaveBeenCalledWith(
@@ -1704,7 +1729,8 @@ describe("Admin catalog pages", () => {
         purpose === "fabric_swatch" && fabricSwatchCrop
           ? {
               file: preparedSwatch,
-              message: "L'échantillon a été recadré en carré 512x512 avant l'envoi.",
+              message:
+                "L'échantillon a été recadré en carré 512x512 avant l'envoi.",
               resized: true,
             }
           : {
@@ -1729,7 +1755,9 @@ describe("Admin catalog pages", () => {
       },
     });
     await screen.findByRole("group", { name: "Recadrage de l'échantillon" });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le tissu" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le tissu" }),
+    );
 
     await waitFor(() => {
       expect(prepareAdminImageUploadFile).toHaveBeenCalledWith({
@@ -1847,7 +1875,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Nom public du tissu"), {
       target: { value: "Boucle naturel" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le tissu" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le tissu" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateFabric).toHaveBeenCalledWith(
@@ -1860,7 +1890,9 @@ describe("Admin catalog pages", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Archiver le tissu" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirmer l'archivage" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirmer l'archivage" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.archiveFabric).toHaveBeenCalledWith(
@@ -1893,9 +1925,12 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Prix" }), {
       target: { value: "1299" },
     });
-    fireEvent.change(await screen.findByLabelText("Rechercher des étiquettes"), {
-      target: { value: "con" },
-    });
+    fireEvent.change(
+      await screen.findByLabelText("Rechercher des étiquettes"),
+      {
+        target: { value: "con" },
+      },
+    );
     fireEvent.click(
       screen.getByRole("option", { name: "Ajouter l'étiquette Convertible" }),
     );
@@ -1965,14 +2000,16 @@ describe("Admin catalog pages", () => {
     render(<AdminSofaCreatePage dependencies={dependencies} />);
 
     await screen.findByRole("heading", { name: "Créer un canapé" });
-    fireEvent.change(await screen.findByLabelText("Rechercher des étiquettes"), {
-      target: { value: "r" },
-    });
+    fireEvent.change(
+      await screen.findByLabelText("Rechercher des étiquettes"),
+      {
+        target: { value: "r" },
+      },
+    );
     expect(
-      within(screen.getByRole("listbox", { name: "Étiquettes trouvées" })).getByRole(
-        "option",
-        { name: "Ajouter l'étiquette Red sofa" },
-      ),
+      within(
+        screen.getByRole("listbox", { name: "Étiquettes trouvées" }),
+      ).getByRole("option", { name: "Ajouter l'étiquette Red sofa" }),
     ).toBeInTheDocument();
     expect(
       within(
@@ -1996,7 +2033,9 @@ describe("Admin catalog pages", () => {
     );
 
     expect(screen.queryByText("Red sofa")).not.toBeInTheDocument();
-    expect(screen.getByText("Aucune étiquette sélectionnée.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Aucune étiquette sélectionnée."),
+    ).toBeInTheDocument();
   });
 
   it("keeps many selected sofa tags in one horizontal rail", async () => {
@@ -2035,9 +2074,12 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Créer un canapé" });
     for (const tag of tagFixtures) {
-      fireEvent.change(await screen.findByLabelText("Rechercher des étiquettes"), {
-        target: { value: tag.public_label },
-      });
+      fireEvent.change(
+        await screen.findByLabelText("Rechercher des étiquettes"),
+        {
+          target: { value: tag.public_label },
+        },
+      );
       fireEvent.click(
         screen.getByRole("option", {
           name: `Ajouter l'étiquette ${tag.public_label}`,
@@ -2045,7 +2087,9 @@ describe("Admin catalog pages", () => {
       );
     }
 
-    const selectedTags = screen.getByRole("list", { name: "Étiquettes sélectionnées" });
+    const selectedTags = screen.getByRole("list", {
+      name: "Étiquettes sélectionnées",
+    });
 
     expect(selectedTags).toHaveClass(
       "admin-tag-chip-list",
@@ -2090,9 +2134,12 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Créer un canapé" });
     for (const tag of tagFixtures) {
-      fireEvent.change(await screen.findByLabelText("Rechercher des étiquettes"), {
-        target: { value: tag.public_label },
-      });
+      fireEvent.change(
+        await screen.findByLabelText("Rechercher des étiquettes"),
+        {
+          target: { value: tag.public_label },
+        },
+      );
       fireEvent.click(
         screen.getByRole("option", {
           name: `Ajouter l'étiquette ${tag.public_label}`,
@@ -2159,9 +2206,12 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Créer un canapé" });
     for (const tag of tagFixtures) {
-      fireEvent.change(await screen.findByLabelText("Rechercher des étiquettes"), {
-        target: { value: tag.public_label },
-      });
+      fireEvent.change(
+        await screen.findByLabelText("Rechercher des étiquettes"),
+        {
+          target: { value: tag.public_label },
+        },
+      );
       fireEvent.click(
         screen.getByRole("option", {
           name: `Ajouter l'étiquette ${tag.public_label}`,
@@ -2251,7 +2301,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Prix" }), {
       target: { value: "1499" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer le canapé" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer le canapé" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateSofa).toHaveBeenCalledWith(
@@ -2287,7 +2339,9 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
 
-    expect(screen.getByRole("tab", { name: /Infos du canap\u00e9/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: /Infos du canap\u00e9/i }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /Tissus associ\u00e9s/i }),
     ).toBeInTheDocument();
@@ -2298,7 +2352,9 @@ describe("Admin catalog pages", () => {
     expect(visualMatrixTab).toBeInTheDocument();
     expectSofaEditTabDotBesideNumber(visualMatrixTab, "03");
     expect(screen.getByRole("tab", { name: /Rendus/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Publication/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: /Publication/i }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Sofa test sections" }),
     ).not.toBeInTheDocument();
@@ -2314,6 +2370,76 @@ describe("Admin catalog pages", () => {
     expect(
       screen.getByRole("button", { name: "Publier le canapé" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows assigned fabrics as a compact state workspace", async () => {
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Internal fabric",
+        is_premium: true,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_preview_url: "https://storage.example/swatch-preview.png",
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const dependencies = createDependencies({
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Tissus associés/i }));
+
+    const workspace = screen.getByRole("list", {
+      name: "Tissus associés au canapé",
+    });
+    const row = within(workspace).getByRole("listitem", {
+      name: /Boucle ivoire/i,
+    });
+
+    expect(within(row).getByText("Boucle ivoire")).toBeInTheDocument();
+    expect(
+      within(row).getByText("Interne : Internal fabric"),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("img", { name: /Échantillon pour Boucle ivoire/i }),
+    ).toHaveAttribute("src", "https://storage.example/swatch-preview.png");
+    expect(within(row).getByText("IA manquante")).toHaveAttribute(
+      "data-state",
+      "blocked",
+    );
+    expect(within(row).getByText("Premium")).toHaveAttribute(
+      "data-state",
+      "selected",
+    );
+    expect(within(row).getByText("Ordre 1")).toHaveAttribute(
+      "data-state",
+      "current",
+    );
+    expect(
+      within(row).getByRole("textbox", {
+        name: "Ordre public pour Boucle ivoire",
+      }),
+    ).toHaveValue("1");
   });
 
   it("shows sofa edit tabs, readiness chips, and render coverage panel", async () => {
@@ -3121,11 +3247,14 @@ describe("Admin catalog pages", () => {
       "src",
       "https://storage.example/source-photo-preview",
     );
+    expect(
+      within(dialog).queryByRole("button", { name: "Voir le rendu actuel" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Voir le rendu actuel" }),
+      within(dialog).getByRole("img", { name: "Aperçu du rendu actuel" }),
     );
     const currentRenderDialog = screen.getByRole("dialog", {
-      name: /Rendu actuel/i,
+      name: /Grande image : Rendu actuel/i,
     });
     expect(
       within(currentRenderDialog).getByRole("img", {
@@ -3142,7 +3271,7 @@ describe("Admin catalog pages", () => {
       within(dialog).queryByRole("button", { name: "Générer" }),
     ).toBeNull();
     expect(
-      within(dialog).getByRole("button", { name: "Envoyer un rendu manuel" }),
+      within(dialog).getByRole("button", { name: "Remplacer manuellement" }),
     ).toBeInTheDocument();
   });
 
@@ -3290,13 +3419,18 @@ describe("Admin catalog pages", () => {
     );
     const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
 
-    fireEvent.change(within(dialog).getByLabelText("Rendu manuel"), {
+    const manualRenderInput = openManualRenderUpload(dialog);
+    expect(within(dialog).getByText("Choisir un rendu")).toBeInTheDocument();
+    fireEvent.change(manualRenderInput, {
       target: {
         files: [selectedManualRender],
       },
     });
+    expect(
+      within(dialog).getByText("manual_render_front.png"),
+    ).toBeInTheDocument();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Envoyer un rendu manuel" }),
+      within(dialog).getByRole("button", { name: "Remplacer par ce rendu" }),
     );
 
     await waitFor(() => {
@@ -3333,7 +3467,9 @@ describe("Admin catalog pages", () => {
         "Image resized from 4096x3072 to 2048x1536 before upload.",
       ),
     ).toBeInTheDocument();
-    expect(within(dialog).queryByText("La photo source est le rendu actuel")).toBeNull();
+    expect(
+      within(dialog).queryByText("La photo source est le rendu actuel"),
+    ).toBeNull();
     expect(within(dialog).getByText("Envoi manuel")).toBeInTheDocument();
   });
 
@@ -3403,13 +3539,14 @@ describe("Admin catalog pages", () => {
     fireEvent.click(screen.getByRole("button", { name: /Front : Manquant/i }));
 
     const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
-    fireEvent.change(within(dialog).getByLabelText("Rendu manuel"), {
+    const manualRenderInput = openManualRenderUpload(dialog);
+    fireEvent.change(manualRenderInput, {
       target: {
         files: [new File(["manual"], "manual.png", { type: "image/png" })],
       },
     });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Envoyer un rendu manuel" }),
+      within(dialog).getByRole("button", { name: "Remplacer par ce rendu" }),
     );
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
@@ -3547,7 +3684,15 @@ describe("Admin catalog pages", () => {
 
     expect(screen.getByText("Boucle ivoire")).toBeInTheDocument();
     expect(screen.getByText("Interne : Internal fabric")).toBeInTheDocument();
-    expect(screen.getByText("Référence IA : Prêt")).toBeInTheDocument();
+    expect(screen.getByText("IA prête")).toHaveAttribute("data-state", "ready");
+    expect(screen.getByText("IA manquante")).toHaveAttribute(
+      "data-state",
+      "blocked",
+    );
+    expect(screen.getByText("Ordre 1")).toHaveAttribute(
+      "data-state",
+      "current",
+    );
     expect(
       screen.getByRole("img", { name: "Échantillon pour Boucle ivoire" }),
     ).toBeInTheDocument();
@@ -3573,7 +3718,9 @@ describe("Admin catalog pages", () => {
 
     expect(dependencies.updateSofaFabric).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer l'ordre" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer l'ordre" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateSofaFabric).toHaveBeenCalledWith(
@@ -3690,7 +3837,9 @@ describe("Admin catalog pages", () => {
     fireEvent.change(screen.getByLabelText("Ordre public pour Second fabric"), {
       target: { value: "1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer l'ordre" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enregistrer l'ordre" }),
+    );
 
     await waitFor(() => {
       expect(updateSofaFabric).toHaveBeenCalledWith(
@@ -3814,7 +3963,9 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: "Modifier la colonne 1" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Ajouter une colonne" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ajouter une colonne" }),
+    );
     let dialog = screen.getByRole("dialog", { name: "Ajouter une colonne" });
     expectCenteredVisualMatrixDialog(dialog);
     expectVisualMatrixDialogFormAlignment(dialog);
@@ -3824,7 +3975,9 @@ describe("Admin catalog pages", () => {
       screen.queryByRole("dialog", { name: "Ajouter une colonne" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Modifier la colonne 1" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Modifier la colonne 1" }),
+    );
     dialog = screen.getByRole("dialog", { name: "Modifier la colonne 1" });
     expectCenteredVisualMatrixDialog(dialog);
     expectVisualMatrixDialogFormAlignment(dialog);
@@ -3854,7 +4007,9 @@ describe("Admin catalog pages", () => {
         name: "Échantillon pour Replacement fabric",
       }),
     ).toHaveAttribute("src", "https://storage.example/replacement-swatch.png");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Enregistrer" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Enregistrer" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.updateVisualMatrixColumn).toHaveBeenCalledWith(
@@ -3873,12 +4028,16 @@ describe("Admin catalog pages", () => {
       screen.queryByRole("dialog", { name: "Modifier la colonne 1" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Modifier la colonne 1" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Modifier la colonne 1" }),
+    );
     dialog = screen.getByRole("dialog", { name: "Modifier la colonne 1" });
     fireEvent.change(within(dialog).getByLabelText("Tissu source 1"), {
       target: { value: "" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Enregistrer" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Enregistrer" }),
+    );
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
       "Choisissez un tissu source avant d'enregistrer cette image source.",
     );
@@ -3979,8 +4138,12 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Colonnes de vue/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Modifier la colonne 1" }));
-    const dialog = screen.getByRole("dialog", { name: "Modifier la colonne 1" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Modifier la colonne 1" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Modifier la colonne 1",
+    });
 
     fireEvent.change(within(dialog).getByLabelText("Tissu source 1"), {
       target: { value: secondFabric.id },
@@ -4030,7 +4193,8 @@ describe("Admin catalog pages", () => {
           : purpose === "manual_render"
             ? {
                 file: preparedManualRender,
-                message: "L'image a été convertie de WebP en JPEG avant l'envoi.",
+                message:
+                  "L'image a été convertie de WebP en JPEG avant l'envoi.",
                 resized: true,
               }
             : {
@@ -4138,7 +4302,9 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Colonnes de vue/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Modifier la colonne 1" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Modifier la colonne 1" }),
+    );
     const sourcePhotoDialog = screen.getByRole("dialog", {
       name: "Modifier la colonne 1",
     });
@@ -4204,7 +4370,9 @@ describe("Admin catalog pages", () => {
       purpose: "sofa_source_photo",
     });
     expect(
-      screen.getByText("L'image a été convertie de WebP en JPEG avant l'envoi."),
+      screen.getByText(
+        "L'image a été convertie de WebP en JPEG avant l'envoi.",
+      ),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
@@ -4225,11 +4393,14 @@ describe("Admin catalog pages", () => {
         "La demande standard est utilisée automatiquement. Ajoutez ceci seulement si une indication en plus est nécessaire.",
       ),
     ).toBeInTheDocument();
-    fireEvent.change(within(generationGroup).getByLabelText("Note facultative"), {
-      target: {
-        value: "Keep seams visible",
+    fireEvent.change(
+      within(generationGroup).getByLabelText("Note facultative"),
+      {
+        target: {
+          value: "Keep seams visible",
+        },
       },
-    });
+    );
     fireEvent.click(
       within(generationGroup).getByRole("button", { name: "Générer" }),
     );
@@ -4387,7 +4558,9 @@ describe("Admin catalog pages", () => {
     expect(
       screen.queryByText("INCOMPLETE_PUBLIC_RENDER_COVERAGE"),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Publier le canapé" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Publier le canapé" }),
+    ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
     fireEvent.click(
@@ -4401,13 +4574,13 @@ describe("Admin catalog pages", () => {
       type: "image/png",
     });
 
-    fireEvent.change(within(dialog).getByLabelText("Rendu manuel"), {
+    fireEvent.change(openManualRenderUpload(dialog), {
       target: {
         files: [manualRenderFile],
       },
     });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Envoyer un rendu manuel" }),
+      within(dialog).getByRole("button", { name: "Remplacer par ce rendu" }),
     );
 
     await waitFor(() => {
@@ -4611,7 +4784,9 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Générer les rendus manquants" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Générer les rendus manquants" }),
+    );
     await waitFor(() => {
       expect(dependencies.generateFabricRenderJobsForSofa).toHaveBeenCalledWith(
         "admin-token",
@@ -4626,12 +4801,11 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Queued fabric, Front : En file/i }),
     );
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: /Cellule de rendu/i })).getByRole(
-        "button",
-        {
-          name: "Reprendre la génération",
-        },
-      ),
+      within(
+        screen.getByRole("dialog", { name: /Cellule de rendu/i }),
+      ).getByRole("button", {
+        name: "Reprendre la génération",
+      }),
     );
     await waitFor(() => {
       expect(dependencies.resumeFabricRenderJobs).toHaveBeenCalledWith(
@@ -4642,10 +4816,9 @@ describe("Admin catalog pages", () => {
       );
     });
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: /Cellule de rendu/i })).getByRole(
-        "button",
-        { name: "Fermer la cellule de rendu" },
-      ),
+      within(
+        screen.getByRole("dialog", { name: /Cellule de rendu/i }),
+      ).getByRole("button", { name: "Fermer la cellule de rendu" }),
     );
 
     fireEvent.click(
@@ -4764,10 +4937,9 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: /Queued fabric, Front : En file/i }),
     );
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: /Cellule de rendu/i })).getByRole(
-        "button",
-        { name: "Reprendre la génération" },
-      ),
+      within(
+        screen.getByRole("dialog", { name: /Cellule de rendu/i }),
+      ).getByRole("button", { name: "Reprendre la génération" }),
     );
 
     await waitFor(() => {
@@ -4847,9 +5019,13 @@ describe("Admin catalog pages", () => {
       has_private_render: true,
       updated_at: "2026-04-28T10:40:00.000Z",
     };
-    const selectedManualRender = new File(["manual"], "manual_render_front.webp", {
-      type: "image/webp",
-    });
+    const selectedManualRender = new File(
+      ["manual"],
+      "manual_render_front.webp",
+      {
+        type: "image/webp",
+      },
+    );
     const preparedManualRender = new File(["prepared-manual"], "manual.jpg", {
       type: "image/jpeg",
     });
@@ -4942,14 +5118,19 @@ describe("Admin catalog pages", () => {
     expect(
       within(candidateCard).getByText("initial - v007"),
     ).toBeInTheDocument();
+    expect(within(candidateCard).getByText("À sélectionner")).toHaveAttribute(
+      "data-state",
+      "ready",
+    );
     expect(
-      within(candidateCard).getAllByText("Variante").length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(candidateCard).getByRole("button", { name: "Utiliser la variante" }),
+      within(candidateCard).getByRole("button", {
+        name: "Utiliser la variante",
+      }),
     ).toBeInTheDocument();
     expect(
-      within(candidateCard).getByRole("button", { name: "Améliorer la variante" }),
+      within(candidateCard).getByRole("button", {
+        name: "Améliorer la variante",
+      }),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole("group", {
@@ -4960,9 +5141,13 @@ describe("Admin catalog pages", () => {
       within(dialog).queryByLabelText("Demande d'amélioration"),
     ).not.toBeInTheDocument();
     fireEvent.click(
-      within(candidateCard).getByRole("button", { name: "Améliorer la variante" }),
+      within(candidateCard).getByRole("button", {
+        name: "Améliorer la variante",
+      }),
     );
-    expect(within(dialog).getByLabelText("Demande d'amélioration")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Demande d'amélioration"),
+    ).toBeInTheDocument();
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Annuler l'amélioration" }),
     );
@@ -4972,7 +5157,9 @@ describe("Admin catalog pages", () => {
     expect(dependencies.createFabricRenderJob).not.toHaveBeenCalled();
 
     fireEvent.click(
-      within(candidateCard).getByRole("button", { name: "Améliorer la variante" }),
+      within(candidateCard).getByRole("button", {
+        name: "Améliorer la variante",
+      }),
     );
     fireEvent.change(within(dialog).getByLabelText("Demande d'amélioration"), {
       target: {
@@ -5013,15 +5200,17 @@ describe("Admin catalog pages", () => {
     ).not.toBeInTheDocument();
     expect(await within(dialog).findByText("Prêt")).toBeInTheDocument();
 
-    const readyDialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
-    fireEvent.change(within(readyDialog).getByLabelText("Rendu manuel"), {
+    const readyDialog = screen.getByRole("dialog", {
+      name: /Cellule de rendu/i,
+    });
+    fireEvent.change(openManualRenderUpload(readyDialog), {
       target: {
         files: [selectedManualRender],
       },
     });
     fireEvent.click(
       within(readyDialog).getByRole("button", {
-        name: "Envoyer un rendu manuel",
+        name: "Remplacer par ce rendu",
       }),
     );
 
@@ -5216,13 +5405,13 @@ describe("Admin catalog pages", () => {
     const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
 
     await within(dialog).findByAltText(`Aperçu de la variante ${candidateId}`);
-    fireEvent.change(within(dialog).getByLabelText("Rendu manuel"), {
+    fireEvent.change(openManualRenderUpload(dialog), {
       target: {
         files: [new File(["manual"], "manual.png", { type: "image/png" })],
       },
     });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Envoyer un rendu manuel" }),
+      within(dialog).getByRole("button", { name: "Remplacer par ce rendu" }),
     );
 
     await waitFor(() => {
@@ -5237,7 +5426,9 @@ describe("Admin catalog pages", () => {
     await within(dialog).findByText("Prêt");
 
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Fermer la cellule de rendu" }),
+      within(dialog).getByRole("button", {
+        name: "Fermer la cellule de rendu",
+      }),
     );
     await waitFor(() => {
       expect(
@@ -5380,7 +5571,9 @@ describe("Admin catalog pages", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /Boucle ivoire, Front : Prêt/i }),
     );
-    const cellDialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
+    const cellDialog = screen.getByRole("dialog", {
+      name: /Cellule de rendu/i,
+    });
     const cellCloseButton = within(cellDialog).getByRole("button", {
       name: "Fermer la cellule de rendu",
     });
@@ -5437,26 +5630,16 @@ describe("Admin catalog pages", () => {
     expectCloseIconButton(currentImageCloseButton);
     fireEvent.click(currentImageCloseButton);
 
-    fireEvent.click(
-      within(cellDialog).getByRole("button", { name: "Voir le rendu actuel" }),
-    );
-    const currentRenderDialog = screen.getByRole("dialog", {
-      name: /Rendu actuel/i,
-    });
-    const currentRenderCloseButton = within(currentRenderDialog).getByRole(
-      "button",
-      {
-        name: "Fermer le rendu actuel",
-      },
-    );
-
-    expect(currentRenderCloseButton).toBeInTheDocument();
-    expectCloseIconButton(currentRenderCloseButton);
     expect(
-      within(currentRenderDialog).queryByRole("button", { name: "Close" }),
+      within(cellDialog).queryByRole("button", {
+        name: "Voir le rendu actuel",
+      }),
     ).not.toBeInTheDocument();
+    const readyGenerationGroup = within(cellDialog).getByRole("group", {
+      name: "Action de génération",
+    });
     fireEvent.click(
-      within(currentRenderDialog).getByRole("button", {
+      within(readyGenerationGroup).getByRole("button", {
         name: "Générer une nouvelle variante",
       }),
     );
@@ -5533,6 +5716,23 @@ describe("Admin catalog pages", () => {
     const currentCandidatePreview = within(cellDialog).getByRole("img", {
       name: "Aperçu de la variante 00000000-0000-4000-8000-000000000908",
     });
+    const currentCandidateCard = within(cellDialog).getByRole("article", {
+      name: /Variante 00000000-0000-4000-8000-000000000908/i,
+    });
+    const newCandidateCard = within(cellDialog).getByRole("article", {
+      name: /Variante 00000000-0000-4000-8000-000000000909/i,
+    });
+
+    expect(currentCandidateCard).toHaveAttribute("aria-current", "true");
+    expect(
+      within(currentCandidateCard).getByText("Sélection actuelle"),
+    ).toHaveAttribute("data-state", "current");
+    expect(
+      within(newCandidateCard).getByText("À sélectionner"),
+    ).toHaveAttribute("data-state", "ready");
+    expect(
+      within(newCandidateCard).getByRole("button", { name: "Comparer" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(currentCandidatePreview);
     const currentCandidateCompareDialog = screen.getByRole("dialog", {
@@ -5635,7 +5835,9 @@ describe("Admin catalog pages", () => {
     fireEvent.click(candidateImageCloseButton);
 
     fireEvent.click(
-      within(compareDialog).getByRole("button", { name: "Utiliser la variante" }),
+      within(compareDialog).getByRole("button", {
+        name: "Utiliser la variante",
+      }),
     );
 
     await waitFor(() => {
@@ -5726,7 +5928,9 @@ describe("Admin catalog pages", () => {
 
     expect(within(dialog).getByText("Rendu bloqué")).toBeInTheDocument();
     expect(
-      within(dialog).getByText("Complétez d'abord l'entrée de rendu manquante."),
+      within(dialog).getByText(
+        "Complétez d'abord l'entrée de rendu manquante.",
+      ),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText("Photo source manquante"),
@@ -5789,7 +5993,9 @@ describe("Admin catalog pages", () => {
       screen.queryByRole("button", { name: "Publier le canapé" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Retirer la publication" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retirer la publication" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.unpublishSofa).toHaveBeenCalledWith(
@@ -5839,7 +6045,9 @@ describe("Admin catalog pages", () => {
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Publication/i }));
     fireEvent.click(screen.getByRole("button", { name: "Archiver le canapé" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirmer l'archivage" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirmer l'archivage" }),
+    );
 
     await waitFor(() => {
       expect(dependencies.archiveSofa).toHaveBeenCalledWith(
@@ -5997,7 +6205,9 @@ describe("Admin catalog pages", () => {
       screen.getByRole("button", { name: "Aller à Rendus" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Aller à Tissus associés" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aller à Tissus associés" }),
+    );
 
     expect(
       screen.getByRole("tabpanel", { name: /Tissus associ\u00e9s/i }),

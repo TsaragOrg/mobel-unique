@@ -66,7 +66,7 @@ export const ADMIN_COPY = {
       saveSofa: "Enregistrer le canapé",
       unpublishSofa: "Retirer la publication",
       upload: "Envoyer",
-      uploadManualRender: "Envoyer un rendu manuel",
+      uploadManualRender: "Remplacer par ce rendu",
       useCandidate: "Utiliser la variante",
     },
     busy: {

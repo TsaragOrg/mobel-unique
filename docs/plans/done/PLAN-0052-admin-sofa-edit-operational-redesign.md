@@ -2,7 +2,7 @@
 
 Plan: PLAN-0052
 Spec: SPEC-0014
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -147,7 +147,7 @@ workbench structure proves correct in browser QA.
 - [x] Introduce designed field, unit-field, checkbox, status, compact action menu, dialog, and sheet patterns.
 - [x] Remove `admin-test-workflow` visual dependency from the production sofa edit page.
 - [x] Format admin-facing errors and blockers so technical codes are not shown as customer-visible UI copy.
-- [ ] Add visual states for loading, disabled, failed, blocked, ready, current, and selected.
+- [x] Add visual states for loading, disabled, failed, blocked, ready, current, and selected.
 
 ### 3. Basics
 
@@ -160,8 +160,8 @@ workbench structure proves correct in browser QA.
 
 ### 4. Fabrics
 
-- [ ] Replace the current assign/order/button-heavy area with a compact assigned-fabric workspace.
-- [ ] Show fabric swatch, short public name, short internal reference, AI-reference state, premium state, and public order.
+- [x] Replace the current assign/order/button-heavy area with a compact assigned-fabric workspace.
+- [x] Show fabric swatch, short public name, short internal reference, AI-reference state, premium state, and public order.
 - [x] Move add-fabric into a calm add flow with one primary action.
 - [x] Make ordering compact and clear without full-width inputs.
 - [x] Make unassign destructive but visually secondary.
@@ -192,7 +192,7 @@ workbench structure proves correct in browser QA.
 - [x] Preserve full-screen or large sheet behavior on mobile.
 - [x] Show context, preview, blockers, job state, candidate count, and one primary next action.
 - [x] Group secondary actions and keep refinement prompt hidden until chosen.
-- [ ] Redesign candidate review around image comparison and current/candidate selection.
+- [x] Redesign candidate review around image comparison and current/candidate selection.
 - [x] Update render cell and candidate tests.
 
 ### 8. Publish And Export
@@ -252,6 +252,27 @@ workbench structure proves correct in browser QA.
   in the top-right corner of the render cell when the current cell image is the
   source photo, including the accessible cell label, so admins can identify
   source-photo cells without opening the detail sheet.
+- Follow-up closure slice: assigned fabrics now render as a compact state
+  workspace with swatch, short identity, AI-reference, premium, and public-order
+  chips; render candidate review now marks current versus selectable variants,
+  exposes a compare action in the candidate row, and uses shared visual state
+  chips for ready, blocked, current, selected, disabled, failed, and loading
+  states.
+- Post-closure ergonomic cleanup: ready render cells no longer open a redundant
+  current-render dialog before the large-image preview; admins zoom the current
+  render directly from the cell workbench, while candidate comparison remains a
+  dedicated source-vs-variant decision view. Manual render replacement is now a
+  quiet secondary action with a designed image upload control, and the fabric
+  swatch and AI-reference upload fields use the same control instead of native
+  browser file inputs.
+
+Closure note, 2026-05-11:
+
+- The remaining admin sofa edit redesign work is complete.
+- Focused admin catalog page tests cover the compact fabric workspace and
+  current/selectable candidate review states.
+- PLAN-0042 and PLAN-0068 remain active for public simulation launch and
+  checkpoint/realtime hardening; no PLAN-0052 UI work remains active.
 
 ## Acceptance Criteria
 
