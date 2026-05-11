@@ -195,7 +195,7 @@ operator tooling, not part of the visitor workflow.
       into bounded checkpoints.
 - [ ] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
-- [ ] Preserve previous successful output when a regeneration checkpoint fails.
+- [x] Preserve previous successful output when a regeneration checkpoint fails.
 - [x] Resolve placement prepared sofa bytes from `prepared_sofa_asset_id` when
       `prepared_sofa_path` is absent, so catalogue render/source assets can feed
       the placement provider after dimension submission.
