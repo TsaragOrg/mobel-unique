@@ -20,7 +20,8 @@ export const SIMULATION_LOCALE = {
     emailFieldPlaceholder: "vous@exemple.com",
     // TODO: FR native review — consent for simulation email delivery. Confirm legal wording.
     consentEmailUseLabel:
-      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour me transmettre les informations relatives à ma simulation.",
+      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour démarrer ma simulation et m'envoyer le code de vérification. " +
+      "Je comprends que ma photo de pièce et les images générées restent privées et sont supprimées automatiquement sous 24 heures.",
     // TODO: FR native review — optional marketing consent. Confirm wording and legal status.
     consentMarketingLabel:
       "J'accepte de recevoir occasionnellement des actualités MÖBEL UNIQUE (facultatif).",

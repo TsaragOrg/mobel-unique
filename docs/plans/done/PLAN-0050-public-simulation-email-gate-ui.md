@@ -89,6 +89,12 @@ the stub bodies with real verification later; this UI stays.
 
 ## Follow-up fixes
 
+- 2026-05-11 — Required consent copy in `screen0EmailGate` now states that
+  the visitor email is used to start the simulation and send the verification
+  code, and that room photos plus generated images remain private and are
+  automatically deleted within 24 hours. A focused locale test locks the
+  concise French wording.
+
 - 2026-05-03 — `auth.ts` was parsing the verification responses as if
   `verification_request_id` and `simulation_access_token` sat at the
   top level, but every public simulation route handler wraps success
