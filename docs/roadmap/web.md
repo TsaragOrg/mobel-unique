@@ -99,7 +99,7 @@
 
 ## Next
 
-- Finish admin export workflows on top of the authenticated admin boundary.
-- Migrate the production in-home simulation worker to the canonical
-  pipeline so the Worker Behavior Parity Gate from PLAN-0041 can
-  activate (PLAN-0042 production launch).
+- Finish PLAN-0068 browser-facing validation: Realtime fallback, delayed
+  dispatch recovery, safe progress rendering, and signed-status refresh.
+- Complete PLAN-0042 public simulation launch checks and runbook updates after
+  the remaining production manual tests pass.
