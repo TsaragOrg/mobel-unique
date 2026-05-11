@@ -70,6 +70,30 @@ describe("PLAN-0068 in-home simulation checkpoint dispatch outbox migration", ()
     );
   });
 
+  it("leaves dispatch rows pending without consuming attempts when cost-meter is paused", () => {
+    const fn = sql.slice(
+      sql.indexOf(
+        "create or replace function public.claim_in_home_simulation_checkpoint_dispatches",
+      ),
+      sql.indexOf(
+        "create or replace function public.mark_in_home_simulation_checkpoint_dispatch_dispatched",
+      ),
+    );
+    const pauseIndex = fn.indexOf("if public.simulation_cost_meter_paused() then");
+    const candidatesIndex = fn.indexOf("with candidates as");
+    const dispatchingUpdateIndex = fn.indexOf("status = 'dispatching'");
+    const attemptIncrementIndex = fn.indexOf(
+      "attempt_count = d.attempt_count + 1",
+    );
+
+    expect(pauseIndex).toBeGreaterThan(-1);
+    expect(candidatesIndex).toBeGreaterThan(pauseIndex);
+    expect(dispatchingUpdateIndex).toBeGreaterThan(pauseIndex);
+    expect(attemptIncrementIndex).toBeGreaterThan(pauseIndex);
+    expect(fn).not.toContain("when public.simulation_cost_meter_paused()");
+    expect(fn).not.toContain("status = 'failed'");
+  });
+
   it("exposes dispatch-outbox API RPC names for public simulation handlers", () => {
     expect(sql).toContain(
       "create or replace function public.create_in_home_simulation_job_for_visitor_dispatch_outbox"

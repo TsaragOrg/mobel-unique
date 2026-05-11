@@ -239,7 +239,7 @@ operator tooling, not part of the visitor workflow.
 - [x] Keep dispatch recovery RPCs able to recover expired checkpoint claims and
       redispatch claimable backlog when explicitly woken.
 - [x] Add tests for recovery when an API or worker dispatch wake-up was missed.
-- [ ] Add tests for cost-meter pause leaving checkpoints visible, delayed, and
+- [x] Add tests for cost-meter pause leaving checkpoints visible, delayed, and
       recoverable rather than failed.
 - [x] Update purge behavior so expired simulations redact or delete checkpoint
       attempts and public progress consistently with artifacts and session data.
