@@ -80,7 +80,7 @@ non-negotiable acceptance criterion.
 
 ### Documentation and launch readiness
 
-- [ ] Author `docs/operations/simulation-launch-runbook.md` capturing
+- [x] Author `docs/operations/simulation-launch-runbook.md` capturing
       the production envs, the rate-limit defaults, the cost-cap
       defaults, the parity-baseline regeneration command, the
       catalog-owner contract, and a one-page rollback procedure.
@@ -112,6 +112,11 @@ non-negotiable acceptance criterion.
   and regeneration smoke paths. Rate-limit, expiration, cost-cap,
   idempotency, parity capture, runbook, and final launch sign-off remain open,
   so this plan stays active.
+- 2026-05-11: Launch runbook scaffolded in
+  `docs/operations/simulation-launch-runbook.md` with environment separation,
+  manual evidence tables, parity capture instructions, defensive-path checks,
+  and rollback steps. Manual launch evidence, corner-tag sign-off, accepted-spec
+  Open Questions update, and final Ahmed sign-off remain open.
 - The "production worker input parity" memory rule is the binding
   acceptance criterion for this plan: production worker output for any
   given source photo must equal what the same photo produces in the
