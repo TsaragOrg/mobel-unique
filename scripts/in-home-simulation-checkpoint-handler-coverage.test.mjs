@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const workerPath = "supabase/functions/in-home-simulation-worker/index.ts";
 const planPath =
-  "docs/plans/active/PLAN-0068-in-home-simulation-checkpoint-pump-realtime.md";
+  "docs/plans/done/PLAN-0068-in-home-simulation-checkpoint-pump-realtime.md";
 
 const terminalOrVisitorActionKeys = new Set([
   "awaiting_dimensions",

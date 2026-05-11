@@ -10,4 +10,3 @@ continues.
 | Plan | Spec | Status | Owner area | Summary |
 | ---- | ---- | ------ | ---------- | ------- |
 | PLAN-0042 | SPEC-0015 | active | workflow | Production launch test, cross-team sign-off, and operations runbook. |
-| PLAN-0068 | SPEC-0007 | active | supabase | In-home simulation durable checkpoints and Realtime progress; this remains the target plan for replacing request-time pumping. |

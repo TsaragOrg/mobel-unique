@@ -18,7 +18,7 @@
 | Done   | SPEC-0015 | PLAN-0068 | Public simulation loading screens now keep the latest visitor-safe Realtime progress payload and use progress step keys plus ordinal totals to show specific room-preparation and placement messages while signed guide/result URLs still come from the HTTP status endpoint. |
 | Done   | SPEC-0012 | PLAN-0043 | Public home header now keeps only the MÖBEL UNIQUE brand mark at the top and removes the previous right-side public navigation links and compact collection link. |
 | Done   | SPEC-0013 | PLAN-0069 | Admin Tags creation now adds the returned tag directly to the visible list after Create, keeps the list ordered, and covers the stale-list reload case so admins no longer need to refresh the page to see a newly created tag. |
-| Active | SPEC-0007 | PLAN-0068 | Public simulation UI keeps Realtime progress plus bounded polling fallback while remaining work validates delayed dispatch, recovery, and safe progress states end to end. |
+| Done   | SPEC-0007 | PLAN-0068 | Public simulation UI now has full checkpoint progress coverage: Realtime events render safe progress metadata, signed guide/result URLs are refreshed through the status endpoint, fallback polling survives foreground/background changes, and offline/online recovery refreshes immediately when connectivity returns. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation loading copy now handles the `dimension_guide` Realtime progress step explicitly, keeping the room-preparation screen specific while the worker prepares the measurement guide image. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation status now keeps the signed previous-result URL on a `succeeded` job that just hit a regeneration error, so visitors can still see their last successful image while the safe regeneration error is surfaced. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation HEIC/HEIF selection now falls back to a Node runtime preview-normalization endpoint when browser-side decoding fails, returning a JPEG blob for the preview and upload path while the create route keeps server-side JPEG normalization as a safety net. |
@@ -101,7 +101,5 @@
 
 ## Next
 
-- Finish PLAN-0068 browser-facing validation: Realtime fallback, delayed
-  dispatch recovery, safe progress rendering, and signed-status refresh.
 - Complete PLAN-0042 public simulation launch checks and runbook updates after
   the remaining production manual tests pass.

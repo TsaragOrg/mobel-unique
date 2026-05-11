@@ -9,7 +9,7 @@ Related change requests:
 - CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015-in-home-database-dispatched-checkpoints-realtime
 - CR-SPEC-0015-public-simulation-realtime-loading-copy
 
-Status: active
+Status: done
 Owner area: supabase
 Affected packages:
 
@@ -185,7 +185,7 @@ operator tooling, not part of the visitor workflow.
 
 ### 4. Worker Checkpoint Execution
 
-- [ ] Add worker source tests for one-checkpoint invocation, claim capacity,
+- [x] Add worker source tests for one-checkpoint invocation, claim capacity,
       retryable checkpoint failure, non-retryable checkpoint failure, and next
       checkpoint activation.
 - [x] Add checkpoint handler coverage tests that compare declared worker
@@ -213,7 +213,7 @@ operator tooling, not part of the visitor workflow.
       writes bounded corrective feedback when needed, and either re-enqueues
       generation or advances to finalization without replaying generation for
       measurement-only retries.
-- [ ] Add worker timeout tests proving multi-attempt provider loops are split
+- [x] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
 - [x] Preserve previous successful output when a regeneration checkpoint fails.
 - [x] Resolve placement prepared sofa bytes from `prepared_sofa_asset_id` when
@@ -228,7 +228,7 @@ operator tooling, not part of the visitor workflow.
 
 - [x] Add Realtime access tests proving one visitor cannot subscribe to another
       visitor's progress.
-- [ ] Add frontend tests for progress rendering, fallback polling, foreground
+- [x] Add frontend tests for progress rendering, fallback polling, foreground
       refresh, offline/online recovery, and signed URL refresh through the
       status endpoint.
 - [x] Use the latest visitor-safe Realtime progress payload to render specific
@@ -246,10 +246,10 @@ operator tooling, not part of the visitor workflow.
 - [x] Surface visitor-safe failed-job diagnostics on the terminal simulation
       screen without exposing worker internals, provider names, storage paths,
       or raw module errors.
-- [ ] Ensure Realtime payloads contain only safe step keys, public status,
+- [x] Ensure Realtime payloads contain only safe step keys, public status,
       ordinal/total progress, action-required flags, result/guide availability,
       retention deadline, and timestamps.
-- [ ] Ensure the browser refreshes the status endpoint for guide and result
+- [x] Ensure the browser refreshes the status endpoint for guide and result
       signed URLs instead of reading URLs from Realtime.
 
 ### 6. Recovery, Purge, And Cost Controls
@@ -277,9 +277,37 @@ operator tooling, not part of the visitor workflow.
       OpenAI room preparation, dimension submission, first placement result,
       and one regeneration.
 - [x] Run `pnpm test` and `pnpm build` before closing the plan.
-- [ ] Move this plan to `docs/plans/done` only after request-time pump and
+- [x] Move this plan to `docs/plans/done` only after request-time pump and
       worker cron paths are removed from the public simulation flow and recovery
       behavior is verified.
+
+## Closure Evidence
+
+- Worker checkpoint execution is covered by
+  `scripts/in-home-simulation-worker-pump.test.mjs`,
+  `scripts/in-home-simulation-checkpoint-handler-coverage.test.mjs`,
+  `scripts/in-home-simulation-checkpoint-claim.test.mjs`,
+  `scripts/in-home-simulation-stage-1-failure-action.test.mjs`,
+  `scripts/in-home-simulation-checkpoint-success.test.mjs`, and
+  `scripts/in-home-simulation-stage-2-checkpoint.test.mjs`.
+- Multi-attempt placement provider work is split across persisted checkpoints:
+  `placement_generation` performs one placement provider call, while
+  `placement_measurement` writes corrective feedback and re-enqueues generation
+  or advances to `placement_finalize`.
+- Browser progress behavior is covered by continuation-page tests for progress
+  rendering, Realtime-triggered signed-status refresh, and connected Realtime
+  reconciliation polling, plus `apps/web/src/lib/simulation-client/poll.test.ts`
+  for visibility fallback and offline/online recovery.
+- Realtime privacy is covered by
+  `scripts/in-home-simulation-checkpoint-pump-migration.test.mjs`,
+  `scripts/in-home-simulation-realtime-access.test.mjs`, and
+  `apps/web/src/lib/simulation-public-server.test.ts`: the public progress
+  table has only safe progress metadata, visitor access is job/session scoped,
+  and signed guide/result URLs remain on the HTTP status endpoint.
+- Cron and request-time pump execution are removed from the visitor path by
+  `scripts/in-home-simulation-worker-pump.test.mjs`,
+  `scripts/in-home-simulation-remove-worker-crons-migration.test.mjs`, and the
+  public route-handler dispatch wake-up coverage.
 
 ## Tests
 
