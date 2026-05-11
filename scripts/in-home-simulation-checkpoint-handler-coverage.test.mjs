@@ -14,7 +14,6 @@ const terminalOrVisitorActionKeys = new Set([
 
 const intentionallyUnhandledExecutableKeys = [
   "placement_measurement",
-  "placement_finalize",
 ];
 
 function extractCheckpointKeys(source) {
