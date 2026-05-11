@@ -188,11 +188,24 @@ operator tooling, not part of the visitor workflow.
 - [ ] Add worker source tests for one-checkpoint invocation, claim capacity,
       retryable checkpoint failure, non-retryable checkpoint failure, and next
       checkpoint activation.
+- [x] Add checkpoint handler coverage tests that compare declared worker
+      checkpoint keys with `processClaimedCheckpoint` handlers and require an
+      explicit PLAN-0068 justification for any intentionally unhandled
+      executable checkpoint.
 - [x] Refactor any remaining broad pump behavior into dispatch-only
       orchestration or remove it from the normal flow.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
       into bounded checkpoints.
+      Current intentionally unhandled executable checkpoints:
+      - `dimension_guide`: still folded into `room_corners`; split pending
+        unless the plan is corrected to keep it as part of corners.
+      - `placement_measurement`: still folded into `placement_generation`;
+        split pending so measurement can fail/retry without replaying image
+        generation.
+      - `placement_finalize`: still folded into `placement_generation`; split
+        pending so final persistence can fail/retry without replaying image
+        generation or measurement.
 - [ ] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
 - [x] Preserve previous successful output when a regeneration checkpoint fails.
