@@ -126,7 +126,7 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(cleaningSource).not.toContain('toStatus: "awaiting_dimensions"');
   });
 
-  it("corners checkpoint downloads the cleaned bytes, runs corners + lines, and calls the complete-stage RPC", async () => {
+  it("corners checkpoint downloads the cleaned bytes, runs corners, uploads the corner artifact, and enqueues dimension guide", async () => {
     const source = await readFile(workerPath, "utf8");
 
     const cornersIndex = source.indexOf(
@@ -146,10 +146,38 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     expect(cornersSource).toContain("placeCornerDots");
     expect(cornersSource).toContain("detectYellowDots");
     expect(cornersSource).toContain("classifyDots");
-    expect(cornersSource).toContain("drawDimensionLines");
-    expect(cornersSource).toContain(
+    expect(cornersSource).toContain("room_corners.png");
+    expect(cornersSource).toContain("completeCheckpointClaim");
+    expect(cornersSource).not.toContain("drawDimensionLines");
+    expect(cornersSource).not.toContain(
       '"complete_in_home_simulation_room_prep_stage"'
     );
+  });
+
+  it("dimension guide checkpoint draws lines, completes room prep, and advances to awaiting dimensions", async () => {
+    const source = await readFile(workerPath, "utf8");
+
+    const guideIndex = source.indexOf(
+      "async function runDimensionGuideCheckpoint("
+    );
+    expect(guideIndex).toBeGreaterThan(-1);
+
+    const nextFnIndex = source.indexOf("\nasync function ", guideIndex + 1);
+    const guideSource = source.slice(
+      guideIndex,
+      nextFnIndex > -1 ? nextFnIndex : source.length
+    );
+
+    expect(guideSource).toContain("downloadStorageObject");
+    expect(guideSource).toContain("room_corners.png");
+    expect(guideSource).toContain("detectYellowDots");
+    expect(guideSource).toContain("classifyDots");
+    expect(guideSource).toContain("drawDimensionLines");
+    expect(guideSource).toContain("room_dimensions.png");
+    expect(guideSource).toContain(
+      '"complete_in_home_simulation_room_prep_stage"'
+    );
+    expect(guideSource).toContain("completeCheckpointClaim");
   });
 
   it("corners checkpoint fails the job when the cleaned artifact is missing in storage", async () => {
@@ -180,6 +208,7 @@ describe("PLAN-0053 + PLAN-0058 Stage 1 checkpoint refactor", () => {
     );
 
     expect(cornersSource).toContain("completeCheckpointClaim");
+    expect(source).toContain('nextCheckpointKey: "dimension_guide"');
     expect(source).toContain('nextCheckpointKey: "awaiting_dimensions"');
     expect(source).not.toContain(
       'if (checkpointOutcome === "stage_1_completed") {'

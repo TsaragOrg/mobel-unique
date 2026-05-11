@@ -305,6 +305,16 @@ function getSimulationProgressCopy(
     };
   }
 
+  if (key === "dimension_guide") {
+    return {
+      placement: {},
+      roomPrep: {
+        ...SIMULATION_LOCALE.screen2RoomPrep.progress.dimensionGuide,
+        progressLabel: label
+      }
+    };
+  }
+
   if (key === "awaiting_dimensions") {
     return {
       placement: {},

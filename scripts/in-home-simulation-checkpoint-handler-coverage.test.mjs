@@ -13,7 +13,6 @@ const terminalOrVisitorActionKeys = new Set([
 ]);
 
 const intentionallyUnhandledExecutableKeys = [
-  "dimension_guide",
   "placement_measurement",
   "placement_finalize",
 ];
