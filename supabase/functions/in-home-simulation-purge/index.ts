@@ -2,8 +2,10 @@
 //
 // This Edge Function lists in-home simulation jobs whose
 // `retention_deadline` has passed, deletes every object under each
-// job's storage prefix in `simulation-private-artifacts`, and marks the
-// row as `expired`. It also performs the SPEC-0007 orphan upload
+// job's storage prefix in `simulation-private-artifacts`, and calls the
+// purge RPC that marks the row as `expired` while redacting database-side
+// artifact, checkpoint, dispatch, and progress state. It also performs the
+// SPEC-0007 orphan upload
 // cleanup: room upload objects under `simulations/{job_id}/inputs/...`
 // whose owning job does not exist and that are older than the orphan
 // age threshold are deleted.

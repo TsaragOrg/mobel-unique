@@ -241,9 +241,9 @@ operator tooling, not part of the visitor workflow.
 - [x] Add tests for recovery when an API or worker dispatch wake-up was missed.
 - [ ] Add tests for cost-meter pause leaving checkpoints visible, delayed, and
       recoverable rather than failed.
-- [ ] Update purge behavior so expired simulations redact or delete checkpoint
+- [x] Update purge behavior so expired simulations redact or delete checkpoint
       attempts and public progress consistently with artifacts and session data.
-- [ ] Add purge tests covering progress rows, checkpoint attempts, and private
+- [x] Add purge tests covering progress rows, checkpoint attempts, and private
       artifacts.
 
 ### 7. Verification And Closure
