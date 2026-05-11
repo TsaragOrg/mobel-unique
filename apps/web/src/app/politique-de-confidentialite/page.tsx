@@ -1,6 +1,6 @@
 /*
-RU: Этот файл нужен для публичной страницы политики конфиденциальности. Посетитель видит короткие правила о данных, фото комнаты, симуляции и контакте. Здесь можно понять, зачем нужны данные, сколько хранятся частные изображения и куда написать по вопросам конфиденциальности.
-FR: Ce fichier sert a la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la photo de la piece, la simulation et le contact. Ici, il peut comprendre pourquoi les donnees sont utiles, combien de temps les images privees restent gardees et ou ecrire pour la confidentialite.
+RU: Этот файл нужен для публичной страницы политики конфиденциальности. Посетитель видит короткие правила о данных, фото комнаты, симуляции, контакте и записи после согласия. Здесь можно понять, зачем нужны данные, сколько хранятся частные изображения и куда написать по вопросам конфиденциальности.
+FR: Ce fichier sert a la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la photo de la piece, la simulation, le contact et la fiche gardee avec accord. Ici, il peut comprendre pourquoi les donnees sont utiles, combien de temps les images privees restent gardees et ou ecrire pour la confidentialite.
 */
 
 import type { Metadata } from "next";
@@ -31,6 +31,8 @@ const privacySections = [
       "Pour une simulation, nous utilisons votre adresse de vérification par e-mail.",
       "Un accord obligatoire pour utiliser votre e-mail est demandé avant la simulation.",
       "Un accord facultatif pour un contact commercial peut être donné, mais il n'est pas nécessaire pour lancer la simulation.",
+      "Votre accord facultatif pour un contact commercial peut créer une fiche de contact conservée.",
+      "Cette fiche peut contenir votre e-mail lisible pour une personne autorisée de MÖBEL UNIQUE, le canapé choisi, le tissu choisi, la position visuelle choisie, la date de simulation et un statut sans information privée.",
       "La simulation utilise la photo de votre pièce, une image guide générée et le résultat de simulation généré.",
       "Un accès temporaire dans votre navigateur protège l'ouverture du résultat pendant la durée prévue.",
       "Nous gardons aussi le canapé choisi, le tissu choisi, la position visuelle choisie, le statut du travail, les horodatages, l'état d'échec et les compteurs d'utilisation.",
@@ -58,6 +60,7 @@ const privacySections = [
   {
     items: [
       "Les photos de pièce privées, les images intermédiaires, les images guides et les résultats générés sont supprimés au plus tard 24 heures après leur création.",
+      "Les photos de pièce et les résultats générés restent supprimés au plus tard 24 heures après leur création.",
       "Une simulation abandonnée suit la même limite de conservation.",
       "Après suppression, il peut rester de petites données de fonctionnement sans image privée utilisable.",
       "L'accès temporaire dans votre navigateur expire dans la même fenêtre de conservation.",
@@ -85,6 +88,8 @@ const privacySections = [
   {
     items: [
       "Vous pouvez demander l'accès, la correction, la suppression, l'opposition, la limitation et la portabilité de vos données.",
+      "Vous pouvez demander la suppression de cette fiche.",
+      "La suppression retire aussi l'identité e-mail gardée par le site.",
       "Pour une question sur vos données, écrivez au contact confidentialité.",
     ],
     title: "Vos droits",
