@@ -13,7 +13,7 @@ import { ADMIN_COPY } from "./admin-copy";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type DashboardState = "checking" | "forbidden" | "ready";
-type AdminActionIconName = "sofas" | "new-sofa" | "fabrics" | "tags";
+type AdminActionIconName = "sofas" | "new-sofa" | "fabrics" | "tags" | "leads";
 
 export interface AdminDashboardDependencies {
   clearTrustedDevice(): Promise<void>;
@@ -248,6 +248,22 @@ export default function AdminDashboard({
               {ADMIN_COPY.dashboard.actions.tags.description}
             </span>
           </Link>
+          <Link
+            aria-label={ADMIN_COPY.dashboard.actions.leads.label}
+            className="admin-action-card"
+            href="/admin/leads"
+          >
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.leads.kicker}
+              </span>
+              <AdminActionIcon name="leads" />
+            </span>
+            <strong>{ADMIN_COPY.dashboard.actions.leads.label}</strong>
+            <span aria-hidden="true">
+              {ADMIN_COPY.dashboard.actions.leads.description}
+            </span>
+          </Link>
         </nav>
       </section>
     </AdminShell>
@@ -287,6 +303,18 @@ function AdminActionIcon({ name }: { name: AdminActionIconName }) {
         <path d="M18 5v22" />
         <path d="M5 13c4-2 7 2 11 0 4-2 7 2 11 0" />
         <path d="M5 21c4-2 7 2 11 0 4-2 7 2 11 0" />
+      </svg>
+    );
+  }
+
+  if (name === "leads") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+        <path d="M8 10h16" />
+        <path d="M8 16h10" />
+        <path d="M8 22h7" />
+        <path d="M23 18a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+        <path d="M26 25l3 3" />
       </svg>
     );
   }

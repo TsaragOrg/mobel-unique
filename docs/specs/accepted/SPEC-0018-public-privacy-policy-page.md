@@ -32,7 +32,10 @@ This spec follows:
   email verification, consent capture, and cleanup responsibilities;
 - `SPEC-0015`, which defines the launch-test simulation flow, stub email
   verification state, 24-hour access token lifetime, download behavior, and
-  visitor-safe private artifact handling.
+  visitor-safe private artifact handling;
+- `SPEC-0020`, which defines retained simulation lead records only when both
+  required simulation email consent and optional commercial contact consent are
+  granted.
 
 External legal baseline used for this spec:
 
@@ -68,7 +71,8 @@ The page must make the privacy posture understandable without becoming a long
 legal document. It should explain only what a visitor needs to know for the MVP:
 what is collected, why it is used, how long private simulation images are kept,
 who can access them, how optional contact differs from required verification,
-and how the visitor can exercise their rights.
+when optional contact can create a retained lead record, and how the visitor can
+exercise their rights.
 
 ## Scope
 
@@ -80,12 +84,14 @@ This spec includes:
 - public/private data boundary messaging;
 - retention messaging for room photos, intermediate files, and generated
   simulation outputs;
+- privacy messaging for retained lead records created from optional commercial
+  contact consent under `SPEC-0020`;
 - the approved public privacy contact and legal-basis wording;
 - implementation acceptance criteria and future test expectations.
 
 ## Out Of Scope
 
-This spec does not require:
+This spec by itself does not require:
 
 - changing database schema, storage buckets, RLS policies, cleanup jobs, API
   contracts, worker behavior, or email provider behavior;
@@ -100,6 +106,9 @@ This spec does not require:
   page.
 
 Those topics require separate specs or change requests when they are ready.
+
+`SPEC-0020` separately approves the retained lead records and admin lead
+dashboard needed for optional commercial contact follow-up.
 
 ## Users And Permissions
 
@@ -169,6 +178,8 @@ Required visible content:
      follow-up;
    - required email-use consent;
    - optional commercial contact consent, only when the visitor accepts it;
+   - retained lead email and selected simulation details only when optional
+     commercial contact consent is accepted and a simulation job is created;
    - uploaded room photo;
    - generated guide image and generated simulation result;
    - temporary simulation access cookie or equivalent browser session;
@@ -180,6 +191,8 @@ Required visible content:
    - show the generated result in the visitor's browser;
    - limit abuse and repeated generation;
    - keep enough operational metadata to troubleshoot the MVP service;
+   - let an authorized administrator follow up with consent-backed simulation
+     leads;
    - contact the visitor commercially only when optional consent is granted.
 6. Legal basis wording:
    - required email verification, uploaded room photo handling, generated guide
@@ -190,13 +203,18 @@ Required visible content:
      must be described as needed for MÖBEL UNIQUE's legitimate interest in
      running, securing, and improving the MVP service;
    - optional commercial contact must be described as based only on the
-     visitor's consent and optional for running the simulation.
+     visitor's consent and optional for running the simulation;
+   - retained lead records for commercial follow-up must be described as based
+     on the same optional consent and created only after a simulation job exists.
 7. Retention:
    - room photos, intermediate images, guide images, and generated results are
      private and deleted no later than 24 hours after creation;
    - abandoned simulations are also purged at the retention deadline;
    - after purge, the system may keep lightweight operational metadata without
      usable private image paths or image content;
+   - when optional commercial contact consent is granted, a separate retained
+     lead record may keep the email address and selected simulation details for
+     follow-up until deletion or another later accepted retention rule applies;
    - temporary access cookies or equivalent browser state expire within the
      simulation retention window.
 8. Access and sharing:
@@ -204,6 +222,8 @@ Required visible content:
    - the MVP has no public gallery, public sharing link, or customer account;
    - generated result access is limited to the current verified visitor session
      while the result is retained;
+   - authorized administrators may see retained lead email addresses and safe
+     catalog selection details only for consent-backed follow-up;
    - administrators may use operational metadata, but the MVP must not create a
      default gallery of visitor interiors.
 9. Service providers:
@@ -241,7 +261,11 @@ The privacy page must not:
 
 ## Data Model
 
-No database changes are required by this spec.
+No database changes are required by this privacy page spec itself.
+
+`SPEC-0020` separately approves `simulation_leads` and
+`simulation_lead_jobs` for retained lead records created from optional
+commercial contact consent.
 
 The privacy page must describe existing and already-specified MVP data classes:
 
@@ -249,18 +273,22 @@ The privacy page must describe existing and already-specified MVP data classes:
 - consent records;
 - simulation sessions;
 - in-home simulation jobs;
+- retained simulation lead records approved by `SPEC-0020`;
 - private simulation artifacts;
 - generated output metadata;
 - rate-limit counters;
 - lightweight operational metadata.
 
-Any future change to consent storage, analytics consent persistence, deletion
-request tracking, or longer retention requires a separate accepted spec or
-change request.
+Any further future change to consent storage, analytics consent persistence,
+deletion request tracking, or longer retention requires a separate accepted spec
+or change request.
 
 ## API
 
-No API changes are required by this spec.
+No API changes are required by this privacy page spec itself.
+
+`SPEC-0020` separately defines the protected admin lead endpoints and deletion
+behavior for retained lead records.
 
 The page is static or server-rendered public content. It must not call private
 simulation status endpoints, admin endpoints, worker functions, or Supabase
@@ -315,6 +343,8 @@ A future implementation plan must include focused tests for:
   images;
 - the privacy page distinguishes required email verification from optional
   commercial contact;
+- the privacy page explains that optional commercial contact consent can create
+  a retained lead record after a simulation job is created;
 - the privacy page does not expose admin links, private paths, signed URLs,
   Supabase keys, API internals, cart, checkout, account UI, or customer gallery
   promises;
@@ -341,6 +371,8 @@ pnpm spec:check
 - The page explains simulation data: email, required consent, optional
   commercial contact consent, room photo, generated guide/result, temporary
   access state, and operational metadata.
+- The page explains that optional commercial contact consent can create a
+  retained lead record after a simulation job is created.
 - The page includes the approved public privacy contact:
   `mobel.unique.it@gmail.com`.
 - The page uses a generic privacy contact role and does not claim a data
@@ -351,6 +383,8 @@ pnpm spec:check
   contact.
 - The page states that private simulation images are deleted no later than
   24 hours after creation.
+- The page keeps retained lead records separate from the 24-hour private image
+  retention rule.
 - The page states that generated simulation images remain private and are not
   public catalog assets.
 - The page states that the MVP has no public gallery, public sharing link, or
@@ -360,7 +394,8 @@ pnpm spec:check
 - The page does not describe Shopify checkout privacy as if Shopify were owned
   by this application.
 - No database, API, worker, environment, analytics, or consent-banner changes
-  are approved by this spec.
+  are approved by this privacy page spec itself; retained lead storage and admin
+  API behavior are approved separately by `SPEC-0020`.
 - Future implementation tests must cover route rendering, footer navigation,
   required privacy topics, and absence of private technical details.
 

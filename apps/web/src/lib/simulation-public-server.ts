@@ -4,13 +4,7 @@
 // Route.ts files call these factories to get the Supabase-backed
 // implementations of the public simulation interfaces.
 
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-} from "node:crypto";
+import { createHmac } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import type { SimulationEnvironment } from "./simulation-access-token";
@@ -44,6 +38,12 @@ import {
   createSupabaseSimulationRateLimitStore,
   type SimulationRateLimitStore,
 } from "./simulation-rate-limit";
+import {
+  decryptSimulationEmailAddress as decryptEmailAddress,
+  encryptSimulationEmailAddress as encryptEmailAddress,
+  hashSimulationEmailAddress as hashEmailAddress,
+  normalizeSimulationEmailAddress as normalizeEmailAddress,
+} from "./simulation-email-identity";
 import type {
   RoomGeometryMode,
   SimulationJobStatus,
@@ -55,7 +55,6 @@ const DEFAULT_CORNER_TAG_SLUG = "corner";
 const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_DISPATCH_TRIGGER_TIMEOUT_MS = 5_000;
 const DEFAULT_REALTIME_TOKEN_TTL_SECONDS = 5 * 60;
-const EMAIL_ENCRYPTION_PREFIX = "v1";
 const REQUIRED_EMAIL_CONSENT_WORDING_VERSION = "email-verification-v1";
 const OPTIONAL_MARKETING_CONSENT_WORDING_VERSION = "commercial-contact-v1";
 const PUBLIC_SIMULATION_AUTH_USER_METADATA = {
@@ -741,59 +740,6 @@ function createServiceRoleClient(): SupabaseClient {
       },
     },
   );
-}
-
-function normalizeEmailAddress(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function hashEmailAddress(email: string, secret: string): string {
-  return createHmac("sha256", secret).update(email).digest("hex");
-}
-
-function encryptEmailAddress(email: string, secret: string): string {
-  const key = deriveEncryptionKey(secret);
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(email, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return [
-    EMAIL_ENCRYPTION_PREFIX,
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    ciphertext.toString("base64url"),
-  ].join(".");
-}
-
-function decryptEmailAddress(encrypted: string, secret: string): string {
-  const [version, ivRaw, tagRaw, ciphertextRaw] = encrypted.split(".");
-  if (
-    version !== EMAIL_ENCRYPTION_PREFIX ||
-    !ivRaw ||
-    !tagRaw ||
-    !ciphertextRaw
-  ) {
-    throw new Error("Unsupported encrypted email payload");
-  }
-  const key = deriveEncryptionKey(secret);
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    key,
-    Buffer.from(ivRaw, "base64url"),
-  );
-  decipher.setAuthTag(Buffer.from(tagRaw, "base64url"));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(ciphertextRaw, "base64url")),
-    decipher.final(),
-  ]);
-  return plaintext.toString("utf8");
-}
-
-function deriveEncryptionKey(secret: string): Buffer {
-  return createHash("sha256").update(secret).digest();
 }
 
 function classifyOtpProviderError(
