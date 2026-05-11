@@ -202,13 +202,15 @@ operator tooling, not part of the visitor workflow.
       guide checkpoint downloads that artifact, draws dimension lines, uploads
       the guide image, and completes room preparation without replaying the
       corners provider call.
+- [x] Split `placement_finalize` out of `placement_generation`: the generation
+      checkpoint now runs the placement provider and uploads the output image,
+      then a separate finalize checkpoint downloads that output, records the
+      generated-output row, updates the job result state, and advances to the
+      completed sentinel without replaying image generation.
       Current intentionally unhandled executable checkpoints:
       - `placement_measurement`: still folded into `placement_generation`;
         split pending so measurement can fail/retry without replaying image
         generation.
-      - `placement_finalize`: still folded into `placement_generation`; split
-        pending so final persistence can fail/retry without replaying image
-        generation or measurement.
 - [ ] Add worker timeout tests proving multi-attempt provider loops are split
       across persisted checkpoint attempts.
 - [x] Preserve previous successful output when a regeneration checkpoint fails.

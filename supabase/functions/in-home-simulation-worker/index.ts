@@ -1781,6 +1781,29 @@ function stampSofaRectangle(
   return stamped;
 }
 
+function resolvePlacementOutputArtifact(claim: PlacementClaimRow): {
+  generationIndex: number;
+  outputPath: string;
+} {
+  const generationIndex = claim.reserved_generation_index ??
+    claim.generated_output_count;
+  if (
+    !Number.isInteger(generationIndex) ||
+    generationIndex < 0 ||
+    generationIndex > 2
+  ) {
+    throw new Error(
+      `job ${claim.job_id} has invalid placement generation index ${generationIndex}`
+    );
+  }
+
+  return {
+    generationIndex,
+    outputPath:
+      `${claim.storage_prefix}/outputs/output-${generationIndex}.png`
+  };
+}
+
 async function processPlacementJob(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -2064,10 +2087,8 @@ async function processPlacementJob(
     const outputBytes = await outputImage.encode(0);
     await Deno.writeFile(`${scratchDir}/output.png`, outputBytes);
 
-    const generationIndex = claim.reserved_generation_index ??
-      claim.generated_output_count;
-    const outputPath =
-      `${claim.storage_prefix}/outputs/output-${generationIndex}.png`;
+    const { generationIndex, outputPath } =
+      resolvePlacementOutputArtifact(claim);
 
     logWorkerStep("placement_upload_output_started", {
       byte_length: outputBytes.length,
@@ -2087,6 +2108,95 @@ async function processPlacementJob(
       job_id: claim.job_id,
       worker_identifier: workerIdentifier
     });
+    logWorkerStep("placement_generation_output_ready", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      output_object_path: outputPath,
+      worker_identifier: workerIdentifier
+    });
+
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
+    logWorkerStep("placement_generation_next_checkpoint_ready", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      next_checkpoint_key: completion.nextCheckpointKey,
+      worker_identifier: workerIdentifier
+    });
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
+}
+
+async function runPlacementFinalizeCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: PlacementClaimRow,
+  completion: CheckpointCompletion
+): Promise<void> {
+  const { generationIndex, outputPath } = resolvePlacementOutputArtifact(claim);
+  logWorkerStep("placement_finalize_started", {
+    attempt: claim.placement_attempt_count,
+    generation_index: generationIndex,
+    generated_output_count: claim.generated_output_count,
+    job_id: claim.job_id,
+    output_object_path: outputPath,
+    reserved_generation_index: claim.reserved_generation_index,
+    worker_identifier: workerIdentifier
+  });
+
+  const providerMode = Deno.env.get("IN_HOME_SIMULATION_PROVIDER_MODE");
+  const providers = selectStage2Providers(
+    providerMode,
+    (name) => Deno.env.get(name) ?? undefined
+  );
+
+  const scratchDir = await createScratchDir(claim.job_id);
+  try {
+    logWorkerStep("placement_finalize_download_output_started", {
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      output_object_path: outputPath,
+      worker_identifier: workerIdentifier
+    });
+    const outputBytes = await downloadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      outputPath
+    );
+    await Deno.writeFile(`${scratchDir}/output.png`, outputBytes);
+    logWorkerStep("placement_finalize_download_output_completed", {
+      byte_length: outputBytes.length,
+      generation_index: generationIndex,
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+
+    let outputImage: Image;
+    try {
+      logWorkerStep("placement_finalize_decode_output_started", {
+        byte_length: outputBytes.length,
+        generation_index: generationIndex,
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier
+      });
+      outputImage = (await decode(outputBytes)) as Image;
+      logWorkerStep("placement_finalize_decode_output_completed", {
+        generation_index: generationIndex,
+        height: outputImage.height,
+        job_id: claim.job_id,
+        width: outputImage.width,
+        worker_identifier: workerIdentifier
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`placement finalize output decode failed: ${message}`);
+    }
 
     await callRpc<void>(
       supabaseUrl,
@@ -2112,13 +2222,14 @@ async function processPlacementJob(
       provider_name: providers.placement.name,
       worker_identifier: workerIdentifier
     });
+
     await completeCheckpointClaim(
       supabaseUrl,
       serviceRoleKey,
       workerIdentifier,
       completion
     );
-    logWorkerStep("placement_next_checkpoint_ready", {
+    logWorkerStep("placement_finalize_next_checkpoint_ready", {
       generation_index: generationIndex,
       job_id: claim.job_id,
       next_checkpoint_key: completion.nextCheckpointKey,
@@ -2290,12 +2401,29 @@ async function processClaimedCheckpoint(
       {
         kind: "checkpoint",
         checkpointId: claim.checkpoint_id,
-        nextCheckpointKey: "completed",
+        nextCheckpointKey: "placement_finalize",
         progressStepOrdinal: 4,
         progressTotalSteps: 4
       }
     );
     return "placement_generation_completed";
+  }
+
+  if (claim.checkpoint_key === "placement_finalize") {
+    await runPlacementFinalizeCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      placementClaimFromCheckpoint(claim),
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "completed",
+        progressStepOrdinal: 4,
+        progressTotalSteps: 4
+      }
+    );
+    return "placement_finalize_completed";
   }
 
   throw new Error(`unsupported checkpoint ${claim.checkpoint_key}`);
