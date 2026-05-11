@@ -5,6 +5,8 @@ const PAUSE_PATH =
   "supabase/migrations/20260502000500_in_home_simulation_claim_pauses_on_cost_meter.sql";
 const PURGE_PATH =
   "supabase/migrations/20260502000600_in_home_simulation_purge_extension.sql";
+const CHECKPOINT_PURGE_PATH =
+  "supabase/migrations/20260511000100_in_home_simulation_checkpoint_purge.sql";
 const RECORD_CHARGE_FIX_PATH =
   "supabase/migrations/20260508000100_fix_simulation_cost_meter_record_charge_ambiguity.sql";
 
@@ -113,6 +115,50 @@ describe("SPEC-0015 purge extension", () => {
     );
     expect(sql).toContain(
       "grant execute on function public.cleanup_simulation_idempotency_keys()",
+    );
+  });
+});
+
+describe("SPEC-0007 PLAN-0068 checkpoint purge extension", () => {
+  const sql = readFileSync(CHECKPOINT_PURGE_PATH, "utf8");
+
+  it("extends mark_in_home_simulation_job_purged for checkpoint-era state", () => {
+    expect(sql).toContain(
+      "create or replace function public.mark_in_home_simulation_job_purged",
+    );
+    expect(sql).toContain("delete from public.simulation_public_progress");
+    expect(sql).toContain(
+      "where simulation_job_id = mark_in_home_simulation_job_purged.job_id",
+    );
+    expect(sql).toContain(
+      "delete from public.in_home_simulation_checkpoint_dispatch_outbox",
+    );
+    expect(sql).toContain(
+      "delete from public.in_home_simulation_checkpoints",
+    );
+  });
+
+  it("redacts progress and claim state while marking the job expired", () => {
+    expect(sql).toContain("status = 'expired'");
+    expect(sql).toContain("claimed_by = null");
+    expect(sql).toContain("claimed_at = null");
+    expect(sql).toContain("current_checkpoint = 'expired'");
+    expect(sql).toContain("current_checkpoint_status = 'expired'");
+    expect(sql).toContain("progress_step_key = null");
+    expect(sql).toContain("progress_step_ordinal = null");
+    expect(sql).toContain("progress_total_steps = null");
+    expect(sql).toContain("progress_updated_at = null");
+  });
+
+  it("keeps artifact and idempotency redaction in the replacement RPC", () => {
+    expect(sql).toContain("set purged_at = now(), object_path = null");
+    expect(sql).toContain("customer_room_original_path = null");
+    expect(sql).toContain("room_cleaned_path = null");
+    expect(sql).toContain("dimension_guide_overlay_path = null");
+    expect(sql).toContain("worker_error_path = null");
+    expect(sql).toContain("delete from public.simulation_idempotency_keys");
+    expect(sql).toContain(
+      "grant execute on function public.mark_in_home_simulation_job_purged(uuid)",
     );
   });
 });

@@ -21,6 +21,13 @@ describe("in-home simulation purge function identity cleanup", () => {
     expect(source).toContain("email_handoffs_purged");
   });
 
+  it("delegates database-side checkpoint and progress redaction to the purge RPC", () => {
+    expect(source).toContain("mark_in_home_simulation_job_purged");
+    expect(source).toContain(
+      "artifact, checkpoint, dispatch, and progress state",
+    );
+  });
+
   it("deletes only Auth users marked as transient public simulation users", () => {
     expect(source).toContain("/auth/v1/admin/users/");
     expect(source).toContain("deleteAuthUser");
