@@ -107,6 +107,11 @@ non-negotiable acceptance criterion.
 
 ## Notes
 
+- 2026-05-11: Ahmed manually confirmed the deployed OTP email flow, catalog
+  image variant backfill visibility, simulation generation, dimension entry,
+  and regeneration smoke paths. Rate-limit, expiration, cost-cap,
+  idempotency, parity capture, runbook, and final launch sign-off remain open,
+  so this plan stays active.
 - The "production worker input parity" memory rule is the binding
   acceptance criterion for this plan: production worker output for any
   given source photo must equal what the same photo produces in the

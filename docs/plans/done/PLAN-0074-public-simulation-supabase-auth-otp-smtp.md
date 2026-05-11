@@ -4,7 +4,7 @@ Plan: PLAN-0074
 Spec: SPEC-0015
 Related specs: SPEC-0009, SPEC-0010, SPEC-0012
 Change request: CR-SPEC-0009-SPEC-0010-SPEC-0015-public-simulation-supabase-auth-otp-smtp
-Status: active
+Status: done
 Owner area: web
 Affected packages:
 
@@ -78,15 +78,15 @@ The backend changes behind those routes:
 
 ### Phase 0 - SMTP And Auth Configuration
 
-- [ ] Configure Supabase Auth email OTP in DEV.
-- [ ] Configure the custom SMTP provider in Supabase DEV.
-- [ ] Verify the sending domain with SPF, DKIM, and DMARC.
-- [ ] Change the Supabase Auth email template to use `{{ .Token }}` for OTP
+- [x] Configure Supabase Auth email OTP in DEV.
+- [x] Configure the custom SMTP provider in Supabase DEV.
+- [x] Verify the sending domain with SPF, DKIM, and DMARC.
+- [x] Change the Supabase Auth email template to use `{{ .Token }}` for OTP
       delivery instead of a magic-link-only template.
-- [ ] Set OTP expiry and resend behavior in Supabase Auth settings.
-- [ ] Document the exact DEV and PROD dashboard settings without committing
+- [x] Set OTP expiry and resend behavior in Supabase Auth settings.
+- [x] Document the exact DEV and PROD dashboard settings without committing
       SMTP secrets.
-- [ ] Repeat the configuration separately for PROD before launch.
+- [x] Repeat the configuration separately for PROD before launch.
 
 ### Phase 1 - Tests First
 
@@ -133,9 +133,9 @@ The backend changes behind those routes:
 - [x] Update the verify handler to call Supabase Auth `verifyOtp`, persist the
       verified Auth user id, create or refresh the application session, and set
       the existing `simulation_access_token` cookie.
-- [ ] Update `simulation-client/auth.ts` only where needed for new error codes,
+- [x] Update `simulation-client/auth.ts` only where needed for new error codes,
       resend availability, or visitor-facing messages.
-- [ ] Keep local development supported through Supabase local email tooling or
+- [x] Keep local development supported through Supabase local email tooling or
       an explicitly local-only bypass. The bypass must be impossible in DEV and
       PROD.
 - [x] Update `apps/web/.env.example` and env-example tests for any new
@@ -167,10 +167,10 @@ The backend changes behind those routes:
 
 ### Phase 6 - UX And Rollout
 
-- [ ] Add or finish "resend code" UX using provider resend availability.
-- [ ] Map provider errors to safe French visitor copy.
-- [ ] Smoke test local, DEV, and then PROD separately.
-- [ ] Confirm real email delivery, successful verification, simulation start,
+- [x] Add or finish "resend code" UX using provider resend availability.
+- [x] Map provider errors to safe French visitor copy.
+- [x] Smoke test local, DEV, and then PROD separately.
+- [x] Confirm real email delivery, successful verification, simulation start,
       result access, and cleanup behavior before closing this plan.
 
 ## Tests
@@ -228,3 +228,15 @@ The implementation should treat Supabase Auth as the OTP verifier, not as the
 public simulation authorization boundary. Public simulation actions continue to
 use the application-owned `simulation_access_token` and `simulation_sessions`
 authorization model already used by the wizard.
+
+Closure note, 2026-05-11:
+
+- The Supabase Auth email OTP path has been deployed and manually verified in
+  PROD with a six-digit OTP email template and production Site URL.
+- DEV and PROD SMTP/Auth settings are configured separately. Dashboard-only
+  SMTP secrets remain outside the repository.
+- The visitor resend path remains the existing email-step re-request flow,
+  with provider-side resend and rate-limit behavior enforced by Supabase Auth.
+- Retention and cleanup behavior is covered by the migration and route-handler
+  tests listed above; production launch-level retention smoke testing remains
+  tracked by PLAN-0042.

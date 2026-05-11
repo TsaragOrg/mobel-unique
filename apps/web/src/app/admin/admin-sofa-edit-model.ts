@@ -93,9 +93,7 @@ export function getRenderCellPrimaryAction(
     case "processing":
       return null;
     case "ready":
-      return {
-        label: "Voir le rendu actuel",
-      };
+      return null;
     case "missing":
       return {
         label: "Générer",
