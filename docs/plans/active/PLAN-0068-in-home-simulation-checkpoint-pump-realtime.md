@@ -197,9 +197,12 @@ operator tooling, not part of the visitor workflow.
 - [ ] Refactor room validation, room cleaning, corners, dimension-guide,
       placement generation, placement measurement, and placement finalization
       into bounded checkpoints.
+- [x] Split `dimension_guide` out of `room_corners`: the corners checkpoint now
+      validates and uploads the provider corner artifact, then a separate
+      guide checkpoint downloads that artifact, draws dimension lines, uploads
+      the guide image, and completes room preparation without replaying the
+      corners provider call.
       Current intentionally unhandled executable checkpoints:
-      - `dimension_guide`: still folded into `room_corners`; split pending
-        unless the plan is corrected to keep it as part of corners.
       - `placement_measurement`: still folded into `placement_generation`;
         split pending so measurement can fail/retry without replaying image
         generation.

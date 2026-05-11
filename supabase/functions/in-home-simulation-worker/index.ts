@@ -1386,11 +1386,6 @@ async function runCornersCheckpoint(
       "runCornersCheckpoint called without a persisted room_cleaned_path"
     );
   }
-  if (!checkpoint.room_normalized_path || !checkpoint.room_compressed_path) {
-    throw new Error(
-      "runCornersCheckpoint requires room_normalized_path and room_compressed_path on the job row"
-    );
-  }
 
   // PLAN-0056 observability: same rationale as the cleaning
   // checkpoint — emit a marker before the corners OpenAI fetch so the
@@ -1469,7 +1464,6 @@ async function runCornersCheckpoint(
     await Deno.writeFile(`${scratchDir}/room_cleaned.png`, cleanedBytes);
 
     const mode: "back_wall" | "corner" = claim.room_geometry_mode;
-    const sceneConfidence: number | null = null;
 
     logWorkerStep("room_corners_provider_started", {
       job_id: claim.job_id,
@@ -1555,25 +1549,11 @@ async function runCornersCheckpoint(
       mode: classification.corners.mode,
       worker_identifier: workerIdentifier
     });
-    await drawDimensionLines(annotatedImage, classification.corners);
-    const dimensionsBytes = await annotatedImage.encode(0);
-    await Deno.writeFile(
-      `${scratchDir}/room_dimensions.png`,
-      dimensionsBytes
-    );
-
-    const geometryForPersist = {
-      mode: classification.corners.mode,
-      classified: classification.corners,
-      detected_dots: detectedDots
-    };
 
     const cornersPath = `${claim.storage_prefix}/room_corners.png`;
-    const dimensionsPath = `${claim.storage_prefix}/room_dimensions.png`;
 
     logWorkerStep("room_corners_upload_artifacts_started", {
       corners_byte_length: annotatedBytes.length,
-      dimensions_byte_length: dimensionsBytes.length,
       job_id: claim.job_id,
       worker_identifier: workerIdentifier
     });
@@ -1584,34 +1564,10 @@ async function runCornersCheckpoint(
       annotatedBytes,
       "image/png"
     );
-    await uploadStorageObject(
-      supabaseUrl,
-      serviceRoleKey,
-      dimensionsPath,
-      dimensionsBytes,
-      "image/png"
-    );
     logWorkerStep("room_corners_upload_artifacts_completed", {
       job_id: claim.job_id,
       worker_identifier: workerIdentifier
     });
-
-    await callRpc<void>(
-      supabaseUrl,
-      serviceRoleKey,
-      "complete_in_home_simulation_room_prep_stage",
-      {
-        job_id: claim.job_id,
-        worker_identifier: workerIdentifier,
-        room_normalized_path: checkpoint.room_normalized_path,
-        room_compressed_path: checkpoint.room_compressed_path,
-        room_cleaned_path: checkpoint.room_cleaned_path,
-        dimension_guide_overlay_path: dimensionsPath,
-        room_geometry_mode: mode,
-        room_geometry_points: geometryForPersist,
-        room_geometry_confidence: sceneConfidence
-      }
-    );
     logWorkerStep("room_corners_persisted", {
       job_id: claim.job_id,
       worker_identifier: workerIdentifier
@@ -1624,6 +1580,171 @@ async function runCornersCheckpoint(
       completion
     );
     logWorkerStep("room_corners_next_checkpoint_ready", {
+      job_id: claim.job_id,
+      next_checkpoint_key: completion.nextCheckpointKey,
+      worker_identifier: workerIdentifier
+    });
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
+}
+
+async function runDimensionGuideCheckpoint(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  workerIdentifier: string,
+  claim: RoomPrepClaimRow,
+  checkpoint: InHomeSimulationJobCheckpointRow,
+  completion: CheckpointCompletion
+): Promise<void> {
+  if (
+    !checkpoint.room_normalized_path ||
+    !checkpoint.room_compressed_path ||
+    !checkpoint.room_cleaned_path
+  ) {
+    throw new Error(
+      "runDimensionGuideCheckpoint requires normalized, compressed, and cleaned room paths"
+    );
+  }
+
+  logWorkerStep("dimension_guide_started", {
+    attempt: claim.room_prep_attempt_count,
+    job_id: claim.job_id,
+    room_geometry_mode: claim.room_geometry_mode,
+    worker_identifier: workerIdentifier
+  });
+
+  const scratchDir = await createScratchDir(claim.job_id);
+  try {
+    const cornersPath = `${claim.storage_prefix}/room_corners.png`;
+    logWorkerStep("dimension_guide_download_corners_started", {
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+    const cornersBytes = await downloadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      cornersPath
+    );
+    logWorkerStep("dimension_guide_download_corners_completed", {
+      byte_length: cornersBytes.length,
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+
+    let annotatedImage: Image;
+    try {
+      logWorkerStep("dimension_guide_decode_started", {
+        byte_length: cornersBytes.length,
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier
+      });
+      annotatedImage = (await decode(cornersBytes)) as Image;
+      logWorkerStep("dimension_guide_decode_completed", {
+        height: annotatedImage.height,
+        job_id: claim.job_id,
+        width: annotatedImage.width,
+        worker_identifier: workerIdentifier
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "corners_decode_failed",
+        `Could not decode the corners artifact: ${message}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(`corners decode failed: ${message}`);
+    }
+
+    const detectedDots = detectYellowDots(annotatedImage);
+    logWorkerStep("dimension_guide_dots_detected", {
+      detected_dot_count: detectedDots.length,
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+    const classification = classifyDots(detectedDots);
+    if (!classification.ok) {
+      await failJobNonRetryable(
+        supabaseUrl,
+        serviceRoleKey,
+        claim.job_id,
+        "dot_classification_failed",
+        `Dot classification failed: ${classification.failureReason}`,
+        { storagePrefix: claim.storage_prefix, stage: "stage_1" }
+      );
+      throw new Error(
+        `dot_classification_failed: ${classification.failureReason}`
+      );
+    }
+    logWorkerStep("dimension_guide_dots_classified", {
+      job_id: claim.job_id,
+      mode: classification.corners.mode,
+      worker_identifier: workerIdentifier
+    });
+
+    await drawDimensionLines(annotatedImage, classification.corners);
+    const dimensionsBytes = await annotatedImage.encode(0);
+    await Deno.writeFile(
+      `${scratchDir}/room_dimensions.png`,
+      dimensionsBytes
+    );
+
+    const dimensionsPath = `${claim.storage_prefix}/room_dimensions.png`;
+    logWorkerStep("dimension_guide_upload_artifact_started", {
+      byte_length: dimensionsBytes.length,
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+    await uploadStorageObject(
+      supabaseUrl,
+      serviceRoleKey,
+      dimensionsPath,
+      dimensionsBytes,
+      "image/png"
+    );
+    logWorkerStep("dimension_guide_upload_artifact_completed", {
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+
+    const geometryForPersist = {
+      mode: classification.corners.mode,
+      classified: classification.corners,
+      detected_dots: detectedDots
+    };
+    const sceneConfidence: number | null = null;
+
+    await callRpc<void>(
+      supabaseUrl,
+      serviceRoleKey,
+      "complete_in_home_simulation_room_prep_stage",
+      {
+        job_id: claim.job_id,
+        worker_identifier: workerIdentifier,
+        room_normalized_path: checkpoint.room_normalized_path,
+        room_compressed_path: checkpoint.room_compressed_path,
+        room_cleaned_path: checkpoint.room_cleaned_path,
+        dimension_guide_overlay_path: dimensionsPath,
+        room_geometry_mode: claim.room_geometry_mode,
+        room_geometry_points: geometryForPersist,
+        room_geometry_confidence: sceneConfidence
+      }
+    );
+    logWorkerStep("dimension_guide_persisted", {
+      job_id: claim.job_id,
+      worker_identifier: workerIdentifier
+    });
+
+    await completeCheckpointClaim(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      completion
+    );
+    logWorkerStep("dimension_guide_next_checkpoint_ready", {
       job_id: claim.job_id,
       next_checkpoint_key: completion.nextCheckpointKey,
       worker_identifier: workerIdentifier
@@ -2129,12 +2250,35 @@ async function processClaimedCheckpoint(
       {
         kind: "checkpoint",
         checkpointId: claim.checkpoint_id,
-        nextCheckpointKey: "awaiting_dimensions",
+        nextCheckpointKey: "dimension_guide",
         progressStepOrdinal: 3,
         progressTotalSteps: 4
       }
     );
     return "room_corners_completed";
+  }
+
+  if (claim.checkpoint_key === "dimension_guide") {
+    const checkpoint = await fetchInHomeSimulationJobRow(
+      supabaseUrl,
+      serviceRoleKey,
+      claim.job_id
+    );
+    await runDimensionGuideCheckpoint(
+      supabaseUrl,
+      serviceRoleKey,
+      workerIdentifier,
+      roomPrepClaimFromCheckpoint(claim),
+      checkpoint,
+      {
+        kind: "checkpoint",
+        checkpointId: claim.checkpoint_id,
+        nextCheckpointKey: "awaiting_dimensions",
+        progressStepOrdinal: 3,
+        progressTotalSteps: 4
+      }
+    );
+    return "dimension_guide_completed";
   }
 
   if (claim.checkpoint_key === "placement_generation") {

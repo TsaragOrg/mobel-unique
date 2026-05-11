@@ -109,6 +109,11 @@ export const SIMULATION_LOCALE = {
         reassurance:
           "Nous détectons les murs, le sol et les repères utiles.",
       },
+      dimensionGuide: {
+        title: "Préparation du guide de mesures",
+        reassurance:
+          "Nous préparons l'image guide pour renseigner les dimensions.",
+      },
       awaitingDimensions: {
         title: "Guide de mesures prêt",
         reassurance:
