@@ -31,10 +31,18 @@ interface FakeVisibility {
   setHidden: (value: boolean) => Promise<void>;
 }
 
+interface FakeNetwork {
+  online: boolean;
+  onlineListeners: Array<() => void>;
+  offlineListeners: Array<() => void>;
+  setOnline: (value: boolean) => Promise<void>;
+}
+
 interface FakeRuntime {
   intervals: FakeIntervalEntry[];
   timeouts: FakeTimeoutEntry[];
   visibility: FakeVisibility;
+  network: FakeNetwork;
   tick: () => Promise<void>;
   fireTimeout: (id: number) => Promise<void>;
   deps: SimulationPollDeps;
@@ -50,6 +58,21 @@ function makeRuntime(): FakeRuntime {
     async setHidden(value: boolean) {
       visibility.hidden = value;
       for (const listener of [...visibility.listeners]) {
+        listener();
+      }
+      await flushMicrotasks();
+    }
+  };
+  const network: FakeNetwork = {
+    online: true,
+    onlineListeners: [],
+    offlineListeners: [],
+    async setOnline(value: boolean) {
+      network.online = value;
+      const listeners = value
+        ? [...network.onlineListeners]
+        : [...network.offlineListeners];
+      for (const listener of listeners) {
         listener();
       }
       await flushMicrotasks();
@@ -83,12 +106,30 @@ function makeRuntime(): FakeRuntime {
           if (idx >= 0) visibility.listeners.splice(idx, 1);
         };
       }
+    },
+    network: {
+      isOnline: () => network.online,
+      addOfflineListener: (listener) => {
+        network.offlineListeners.push(listener);
+        return () => {
+          const idx = network.offlineListeners.indexOf(listener);
+          if (idx >= 0) network.offlineListeners.splice(idx, 1);
+        };
+      },
+      addOnlineListener: (listener) => {
+        network.onlineListeners.push(listener);
+        return () => {
+          const idx = network.onlineListeners.indexOf(listener);
+          if (idx >= 0) network.onlineListeners.splice(idx, 1);
+        };
+      }
     }
   };
   return {
     intervals,
     timeouts,
     visibility,
+    network,
     deps,
     async tick() {
       const snapshot = [...intervals];
@@ -236,7 +277,7 @@ describe("createSimulationPoller", () => {
     expect(runtime.intervals).toHaveLength(1);
   });
 
-  it("stop() clears the interval, the pause timeout, and the visibility listener", async () => {
+  it("stop() clears timers and browser state listeners", async () => {
     const runtime = makeRuntime();
     const fetchStatus = vi.fn(async () => buildSnapshot("queued"));
 
@@ -254,6 +295,8 @@ describe("createSimulationPoller", () => {
     expect(runtime.intervals).toHaveLength(0);
     expect(runtime.timeouts).toHaveLength(0);
     expect(runtime.visibility.listeners).toHaveLength(0);
+    expect(runtime.network.offlineListeners).toHaveLength(0);
+    expect(runtime.network.onlineListeners).toHaveLength(0);
   });
 
   it("backs off after fetch errors instead of keeping the interval hot", async () => {
@@ -314,5 +357,33 @@ describe("createSimulationPoller", () => {
 
     expect(runtime.intervals).toHaveLength(1);
     expect(runtime.intervals[0].delayMs).toBe(POLL_DEFAULT_INTERVAL_MS);
+  });
+
+  it("pauses polling while offline and refreshes status immediately when back online", async () => {
+    const runtime = makeRuntime();
+    const fetchStatus = vi.fn(async () => buildSnapshot("queued"));
+
+    const poller = createSimulationPoller({
+      fetchStatus,
+      onUpdate: () => undefined,
+      onError: () => undefined,
+      deps: runtime.deps
+    });
+    poller.start();
+    await flushMicrotasks();
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+    expect(runtime.intervals).toHaveLength(1);
+
+    await runtime.network.setOnline(false);
+    fetchStatus.mockClear();
+
+    expect(runtime.intervals).toHaveLength(0);
+    await runtime.tick();
+    expect(fetchStatus).not.toHaveBeenCalled();
+
+    await runtime.network.setOnline(true);
+
+    expect(runtime.intervals).toHaveLength(1);
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
   });
 });

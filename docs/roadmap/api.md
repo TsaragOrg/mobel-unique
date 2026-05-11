@@ -6,7 +6,7 @@
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Done   | SPEC-0006 | PLAN-0074 | Admin fabric render resume now accepts a selected `render_cell_id`, returns the preferred job details, rejects cells without queued work, and reports same-sofa processing conflicts with a visible admin-safe error. |
 | Done   | SPEC-0015 | PLAN-0074 | Public simulation email-verification APIs now delegate OTP request and verification to Supabase Auth, keep Supabase Auth sessions server-side, issue only the application simulation access token, and require verified sessions before job creation. |
-| Active | SPEC-0007 | PLAN-0068 | Remaining public simulation API work is to validate Realtime fallback behavior and recovery-edge cases without exposing dispatch ids or worker internals. |
+| Done   | SPEC-0007 | PLAN-0068 | Public simulation API checkpoint-dispatch work is closed: create, dimensions, regeneration, status, and Realtime token handlers keep worker internals private while durable outbox recovery and signed-status reads remain the source of truth. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation Realtime token coverage now proves cross-visitor access is blocked before token issuance, emitted JWTs carry only the job/session `simulation_progress` scope, and token expiry is capped by the simulation retention deadline. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation create, dimensions, and regeneration handlers now call dispatch-outbox RPCs, then wake the in-home simulation worker in `dispatch` mode after durable state is persisted; request-time pump mode, legacy pgmq enqueue, cron pickup, and public web worker URL/invoke secret/pump timeout environment requirements are no longer part of the visitor path. |
 | Done   | SPEC-0007 | PLAN-0068 | Public simulation Realtime token endpoint issues short-lived Supabase Realtime JWTs only after the simulation access token is authorized for the requested job, keeping progress subscriptions scoped to one job/session pair. |
@@ -27,8 +27,5 @@
 
 ## Next
 
-- Finish PLAN-0068 public simulation API validation around dispatch wake-up
-  failure handling, Realtime fallback, recovery-edge cases, and visitor-safe
-  responses.
-- Keep remaining server-to-server authorization work scoped to internal and
-  worker-only APIs that PLAN-0068 still exercises.
+- Support PLAN-0042 public simulation launch validation with production-safe API
+  runbook notes after the remaining manual checks pass.

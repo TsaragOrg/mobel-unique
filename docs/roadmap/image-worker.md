@@ -5,7 +5,7 @@
 | Status | Spec      | Plan      | Work                                                                                                                                                            |
 | ------ | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Done   | SPEC-0006 | PLAN-0074 | Fabric render worker pump/job modes now accept `preferred_job_id`, hand it to the first job claim, start only one preferred job from selected-cell resume, and continue the request chain only after a successful job. |
-| Active | SPEC-0007 | PLAN-0068 | In-home simulation worker work will keep bounded one-checkpoint execution while removing request-time pump chaining from the public path and adding transactional outbox dispatcher/recovery coverage for every checkpoint type. |
+| Done   | SPEC-0007 | PLAN-0068 | In-home simulation worker checkpoint-dispatch work is closed: dispatch and checkpoint modes process bounded units, split provider loops across persisted attempts, recover stale work, and keep request-time pump plus cron paths out of visitor execution. |
 | Done   | SPEC-0007 | PLAN-0068 | In-home simulation `placement_measurement` is now a bounded checkpoint: `placement_generation` performs one provider attempt with optional stored feedback, `placement_measurement` reloads the output, measures it, writes bounded corrective feedback when needed, and either retries generation or advances to `placement_finalize`. |
 | Done   | SPEC-0007 | PLAN-0068 | In-home simulation `placement_finalize` is now a bounded checkpoint: `placement_generation` runs the provider and uploads the output image, while `placement_finalize` reloads that artifact, records the generated output, updates the job result state, and advances to `completed` without replaying image generation. |
 | Done   | SPEC-0007 | PLAN-0068 | In-home simulation `dimension_guide` is now a real bounded checkpoint: `room_corners` validates and uploads only the corner-dot artifact, while `dimension_guide` downloads that artifact, draws the measurement guide, uploads `room_dimensions.png`, completes room prep, and advances to `awaiting_dimensions` without replaying the corners provider call. |
@@ -35,6 +35,5 @@
 
 ## Next
 
-- Finish PLAN-0068 worker validation for bounded checkpoint execution,
-  retryable and terminal failures, previous-result preservation during failed
-  regeneration, cost-meter pause behavior, and recovery.
+- Monitor in-home simulation worker timeout, recovery, and cost behavior during
+  PLAN-0042 launch validation.

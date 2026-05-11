@@ -62,6 +62,25 @@ describe("PLAN-0068 in-home simulation checkpoint pump migration", () => {
     expect(sql).toContain("regeneration_available boolean not null default false");
   });
 
+  it("keeps the Realtime payload free of private URLs, storage paths, and provider details", () => {
+    const tableSource = sql.slice(
+      sql.indexOf("create table if not exists public.simulation_public_progress"),
+      sql.indexOf("create index if not exists simulation_public_progress_session_idx")
+    );
+
+    expect(tableSource).toContain("status public.simulation_job_status not null");
+    expect(tableSource).toContain("progress_step_key text");
+    expect(tableSource).toContain("progress_step_ordinal integer");
+    expect(tableSource).toContain("progress_total_steps integer");
+    expect(tableSource).toContain("visitor_action_required boolean not null default false");
+    expect(tableSource).toContain("guide_available boolean not null default false");
+    expect(tableSource).toContain("latest_result_available boolean not null default false");
+    expect(tableSource).toContain("regeneration_available boolean not null default false");
+    expect(tableSource).toContain("retention_deadline timestamptz not null");
+    expect(tableSource).toContain("updated_at timestamptz not null default now()");
+    expect(tableSource).not.toMatch(/url|path|provider|prompt|bucket|object|dispatch|worker/i);
+  });
+
   it("protects private checkpoint tables and scopes public progress reads", () => {
     expect(sql).toContain("alter table public.in_home_simulation_checkpoints");
     expect(sql).toContain("alter table public.simulation_public_progress");
