@@ -90,6 +90,10 @@ describe("SPEC-0009 schema smoke script", () => {
     expect(source).toContain("medium_variant.variant_kind = 'medium'");
     expect(source).toContain("original_asset.lifecycle_state = 'active'");
     expect(source).toContain("medium_asset.lifecycle_state = 'active'");
+    expect(source).toContain("SPEC-0009 Stale Render Cell Sofa");
+    expect(source).toContain(
+      "admin_unpublish_sofa rejected a stale non-public render cell",
+    );
     expect(source).toContain(
       '"create_public_simulation_email_verification_request"',
     );
