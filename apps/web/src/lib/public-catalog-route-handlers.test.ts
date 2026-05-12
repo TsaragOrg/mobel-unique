@@ -88,6 +88,11 @@ const fabrics = [
     public_order: 1,
     public_swatch_height_px: 256,
     public_swatch_object_path: "catalog/fabrics/boucle-ivoire/swatch.png",
+    public_swatch_small_content_type: "image/jpeg",
+    public_swatch_small_height_px: 48,
+    public_swatch_small_object_path:
+      "catalog/fabrics/boucle-ivoire/swatch-small.jpg",
+    public_swatch_small_width_px: 96,
     public_swatch_width_px: 256,
     sofa_id: sofas[0].id,
   },
@@ -98,6 +103,11 @@ const fabrics = [
     public_order: 2,
     public_swatch_height_px: 256,
     public_swatch_object_path: "catalog/fabrics/velours-sauge/swatch.png",
+    public_swatch_small_content_type: "image/jpeg",
+    public_swatch_small_height_px: 48,
+    public_swatch_small_object_path:
+      "catalog/fabrics/velours-sauge/swatch-small.jpg",
+    public_swatch_small_width_px: 96,
     public_swatch_width_px: 256,
     sofa_id: sofas[0].id,
   },
@@ -108,6 +118,11 @@ const fabrics = [
     public_order: 1,
     public_swatch_height_px: 256,
     public_swatch_object_path: "catalog/fabrics/lin-naturel/swatch.png",
+    public_swatch_small_content_type: "image/jpeg",
+    public_swatch_small_height_px: 48,
+    public_swatch_small_object_path:
+      "catalog/fabrics/lin-naturel/swatch-small.jpg",
+    public_swatch_small_width_px: 96,
     public_swatch_width_px: 256,
     sofa_id: sofas[1].id,
   },
@@ -359,6 +374,13 @@ describe("public catalog route handlers", () => {
       visual_position_id: visualPositions[0].id,
     });
     expect(body.data.fabrics).toHaveLength(2);
+    expect(body.data.fabrics[0]).toMatchObject({
+      swatch_small_content_type: "image/jpeg",
+      swatch_small_height_px: 48,
+      swatch_small_url:
+        "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/fabrics/boucle-ivoire/swatch-small.jpg",
+      swatch_small_width_px: 96,
+    });
     expect(body.data.visual_positions).toHaveLength(2);
     expect(body.data.renders).toHaveLength(4);
     expect(body.data.renders[0]).toMatchObject({

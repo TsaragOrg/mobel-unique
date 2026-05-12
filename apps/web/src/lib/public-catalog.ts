@@ -81,6 +81,10 @@ export interface PublicSofaFabricRecord {
   public_order: number;
   public_swatch_height_px?: number | null;
   public_swatch_object_path: string;
+  public_swatch_small_content_type: string;
+  public_swatch_small_height_px?: number | null;
+  public_swatch_small_object_path: string;
+  public_swatch_small_width_px?: number | null;
   public_swatch_width_px?: number | null;
   sofa_id: string;
 }
@@ -181,6 +185,10 @@ export interface PublicSofaDetailResponse {
     is_premium: boolean;
     public_name: string;
     public_order: number;
+    swatch_small_content_type: string;
+    swatch_small_height_px: number | null;
+    swatch_small_url: string;
+    swatch_small_width_px: number | null;
     swatch_url: string;
   }>;
   renders: Array<{
@@ -678,6 +686,13 @@ function shapeSofaDetailResponse(
         publicAssetBaseUrl,
         fabric.public_swatch_object_path,
       ),
+      swatch_small_content_type: fabric.public_swatch_small_content_type,
+      swatch_small_height_px: fabric.public_swatch_small_height_px ?? null,
+      swatch_small_url: buildPublicStorageUrl(
+        publicAssetBaseUrl,
+        fabric.public_swatch_small_object_path,
+      ),
+      swatch_small_width_px: fabric.public_swatch_small_width_px ?? null,
     })),
     renders: state.renders.map((render) => {
       const mediumUrl = buildPublicStorageUrl(
@@ -853,6 +868,8 @@ function shapeFabricRecord(
     typeof record.sofa_id !== "string" ||
     typeof record.public_name !== "string" ||
     typeof record.public_swatch_object_path !== "string" ||
+    typeof record.public_swatch_small_content_type !== "string" ||
+    typeof record.public_swatch_small_object_path !== "string" ||
     typeof record.public_order !== "number" ||
     typeof record.is_premium !== "boolean"
   ) {
@@ -866,6 +883,14 @@ function shapeFabricRecord(
     public_order: record.public_order,
     public_swatch_height_px: numberOrNull(record.public_swatch_height_px),
     public_swatch_object_path: record.public_swatch_object_path,
+    public_swatch_small_content_type: record.public_swatch_small_content_type,
+    public_swatch_small_height_px: numberOrNull(
+      record.public_swatch_small_height_px,
+    ),
+    public_swatch_small_object_path: record.public_swatch_small_object_path,
+    public_swatch_small_width_px: numberOrNull(
+      record.public_swatch_small_width_px,
+    ),
     public_swatch_width_px: numberOrNull(record.public_swatch_width_px),
     sofa_id: record.sofa_id,
   };

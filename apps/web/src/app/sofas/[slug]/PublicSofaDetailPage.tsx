@@ -382,7 +382,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                     onClick={() => chooseFabric(fabric.id)}
                     type="button"
                   >
-                    <img alt="" src={fabric.swatch_url} />
+                    <img alt="" src={fabric.swatch_small_url} />
                     <span>{fabric.public_name}</span>
                   </button>
                 ))}

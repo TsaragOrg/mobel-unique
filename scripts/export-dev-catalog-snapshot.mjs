@@ -16,6 +16,7 @@ export const CATALOG_STORAGE_ASSET_KINDS = [
   "fabric_render_candidate_variant",
   "fabric_render_private",
   "fabric_swatch_public",
+  "fabric_swatch_public_variant",
   "manual_render",
   "manual_render_variant",
   "published_sofa_render",

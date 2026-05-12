@@ -33,6 +33,7 @@ const detail = {
       is_premium: false,
       public_name: "Bouclé ivoire",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
       swatch_url: "https://assets.example/fabrics/boucle.png",
     },
     {
@@ -40,6 +41,7 @@ const detail = {
       is_premium: true,
       public_name: "Velours sauge",
       public_order: 2,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
       swatch_url: "https://assets.example/fabrics/sauge.png",
     },
   ],
@@ -179,6 +181,9 @@ describe("PublicSofaDetailPage", () => {
     expect(screen.getByText("Hauteur 82 cm")).toBeInTheDocument();
     expect(screen.getByText("Angle")).toBeInTheDocument();
     expect(screen.getByText("Convertible")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /ivoire/ }).querySelector("img"),
+    ).toHaveAttribute("src", "https://assets.example/fabrics/boucle-small.png");
     expect(screen.getByRole("button", { name: "Bouclé ivoire" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -268,6 +273,9 @@ describe("PublicSofaDetailPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
 
+    expect(
+      screen.getByRole("button", { name: "Velours sauge" }).querySelector("img"),
+    ).toHaveAttribute("src", "https://assets.example/fabrics/sauge-small.png");
     expect(screen.getByRole("button", { name: "Profil" })).toHaveAttribute(
       "aria-pressed",
       "true",

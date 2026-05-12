@@ -1,10 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { Image } from "imagescript";
 
-export const CATALOG_IMAGE_VARIANT_KINDS = ["small", "medium"] as const;
+export const CATALOG_RENDER_IMAGE_VARIANT_KINDS = ["small", "medium"] as const;
+export const CATALOG_FABRIC_SWATCH_VARIANT_KINDS = ["swatch_small"] as const;
+export const CATALOG_IMAGE_VARIANT_KINDS = CATALOG_RENDER_IMAGE_VARIANT_KINDS;
+
+export type CatalogRenderImageVariantKind =
+  (typeof CATALOG_RENDER_IMAGE_VARIANT_KINDS)[number];
+
+export type CatalogFabricSwatchVariantKind =
+  (typeof CATALOG_FABRIC_SWATCH_VARIANT_KINDS)[number];
 
 export type CatalogImageVariantKind =
-  (typeof CATALOG_IMAGE_VARIANT_KINDS)[number];
+  | CatalogRenderImageVariantKind
+  | CatalogFabricSwatchVariantKind;
 
 export type CatalogImageDeliveryVariant = CatalogImageVariantKind | "original";
 
@@ -14,6 +23,7 @@ export const CATALOG_IMAGE_VARIANT_PRESETS: Record<
 > = {
   medium: { maxLongestEdgePx: 1280 },
   small: { maxLongestEdgePx: 320 },
+  swatch_small: { maxLongestEdgePx: 96 },
 };
 
 export const CATALOG_IMAGE_VARIANT_JPEG_QUALITY = 84;
@@ -138,15 +148,18 @@ export async function generateCatalogImageVariants(input: {
   bytes: Uint8Array;
   contentType: string;
   processor?: CatalogImageVariantProcessor;
-}): Promise<Record<CatalogImageVariantKind, CatalogImageVariantBytes>> {
+  variantKinds?: readonly CatalogImageVariantKind[];
+}): Promise<Partial<Record<CatalogImageVariantKind, CatalogImageVariantBytes>>> {
   const processor = input.processor ?? imageScriptProcessor;
   const sourceImage = await processor.decode(input.bytes);
   const outputContentType = imageContainsAlpha(sourceImage)
     ? "image/png"
     : "image/jpeg";
-  const variants = {} as Record<CatalogImageVariantKind, CatalogImageVariantBytes>;
+  const variantKinds = input.variantKinds ?? CATALOG_RENDER_IMAGE_VARIANT_KINDS;
+  const variants: Partial<Record<CatalogImageVariantKind, CatalogImageVariantBytes>> =
+    {};
 
-  for (const variantKind of CATALOG_IMAGE_VARIANT_KINDS) {
+  for (const variantKind of variantKinds) {
     const image = await processor.decode(input.bytes);
     const dimensions = calculateCatalogImageVariantDimensions({
       heightPx: image.height,
@@ -179,14 +192,17 @@ export async function ensureCatalogImageVariants(input: {
   processor?: CatalogImageVariantProcessor;
   repository: CatalogImageVariantRepository;
   storage: CatalogImageVariantStorage;
+  variantKinds?: readonly CatalogImageVariantKind[];
 }) {
   assertActiveOriginalImage(input.originalAsset);
 
+  const variantKinds = input.variantKinds ?? CATALOG_RENDER_IMAGE_VARIANT_KINDS;
   const existingVariants = await readExistingVariants(
     input.repository,
     input.originalAsset.id,
+    variantKinds,
   );
-  const missingKinds = CATALOG_IMAGE_VARIANT_KINDS.filter(
+  const missingKinds = variantKinds.filter(
     (variantKind) => !existingVariants[variantKind],
   );
 
@@ -206,6 +222,7 @@ export async function ensureCatalogImageVariants(input: {
     bytes: input.bytes,
     contentType: input.originalAsset.content_type,
     processor: input.processor,
+    variantKinds: missingKinds,
   });
   const uploadedObjectPaths: string[] = [];
   const created: CatalogImageVariantKind[] = [];
@@ -213,6 +230,12 @@ export async function ensureCatalogImageVariants(input: {
   try {
     for (const variantKind of missingKinds) {
       const generatedVariant = generatedVariants[variantKind];
+      if (!generatedVariant) {
+        throw new CatalogImageVariantError(
+          "CATALOG_IMAGE_VARIANT_GENERATION_FAILED",
+          "Catalog image variant could not be generated.",
+        );
+      }
       const variantAssetId = idGenerator();
       const objectPath = buildCatalogImageVariantObjectPath({
         contentType: generatedVariant.contentType,
@@ -274,6 +297,15 @@ export async function ensureCatalogImageVariants(input: {
   };
 }
 
+export function ensureFabricSwatchSmallVariant(
+  input: Omit<Parameters<typeof ensureCatalogImageVariants>[0], "variantKinds">,
+) {
+  return ensureCatalogImageVariants({
+    ...input,
+    variantKinds: CATALOG_FABRIC_SWATCH_VARIANT_KINDS,
+  });
+}
+
 export async function resolveCatalogImageDeliveryAsset(input: {
   originalAssetId: string;
   repository: CatalogImageVariantRepository;
@@ -314,12 +346,13 @@ export async function resolveCatalogImageDeliveryAsset(input: {
 async function readExistingVariants(
   repository: CatalogImageVariantRepository,
   originalAssetId: string,
+  variantKinds: readonly CatalogImageVariantKind[],
 ) {
   const variants: Partial<
     Record<CatalogImageVariantKind, CatalogStorageAssetRecord>
   > = {};
 
-  for (const variantKind of CATALOG_IMAGE_VARIANT_KINDS) {
+  for (const variantKind of variantKinds) {
     const variant = await repository.findActiveVariantAsset(
       originalAssetId,
       variantKind,
