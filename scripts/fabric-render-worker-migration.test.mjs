@@ -15,6 +15,8 @@ const adminSofaArchiveMigrationPath =
   "supabase/migrations/20260505000100_admin_sofa_archive.sql";
 const adminSofaUnarchiveMigrationPath =
   "supabase/migrations/20260505000200_admin_sofa_unarchive.sql";
+const adminPublicationStaleRenderCellsMigrationPath =
+  "supabase/migrations/20260512000400_admin_publication_stale_render_cells.sql";
 const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 const manualPumpRealtimeMigrationPath =
@@ -131,6 +133,34 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("lifecycle_state = 'archived'");
     expect(sql).toContain("published_at = null");
     expect(sql).toContain("archived_at = coalesce");
+    expect(sql).toContain(
+      "grant execute on function public.admin_archive_sofa(uuid) to service_role",
+    );
+  });
+
+  it("keeps admin unpublish and archive resilient to stale non-public render cells", async () => {
+    const sql = await readFile(
+      adminPublicationStaleRenderCellsMigrationPath,
+      "utf8",
+    );
+
+    expect(sql).toContain(
+      "create or replace function public.validate_sofa_render_cell()",
+    );
+    expect(sql).toContain("old.current_public_asset_id is not null");
+    expect(sql).toContain("new.current_public_asset_id is null");
+    expect(sql).toContain(
+      "new.current_private_asset_id is not distinct from old.current_private_asset_id",
+    );
+    expect(sql).toContain(
+      "new.accepted_fabric_render_candidate_id is not distinct from old.accepted_fabric_render_candidate_id",
+    );
+    expect(sql).toContain("create or replace function public.admin_unpublish_sofa");
+    expect(sql).toContain("create or replace function public.admin_archive_sofa");
+    expect(sql).toContain("and current_public_asset_id is not null");
+    expect(sql).toContain(
+      "grant execute on function public.admin_unpublish_sofa(uuid) to service_role",
+    );
     expect(sql).toContain(
       "grant execute on function public.admin_archive_sofa(uuid) to service_role",
     );
