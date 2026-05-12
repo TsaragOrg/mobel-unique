@@ -43,6 +43,7 @@ describe("DEV catalog snapshot export", () => {
       expect.arrayContaining([
         "fabric_ai_reference",
         "fabric_render_candidate",
+        "fabric_swatch_public_variant",
         "fabric_render_private",
         "fabric_swatch_public",
         "manual_render",
@@ -89,6 +90,38 @@ describe("DEV catalog snapshot export", () => {
         visibility: "public",
         width_px: 1280,
       },
+      {
+        asset_kind: "fabric_swatch_public",
+        bucket_id: "catalog-public-assets",
+        byte_size: 50,
+        checksum_sha256: null,
+        content_type: "image/png",
+        created_at: "2026-05-04T00:00:00.000Z",
+        deleted_at: null,
+        height_px: 512,
+        id: "00000000-0000-4000-8000-000000000103",
+        lifecycle_state: "active",
+        object_path: "fabrics/boucle/swatch.png",
+        purged_at: null,
+        visibility: "public",
+        width_px: 512,
+      },
+      {
+        asset_kind: "fabric_swatch_public_variant",
+        bucket_id: "catalog-public-assets",
+        byte_size: 20,
+        checksum_sha256: null,
+        content_type: "image/png",
+        created_at: "2026-05-04T00:00:00.000Z",
+        deleted_at: null,
+        height_px: 96,
+        id: "00000000-0000-4000-8000-000000000104",
+        lifecycle_state: "active",
+        object_path: "variants/00000000-0000-4000-8000-000000000103/swatch_small/00000000-0000-4000-8000-000000000104.png",
+        purged_at: null,
+        visibility: "public",
+        width_px: 96,
+      },
     ]);
     rowsByTable.set("storage_asset_variants", [
       {
@@ -98,6 +131,14 @@ describe("DEV catalog snapshot export", () => {
         updated_at: "2026-05-04T00:00:00.000Z",
         variant_asset_id: "00000000-0000-4000-8000-000000000102",
         variant_kind: "medium",
+      },
+      {
+        created_at: "2026-05-04T00:00:00.000Z",
+        generation_kind: "stored",
+        original_asset_id: "00000000-0000-4000-8000-000000000103",
+        updated_at: "2026-05-04T00:00:00.000Z",
+        variant_asset_id: "00000000-0000-4000-8000-000000000104",
+        variant_kind: "swatch_small",
       },
     ]);
 
@@ -114,6 +155,8 @@ describe("DEV catalog snapshot export", () => {
       sql.indexOf("insert into public.storage_asset_variants"),
     );
     expect(sql).toContain("variant_kind, variant_asset_id, generation_kind");
+    expect(sql).toContain("fabric_swatch_public_variant");
+    expect(sql).toContain("swatch_small");
   });
 
   it("generates SQL that defers cyclic catalog links until referenced rows exist", () => {

@@ -109,6 +109,29 @@ describe("public catalog helpers", () => {
       result.renders[0].render_original_url,
     );
   });
+
+  it("shapes sofa detail fabrics with canonical and small swatch URLs", async () => {
+    const result = await getPublicSofaDetail(
+      createDeliveryStore(),
+      "canape-test",
+    );
+
+    expect(result.fabrics[0]).toMatchObject({
+      swatch_small_content_type: "image/jpeg",
+      swatch_small_height_px: 48,
+      swatch_small_width_px: 96,
+    });
+    expect(result.fabrics[0].swatch_url).toContain(
+      "catalog/fabrics/fabric/swatch.png",
+    );
+    expect(result.fabrics[0].swatch_small_url).toContain(
+      "catalog/fabrics/fabric/swatch-small.jpg",
+    );
+    expect(JSON.stringify(result.fabrics[0])).not.toContain(
+      "catalog-private-assets",
+    );
+    expect(JSON.stringify(result.fabrics[0])).not.toContain("object_path");
+  });
 });
 
 function createDeliveryStore(): PublicCatalogStore {
@@ -124,6 +147,12 @@ function createDeliveryStore(): PublicCatalogStore {
           is_premium: false,
           public_name: "Fabric",
           public_order: 1,
+          private_debug_path: "catalog-private-assets/fabric/swatch.png",
+          public_swatch_small_content_type: "image/jpeg",
+          public_swatch_small_height_px: 48,
+          public_swatch_small_object_path:
+            "catalog/fabrics/fabric/swatch-small.jpg",
+          public_swatch_small_width_px: 96,
           public_swatch_object_path: "catalog/fabrics/fabric/swatch.png",
           sofa_id: "00000000-0000-4000-8000-000000000401",
         },

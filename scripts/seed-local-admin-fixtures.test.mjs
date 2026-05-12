@@ -82,6 +82,15 @@ describe("local admin fixture seed workflow", () => {
     expect(scriptSource).toContain("sourceImage ??");
   });
 
+  it("seeds public fabric swatches with dedicated small variant links", () => {
+    expect(scriptSource).toContain("fabric_swatch_public");
+    expect(scriptSource).toContain("BACKFILL_SWATCH_VARIANT_KINDS");
+    expect(scriptSource).toMatch(
+      /assetKind:\s*"fabric_swatch_public"[\s\S]*?variantKinds:\s*BACKFILL_SWATCH_VARIANT_KINDS/,
+    );
+    expect(scriptSource).toContain("storage_asset_variants");
+  });
+
   it("documents the fixture contract and provides enough sample data", () => {
     expect(fixtureReadme).toContain("at least 3 fabrics");
     expect(fixtureReadme).toContain("5 sofas");

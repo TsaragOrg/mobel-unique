@@ -56,6 +56,10 @@ const detail: PublicSofaDetailResponse = {
       is_premium: false,
       public_name: "Bouclette",
       public_order: 1,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/boucle-small.png",
+      swatch_small_width_px: 96,
       swatch_url: "https://assets.example/boucle.png"
     }
   ],

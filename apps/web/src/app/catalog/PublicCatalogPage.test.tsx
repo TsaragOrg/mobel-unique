@@ -113,6 +113,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Bouclé ivoire",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
       swatch_url: "https://assets.example/fabrics/boucle.png",
     },
     {
@@ -120,6 +121,7 @@ const rivoliDetail = {
       is_premium: true,
       public_name: "Velours sauge",
       public_order: 2,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
       swatch_url: "https://assets.example/fabrics/sauge.png",
     },
     {
@@ -127,6 +129,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Lin naturel",
       public_order: 3,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
       swatch_url: "https://assets.example/fabrics/lin.png",
     },
     {
@@ -134,6 +137,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Chenille galet",
       public_order: 4,
+      swatch_small_url: "https://assets.example/fabrics/galet-small.png",
       swatch_url: "https://assets.example/fabrics/galet.png",
     },
     {
@@ -141,6 +145,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Bleu nuit",
       public_order: 5,
+      swatch_small_url: "https://assets.example/fabrics/nuit-small.png",
       swatch_url: "https://assets.example/fabrics/nuit.png",
     },
   ],
@@ -198,6 +203,7 @@ const maraisDetail = {
       is_premium: false,
       public_name: "Lin naturel",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
       swatch_url: "https://assets.example/fabrics/lin.png",
     },
   ],
@@ -683,13 +689,20 @@ describe("PublicCatalogPage", () => {
       "https://assets.example/rivoli/boucle-face-medium.jpg",
     );
 
-    expect(await screen.findByRole("button", { name: "Velours sauge" })).toBeInTheDocument();
+    const saugeButton = await screen.findByRole("button", {
+      name: "Velours sauge",
+    });
+    expect(saugeButton).toBeInTheDocument();
+    expect(saugeButton.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://assets.example/fabrics/sauge-small.png",
+    );
     expect(
       screen.queryByRole("button", { name: "Aperçu tissus pour Canapé Rivoli" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Velours sauge")).not.toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+    fireEvent.click(saugeButton);
 
     expect(rivoliImage).toHaveAttribute(
       "src",

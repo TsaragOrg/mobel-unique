@@ -1,9 +1,20 @@
+import { Blob as NodeBlob } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const supabaseMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
+}));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: supabaseMocks.createClient,
+}));
+
 import {
   buildPublicRenderAssetObjectPath,
   buildPublicTagSlug,
+  createSupabaseAdminCatalogStore,
   isMissingFabricRenderJobRequestIdColumnError,
   shapeFabricRenderCandidateResponse,
   shapeFabricRenderJobResponse,
@@ -24,6 +35,10 @@ import {
   validateVisualMatrixColumnCreatePayload,
   validateVisualMatrixColumnPatchPayload,
 } from "./admin-catalog";
+
+afterEach(() => {
+  supabaseMocks.createClient.mockReset();
+});
 
 const sofaRecord = {
   archived_at: null,
@@ -296,6 +311,71 @@ describe("admin catalog validation", () => {
     expect(source).toContain("deactivateAndRemovePublicRenderAssets");
     expect(source).toContain("admin_unpublish_sofa");
     expect(source).toContain("admin_archive_sofa");
+  });
+
+  it("creates or reuses swatch_small when completing fabric swatch uploads", async () => {
+    const fakeSupabase = createFakeUploadSupabaseClient({
+      variantLookup: {
+        data: {
+          variant_asset_id: "00000000-0000-4000-8000-000000000777",
+        },
+        error: null,
+      },
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+    const upload = await store.createUpload({
+      byte_size: 1200,
+      content_type: "image/png",
+      purpose: "fabric_swatch",
+    });
+
+    const result = await store.completeUpload(upload.upload_id as string);
+
+    expect(result).toMatchObject({
+      asset_kind: "fabric_swatch_public",
+      visibility: "public",
+    });
+    expect(fakeSupabase.variantKinds).toEqual(["swatch_small"]);
+  });
+
+  it("fails safely when fabric swatch small variant creation fails", async () => {
+    const fakeSupabase = createFakeUploadSupabaseClient({
+      variantLookup: {
+        data: null,
+        error: {
+          message: "variant lookup failed",
+        },
+      },
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+    const upload = await store.createUpload({
+      byte_size: 1200,
+      content_type: "image/png",
+      purpose: "fabric_swatch",
+    });
+
+    const result = await store.completeUpload(upload.upload_id as string);
+
+    expect(result).toMatchObject({
+      code: "UPLOAD_VARIANTS_FAILED",
+      status: 500,
+    });
+    expect(fakeSupabase.deletedAssetIds).toEqual([
+      "00000000-0000-4000-8000-000000000601",
+    ]);
+  });
+
+  it("keeps render upload variants limited to small and medium", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/lib/admin-catalog.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("CATALOG_RENDER_IMAGE_VARIANT_KINDS");
+    expect(source).toContain("ensureFabricSwatchSmallVariant");
+    expect(source).toContain("descriptor.purpose === \"fabric_swatch\"");
   });
 
   it("validates a draft sofa create payload", () => {
@@ -1108,3 +1188,161 @@ describe("admin catalog publication helpers", () => {
     expect(path).not.toContain("catalog-private-assets");
   });
 });
+
+function createStoreEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ADMIN_UPLOAD_TOKEN_SECRET: "test-upload-secret",
+    NEXT_PUBLIC_SUPABASE_URL: "https://supabase.example",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+  };
+}
+
+function createFakeUploadSupabaseClient(input: {
+  variantLookup: {
+    data: { variant_asset_id: string } | null;
+    error: Record<string, unknown> | null;
+  };
+}) {
+  const variantKinds: string[] = [];
+  const deletedAssetIds: string[] = [];
+  const insertedOriginalAsset = {
+    asset_kind: "fabric_swatch_public",
+    bucket_id: "catalog-public-assets",
+    byte_size: 24,
+    content_type: "image/png",
+    height_px: 128,
+    id: "00000000-0000-4000-8000-000000000601",
+    lifecycle_state: "active",
+    object_path: "fabrics/pending/swatches/original.png",
+    visibility: "public",
+    width_px: 256,
+  };
+  const existingVariantAsset = {
+    ...insertedOriginalAsset,
+    asset_kind: "fabric_swatch_public_variant",
+    height_px: 48,
+    id: input.variantLookup.data?.variant_asset_id,
+    object_path:
+      "variants/00000000-0000-4000-8000-000000000601/swatch_small/00000000-0000-4000-8000-000000000777.jpg",
+    width_px: 96,
+  };
+
+  const client = {
+    from(table: string) {
+      return createFakeUploadQuery({
+        deletedAssetIds,
+        existingVariantAsset,
+        insertedOriginalAsset,
+        table,
+        variantKinds,
+        variantLookup: input.variantLookup,
+      });
+    },
+    storage: {
+      from: vi.fn(() => ({
+        createSignedUploadUrl: vi.fn(async () => ({
+          data: {
+            signedUrl: "https://upload.example/fabric-swatch",
+          },
+          error: null,
+        })),
+        download: vi.fn(async () => ({
+          data: new NodeBlob([
+            createPngHeaderBytes({ heightPx: 128, widthPx: 256 }),
+          ]),
+          error: null,
+        })),
+        remove: vi.fn(async () => ({
+          data: null,
+          error: null,
+        })),
+        upload: vi.fn(async () => ({
+          data: null,
+          error: null,
+        })),
+      })),
+    },
+  };
+
+  return {
+    client,
+    deletedAssetIds,
+    variantKinds,
+  };
+}
+
+function createFakeUploadQuery(input: {
+  deletedAssetIds: string[];
+  existingVariantAsset: Record<string, unknown>;
+  insertedOriginalAsset: Record<string, unknown>;
+  table: string;
+  variantKinds: string[];
+  variantLookup: {
+    data: { variant_asset_id: string } | null;
+    error: Record<string, unknown> | null;
+  };
+}) {
+  const query = {
+    eq: vi.fn((column: string, value: string) => {
+      if (input.table === "storage_asset_variants" && column === "variant_kind") {
+        input.variantKinds.push(value);
+      }
+
+      return query;
+    }),
+    in: vi.fn(async () => ({
+      data:
+        input.existingVariantAsset.id === undefined
+          ? []
+          : [input.existingVariantAsset],
+      error: null,
+    })),
+    insert: vi.fn((asset: Record<string, unknown>) => ({
+      select: vi.fn(() => ({
+        single: vi.fn(async () => ({
+          data: {
+            ...input.insertedOriginalAsset,
+            ...asset,
+            id: input.insertedOriginalAsset.id,
+          },
+          error: null,
+        })),
+      })),
+    })),
+    maybeSingle: vi.fn(async () => input.variantLookup),
+    select: vi.fn(() => query),
+    update: vi.fn(() => ({
+      eq: vi.fn(async (_column: string, value: string) => {
+        input.deletedAssetIds.push(value);
+
+        return {
+          data: null,
+          error: null,
+        };
+      }),
+    })),
+    upsert: vi.fn(async () => ({
+      data: null,
+      error: null,
+    })),
+  };
+
+  return query;
+}
+
+function createPngHeaderBytes(input: { heightPx: number; widthPx: number }) {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47], 0);
+  writeUint32Be(bytes, 16, input.widthPx);
+  writeUint32Be(bytes, 20, input.heightPx);
+
+  return bytes;
+}
+
+function writeUint32Be(bytes: Uint8Array, offset: number, value: number) {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
+}

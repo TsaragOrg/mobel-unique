@@ -588,7 +588,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
                   onClick={() => selectFabric(fabric.id)}
                   type="button"
                 >
-                  <img alt="" src={fabric.swatch_url} />
+                  <img alt="" src={fabric.swatch_small_url} />
                 </button>
               ))}
               {hiddenFabricCount > 0 ? (

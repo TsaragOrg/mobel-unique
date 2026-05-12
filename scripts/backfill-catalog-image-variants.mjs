@@ -1,15 +1,23 @@
-#!/usr/bin/env node
-
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { Image } from "imagescript";
 
-export const BACKFILL_VARIANT_KINDS = ["small", "medium"];
-export const BACKFILL_ASSET_KINDS = [
+export const BACKFILL_RENDER_VARIANT_KINDS = ["small", "medium"];
+export const BACKFILL_SWATCH_VARIANT_KINDS = ["swatch_small"];
+export const BACKFILL_VARIANT_KINDS = [
+  ...BACKFILL_RENDER_VARIANT_KINDS,
+  ...BACKFILL_SWATCH_VARIANT_KINDS,
+];
+export const BACKFILL_RENDER_ASSET_KINDS = [
   "sofa_source_photo",
   "manual_render",
   "fabric_render_candidate",
   "published_sofa_render",
+];
+export const BACKFILL_SWATCH_ASSET_KINDS = ["fabric_swatch_public"];
+export const BACKFILL_ASSET_KINDS = [
+  ...BACKFILL_RENDER_ASSET_KINDS,
+  ...BACKFILL_SWATCH_ASSET_KINDS,
 ];
 export const BACKFILL_VARIANT_PRESETS = {
   medium: {
@@ -17,6 +25,9 @@ export const BACKFILL_VARIANT_PRESETS = {
   },
   small: {
     maxLongestEdgePx: 320,
+  },
+  swatch_small: {
+    maxLongestEdgePx: 96,
   },
 };
 export const BACKFILL_JPEG_QUALITY = 84;
@@ -214,11 +225,13 @@ export async function backfillCatalogImageVariants(input) {
     for (const originalAsset of originalAssets) {
       result.assetsScanned += 1;
 
+      const requestedVariantKinds = variantKindsForAsset(originalAsset);
       const existingKinds = await listExistingVariantKinds(
         client,
         originalAsset.id,
+        requestedVariantKinds,
       );
-      const missingKinds = BACKFILL_VARIANT_KINDS.filter(
+      const missingKinds = requestedVariantKinds.filter(
         (variantKind) => !existingKinds.has(variantKind),
       );
 
@@ -239,6 +252,7 @@ export async function backfillCatalogImageVariants(input) {
       const generatedVariants = await generateVariants({
         bytes: originalBytes,
         contentType: originalAsset.content_type,
+        variantKinds: missingKinds,
       });
 
       for (const variantKind of missingKinds) {
@@ -403,13 +417,21 @@ async function listCandidateAssets(client, options) {
   return client.listCandidateAssets(options);
 }
 
-async function listExistingVariantKinds(client, originalAssetId) {
+function variantKindsForAsset(asset) {
+  if (BACKFILL_SWATCH_ASSET_KINDS.includes(asset.asset_kind)) {
+    return BACKFILL_SWATCH_VARIANT_KINDS;
+  }
+
+  return BACKFILL_RENDER_VARIANT_KINDS;
+}
+
+async function listExistingVariantKinds(client, originalAssetId, variantKinds) {
   const links = await client.listVariantLinks(originalAssetId);
 
   return new Set(
     links
       .map((link) => link.variant_kind)
-      .filter((variantKind) => BACKFILL_VARIANT_KINDS.includes(variantKind)),
+      .filter((variantKind) => variantKinds.includes(variantKind)),
   );
 }
 
@@ -489,14 +511,17 @@ export function buildVariantObjectPath({
   ].join("/");
 }
 
-export async function generateImageVariants({ bytes }) {
+export async function generateImageVariants({
+  bytes,
+  variantKinds = BACKFILL_RENDER_VARIANT_KINDS,
+}) {
   const sourceImage = await Image.decode(bytes);
   const outputContentType = imageContainsAlpha(sourceImage)
     ? "image/png"
     : "image/jpeg";
   const variants = {};
 
-  for (const variantKind of BACKFILL_VARIANT_KINDS) {
+  for (const variantKind of variantKinds) {
     const image = await Image.decode(bytes);
     const dimensions = calculateVariantDimensions({
       heightPx: image.height,
