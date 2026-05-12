@@ -64,26 +64,24 @@ export interface SimulationEmailVerificationCreateResult {
 
 export interface SimulationEmailVerificationRecord {
   verificationRequestId: string;
-  email: string;
-  emailNormalizedHash: string;
+  verificationSubjectHash: string;
   expiresAt: Date;
 }
 
 export interface SimulationEmailVerificationStore {
   createRequest(input: {
     email: string;
-    consentEmailUse: true;
-    consentMarketing: boolean;
     expiresAt: Date;
   }): Promise<SimulationEmailVerificationCreateResult>;
   findRequestForVerification(input: {
+    email: string;
     verificationRequestId: string;
   }): Promise<SimulationEmailVerificationRecord | null>;
   markSendFailed(input: { verificationRequestId: string }): Promise<void>;
   markVerifiedAndCreateSession(input: {
     verificationRequestId: string;
     authUserId: string;
-    emailNormalizedHash: string;
+    verificationSubjectHash: string;
     accessTokenHash: string;
     expiresAt: Date;
   }): Promise<{ simulationSessionId: string }>;
@@ -101,6 +99,7 @@ export interface SimulationEmailOtpProvider {
         reason: "invalid" | "expired" | "rate_limited" | "provider_error";
       }
   >;
+  deleteTransientUser?(input: { authUserId: string }): Promise<void>;
 }
 
 export interface SimulationJobView {
@@ -260,7 +259,7 @@ export interface SimulationCreateJobStore {
 }
 
 export interface SimulationVerifiedSessionView {
-  emailNormalizedHash: string;
+  verificationSubjectHash: string;
 }
 
 export interface SimulationSessionAccessReader {
@@ -361,8 +360,6 @@ export async function handleCreateEmailVerificationRequest(input: {
   try {
     created = await input.deps.emailVerificationStore.createRequest({
       email: parsed.email,
-      consentEmailUse: true,
-      consentMarketing: parsed.consentMarketing ?? false,
       expiresAt,
     });
   } catch (error) {
@@ -421,12 +418,12 @@ export async function handleVerifyEmailVerificationRequest(input: {
     );
   }
 
-  if (
-    !isObject(input.body) ||
-    typeof input.body.code !== "string" ||
-    !EMAIL_OTP_REGEX.test(input.body.code)
-  ) {
-    return errorResponse("VALIDATION_FAILED", "code is required", 400);
+  if (!isObject(input.body)) {
+    return errorResponse("VALIDATION_FAILED", "Body must be a JSON object", 400);
+  }
+  const verifyBody = parseVerifyEmailVerificationBody(input.body);
+  if (!verifyBody.ok) {
+    return errorResponse("VALIDATION_FAILED", verifyBody.message, 400);
   }
 
   if (!input.deps.emailVerificationStore || !input.deps.otpProvider) {
@@ -441,6 +438,7 @@ export async function handleVerifyEmailVerificationRequest(input: {
   try {
     request =
       await input.deps.emailVerificationStore.findRequestForVerification({
+        email: verifyBody.email,
         verificationRequestId: input.verificationRequestId,
       });
   } catch (error) {
@@ -467,8 +465,8 @@ export async function handleVerifyEmailVerificationRequest(input: {
   let otpResult: Awaited<ReturnType<SimulationEmailOtpProvider["verifyOtp"]>>;
   try {
     otpResult = await input.deps.otpProvider.verifyOtp({
-      email: request.email,
-      code: input.body.code,
+      email: verifyBody.email,
+      code: verifyBody.code,
     });
   } catch (error) {
     console.error("[simulations] email OTP verify failed:", error);
@@ -492,7 +490,7 @@ export async function handleVerifyEmailVerificationRequest(input: {
     await input.deps.emailVerificationStore.markVerifiedAndCreateSession({
       verificationRequestId: request.verificationRequestId,
       authUserId: otpResult.authUserId,
-      emailNormalizedHash: request.emailNormalizedHash,
+      verificationSubjectHash: request.verificationSubjectHash,
       accessTokenHash: deriveSimulationSessionTokenHash(
         request.verificationRequestId,
       ),
@@ -508,6 +506,16 @@ export async function handleVerifyEmailVerificationRequest(input: {
       "Could not create the simulation session.",
       500,
     );
+  }
+
+  if (input.deps.otpProvider.deleteTransientUser) {
+    try {
+      await input.deps.otpProvider.deleteTransientUser({
+        authUserId: otpResult.authUserId,
+      });
+    } catch (error) {
+      console.error("[simulations] transient auth user cleanup failed:", error);
+    }
   }
 
   const body: VerifyEmailVerificationResponse = {
@@ -865,7 +873,7 @@ export async function handleCreateSimulationRequest(input: {
 
   const rateCheck = await checkSimulationRateLimits({
     ip: input.clientIp,
-    email: session.emailNormalizedHash,
+    verificationSubject: session.verificationSubjectHash,
     ipCap: input.deps.rateLimitIpPerDay,
     emailCap: input.deps.rateLimitEmailPerDay,
     salt: input.deps.rateLimitSalt,
@@ -1488,24 +1496,32 @@ function defaultNow(): Date {
 function parseCreateEmailVerificationBody(
   input: unknown,
 ):
-  | { ok: true; email: string; consentMarketing: boolean | undefined }
+  | { ok: true; email: string }
   | { ok: false; message: string } {
   if (!isObject(input)) {
     return { ok: false, message: "Body must be a JSON object" };
   }
   const email = input.email;
-  const consent = input.consent_email_use;
   if (typeof email !== "string" || !EMAIL_REGEX.test(email)) {
     return { ok: false, message: "email must be a valid email address" };
   }
-  if (consent !== true) {
-    return { ok: false, message: "consent_email_use must be true" };
+  return { ok: true, email };
+}
+
+function parseVerifyEmailVerificationBody(
+  input: Record<string, unknown>,
+):
+  | { ok: true; email: string; code: string }
+  | { ok: false; message: string } {
+  const email = input.email;
+  const code = input.code;
+  if (typeof email !== "string" || !EMAIL_REGEX.test(email)) {
+    return { ok: false, message: "email must be a valid email address" };
   }
-  const consentMarketing =
-    typeof input.consent_marketing === "boolean"
-      ? input.consent_marketing
-      : undefined;
-  return { ok: true, email, consentMarketing };
+  if (typeof code !== "string" || !EMAIL_OTP_REGEX.test(code)) {
+    return { ok: false, message: "code is required" };
+  }
+  return { ok: true, email, code };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

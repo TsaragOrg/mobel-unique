@@ -6,7 +6,7 @@ Layer: technical
 Parent Spec: SPEC-0012
 Depends On: SPEC-0001, SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012
 Areas: web, supabase
-Implementation Plans: PLAN-0068, PLAN-0074
+Implementation Plans: PLAN-0068, PLAN-0074, PLAN-0081
 
 ## Traceability
 
@@ -33,6 +33,9 @@ This spec consumes:
   rules.
 - `CR-SPEC-0012-allow-room-depth-in-mvp` to override the MVP dimension
   restriction.
+- `CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention` to keep the email
+  OTP gate while removing application-owned email retention, optional marketing
+  consent, and retained simulation leads.
 - `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
   Pump And Realtime Progress` to replace fixed polling as the nominal progress
   path with job-scoped Realtime progress and bounded polling fallback.

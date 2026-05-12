@@ -28,6 +28,12 @@ This spec is expected to feed later specs and plans for:
 - environment and deployment;
 - Supabase migrations, RLS policies, and storage policies.
 
+`CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention` supersedes any
+retained public-simulation email identity requirements in this spec. Public
+simulation tables must not keep readable or encrypted email for lead/contact
+use; they may keep only short-lived server-HMAC verification subjects required
+for OTP request binding and 24-hour abuse prevention.
+
 This spec also incorporates
 `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint Pump
 And Realtime Progress`, which adds durable in-home simulation checkpoint state

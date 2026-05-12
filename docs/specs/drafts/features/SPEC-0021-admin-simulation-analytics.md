@@ -4,7 +4,7 @@ Spec: SPEC-0021
 Status: draft
 Layer: feature
 Parent Spec: SPEC-0013
-Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0012, SPEC-0013, SPEC-0015, SPEC-0018, SPEC-0020
+Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0012, SPEC-0013, SPEC-0015, SPEC-0018
 Areas: web, supabase
 Implementation Plans: none yet
 
@@ -21,12 +21,12 @@ It follows:
   catalog fields used for aggregation;
 - `SPEC-0013`, which defines the protected admin shell and admin route
   patterns;
-- `SPEC-0018`, which defines privacy boundaries for public simulation data;
-- `SPEC-0020`, which defines the separate consent-backed lead dashboard.
+- `SPEC-0018`, which defines privacy boundaries for public simulation data.
 
-This dashboard is intentionally separate from `/admin/leads`. Leads answer
-which opted-in customers can be contacted. Analytics answers which sofas and
-fabrics are most often chosen for simulations.
+This dashboard is the admin replacement direction for simulation insight after
+the product decision to remove retained simulation email leads. Analytics
+answers which sofas and fabrics are most often chosen for simulations without
+storing or exposing visitor contact identity.
 
 ## Goal
 
@@ -119,9 +119,8 @@ Rules:
 - a job counts as soon as it is created;
 - all job statuses count, including queued, processing, awaiting dimensions,
   failed, expired, and succeeded;
-- all simulation jobs count, whether the visitor accepted only the required
-  simulation email consent or both the required consent and optional commercial
-  contact consent;
+- all simulation jobs count without requiring or reading any commercial contact
+  consent;
 - the dashboard must not require or read lead consent to count a job;
 - all time means all retained `in_home_simulation_jobs` rows available to the
   admin analytics query;
@@ -146,8 +145,8 @@ existing admin visual system.
 
 The `/admin` dashboard should include a separate Analytics card.
 
-The existing `/admin/leads` card remains unchanged and continues to be used for
-consent-backed follow-up.
+The former `/admin/leads` card should not remain part of the target experience
+after retained simulation email leads are removed.
 
 ### Summary
 
@@ -348,8 +347,9 @@ Rules:
 - existing 24-hour private artifact purge behavior remains unchanged;
 - all time analytics can only count retained simulation job rows that still
   exist in the database;
-- deleting a lead through `SPEC-0020` must not be required for analytics
-  correctness, because analytics does not show lead identity.
+- deleting an old lead row must not be required for analytics correctness,
+  because analytics does not show lead identity and the retained lead surface is
+  superseded.
 
 ## Testing Requirements
 
@@ -362,7 +362,7 @@ Implementation plans must add tests for:
 - period `30d` uses job `created_at` in the last 30 days;
 - period `all` includes all retained simulation job rows;
 - one created job counts as one simulation regardless of status;
-- jobs count even when optional commercial contact consent was not granted;
+- jobs count without requiring optional commercial contact consent;
 - summary returns total simulations, unique sofas, and unique fabrics;
 - sofa ranking groups by selected sofa and returns the most selected fabric for
   each sofa;
@@ -379,7 +379,8 @@ Implementation plans must add tests for:
 ## Acceptance Criteria
 
 - The admin dashboard links to a protected analytics dashboard.
-- The analytics dashboard is separate from the simulation leads dashboard.
+- The analytics dashboard replaces the removed simulation leads dashboard as
+  the admin surface for simulation insight.
 - The analytics dashboard loads last 30 days by default.
 - The administrator can switch between last 7 days, last 30 days, and all time.
 - The administrator can sort rankings by most simulations or least simulations.
@@ -389,11 +390,11 @@ Implementation plans must add tests for:
   fabric for that sofa.
 - The fabric table shows fabric name and simulation count.
 - The combination table shows sofa name, fabric name, and simulation count.
-- All created simulation jobs count, regardless of optional commercial contact
-  consent and regardless of job status.
+- All created simulation jobs count regardless of job status and without
+  requiring optional commercial contact consent.
 - The UI and API never expose emails, visitor identity, private room photos,
   generated customer room outputs, storage paths, signed URLs, or technical ids.
-- Existing lead deletion and private artifact purge behavior remain unchanged.
+- Existing private artifact purge behavior remains unchanged.
 
 ## Open Questions
 

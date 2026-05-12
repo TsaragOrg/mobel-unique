@@ -18,13 +18,10 @@ export const SIMULATION_LOCALE = {
       "Saisissez votre adresse e-mail pour recevoir un code de vérification à usage unique. Ce code ouvre l'accès à la simulation.",
     emailFieldLabel: "Adresse e-mail",
     emailFieldPlaceholder: "vous@exemple.com",
-    // TODO: FR native review — consent for simulation email delivery. Confirm legal wording.
-    consentEmailUseLabel:
-      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour démarrer ma simulation et m'envoyer le code de vérification. " +
-      "Je comprends que ma photo de pièce et les images générées restent privées et sont supprimées automatiquement sous 24 heures.",
-    // TODO: FR native review — optional marketing consent. Confirm wording and legal status.
-    consentMarketingLabel:
-      "J'accepte de recevoir occasionnellement des actualités MÖBEL UNIQUE (facultatif).",
+    // TODO: FR native review — email verification and retention notice.
+    emailUseNotice:
+      "Votre adresse e-mail sert uniquement à envoyer ce code et à limiter les abus de simulation sur 24 heures. " +
+      "Elle n'est pas conservée comme contact commercial.",
     submitEmailButton: "Recevoir le code",
     instructionCode:
       "Saisissez le code à 6 chiffres que vous venez de recevoir par e-mail.",
@@ -34,9 +31,6 @@ export const SIMULATION_LOCALE = {
     backToEmailLink: "Modifier l'adresse e-mail",
     // TODO: FR native review — error wording shown when the email payload is invalid.
     errorInvalidEmail: "Cette adresse e-mail ne semble pas valide.",
-    // TODO: FR native review — error wording shown when consent is missing.
-    errorConsentRequired:
-      "Vous devez accepter l'utilisation de votre e-mail pour continuer.",
     // TODO: FR native review — error wording for an invalid or expired code.
     errorInvalidCode:
       "Ce code n'est pas valide ou a expiré. Demandez un nouveau code.",
