@@ -7,6 +7,8 @@ RU: Здесь можно фильтровать каталог, открыть 
 FR: Ce fichier sert a la page publique du catalogue de canapes.
 FR: A l'ecran, le visiteur voit les cartes de canapes, les filtres, les tissus, les images et le lien vers le canape choisi.
 FR: Ici, on peut filtrer le catalogue, ouvrir une fenetre avec tous les filtres, changer le tissu dans une carte sans chargement en plus, charger la suite et ouvrir la page du canape.
+RU: Пока каталог загружается, посетитель видит пустые карточки нужного размера, чтобы страница не прыгала.
+FR: Pendant le chargement, le visiteur voit des cartes vides de bonne taille pour eviter un saut de page.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +22,9 @@ import type {
 // FR: Ces valeurs fixent la taille de la liste, la vue courte des filtres, la cle de memoire et la forme sure des etiquettes.
 const CATALOG_LIMIT = 12;
 const CATALOG_CARD_TAG_LIMIT = 3;
+// RU: Число пустых карточек держит место под первый экран каталога во время загрузки.
+// FR: Le nombre de cartes vides garde la place du premier ecran du catalogue pendant le chargement.
+const CATALOG_SKELETON_CARD_COUNT = 6;
 const CATALOG_SELECTION_PREFIX = "mobel-unique:catalog-selection:";
 const INLINE_FILTER_LIMIT = 2;
 const MIN_INLINE_FILTER_LIMIT = 1;
@@ -384,11 +389,7 @@ export function PublicCatalogPage() {
         </div>
       ) : null}
 
-      {status === "loading" ? (
-        <section className="public-status-panel" aria-live="polite">
-          Chargement du catalogue...
-        </section>
-      ) : null}
+      {status === "loading" ? <CatalogLoadingSkeleton /> : null}
 
       {status === "error" ? (
         <section className="public-status-panel" aria-live="polite">
@@ -448,6 +449,36 @@ export function PublicCatalogPage() {
         </section>
       ) : null}
     </PublicShell>
+  );
+}
+
+// RU: Эта область показывает пустые карточки, пока первая страница каталога еще загружается.
+// FR: Cette zone montre des cartes vides pendant que la premiere page du catalogue charge.
+function CatalogLoadingSkeleton() {
+  return (
+    <section
+      aria-busy="true"
+      aria-label="Chargement du catalogue"
+      aria-live="polite"
+      className="catalog-grid catalog-skeleton-grid"
+    >
+      {Array.from({ length: CATALOG_SKELETON_CARD_COUNT }, (_, index) => (
+        <article
+          aria-hidden="true"
+          className="catalog-card catalog-card-skeleton"
+          key={index}
+        >
+          <div className="catalog-card-image catalog-skeleton-block" />
+          <div className="catalog-card-body">
+            <span className="catalog-skeleton-line catalog-skeleton-title" />
+            <span className="catalog-skeleton-line catalog-skeleton-meta" />
+            <span className="catalog-skeleton-chip-row" />
+            <span className="catalog-skeleton-swatch-row" />
+            <span className="catalog-skeleton-action" />
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
 

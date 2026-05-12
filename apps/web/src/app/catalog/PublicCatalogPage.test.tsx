@@ -380,6 +380,26 @@ describe("PublicCatalogPage", () => {
     window.sessionStorage.clear();
   });
 
+  it("uses a catalog-card shaped skeleton while the first catalog page loads", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    const { container } = render(<PublicCatalogPage />);
+
+    expect(
+      screen.getByRole("region", { name: "Chargement du catalogue" }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector(".public-status-panel")).toBeNull();
+    expect(container.querySelectorAll(".catalog-card-skeleton")).toHaveLength(6);
+    expect(
+      container.querySelectorAll(
+        ".catalog-card-skeleton .catalog-card-image",
+      ),
+    ).toHaveLength(6);
+    expect(
+      container.querySelectorAll(".catalog-card-skeleton .catalog-card-body"),
+    ).toHaveLength(6);
+  });
+
   it("loads published sofas and hides filters when no public tags exist", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -398,7 +418,9 @@ describe("PublicCatalogPage", () => {
 
     render(<PublicCatalogPage />);
 
-    expect(screen.getByText("Chargement du catalogue...")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Chargement du catalogue" }),
+    ).toHaveAttribute("aria-busy", "true");
     expect(await screen.findByText("Canapé Rivoli")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Filtres de catalogue" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog/tags");
