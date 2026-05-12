@@ -127,6 +127,25 @@ for (const requiredField of [
   }
 }
 
+if (!Array.isArray(firstItem.fabrics) || firstItem.fabrics.length === 0) {
+  fail(`catalog item is missing fabrics: ${JSON.stringify(firstItem)}`);
+}
+
+const firstFabric = firstItem.fabrics[0];
+
+for (const requiredFabricField of [
+  "id",
+  "public_name",
+  "swatch_small_url",
+  "render_medium_url",
+]) {
+  if (!firstFabric?.[requiredFabricField]) {
+    fail(
+      `catalog item fabric is missing ${requiredFabricField}: ${JSON.stringify(firstFabric)}`,
+    );
+  }
+}
+
 if (firstItem.default_render_url !== firstItem.default_render_medium_url) {
   fail(
     `catalog default render compatibility alias does not point at medium delivery: ${JSON.stringify(firstItem)}`,

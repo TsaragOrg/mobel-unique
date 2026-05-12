@@ -3,17 +3,16 @@
 /*
 RU: Этот файл нужен для публичной страницы каталога диванов.
 RU: На экране посетитель видит карточки диванов, фильтры, ткани, картинки и ссылку на выбранный диван.
-RU: Здесь можно фильтровать каталог, открыть окно со всеми фильтрами, менять ткань в карточке, догружать список и открыть страницу дивана.
+RU: Здесь можно фильтровать каталог, открыть окно со всеми фильтрами, менять ткань в карточке без лишней загрузки, догружать список и открыть страницу дивана.
 FR: Ce fichier sert a la page publique du catalogue de canapes.
 FR: A l'ecran, le visiteur voit les cartes de canapes, les filtres, les tissus, les images et le lien vers le canape choisi.
-FR: Ici, on peut filtrer le catalogue, ouvrir une fenetre avec tous les filtres, changer le tissu dans une carte, charger la suite et ouvrir la page du canape.
+FR: Ici, on peut filtrer le catalogue, ouvrir une fenetre avec tous les filtres, changer le tissu dans une carte sans chargement en plus, charger la suite et ouvrir la page du canape.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PublicShell } from "../PublicShell";
 import type {
   PublicCatalogItemResponse,
-  PublicSofaDetailResponse,
   PublicTagResponse,
 } from "../../lib/public-catalog";
 
@@ -29,7 +28,6 @@ const VISIBLE_FABRIC_LIMIT = 4;
 const TAG_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 type CatalogStatus = "idle" | "loading" | "ready" | "error";
-type DetailStatus = "idle" | "loading" | "ready" | "error";
 
 interface ApiEnvelope<T> {
   data?: T;
@@ -454,82 +452,23 @@ export function PublicCatalogPage() {
 }
 
 function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
-  // RU: Эти значения держат загрузку тканей, выбранную ткань и ошибку картинки в карточке.
-  // FR: Ces valeurs gardent le chargement des tissus, le tissu choisi et l'erreur d'image dans la carte.
-  const [detailStatus, setDetailStatus] = useState<DetailStatus>("idle");
-  const [detail, setDetail] = useState<PublicSofaDetailResponse | null>(null);
+  // RU: Эти значения держат выбранную ткань и ошибку картинки в карточке.
+  // FR: Ces valeurs gardent le tissu choisi et l'erreur d'image dans la carte.
   const [selectedFabricId, setSelectedFabricId] = useState(item.default_fabric_id);
   const [imageFailed, setImageFailed] = useState(false);
 
-  // RU: Этот автоматический блок загружает ткани и картинки для смены ткани в карточке.
-  // FR: Ce bloc automatique charge les tissus et les images pour changer le tissu dans la carte.
-  useEffect(() => {
-    let isCurrent = true;
-
-    async function loadFabricControls() {
-      setDetailStatus("loading");
-
-      try {
-        const loadedDetail = await fetchSofaDetail(item.public_slug);
-
-        if (!isCurrent) {
-          return;
-        }
-
-        const hasSelectedFabric = loadedDetail.fabrics.some(
-          (fabric) => fabric.id === item.default_fabric_id,
-        );
-
-        setDetail(loadedDetail);
-        setSelectedFabricId(
-          hasSelectedFabric
-            ? item.default_fabric_id
-            : loadedDetail.defaults.fabric_id,
-        );
-        setDetailStatus("ready");
-      } catch {
-        if (isCurrent) {
-          setDetailStatus("error");
-        }
-      }
-    }
-
-    void loadFabricControls();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [item.default_fabric_id, item.public_slug]);
-
-  // RU: Этот адрес показывает среднюю картинку выбранной ткани в карточке каталога.
-  // FR: Cette adresse montre l'image moyenne du tissu choisi dans la carte du catalogue.
-  const activeRenderUrl = useMemo(() => {
-    const render = detail?.renders.find(
-      (candidate) =>
-        candidate.fabric_id === selectedFabricId &&
-        candidate.visual_position_id === item.default_visual_position_id,
-    );
-
-    return (
-      render?.render_medium_url ??
-      item.default_render_medium_url ??
-      render?.render_url ??
-      item.default_render_url
-    );
-  }, [
-    detail?.renders,
-    item.default_render_medium_url,
-    item.default_render_url,
-    item.default_visual_position_id,
-    selectedFabricId,
-  ]);
-
-  // RU: Эти данные показывают первые ткани и число скрытых тканей в карточке.
-  // FR: Ces donnees montrent les premiers tissus et le nombre de tissus caches dans la carte.
-  const visibleFabrics = detail?.fabrics.slice(0, VISIBLE_FABRIC_LIMIT) ?? [];
-  const hiddenFabricCount = detail
-    ? Math.max(0, detail.fabrics.length - VISIBLE_FABRIC_LIMIT)
-    : 0;
+  // RU: Эти данные берут ткани и адреса картинок прямо из ответа каталога для этой карточки.
+  // FR: Ces donnees prennent les tissus et les adresses d'image dans la reponse du catalogue pour cette carte.
+  const selectedFabric =
+    item.fabrics.find((fabric) => fabric.id === selectedFabricId) ??
+    item.fabrics.find((fabric) => fabric.id === item.default_fabric_id);
+  const activeRenderUrl =
+    selectedFabric?.render_medium_url ?? item.default_render_medium_url;
+  const visibleFabrics = item.fabrics.slice(0, VISIBLE_FABRIC_LIMIT);
+  const hiddenFabricCount = Math.max(
+    0,
+    item.fabrics.length - VISIBLE_FABRIC_LIMIT,
+  );
   // RU: Эти данные показывают метки карточки и число оставшихся меток в том же списке.
   // FR: Ces donnees montrent les etiquettes de la carte et le nombre d'etiquettes restantes dans la meme liste.
   const visibleTags = item.tags.slice(0, CATALOG_CARD_TAG_LIMIT);
@@ -538,6 +477,10 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
   // RU: Это действие выбирает ткань в карточке и снова пробует показать картинку.
   // FR: Cette action choisit un tissu dans la carte et essaie a nouveau d'afficher l'image.
   function selectFabric(fabricId: string) {
+    if (!item.fabrics.some((fabric) => fabric.id === fabricId)) {
+      return;
+    }
+
     setSelectedFabricId(fabricId);
     setImageFailed(false);
   }
@@ -573,11 +516,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
         <TagList hiddenCount={hiddenTagCount} tags={visibleTags} />
         <div className="catalog-card-preview">
           <p className="catalog-fabric-label">Tissus</p>
-          {detailStatus === "loading" ? <p>Chargement des tissus...</p> : null}
-          {detailStatus === "error" ? (
-            <p>Les tissus ne peuvent pas être affichés pour le moment.</p>
-          ) : null}
-          {detailStatus === "ready" && detail ? (
+          {visibleFabrics.length > 0 ? (
             <div className="catalog-swatches" aria-label={`Tissus de ${item.public_name}`}>
               {visibleFabrics.map((fabric) => (
                 <button
@@ -664,17 +603,6 @@ async function fetchCatalogPage(input: { cursor: string | null; tags: string[] }
 
   if (!response.ok || !body.data) {
     throw new Error(body.error?.message ?? "Catalog unavailable.");
-  }
-
-  return body.data;
-}
-
-async function fetchSofaDetail(publicSlug: string) {
-  const response = await fetch(`/api/public/sofas/${publicSlug}`);
-  const body = (await response.json()) as ApiEnvelope<PublicSofaDetailResponse>;
-
-  if (!response.ok || !body.data) {
-    throw new Error(body.error?.message ?? "Sofa detail unavailable.");
   }
 
   return body.data;

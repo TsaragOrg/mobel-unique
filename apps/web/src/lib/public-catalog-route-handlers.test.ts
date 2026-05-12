@@ -329,7 +329,23 @@ describe("public catalog route handlers", () => {
     expect(body.data.items[0].default_render_url).toBe(
       body.data.items[0].default_render_medium_url,
     );
+    expect(body.data.items[0].fabrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: fabrics[0].id,
+          render_medium_url: expect.stringContaining("front-medium.jpg"),
+          swatch_small_url: expect.stringContaining("swatch-small.jpg"),
+        }),
+        expect.objectContaining({
+          id: fabrics[1].id,
+          render_medium_url: expect.stringContaining("front-medium.jpg"),
+          swatch_small_url: expect.stringContaining("swatch-small.jpg"),
+        }),
+      ]),
+    );
     expect(JSON.stringify(body)).not.toContain("internal_name");
+    expect(JSON.stringify(body)).not.toContain("render_cell_id");
+    expect(JSON.stringify(body)).not.toContain("object_path");
     expect(JSON.stringify(body)).not.toContain("public_render_object_path");
     expect(JSON.stringify(body)).not.toContain("catalog-private-assets");
   });

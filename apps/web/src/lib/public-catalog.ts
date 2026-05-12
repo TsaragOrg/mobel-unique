@@ -146,6 +146,21 @@ export interface PublicPriceResponse {
   currency: "EUR";
 }
 
+export interface PublicCatalogCardFabricResponse {
+  id: string;
+  is_premium: boolean;
+  public_name: string;
+  public_order: number;
+  render_medium_content_type: string;
+  render_medium_height_px: number | null;
+  render_medium_url: string;
+  render_medium_width_px: number | null;
+  swatch_small_content_type: string;
+  swatch_small_height_px: number | null;
+  swatch_small_url: string;
+  swatch_small_width_px: number | null;
+}
+
 export interface PublicCatalogItemResponse {
   default_fabric_id: string;
   default_render_medium_content_type: string;
@@ -161,6 +176,7 @@ export interface PublicCatalogItemResponse {
     height_cm: number | null;
     length_cm: number | null;
   };
+  fabrics: PublicCatalogCardFabricResponse[];
   id: string;
   price: PublicPriceResponse | null;
   public_description: string | null;
@@ -658,6 +674,7 @@ function shapeCatalogItemResponse(
     default_render_url: mediumUrl,
     default_visual_position_id: state.defaultVisualPosition.id,
     dimensions: shapeDimensions(state.sofa),
+    fabrics: shapeCatalogCardFabrics(state, publicAssetBaseUrl),
     id: state.sofa.id,
     price: shapePrice(state.sofa),
     public_description: state.sofa.public_description ?? null,
@@ -666,6 +683,49 @@ function shapeCatalogItemResponse(
     shopify_order_url: state.sofa.shopify_order_url ?? null,
     tags: state.tags,
   };
+}
+
+function shapeCatalogCardFabrics(
+  state: UsableSofaState,
+  publicAssetBaseUrl: string,
+): PublicCatalogCardFabricResponse[] {
+  return state.fabrics
+    .map((fabric) => {
+      const defaultPositionRender = state.renders.find(
+        (render) =>
+          render.fabric_id === fabric.id &&
+          render.visual_matrix_column_id === state.defaultVisualPosition.id,
+      );
+
+      if (!defaultPositionRender) {
+        return null;
+      }
+
+      return {
+        id: fabric.id,
+        is_premium: fabric.is_premium,
+        public_name: fabric.public_name,
+        public_order: fabric.public_order,
+        render_medium_content_type:
+          defaultPositionRender.render_medium_content_type,
+        render_medium_height_px:
+          defaultPositionRender.render_medium_height_px ?? null,
+        render_medium_url: buildPublicStorageUrl(
+          publicAssetBaseUrl,
+          defaultPositionRender.render_medium_object_path,
+        ),
+        render_medium_width_px:
+          defaultPositionRender.render_medium_width_px ?? null,
+        swatch_small_content_type: fabric.public_swatch_small_content_type,
+        swatch_small_height_px: fabric.public_swatch_small_height_px ?? null,
+        swatch_small_url: buildPublicStorageUrl(
+          publicAssetBaseUrl,
+          fabric.public_swatch_small_object_path,
+        ),
+        swatch_small_width_px: fabric.public_swatch_small_width_px ?? null,
+      };
+    })
+    .filter(isDefined);
 }
 
 function shapeSofaDetailResponse(
