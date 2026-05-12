@@ -7,6 +7,8 @@ RU: Здесь можно выбрать ткань и вид, открыть с
 FR: Ce fichier sert a la page d'un canape sur le site public.
 FR: A l'ecran, le visiteur voit le canape, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
 FR: Ici, on peut choisir le tissu et la vue, ouvrir la simulation, aller vers la commande et verifier les donnees principales du canape.
+RU: Обычная картинка на странице легче, а большая картинка открывается только в отдельном окне.
+FR: L'image normale sur la page est plus legere, et la grande image s'ouvre seulement dans une fenetre separee.
 RU: Картинку дивана можно открыть большим окном, чтобы рассмотреть ее ближе.
 FR: L'image du canape peut s'ouvrir en grand pour mieux la regarder.
 */
@@ -170,8 +172,11 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       ) ?? null,
     [detail?.renders, selectedFabricId, selectedVisualPositionId],
   );
-  // RU: Этот адрес показывает выбранную картинку дивана в исходном размере.
-  // FR: Cette adresse montre l'image choisie du canape en taille originale.
+  // RU: Этот адрес показывает выбранную картинку дивана в более легком размере на обычной странице.
+  // FR: Cette adresse montre l'image choisie du canape en taille plus legere sur la page normale.
+  const selectedRenderMediumUrl = selectedRender?.render_medium_url ?? null;
+  // RU: Этот адрес нужен только для большого окна, где картинку можно рассмотреть ближе.
+  // FR: Cette adresse sert seulement a la grande fenetre pour regarder l'image de plus pres.
   const selectedRenderOriginalUrl =
     selectedRender?.render_original_url ?? selectedRender?.render_url ?? null;
   const canLaunchSimulation = Boolean(
@@ -323,7 +328,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         <article className="sofa-detail">
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
-              {imageFailed || !selectedRenderOriginalUrl ? (
+              {imageFailed || !selectedRenderMediumUrl ? (
                 <span>Image indisponible</span>
               ) : (
                 <button
@@ -335,7 +340,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   <img
                     alt={selectedImageAlt}
                     onError={handleSelectedImageError}
-                    src={selectedRenderOriginalUrl}
+                    src={selectedRenderMediumUrl}
                   />
                   <span className="sofa-detail-image-viewer-icon">
                     <PublicExpandIcon />
