@@ -262,6 +262,9 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe(
+      "public, s-maxage=3600, stale-while-revalidate=300",
+    );
     await expect(response.json()).resolves.toEqual({
       data: {
         items: [
@@ -292,6 +295,9 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe(
+      "public, s-maxage=3600, stale-while-revalidate=300",
+    );
     const body = await response.json();
 
     expect(body.data.items).toHaveLength(1);
@@ -375,6 +381,16 @@ describe("public catalog route handlers", () => {
     expect(secondBody.data.items[0].id).not.toBe(firstBody.data.items[0].id);
   });
 
+  it("does not cache invalid catalog list requests", async () => {
+    const response = await handleListPublicCatalogRequest({
+      createStore: createFakeStore,
+      request: new Request("http://localhost/api/public/catalog?limit=bad"),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("returns public sofa detail state with defaults and complete render matrix", async () => {
     const response = await handleGetPublicSofaRequest({
       createStore: createFakeStore,
@@ -440,6 +456,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(missing.status).toBe(404);
+    expect(missing.headers.get("Cache-Control")).toBe("no-store");
     await expect(missing.json()).resolves.toMatchObject({
       error: {
         code: "SOFA_NOT_FOUND",
@@ -452,6 +469,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(unavailable.status).toBe(410);
+    expect(unavailable.headers.get("Cache-Control")).toBe("no-store");
     await expect(unavailable.json()).resolves.toMatchObject({
       error: {
         code: "SOFA_UNAVAILABLE",
