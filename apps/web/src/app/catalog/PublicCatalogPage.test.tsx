@@ -39,6 +39,37 @@ const rivoli = {
     height_cm: 82,
     length_cm: 240,
   },
+  fabrics: [
+    {
+      id: "fabric-boucle",
+      is_premium: false,
+      public_name: "BouclГ© ivoire",
+      public_order: 1,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url:
+        "https://assets.example/rivoli/boucle-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
+      swatch_small_width_px: 96,
+    },
+    {
+      id: "fabric-sauge",
+      is_premium: true,
+      public_name: "Velours sauge",
+      public_order: 2,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url: "https://assets.example/rivoli/sauge-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
+      swatch_small_width_px: 96,
+    },
+  ],
   id: "sofa-rivoli",
   public_description: "Un canapé modulable pour le salon.",
   public_name: "Canapé Rivoli",
@@ -69,6 +100,22 @@ const marais = {
   default_fabric_id: "fabric-lin",
   default_render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
   default_render_url: "https://assets.example/marais/lin-face-original.png",
+  fabrics: [
+    {
+      id: "fabric-lin",
+      is_premium: false,
+      public_name: "Lin naturel",
+      public_order: 1,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
+      swatch_small_width_px: 96,
+    },
+  ],
   id: "sofa-marais",
   public_name: "Canapé Marais",
   public_slug: "canape-marais",
@@ -663,14 +710,6 @@ describe("PublicCatalogPage", () => {
         return Promise.resolve(jsonResponse(tagsEnvelope([])));
       }
 
-      if (url === "/api/public/sofas/canape-rivoli") {
-        return Promise.resolve(jsonResponse({ data: rivoliDetail, meta: {} }));
-      }
-
-      if (url === "/api/public/sofas/canape-marais") {
-        return Promise.resolve(jsonResponse({ data: maraisDetail, meta: {} }));
-      }
-
       return Promise.resolve(jsonResponse(catalogEnvelope([rivoli, marais])));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -701,7 +740,6 @@ describe("PublicCatalogPage", () => {
       screen.queryByRole("button", { name: "Aperçu tissus pour Canapé Rivoli" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Velours sauge")).not.toBeInTheDocument();
-    expect(screen.getByText("+1")).toBeInTheDocument();
     fireEvent.click(saugeButton);
 
     expect(rivoliImage).toHaveAttribute(
@@ -721,6 +759,13 @@ describe("PublicCatalogPage", () => {
     expect(window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli")).toContain(
       "fabric-sauge",
     );
+    expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog/tags");
+    expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog?limit=12");
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith("/api/public/sofas/"),
+      ),
+    ).toBe(false);
   });
 
   it("uses a French placeholder when a catalog image fails", async () => {

@@ -86,6 +86,38 @@ describe("public catalog helpers", () => {
     expect(JSON.stringify(result)).not.toContain("catalog-private-assets");
   });
 
+  it("shapes catalog cards with embedded fabric preview data", async () => {
+    const result = await listPublicCatalog(createDeliveryStore(), {
+      cursor: null,
+      limit: 12,
+      tags: [],
+    });
+
+    expect(result.items[0].fabrics).toEqual([
+      expect.objectContaining({
+        id: "00000000-0000-4000-8000-000000000501",
+        public_name: "Fabric",
+        public_order: 1,
+        swatch_small_content_type: "image/jpeg",
+        swatch_small_height_px: 48,
+        swatch_small_width_px: 96,
+        render_medium_content_type: "image/jpeg",
+        render_medium_height_px: 960,
+        render_medium_width_px: 1280,
+      }),
+    ]);
+    expect(result.items[0].fabrics[0].swatch_small_url).toContain(
+      "catalog/fabrics/fabric/swatch-small.jpg",
+    );
+    expect(result.items[0].fabrics[0].render_medium_url).toContain(
+      "catalog/sofas/test/front-medium.jpg",
+    );
+    expect(JSON.stringify(result.items[0])).not.toContain(
+      "catalog-private-assets",
+    );
+    expect(JSON.stringify(result.items[0])).not.toContain("object_path");
+  });
+
   it("shapes sofa detail renders with explicit original delivery fields", async () => {
     const result = await getPublicSofaDetail(
       createDeliveryStore(),

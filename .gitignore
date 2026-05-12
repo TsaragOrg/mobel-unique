@@ -18,6 +18,9 @@ out/
 coverage/
 *.tsbuildinfo
 
+# Performance audit artifacts
+performance-audit/
+
 # Logs
 *.log
 npm-debug.log*
