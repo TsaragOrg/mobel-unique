@@ -222,6 +222,134 @@ const renderCells = [
   }),
 ];
 
+function listFakeCatalogCardRows(input: {
+  cursor: {
+    created_at: string;
+    id: string;
+    manual_public_order: number | null;
+  } | null;
+  limit: number;
+  tags: string[];
+}) {
+  return sofas
+    .map(createFakeCatalogCardRow)
+    .filter(isDefined)
+    .filter((row) =>
+      input.tags.every((tag) =>
+        row.tags.some((sofaTag) => sofaTag.slug === tag),
+      ),
+    )
+    .sort(compareFakeCatalogSort)
+    .filter((row) =>
+      input.cursor ? compareFakeCatalogSort(row, input.cursor) > 0 : true,
+    )
+    .slice(0, input.limit);
+}
+
+function createFakeCatalogCardRow(sofa: (typeof sofas)[number]) {
+  const rowTags = tags
+    .filter((tag) => tag.sofa_id === sofa.id)
+    .map(({ public_label, slug }) => ({
+      public_label,
+      slug,
+    }));
+  const rowVisualPositions = visualPositions
+    .filter((position) => position.sofa_id === sofa.id)
+    .sort((left, right) => left.sequence - right.sequence);
+  const defaultVisualPosition = rowVisualPositions[0];
+  const rowFabrics = fabrics
+    .filter((fabric) => fabric.sofa_id === sofa.id)
+    .sort((left, right) => left.public_order - right.public_order)
+    .map((fabric) => {
+      const fabricRender = renderCells.find(
+        (render) =>
+          render.sofa_id === sofa.id &&
+          render.fabric_id === fabric.id &&
+          render.visual_matrix_column_id === defaultVisualPosition?.id,
+      );
+
+      if (!fabricRender) {
+        return null;
+      }
+
+      return {
+        id: fabric.id,
+        is_premium: fabric.is_premium,
+        public_name: fabric.public_name,
+        public_order: fabric.public_order,
+        render_medium_content_type: fabricRender.render_medium_content_type,
+        render_medium_height_px: fabricRender.render_medium_height_px,
+        render_medium_object_path: fabricRender.render_medium_object_path,
+        render_medium_width_px: fabricRender.render_medium_width_px,
+        swatch_small_content_type: fabric.public_swatch_small_content_type,
+        swatch_small_height_px: fabric.public_swatch_small_height_px,
+        swatch_small_object_path: fabric.public_swatch_small_object_path,
+        swatch_small_width_px: fabric.public_swatch_small_width_px,
+      };
+    })
+    .filter(isDefined);
+  const defaultFabric = rowFabrics[0];
+
+  if (!defaultVisualPosition || !defaultFabric) {
+    return null;
+  }
+
+  return {
+    created_at: sofa.created_at,
+    default_fabric_id: defaultFabric.id,
+    default_render_medium_content_type:
+      defaultFabric.render_medium_content_type,
+    default_render_medium_height_px: defaultFabric.render_medium_height_px,
+    default_render_medium_object_path: defaultFabric.render_medium_object_path,
+    default_render_medium_width_px: defaultFabric.render_medium_width_px,
+    default_visual_position_id: defaultVisualPosition.id,
+    depth_cm: sofa.depth_cm,
+    fabrics: rowFabrics,
+    footprint_measurements: sofa.footprint_measurements,
+    footprint_type: sofa.footprint_type,
+    height_cm: sofa.height_cm,
+    id: sofa.id,
+    length_cm: sofa.length_cm,
+    manual_public_order: sofa.manual_public_order,
+    price_cents: sofa.price_cents,
+    price_currency: sofa.price_currency,
+    public_description: sofa.public_description,
+    public_name: sofa.public_name,
+    public_slug: sofa.public_slug,
+    shopify_order_url: sofa.shopify_order_url,
+    tags: rowTags,
+  };
+}
+
+function compareFakeCatalogSort(
+  left: { created_at: string; id: string; manual_public_order?: number | null },
+  right: {
+    created_at: string;
+    id: string;
+    manual_public_order?: number | null;
+  },
+) {
+  const leftOrder = left.manual_public_order ?? Number.MAX_SAFE_INTEGER;
+  const rightOrder = right.manual_public_order ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
+  }
+
+  const leftCreatedAt = Date.parse(left.created_at);
+  const rightCreatedAt = Date.parse(right.created_at);
+
+  if (leftCreatedAt !== rightCreatedAt) {
+    return rightCreatedAt - leftCreatedAt;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function isDefined<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
+
 function createFakeStore(): PublicCatalogStore {
   return {
     publicAssetBaseUrl: "http://127.0.0.1:54321",
@@ -237,6 +365,9 @@ function createFakeStore(): PublicCatalogStore {
 
       return null;
     },
+    async listPublicCatalogCards(input) {
+      return listFakeCatalogCardRows(input);
+    },
     async listPublicFabrics() {
       return fabrics;
     },
@@ -251,6 +382,45 @@ function createFakeStore(): PublicCatalogStore {
     },
     async listPublicVisualPositions() {
       return visualPositions;
+    },
+  };
+}
+
+function createCapturingPageScopedStore(
+  seenInputs: Array<{
+    cursor: unknown;
+    limit: number;
+    tags: string[];
+  }>,
+): PublicCatalogStore {
+  const broadReadError = () => {
+    throw new Error("route list requests must use listPublicCatalogCards");
+  };
+
+  return {
+    publicAssetBaseUrl: "http://127.0.0.1:54321",
+    async findUnavailableSofaBySlug() {
+      return null;
+    },
+    async listPublicCatalogCards(input) {
+      seenInputs.push(input);
+
+      return listFakeCatalogCardRows(input);
+    },
+    async listPublicFabrics() {
+      return broadReadError();
+    },
+    async listPublicRenderCells() {
+      return broadReadError();
+    },
+    async listPublicSofaTags() {
+      return broadReadError();
+    },
+    async listPublicSofas() {
+      return broadReadError();
+    },
+    async listPublicVisualPositions() {
+      return broadReadError();
     },
   };
 }
@@ -283,6 +453,63 @@ describe("public catalog route handlers", () => {
         ],
       },
       meta: {},
+    });
+  });
+
+  it("forwards first-page catalog filters to the page-scoped store", async () => {
+    const seenInputs: Array<{
+      cursor: unknown;
+      limit: number;
+      tags: string[];
+    }> = [];
+    const response = await handleListPublicCatalogRequest({
+      createStore: () => createCapturingPageScopedStore(seenInputs),
+      request: new Request(
+        "http://localhost/api/public/catalog?tag=angle&tag=convertible",
+      ),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe(
+      "public, s-maxage=3600, stale-while-revalidate=300",
+    );
+    expect(seenInputs[0]).toMatchObject({
+      limit: 13,
+      tags: ["angle", "convertible"],
+    });
+    expect(seenInputs[0].cursor).toBeNull();
+  });
+
+  it("forwards decoded catalog cursors to the page-scoped store", async () => {
+    const seenInputs: Array<{
+      cursor: unknown;
+      limit: number;
+      tags: string[];
+    }> = [];
+    const firstResponse = await handleListPublicCatalogRequest({
+      createStore: () => createCapturingPageScopedStore(seenInputs),
+      request: new Request("http://localhost/api/public/catalog?limit=1"),
+    });
+    const firstBody = await firstResponse.json();
+
+    const secondResponse = await handleListPublicCatalogRequest({
+      createStore: () => createCapturingPageScopedStore(seenInputs),
+      request: new Request(
+        `http://localhost/api/public/catalog?limit=1&cursor=${firstBody.data.next_cursor}`,
+      ),
+    });
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(seenInputs[0]).toMatchObject({
+      cursor: null,
+      limit: 2,
+      tags: [],
+    });
+    expect(seenInputs[1].cursor).toMatchObject({
+      created_at: "2026-04-29T10:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000402",
+      manual_public_order: 1,
     });
   });
 
