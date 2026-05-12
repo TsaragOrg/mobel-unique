@@ -115,6 +115,31 @@ export interface PublicRenderCellRecord {
   visual_matrix_column_id: string;
 }
 
+export interface PublicCatalogCardRow {
+  created_at: string;
+  default_fabric_id: string;
+  default_render_medium_content_type: string;
+  default_render_medium_height_px?: number | null;
+  default_render_medium_object_path: string;
+  default_render_medium_width_px?: number | null;
+  default_visual_position_id: string;
+  depth_cm?: number | null;
+  fabrics: unknown;
+  footprint_measurements?: unknown;
+  footprint_type?: string | null;
+  height_cm?: number | null;
+  id: string;
+  length_cm?: number | null;
+  manual_public_order?: number | null;
+  price_cents?: number | null;
+  price_currency?: string | null;
+  public_description?: string | null;
+  public_name: string;
+  public_slug: string;
+  shopify_order_url?: string | null;
+  tags: unknown;
+}
+
 export interface UnavailableSofaRecord {
   first_published_at?: string | null;
   id: string;
@@ -127,6 +152,9 @@ export interface PublicCatalogStore {
   findUnavailableSofaBySlug(
     publicSlug: string,
   ): Promise<UnavailableSofaRecord | null>;
+  listPublicCatalogCards(
+    input: CatalogListInput & { limit: number },
+  ): Promise<Array<PublicCatalogCardRow | JsonObject>>;
   listPublicFabrics(): Promise<Array<PublicSofaFabricRecord | JsonObject>>;
   listPublicRenderCells(): Promise<Array<PublicRenderCellRecord | JsonObject>>;
   listPublicSofaTags(): Promise<Array<PublicSofaTagRecord | JsonObject>>;
@@ -258,6 +286,29 @@ interface UsableSofaState {
   visualPositions: PublicVisualPositionRecord[];
 }
 
+interface PublicCatalogCardFabricRow {
+  id: string;
+  is_premium: boolean;
+  public_name: string;
+  public_order: number;
+  render_medium_content_type: string;
+  render_medium_height_px?: number | null;
+  render_medium_object_path: string;
+  render_medium_width_px?: number | null;
+  swatch_small_content_type: string;
+  swatch_small_height_px?: number | null;
+  swatch_small_object_path: string;
+  swatch_small_width_px?: number | null;
+}
+
+interface ShapedPublicCatalogCardRow extends Omit<
+  PublicCatalogCardRow,
+  "fabrics" | "tags"
+> {
+  fabrics: PublicCatalogCardFabricRow[];
+  tags: PublicTagResponse[];
+}
+
 interface CatalogSortKey {
   created_at: string;
   id: string;
@@ -325,29 +376,30 @@ export async function listPublicCatalog(
   store: PublicCatalogStore,
   input: CatalogListInput,
 ): Promise<PublicCatalogListResponse> {
-  const data = await readPublicCatalogData(store);
-  const usableSofas = buildUsableSofaStates(data);
-  const filtered = filterSofasByTags(usableSofas, input.tags)
-    .sort((left, right) => compareCatalogSort(left.sofa, right.sofa))
-    .filter((state) =>
-      input.cursor ? compareCatalogSort(state.sofa, input.cursor) > 0 : true,
-    );
-
-  const page = filtered.slice(0, input.limit);
-  const nextItem = filtered[input.limit];
+  const rows = (
+    await store.listPublicCatalogCards({
+      ...input,
+      limit: input.limit + 1,
+    })
+  )
+    .map(shapeCatalogCardRow)
+    .filter(isDefined);
+  const page = rows.slice(0, input.limit);
+  const hasNextPage = rows.length > input.limit;
+  const lastPageItem = page[page.length - 1];
 
   return {
-    items: page.map((state) =>
-      shapeCatalogItemResponse(state, store.publicAssetBaseUrl),
+    items: page.map((row) =>
+      shapeCatalogItemResponseFromCardRow(row, store.publicAssetBaseUrl),
     ),
-    next_cursor: nextItem
-      ? encodeCatalogCursor({
-          created_at: page[page.length - 1].sofa.created_at,
-          id: page[page.length - 1].sofa.id,
-          manual_public_order:
-            page[page.length - 1].sofa.manual_public_order ?? null,
-        })
-      : null,
+    next_cursor:
+      hasNextPage && lastPageItem
+        ? encodeCatalogCursor({
+            created_at: lastPageItem.created_at,
+            id: lastPageItem.id,
+            manual_public_order: lastPageItem.manual_public_order ?? null,
+          })
+        : null,
   };
 }
 
@@ -403,7 +455,11 @@ export async function getPublicSofaDetail(
 export function createSupabasePublicCatalogStore(
   env: NodeJS.ProcessEnv = process.env,
 ): PublicCatalogStore {
-  const supabaseUrl = requiredEnv(env, "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL");
+  const supabaseUrl = requiredEnv(
+    env,
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_URL",
+  );
   const anonClient = createClient(
     supabaseUrl,
     requiredEnv(env, "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"),
@@ -450,6 +506,25 @@ export function createSupabasePublicCatalogStore(
           }
         : null;
     },
+    async listPublicCatalogCards(input) {
+      const { data, error } = await anonClient.rpc(
+        "list_public_catalog_cards",
+        {
+          p_cursor_created_at: input.cursor?.created_at ?? null,
+          p_cursor_id: input.cursor?.id ?? null,
+          p_cursor_manual_public_order:
+            input.cursor?.manual_public_order ?? null,
+          p_limit: input.limit,
+          p_tag_slugs: input.tags,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      return data ?? [];
+    },
     async listPublicFabrics() {
       return selectPublicRows(anonClient, "public_sofa_fabrics");
     },
@@ -488,7 +563,9 @@ function parseLimit(value: string | null): ValidationResult<number> {
   };
 }
 
-function parseCursor(value: string | null): ValidationResult<CatalogCursor | null> {
+function parseCursor(
+  value: string | null,
+): ValidationResult<CatalogCursor | null> {
   if (!value) {
     return {
       ok: true,
@@ -502,14 +579,14 @@ function parseCursor(value: string | null): ValidationResult<CatalogCursor | nul
       value: decodeCatalogCursor(value),
     };
   } catch {
-    return invalidQuery("INVALID_CURSOR", "Le curseur de catalogue est invalide.");
+    return invalidQuery(
+      "INVALID_CURSOR",
+      "Le curseur de catalogue est invalide.",
+    );
   }
 }
 
-function invalidQuery(
-  code: string,
-  message: string,
-): ValidationResult<never> {
+function invalidQuery(code: string, message: string): ValidationResult<never> {
   return {
     error: {
       code,
@@ -571,13 +648,18 @@ function buildUsableSofaState(
 ): UsableSofaState | null {
   const visualPositions = data.visualPositions
     .filter((position) => position.sofa_id === sofa.id)
-    .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) =>
+        left.sequence - right.sequence || left.id.localeCompare(right.id),
+    );
 
   if (visualPositions.length === 0) {
     return null;
   }
 
-  const renderCells = data.renderCells.filter((cell) => cell.sofa_id === sofa.id);
+  const renderCells = data.renderCells.filter(
+    (cell) => cell.sofa_id === sofa.id,
+  );
   const completeFabrics = data.fabrics
     .filter((fabric) => fabric.sofa_id === sofa.id)
     .filter((fabric) =>
@@ -591,7 +673,8 @@ function buildUsableSofaState(
     )
     .sort(
       (left, right) =>
-        left.public_order - right.public_order || left.id.localeCompare(right.id),
+        left.public_order - right.public_order ||
+        left.id.localeCompare(right.id),
     );
 
   if (completeFabrics.length === 0) {
@@ -599,7 +682,9 @@ function buildUsableSofaState(
   }
 
   const completeFabricIds = new Set(completeFabrics.map((fabric) => fabric.id));
-  const visualPositionIds = new Set(visualPositions.map((position) => position.id));
+  const visualPositionIds = new Set(
+    visualPositions.map((position) => position.id),
+  );
   const publicRenders = renderCells
     .filter(
       (cell) =>
@@ -609,7 +694,9 @@ function buildUsableSofaState(
     .sort(
       (left, right) =>
         completeFabrics.findIndex((fabric) => fabric.id === left.fabric_id) -
-          completeFabrics.findIndex((fabric) => fabric.id === right.fabric_id) ||
+          completeFabrics.findIndex(
+            (fabric) => fabric.id === right.fabric_id,
+          ) ||
         visualPositions.findIndex(
           (position) => position.id === left.visual_matrix_column_id,
         ) -
@@ -682,6 +769,64 @@ function shapeCatalogItemResponse(
     public_slug: state.sofa.public_slug,
     shopify_order_url: state.sofa.shopify_order_url ?? null,
     tags: state.tags,
+  };
+}
+
+function shapeCatalogItemResponseFromCardRow(
+  row: ShapedPublicCatalogCardRow,
+  publicAssetBaseUrl: string,
+): PublicCatalogItemResponse {
+  const mediumUrl = buildPublicStorageUrl(
+    publicAssetBaseUrl,
+    row.default_render_medium_object_path,
+  );
+
+  return {
+    default_fabric_id: row.default_fabric_id,
+    default_render_medium_content_type: row.default_render_medium_content_type,
+    default_render_medium_height_px:
+      row.default_render_medium_height_px ?? null,
+    default_render_medium_url: mediumUrl,
+    default_render_medium_width_px: row.default_render_medium_width_px ?? null,
+    default_render_url: mediumUrl,
+    default_visual_position_id: row.default_visual_position_id,
+    dimensions: shapeDimensions(row),
+    fabrics: row.fabrics.map((fabric) =>
+      shapeCatalogCardFabricResponseFromRow(fabric, publicAssetBaseUrl),
+    ),
+    id: row.id,
+    price: shapePrice(row),
+    public_description: row.public_description ?? null,
+    public_name: row.public_name,
+    public_slug: row.public_slug,
+    shopify_order_url: row.shopify_order_url ?? null,
+    tags: row.tags,
+  };
+}
+
+function shapeCatalogCardFabricResponseFromRow(
+  fabric: PublicCatalogCardFabricRow,
+  publicAssetBaseUrl: string,
+): PublicCatalogCardFabricResponse {
+  return {
+    id: fabric.id,
+    is_premium: fabric.is_premium,
+    public_name: fabric.public_name,
+    public_order: fabric.public_order,
+    render_medium_content_type: fabric.render_medium_content_type,
+    render_medium_height_px: fabric.render_medium_height_px ?? null,
+    render_medium_url: buildPublicStorageUrl(
+      publicAssetBaseUrl,
+      fabric.render_medium_object_path,
+    ),
+    render_medium_width_px: fabric.render_medium_width_px ?? null,
+    swatch_small_content_type: fabric.swatch_small_content_type,
+    swatch_small_height_px: fabric.swatch_small_height_px ?? null,
+    swatch_small_url: buildPublicStorageUrl(
+      publicAssetBaseUrl,
+      fabric.swatch_small_object_path,
+    ),
+    swatch_small_width_px: fabric.swatch_small_width_px ?? null,
   };
 }
 
@@ -859,7 +1004,10 @@ function compareCatalogSort(left: CatalogSortKey, right: CatalogSortKey) {
   return left.id.localeCompare(right.id);
 }
 
-async function selectPublicRows(client: SupabasePublicClient, viewName: string) {
+async function selectPublicRows(
+  client: SupabasePublicClient,
+  viewName: string,
+) {
   const { data, error } = await client.from(viewName).select("*");
 
   if (error) {
@@ -1027,6 +1175,135 @@ function shapeRenderCellRecord(
     render_cell_id: record.render_cell_id,
     sofa_id: record.sofa_id,
     visual_matrix_column_id: record.visual_matrix_column_id,
+  };
+}
+
+function shapeCatalogCardRow(
+  record: PublicCatalogCardRow | JsonObject,
+): ShapedPublicCatalogCardRow | null {
+  if (
+    !isRecord(record) ||
+    typeof record.created_at !== "string" ||
+    typeof record.default_fabric_id !== "string" ||
+    typeof record.default_render_medium_content_type !== "string" ||
+    typeof record.default_render_medium_object_path !== "string" ||
+    typeof record.default_visual_position_id !== "string" ||
+    typeof record.id !== "string" ||
+    typeof record.public_name !== "string" ||
+    typeof record.public_slug !== "string"
+  ) {
+    return null;
+  }
+
+  const tags = shapeCatalogCardTags(record.tags);
+  const fabrics = shapeCatalogCardFabricRows(record.fabrics);
+
+  if (!tags || !fabrics) {
+    return null;
+  }
+
+  return {
+    created_at: record.created_at,
+    default_fabric_id: record.default_fabric_id,
+    default_render_medium_content_type:
+      record.default_render_medium_content_type,
+    default_render_medium_height_px: numberOrNull(
+      record.default_render_medium_height_px,
+    ),
+    default_render_medium_object_path: record.default_render_medium_object_path,
+    default_render_medium_width_px: numberOrNull(
+      record.default_render_medium_width_px,
+    ),
+    default_visual_position_id: record.default_visual_position_id,
+    depth_cm: numberOrNull(record.depth_cm),
+    fabrics,
+    footprint_measurements: record.footprint_measurements ?? null,
+    footprint_type: stringOrNull(record.footprint_type),
+    height_cm: numberOrNull(record.height_cm),
+    id: record.id,
+    length_cm: numberOrNull(record.length_cm),
+    manual_public_order: numberOrNull(record.manual_public_order),
+    price_cents: numberOrNull(record.price_cents),
+    price_currency: stringOrNull(record.price_currency),
+    public_description: stringOrNull(record.public_description),
+    public_name: record.public_name,
+    public_slug: record.public_slug,
+    shopify_order_url: stringOrNull(record.shopify_order_url),
+    tags,
+  };
+}
+
+function shapeCatalogCardTags(value: unknown): PublicTagResponse[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const tags = value.map(shapeCatalogCardTag);
+
+  return tags.every(isDefined) ? tags : null;
+}
+
+function shapeCatalogCardTag(value: unknown): PublicTagResponse | null {
+  if (
+    !isRecord(value) ||
+    typeof value.public_label !== "string" ||
+    typeof value.slug !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    public_label: value.public_label,
+    slug: value.slug,
+  };
+}
+
+function shapeCatalogCardFabricRows(
+  value: unknown,
+): PublicCatalogCardFabricRow[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const fabrics = value.map(shapeCatalogCardFabricRow);
+
+  if (fabrics.length === 0 || !fabrics.every(isDefined)) {
+    return null;
+  }
+
+  return fabrics;
+}
+
+function shapeCatalogCardFabricRow(
+  value: unknown,
+): PublicCatalogCardFabricRow | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.is_premium !== "boolean" ||
+    typeof value.public_name !== "string" ||
+    typeof value.public_order !== "number" ||
+    typeof value.render_medium_content_type !== "string" ||
+    typeof value.render_medium_object_path !== "string" ||
+    typeof value.swatch_small_content_type !== "string" ||
+    typeof value.swatch_small_object_path !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    is_premium: value.is_premium,
+    public_name: value.public_name,
+    public_order: value.public_order,
+    render_medium_content_type: value.render_medium_content_type,
+    render_medium_height_px: numberOrNull(value.render_medium_height_px),
+    render_medium_object_path: value.render_medium_object_path,
+    render_medium_width_px: numberOrNull(value.render_medium_width_px),
+    swatch_small_content_type: value.swatch_small_content_type,
+    swatch_small_height_px: numberOrNull(value.swatch_small_height_px),
+    swatch_small_object_path: value.swatch_small_object_path,
+    swatch_small_width_px: numberOrNull(value.swatch_small_width_px),
   };
 }
 
