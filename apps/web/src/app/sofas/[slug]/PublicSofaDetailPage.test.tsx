@@ -164,6 +164,24 @@ describe("PublicSofaDetailPage", () => {
     window.sessionStorage.clear();
   });
 
+  it("uses a detail-hero shaped skeleton while the sofa detail loads", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    expect(
+      screen.getByRole("article", { name: "Chargement du canape" }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector(".public-status-panel")).toBeNull();
+    expect(container.querySelector(".sofa-detail-skeleton")).toBeInTheDocument();
+    expect(
+      container.querySelector(".sofa-detail-skeleton .sofa-detail-image"),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(".sofa-detail-skeleton .sofa-detail-copy"),
+    ).toBeInTheDocument();
+  });
+
   it("loads default fabric and visual position from direct entry", async () => {
     mockDetailResponse();
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
