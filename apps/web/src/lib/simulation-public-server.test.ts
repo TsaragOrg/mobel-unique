@@ -62,7 +62,7 @@ describe("public simulation Supabase stores", () => {
     });
   });
 
-  it("creates email verification requests through the PLAN-0074 RPC without plaintext email", async () => {
+  it("creates email verification requests without storing encrypted email", async () => {
     const client = {
       rpc: vi.fn().mockResolvedValue({
         data: [
@@ -77,16 +77,13 @@ describe("public simulation Supabase stores", () => {
     const store = createSupabaseSimulationEmailVerificationStore(
       client as never,
       {
-        emailEncryptionSecret: "email-encryption-secret",
-        emailHashSecret: "email-hash-secret",
+        verificationSubjectSalt: "verification-subject-salt",
       },
     );
 
     await expect(
       store.createRequest({
         email: "Visitor@Example.com",
-        consentEmailUse: true,
-        consentMarketing: false,
         expiresAt: new Date("2026-05-08T01:00:00.000Z"),
       }),
     ).resolves.toEqual({
@@ -97,13 +94,12 @@ describe("public simulation Supabase stores", () => {
     expect(client.rpc).toHaveBeenCalledWith(
       "create_public_simulation_email_verification_request",
       expect.objectContaining({
-        p_email_address_encrypted: expect.not.stringContaining(
-          "Visitor@Example.com",
-        ),
-        p_email_normalized_hash: expect.any(String),
-        p_optional_commercial_decision: "rejected",
+        p_verification_subject_hash: expect.any(String),
         p_expires_at: "2026-05-08T01:00:00.000Z",
       }),
+    );
+    expect(JSON.stringify(client.rpc.mock.calls)).not.toContain(
+      "Visitor@Example.com",
     );
   });
 
@@ -121,6 +117,9 @@ describe("public simulation Supabase stores", () => {
           },
           error: null,
         }),
+        admin: {
+          deleteUser: vi.fn().mockResolvedValue({ error: null }),
+        },
       },
     };
     const provider = createSupabaseSimulationEmailOtpProvider(client as never);
@@ -150,6 +149,14 @@ describe("public simulation Supabase stores", () => {
       token: "123456",
       type: "email",
     });
+    await expect(
+      provider.deleteTransientUser?.({
+        authUserId: "00000000-0000-4000-8000-000000000202",
+      }),
+    ).resolves.toBeUndefined();
+    expect(client.auth.admin.deleteUser).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000202",
+    );
   });
 
   it("reads only active non-expired verified simulation sessions", async () => {
@@ -159,7 +166,7 @@ describe("public simulation Supabase stores", () => {
           eq: vi.fn().mockReturnValue({
             maybeSingle: vi.fn().mockResolvedValue({
               data: {
-                email_normalized_hash: "email-hash-1",
+                verification_subject_hash: "verification-subject-1",
                 status: "active",
                 expires_at: "2999-01-01T00:00:00.000Z",
               },
@@ -173,7 +180,9 @@ describe("public simulation Supabase stores", () => {
 
     await expect(
       reader.findVerifiedSession({ accessTokenHash: "token-hash-1" }),
-    ).resolves.toEqual({ emailNormalizedHash: "email-hash-1" });
+    ).resolves.toEqual({
+      verificationSubjectHash: "verification-subject-1",
+    });
   });
 
   it("mints short-lived Realtime JWTs scoped to one simulation progress row", async () => {

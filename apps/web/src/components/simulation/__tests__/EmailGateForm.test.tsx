@@ -11,11 +11,10 @@ afterEach(cleanup);
 
 type RequestFn = (input: {
   email: string;
-  consentEmailUse: boolean;
-  consentMarketing: boolean;
 }) => Promise<RequestVerificationOutcome>;
 
 type VerifyFn = (input: {
+  email: string;
   verificationRequestId: string;
   code: string;
 }) => Promise<VerifyCodeOutcome>;
@@ -30,8 +29,8 @@ const okRequest = (): RequestFn =>
 const okVerify = (): VerifyFn =>
   vi.fn<VerifyFn>(async () => ({ ok: true, expiresAt: "x" }));
 
-describe("EmailGateForm — step 1 (email + consent)", () => {
-  it("disables Continue until email is valid AND consent_email_use is checked", () => {
+describe("EmailGateForm — step 1 (email)", () => {
+  it("disables Continue until email is valid", () => {
     render(
       <EmailGateForm
         onVerified={vi.fn()}
@@ -46,13 +45,10 @@ describe("EmailGateForm — step 1 (email + consent)", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "test@example.com" }
     });
-    expect(submit).toBeDisabled();
-
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
     expect(submit).not.toBeDisabled();
   });
 
-  it("rejects an obviously invalid email even when consent is checked", () => {
+  it("rejects an obviously invalid email", () => {
     render(
       <EmailGateForm
         onVerified={vi.fn()}
@@ -64,13 +60,12 @@ describe("EmailGateForm — step 1 (email + consent)", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "not-an-email" }
     });
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
     expect(
       screen.getByRole("button", { name: /recevoir le code/i })
     ).toBeDisabled();
   });
 
-  it("submits the email + consent payload and advances to the code step on success", async () => {
+  it("submits only the email and advances to the code step on success", async () => {
     const requestVerification = okRequest();
     render(
       <EmailGateForm
@@ -83,8 +78,6 @@ describe("EmailGateForm — step 1 (email + consent)", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "test@example.com" }
     });
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-marketing"));
     fireEvent.click(screen.getByRole("button", { name: /recevoir le code/i }));
 
     await waitFor(() =>
@@ -94,10 +87,11 @@ describe("EmailGateForm — step 1 (email + consent)", () => {
     );
 
     expect(requestVerification).toHaveBeenCalledWith({
-      email: "test@example.com",
-      consentEmailUse: true,
-      consentMarketing: true
+      email: "test@example.com"
     });
+    expect(
+      screen.queryByTestId("simulation-email-gate-consent-marketing")
+    ).not.toBeInTheDocument();
   });
 
   it("surfaces RATE_LIMITED inline as the rate-limited French copy", async () => {
@@ -116,7 +110,6 @@ describe("EmailGateForm — step 1 (email + consent)", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "test@example.com" }
     });
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
     fireEvent.click(screen.getByRole("button", { name: /recevoir le code/i }));
 
     expect(
@@ -130,7 +123,6 @@ describe("EmailGateForm — step 2 (code)", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "test@example.com" }
     });
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
     fireEvent.click(screen.getByRole("button", { name: /recevoir le code/i }));
   }
 
@@ -174,11 +166,12 @@ describe("EmailGateForm — step 2 (code)", () => {
 
   it("calls onVerified after a successful verify", async () => {
     const onVerified = vi.fn();
+    const verifyCode = okVerify();
     render(
       <EmailGateForm
         onVerified={onVerified}
         requestVerification={okRequest()}
-        verifyCode={okVerify()}
+        verifyCode={verifyCode}
       />
     );
     advanceToCodeStep();
@@ -187,6 +180,11 @@ describe("EmailGateForm — step 2 (code)", () => {
     fireEvent.click(screen.getByRole("button", { name: /vérifier et continuer/i }));
 
     await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    expect(verifyCode).toHaveBeenCalledWith({
+      email: "test@example.com",
+      verificationRequestId: "vr-1",
+      code: "123456"
+    });
   });
 
   it("surfaces AUTH_INVALID inline as the invalid-code French copy", async () => {

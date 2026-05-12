@@ -6,7 +6,7 @@ Layer: cross-cutting
 Parent Spec: SPEC-0003
 Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0012, SPEC-0015
 Areas: web
-Implementation Plans: PLAN-0077
+Implementation Plans: PLAN-0077, PLAN-0081
 
 ## Traceability
 
@@ -33,9 +33,9 @@ This spec follows:
 - `SPEC-0015`, which defines the launch-test simulation flow, stub email
   verification state, 24-hour access token lifetime, download behavior, and
   visitor-safe private artifact handling;
-- `SPEC-0020`, which defines retained simulation lead records only when both
-  required simulation email consent and optional commercial contact consent are
-  granted.
+- `CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention`, which supersedes
+  retained simulation lead records and requires the privacy page to state that
+  the simulation email address is not kept as a commercial contact.
 
 External legal baseline used for this spec:
 

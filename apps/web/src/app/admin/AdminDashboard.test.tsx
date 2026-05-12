@@ -96,9 +96,9 @@ describe("Admin dashboard", () => {
       within(catalogActions).getByRole("link", { name: "Tissus" }),
     ).toHaveAttribute("href", "/admin/fabrics");
     expect(
-      within(catalogActions).getByRole("link", { name: "Leads simulation" }),
-    ).toHaveAttribute("href", "/admin/leads");
-    expect(actionIcons).toHaveLength(5);
+      within(catalogActions).queryByRole("link", { name: "Leads simulation" }),
+    ).not.toBeInTheDocument();
+    expect(actionIcons).toHaveLength(4);
     for (const icon of actionIcons) {
       expect(icon).toHaveAttribute("aria-hidden", "true");
     }

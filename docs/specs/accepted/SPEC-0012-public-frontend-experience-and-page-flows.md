@@ -28,6 +28,12 @@ This spec also incorporates
 And Realtime Progress`, which makes Realtime the preferred simulation progress
 observation path and keeps HTTP status polling as a fallback.
 
+It also incorporates
+`CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention`, which removes the
+public simulation marketing/contact consent UI. The public email gate still
+collects an email address to send and verify the code, but the email address is
+not retained as a lead or commercial contact.
+
 ## Goal
 
 Define the MVP public frontend route map and page-by-page user flow so that a visitor can:

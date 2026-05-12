@@ -3,13 +3,12 @@ import { describe, expect, it } from "vitest";
 import { SIMULATION_LOCALE } from "./locale";
 
 describe("SIMULATION_LOCALE screen0EmailGate", () => {
-  it("keeps the required consent copy concise and clear", () => {
-    const requiredConsent =
-      SIMULATION_LOCALE.screen0EmailGate.consentEmailUseLabel;
+  it("keeps the email verification retention notice concise and clear", () => {
+    const notice = SIMULATION_LOCALE.screen0EmailGate.emailUseNotice;
 
-    expect(requiredConsent).toBe(
-      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour démarrer ma simulation et m'envoyer le code de vérification. " +
-        "Je comprends que ma photo de pièce et les images générées restent privées et sont supprimées automatiquement sous 24 heures."
+    expect(notice).toBe(
+      "Votre adresse e-mail sert uniquement à envoyer ce code et à limiter les abus de simulation sur 24 heures. " +
+        "Elle n'est pas conservée comme contact commercial."
     );
   });
 });

@@ -32,7 +32,7 @@ function mockFetchNetworkFailure(): FetchFn {
 }
 
 describe("requestSimulationVerification", () => {
-  it("posts the email and consent payload to the verifications endpoint", async () => {
+  it("posts only the email to the verifications endpoint", async () => {
     const fetchFn = mockFetchOk({
       data: {
         verification_request_id: "vr-1",
@@ -42,9 +42,7 @@ describe("requestSimulationVerification", () => {
 
     const result = await requestSimulationVerification(
       {
-        email: "test@example.com",
-        consentEmailUse: true,
-        consentMarketing: false
+        email: "test@example.com"
       },
       { fetch: fetchFn }
     );
@@ -60,9 +58,7 @@ describe("requestSimulationVerification", () => {
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
     expect(JSON.parse(init.body as string)).toEqual({
-      email: "test@example.com",
-      consent_email_use: true,
-      consent_marketing: false
+      email: "test@example.com"
     });
   });
 
@@ -73,9 +69,7 @@ describe("requestSimulationVerification", () => {
 
     const result = await requestSimulationVerification(
       {
-        email: "test@example.com",
-        consentEmailUse: true,
-        consentMarketing: false
+        email: "test@example.com"
       },
       { fetch: fetchFn }
     );
@@ -90,9 +84,7 @@ describe("requestSimulationVerification", () => {
 
     const result = await requestSimulationVerification(
       {
-        email: "test@example.com",
-        consentEmailUse: true,
-        consentMarketing: false
+        email: "test@example.com"
       },
       { fetch: fetchFn }
     );
@@ -104,7 +96,7 @@ describe("requestSimulationVerification", () => {
 });
 
 describe("verifySimulationCode", () => {
-  it("posts the code to the verify endpoint scoped by verification id", async () => {
+  it("posts the email and code to the verify endpoint scoped by verification id", async () => {
     const fetchFn = mockFetchOk({
       data: {
         simulation_access_token: "dev-token-vr-1",
@@ -113,7 +105,11 @@ describe("verifySimulationCode", () => {
     });
 
     const result = await verifySimulationCode(
-      { verificationRequestId: "vr-1", code: "123456" },
+      {
+        email: "test@example.com",
+        verificationRequestId: "vr-1",
+        code: "123456"
+      },
       { fetch: fetchFn }
     );
 
@@ -128,7 +124,10 @@ describe("verifySimulationCode", () => {
     const init = call[1] as RequestInit;
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
-    expect(JSON.parse(init.body as string)).toEqual({ code: "123456" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      email: "test@example.com",
+      code: "123456"
+    });
   });
 
   it("encodes the verification request id when it contains special characters", async () => {
@@ -140,7 +139,11 @@ describe("verifySimulationCode", () => {
     });
 
     await verifySimulationCode(
-      { verificationRequestId: "vr/with spaces", code: "111111" },
+      {
+        email: "test@example.com",
+        verificationRequestId: "vr/with spaces",
+        code: "111111"
+      },
       { fetch: fetchFn }
     );
 
@@ -156,7 +159,11 @@ describe("verifySimulationCode", () => {
     });
 
     const result = await verifySimulationCode(
-      { verificationRequestId: "vr-1", code: "000000" },
+      {
+        email: "test@example.com",
+        verificationRequestId: "vr-1",
+        code: "000000"
+      },
       { fetch: fetchFn }
     );
 
@@ -169,7 +176,11 @@ describe("verifySimulationCode", () => {
     const fetchFn = mockFetchNetworkFailure();
 
     const result = await verifySimulationCode(
-      { verificationRequestId: "vr-1", code: "123456" },
+      {
+        email: "test@example.com",
+        verificationRequestId: "vr-1",
+        code: "123456"
+      },
       { fetch: fetchFn }
     );
 

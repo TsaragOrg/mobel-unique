@@ -86,8 +86,7 @@ describe("handleCreateEmailVerificationRequest", () => {
       verifyOk?: boolean;
       requestRecord?: {
         verificationRequestId: string;
-        email: string;
-        emailNormalizedHash: string;
+        verificationSubjectHash: string;
         expiresAt: Date;
       } | null;
     } = {},
@@ -96,8 +95,7 @@ describe("handleCreateEmailVerificationRequest", () => {
       options.requestRecord === undefined
         ? {
             verificationRequestId: "00000000-0000-4000-8000-000000000111",
-            email: "visitor@example.com",
-            emailNormalizedHash: "email-hash-1",
+            verificationSubjectHash: "verification-subject-1",
             expiresAt: new Date("2026-05-02T11:00:00Z"),
           }
         : options.requestRecord;
@@ -141,7 +139,7 @@ describe("handleCreateEmailVerificationRequest", () => {
   it("persists a verification request and asks Supabase Auth to send the OTP", async () => {
     const ctx = createEmailDeps();
     const response = await handleCreateEmailVerificationRequest({
-      body: { email: "visitor@example.com", consent_email_use: true },
+      body: { email: "visitor@example.com" },
       deps: ctx.deps,
     });
     expect(response.status).toBe(200);
@@ -154,8 +152,6 @@ describe("handleCreateEmailVerificationRequest", () => {
     expect(ctx.emailVerificationStore.createRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "visitor@example.com",
-        consentEmailUse: true,
-        consentMarketing: false,
       }),
     );
     expect(ctx.otpProvider.sendOtp).toHaveBeenCalledWith({
@@ -166,7 +162,7 @@ describe("handleCreateEmailVerificationRequest", () => {
   it("returns expires_at one hour after now", async () => {
     const ctx = createEmailDeps();
     const response = await handleCreateEmailVerificationRequest({
-      body: { email: "visitor@example.com", consent_email_use: true },
+      body: { email: "visitor@example.com" },
       deps: ctx.deps,
     });
     const body = (await response.json()) as {
@@ -181,7 +177,7 @@ describe("handleCreateEmailVerificationRequest", () => {
   it("does not set a Set-Cookie header on create", async () => {
     const ctx = createEmailDeps();
     const response = await handleCreateEmailVerificationRequest({
-      body: { email: "visitor@example.com", consent_email_use: true },
+      body: { email: "visitor@example.com" },
       deps: ctx.deps,
     });
     expect(response.headers.get("set-cookie")).toBe(null);
@@ -190,7 +186,7 @@ describe("handleCreateEmailVerificationRequest", () => {
   it("marks the request send_failed when Supabase Auth cannot send the OTP", async () => {
     const ctx = createEmailDeps({ sendOk: false });
     const response = await handleCreateEmailVerificationRequest({
-      body: { email: "visitor@example.com", consent_email_use: true },
+      body: { email: "visitor@example.com" },
       deps: ctx.deps,
     });
     expect(response.status).toBe(500);
@@ -201,7 +197,7 @@ describe("handleCreateEmailVerificationRequest", () => {
 
   it("rejects a missing email", async () => {
     const response = await handleCreateEmailVerificationRequest({
-      body: { consent_email_use: true },
+      body: {},
       deps: { accessTokenSecret: SECRET, environment: "local" },
     });
     expect(response.status).toBe(400);
@@ -213,22 +209,19 @@ describe("handleCreateEmailVerificationRequest", () => {
 
   it("rejects an invalid email format", async () => {
     const response = await handleCreateEmailVerificationRequest({
-      body: { email: "not-an-email", consent_email_use: true },
+      body: { email: "not-an-email" },
       deps: { accessTokenSecret: SECRET, environment: "local" },
     });
     expect(response.status).toBe(400);
   });
 
-  it("rejects consent_email_use=false", async () => {
+  it("does not require the legacy consent_email_use flag", async () => {
+    const ctx = createEmailDeps();
     const response = await handleCreateEmailVerificationRequest({
       body: { email: "visitor@example.com", consent_email_use: false },
-      deps: { accessTokenSecret: SECRET, environment: "local" },
+      deps: ctx.deps,
     });
-    expect(response.status).toBe(400);
-    const body = (await response.json()) as {
-      error: { code: string; message: string };
-    };
-    expect(body.error.message).toContain("consent_email_use");
+    expect(response.status).toBe(200);
   });
 
   it("rejects a non-object body", async () => {
@@ -288,8 +281,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
       verifyOk?: boolean;
       requestRecord?: {
         verificationRequestId: string;
-        email: string;
-        emailNormalizedHash: string;
+        verificationSubjectHash: string;
         expiresAt: Date;
       } | null;
     } = {},
@@ -298,8 +290,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
       options.requestRecord === undefined
         ? {
             verificationRequestId: "00000000-0000-4000-8000-000000000111",
-            email: "visitor@example.com",
-            emailNormalizedHash: "email-hash-1",
+            verificationSubjectHash: "verification-subject-1",
             expiresAt: new Date("2026-05-02T11:00:00Z"),
           }
         : options.requestRecord;
@@ -321,6 +312,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
               authUserId: "00000000-0000-4000-8000-000000000333",
             },
       ),
+      deleteTransientUser: vi.fn().mockResolvedValue(undefined),
     };
     return {
       deps: {
@@ -339,7 +331,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     const ctx = createVerifyDeps();
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: ctx.deps,
     });
     expect(response.status).toBe(200);
@@ -359,19 +351,22 @@ describe("handleVerifyEmailVerificationRequest", () => {
       expect.objectContaining({
         verificationRequestId: "00000000-0000-4000-8000-000000000111",
         authUserId: "00000000-0000-4000-8000-000000000333",
-        emailNormalizedHash: "email-hash-1",
+        verificationSubjectHash: "verification-subject-1",
         accessTokenHash: deriveSimulationSessionTokenHash(
           "00000000-0000-4000-8000-000000000111",
         ),
       }),
     );
+    expect(ctx.otpProvider.deleteTransientUser).toHaveBeenCalledWith({
+      authUserId: "00000000-0000-4000-8000-000000000333",
+    });
   });
 
   it("sets the simulation_access_token cookie", async () => {
     const ctx = createVerifyDeps();
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: ctx.deps,
     });
     const cookie = response.headers.get("set-cookie");
@@ -385,7 +380,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     const ctx = createVerifyDeps();
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: {
         ...ctx.deps,
         environment: "dev",
@@ -399,7 +394,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     const ctx = createVerifyDeps({ requestRecord: null });
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: ctx.deps,
     });
     expect(response.status).toBe(400);
@@ -409,7 +404,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     expect(body.error.code).toBe("VALIDATION_FAILED");
   });
 
-  it("rejects a body without a code field", async () => {
+  it("rejects a body without email and code fields", async () => {
     const ctx = createVerifyDeps();
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
@@ -433,7 +428,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     const ctx = createVerifyDeps({ verifyOk: false });
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: ctx.deps,
     });
     expect(response.status).toBe(401);
@@ -445,7 +440,7 @@ describe("handleVerifyEmailVerificationRequest", () => {
     const ctx = createVerifyDeps();
     const response = await handleVerifyEmailVerificationRequest({
       verificationRequestId: "00000000-0000-4000-8000-000000000111",
-      body: { code: "123456" },
+      body: { email: "visitor@example.com", code: "123456" },
       deps: ctx.deps,
     });
     const body = (await response.json()) as {
@@ -1269,7 +1264,7 @@ describe("handleCreateSimulationRequest", () => {
   const NEW_JOB_ID = "00000000-0000-4000-8000-000000000a01";
   const NOW = fixedNow("2026-05-02T10:00:00Z");
   const RATE_LIMIT_SALT = "salt";
-  const EMAIL_NORMALIZED_HASH = "verified-email-hash-1";
+  const VERIFICATION_SUBJECT_HASH = "verification-subject-hash-1";
 
   function makeValidToken() {
     return issueSimulationAccessToken({
@@ -1343,7 +1338,7 @@ describe("handleCreateSimulationRequest", () => {
   function createDeps(
     options: {
       rateAllowed?: boolean;
-      rateTripped?: "ip" | "email";
+      rateTripped?: "ip" | "verification_subject";
       idempotencyAcquired?: boolean;
       idempotencyExistingJobId?: string | null;
       catalogMode?: "back_wall" | "corner" | null;
@@ -1353,7 +1348,7 @@ describe("handleCreateSimulationRequest", () => {
       finalizeThrows?: boolean;
       existingJob?: SimulationJobView | null;
       roomPhotoNormalizer?: SimulationRoomPhotoNormalizer;
-      verifiedSession?: { emailNormalizedHash: string } | null;
+      verifiedSession?: { verificationSubjectHash: string } | null;
     } = {},
   ) {
     const rateLimitStore: SimulationRateLimitStore = {
@@ -1367,7 +1362,7 @@ describe("handleCreateSimulationRequest", () => {
         count: 4,
         allowed: false,
       });
-    } else if (options.rateTripped === "email") {
+    } else if (options.rateTripped === "verification_subject") {
       const incFn = vi.fn();
       incFn.mockResolvedValueOnce({ count: 1, allowed: true });
       incFn.mockResolvedValueOnce({ count: 3, allowed: false });
@@ -1428,7 +1423,7 @@ describe("handleCreateSimulationRequest", () => {
         .fn()
         .mockResolvedValue(
           options.verifiedSession === undefined
-            ? { emailNormalizedHash: EMAIL_NORMALIZED_HASH }
+            ? { verificationSubjectHash: VERIFICATION_SUBJECT_HASH }
             : options.verifiedSession,
         ),
     };
@@ -1518,7 +1513,7 @@ describe("handleCreateSimulationRequest", () => {
     });
   });
 
-  it("uses the verified session email hash for the per-email rate limit", async () => {
+  it("uses the verified session subject for the per-email rate limit", async () => {
     const ctx = createDeps();
     await handleCreateSimulationRequest({
       formData: makeFormData(),
@@ -1530,7 +1525,7 @@ describe("handleCreateSimulationRequest", () => {
     expect(ctx.rateLimitStore.increment).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        subjectKind: "email",
+        subjectKind: "verification_subject",
         subjectValueHash: expect.any(String),
       }),
     );
@@ -1829,7 +1824,7 @@ describe("handleCreateSimulationRequest", () => {
   });
 
   it("returns 429 RATE_LIMITED when the per-email cap is reached", async () => {
-    const ctx = createDeps({ rateTripped: "email" });
+    const ctx = createDeps({ rateTripped: "verification_subject" });
     const response = await handleCreateSimulationRequest({
       formData: makeFormData(),
       headers: makeHeaders(),

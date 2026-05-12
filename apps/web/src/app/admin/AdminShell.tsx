@@ -26,10 +26,6 @@ const ADMIN_NAV_ITEMS = [
     href: "/admin/tags",
     label: ADMIN_COPY.shell.navigation.tags,
   },
-  {
-    href: "/admin/leads",
-    label: ADMIN_COPY.shell.navigation.leads,
-  },
 ] as const;
 
 type AdminShellProps = {
