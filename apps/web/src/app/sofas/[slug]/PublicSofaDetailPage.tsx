@@ -418,7 +418,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   href={detail.sofa.shopify_order_url ?? undefined}
                   rel="noreferrer"
                 >
-                  Commander sur Shopify
+                  Commander
                 </a>
               ) : null}
             </div>
