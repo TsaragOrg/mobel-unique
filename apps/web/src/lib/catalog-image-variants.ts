@@ -4,6 +4,7 @@ import { Image } from "imagescript";
 export const CATALOG_RENDER_IMAGE_VARIANT_KINDS = ["small", "medium"] as const;
 export const CATALOG_FABRIC_SWATCH_VARIANT_KINDS = ["swatch_small"] as const;
 export const CATALOG_IMAGE_VARIANT_KINDS = CATALOG_RENDER_IMAGE_VARIANT_KINDS;
+export const PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS = "31536000";
 
 export type CatalogRenderImageVariantKind =
   (typeof CATALOG_RENDER_IMAGE_VARIANT_KINDS)[number];
@@ -85,6 +86,7 @@ export interface CatalogImageVariantStorage {
   uploadObject(input: {
     body: Uint8Array;
     bucketId: string;
+    cacheControl?: string;
     contentType: string;
     objectPath: string;
   }): Promise<void>;
@@ -243,10 +245,12 @@ export async function ensureCatalogImageVariants(input: {
         variantAssetId,
         variantKind,
       });
+      const cacheControl = publicCatalogImageCacheControl(input.originalAsset);
 
       await input.storage.uploadObject({
         body: generatedVariant.bytes,
         bucketId: input.originalAsset.bucket_id,
+        ...(cacheControl ? { cacheControl } : {}),
         contentType: generatedVariant.contentType,
         objectPath,
       });
@@ -387,6 +391,12 @@ function isActiveImageAsset(asset: CatalogStorageAssetRecord) {
     typeof asset.visibility === "string" &&
     asset.visibility.length > 0
   );
+}
+
+function publicCatalogImageCacheControl(asset: CatalogStorageAssetRecord) {
+  return asset.bucket_id === "catalog-public-assets"
+    ? PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS
+    : undefined;
 }
 
 function imageContainsAlpha(image: CatalogDecodedImage) {

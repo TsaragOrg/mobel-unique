@@ -2,7 +2,7 @@
 
 Plan: PLAN-0094
 Spec: SPEC-0012
-Status: active
+Status: done
 Owner area: web
 Related plans: PLAN-0085, PLAN-0090
 Affected packages:
@@ -74,30 +74,30 @@ while `/api/public/sofas/{slug}` already shows the fresh database state.
 
 ## Tasks
 
-- [ ] Update route-handler tests first:
+- [x] Update route-handler tests first:
   - `GET /api/public/catalog` success returns `Cache-Control: no-store`;
   - `GET /api/public/catalog/tags` success returns `Cache-Control: no-store`;
   - public sofa detail remains `no-store`;
   - validation and unavailable/error responses remain `no-store`.
-- [ ] Update public image upload tests first:
+- [x] Update public image upload tests first:
   - publication copies to `catalog-public-assets` include long-lived cache
     metadata;
   - generated public variants include long-lived cache metadata;
   - public fabric swatch signed uploads send `cacheControl=31536000`;
   - private signed uploads do not accidentally inherit the public immutable
     policy.
-- [ ] Update backfill tests first:
+- [x] Update backfill tests first:
   - public variant uploads include the same image cache metadata;
   - private/local render backfills are not forced into an unsafe public cache
     policy unless the object is in `catalog-public-assets`.
-- [ ] Implement the smallest code changes:
+- [x] Implement the smallest code changes:
   - remove or stop using `PUBLIC_CATALOG_CACHE_CONTROL` for list/tag JSON;
   - introduce named constants for public image cache metadata;
   - pass cache metadata through Supabase SDK uploads;
   - pass cache metadata through the backfill script's raw Storage upload path
     after confirming the Supabase Storage header format.
-- [ ] Update relevant roadmap files when the implementation is complete.
-- [ ] Run the focused tests, then the broader web checks.
+- [x] Update relevant roadmap files when the implementation is complete.
+- [x] Run the focused tests, then the broader web checks.
 
 ## Tests
 

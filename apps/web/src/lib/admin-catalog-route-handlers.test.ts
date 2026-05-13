@@ -506,6 +506,8 @@ function createFakeStore(): AdminCatalogStore {
       uploadDescriptors.set(uploadId, input);
 
       return {
+        cache_control_seconds:
+          input.purpose === "fabric_swatch" ? "31536000" : "3600",
         expires_at: "2026-04-28T12:00:00.000Z",
         method: "signed_upload",
         signed_upload_url: `https://storage.example/${input.purpose}`,
@@ -2088,6 +2090,7 @@ describe("admin catalog route handlers", () => {
     expect(swatchUploadResponse.status).toBe(201);
     const swatchUploadBody = await swatchUploadResponse.json();
     expect(swatchUploadBody.data.upload).toMatchObject({
+      cache_control_seconds: "31536000",
       method: "signed_upload",
       upload_id: "fabric-swatch-upload",
     });

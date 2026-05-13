@@ -299,6 +299,10 @@ describe("admin catalog validation", () => {
     expect(source).toContain("variant_asset_ids");
     expect(source).toContain("removeUploadedPublicRenderCopies");
     expect(source).toContain("storage_asset_variants");
+    expect(source).toContain("PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS");
+    expect(source).toContain(
+      "cacheControl: PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS",
+    );
   });
 
   it("cleans public render originals and variants when unpublishing or archiving", () => {
@@ -337,6 +341,40 @@ describe("admin catalog validation", () => {
       visibility: "public",
     });
     expect(fakeSupabase.variantKinds).toEqual(["swatch_small"]);
+  });
+
+  it("returns long-lived cache metadata for public fabric swatch signed uploads only", async () => {
+    const fakeSupabase = createFakeUploadSupabaseClient({
+      variantLookup: {
+        data: {
+          variant_asset_id: "00000000-0000-4000-8000-000000000777",
+        },
+        error: null,
+      },
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+
+    const swatchUpload = await store.createUpload({
+      byte_size: 1200,
+      content_type: "image/png",
+      purpose: "fabric_swatch",
+    });
+    const aiReferenceUpload = await store.createUpload({
+      byte_size: 1200,
+      content_type: "image/png",
+      purpose: "fabric_ai_reference",
+    });
+
+    expect(swatchUpload).toMatchObject({
+      cache_control_seconds: "31536000",
+    });
+    expect(aiReferenceUpload).toMatchObject({
+      cache_control_seconds: "3600",
+    });
+    expect(aiReferenceUpload).not.toMatchObject({
+      cache_control_seconds: "31536000",
+    });
   });
 
   it("fails safely when fabric swatch small variant creation fails", async () => {

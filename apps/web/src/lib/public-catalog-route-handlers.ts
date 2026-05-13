@@ -23,8 +23,6 @@ type SofaInput = BaseInput & {
   publicSlug: string;
 };
 
-const PUBLIC_CATALOG_CACHE_CONTROL =
-  "public, s-maxage=3600, stale-while-revalidate=300";
 const NO_STORE_CACHE_CONTROL = "no-store";
 
 export async function handleListPublicCatalogRequest(
@@ -46,9 +44,6 @@ export async function handleListPublicCatalogRequest(
         meta: {},
       },
       200,
-      {
-        cacheControl: PUBLIC_CATALOG_CACHE_CONTROL,
-      },
     );
   } catch (error) {
     return catalogErrorResponse(mapPublicCatalogError(error));
@@ -65,9 +60,6 @@ export async function handleListPublicCatalogTagsRequest(input: BaseInput) {
         meta: {},
       },
       200,
-      {
-        cacheControl: PUBLIC_CATALOG_CACHE_CONTROL,
-      },
     );
   } catch (error) {
     return catalogErrorResponse(mapPublicCatalogError(error));
