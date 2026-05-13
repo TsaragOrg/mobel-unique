@@ -150,6 +150,7 @@ export interface AdminCatalogFabric {
 }
 
 export interface AdminCatalogUpload {
+  cache_control_seconds?: string | null;
   expires_at: string;
   method: "signed_upload";
   signed_upload_url: string;
@@ -1222,8 +1223,13 @@ export function createDefaultAdminCatalogDependencies(
       return data.render_candidate as AdminCatalogRenderCandidate;
     },
     async uploadToSignedUrl(upload, file) {
+      // RU: Это число говорит Storage, как долго можно кешировать загруженную картинку.
+      // FR: Ce nombre dit a Storage combien de temps garder l'image envoyee en cache.
+      const cacheControlSeconds = upload.cache_control_seconds ?? "3600";
+      // RU: Эта форма отправляет файл и время кеша в подписанную ссылку Storage.
+      // FR: Ce formulaire envoie le fichier et le temps de cache au lien signe Storage.
       const body = new FormData();
-      body.append("cacheControl", "3600");
+      body.append("cacheControl", cacheControlSeconds);
       body.append("", file);
 
       const response = await fetch(upload.signed_upload_url, {

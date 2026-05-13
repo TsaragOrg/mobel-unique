@@ -234,6 +234,16 @@ describe("catalog image variant helpers", () => {
             "variants/00000000-0000-4000-8000-000000000101/small/00000000-0000-4000-8000-000000000301.jpg",
         }),
       );
+      const [firstUpload] = vi.mocked(storage.uploadObject).mock.calls[0];
+      if (visibility === "public") {
+        expect(firstUpload).toMatchObject({
+          cacheControl: "31536000",
+        });
+      } else {
+        expect(firstUpload).not.toMatchObject({
+          cacheControl: "31536000",
+        });
+      }
       expect(repository.insertStorageAsset).toHaveBeenCalledWith(
         expect.objectContaining({
           bucket_id: bucketId,

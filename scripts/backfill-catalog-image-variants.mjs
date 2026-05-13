@@ -34,6 +34,8 @@ export const BACKFILL_JPEG_QUALITY = 84;
 export const BACKFILL_ENVIRONMENTS = ["local", "dev", "prod"];
 export const BACKFILL_SCOPES = ["all", "renders", "swatches"];
 export const DEFAULT_BACKFILL_PAGE_SIZE = 100;
+export const PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS = "31536000";
+export const PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_HEADER = `max-age=${PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS}`;
 
 export function parseBackfillArgs(argv) {
   const options = {
@@ -279,6 +281,7 @@ export async function backfillCatalogImageVariants(input) {
         await client.uploadObject({
           body: generatedVariant.bytes,
           bucketId: originalAsset.bucket_id,
+          cacheControlHeader: cacheControlHeaderForBackfillAsset(originalAsset),
           contentType: generatedVariant.contentType,
           objectPath,
         });
@@ -495,6 +498,7 @@ async function downloadStorageObject({
 async function uploadStorageObject({
   body,
   bucketId,
+  cacheControlHeader,
   contentType,
   fetchImpl,
   objectPath,
@@ -510,6 +514,11 @@ async function uploadStorageObject({
       headers: {
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
+        ...(cacheControlHeader
+          ? {
+              "cache-control": cacheControlHeader,
+            }
+          : {}),
         "Content-Type": contentType,
         "x-upsert": "true",
       },
@@ -523,6 +532,12 @@ async function uploadStorageObject({
       `Storage upload failed for ${bucketId}/${objectPath}: HTTP ${response.status} ${text}`,
     );
   }
+}
+
+function cacheControlHeaderForBackfillAsset(asset) {
+  return asset.bucket_id === "catalog-public-assets"
+    ? PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_HEADER
+    : undefined;
 }
 
 export function buildVariantObjectPath({

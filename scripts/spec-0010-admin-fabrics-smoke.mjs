@@ -215,7 +215,7 @@ async function uploadSignedAsset(upload, bytes, contentType) {
   }
 
   const body = new FormData();
-  body.append("cacheControl", "3600");
+  body.append("cacheControl", upload.cache_control_seconds ?? "3600");
   body.append("", new Blob([bytes], { type: contentType }), "fabric.png");
 
   let response;

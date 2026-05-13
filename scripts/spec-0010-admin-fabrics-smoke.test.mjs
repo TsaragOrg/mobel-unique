@@ -106,6 +106,28 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (requestUrl.startsWith("https://storage.example/")) {
+    const cacheControl = init.body?.get?.("cacheControl");
+    if (
+      requestUrl.endsWith("/fabric-swatch") &&
+      cacheControl !== "31536000"
+    ) {
+      return json({
+        error: "fabric swatch cacheControl must be 31536000"
+      }, {
+        status: 400
+      });
+    }
+    if (
+      requestUrl.endsWith("/fabric-ai-reference") &&
+      cacheControl !== "3600"
+    ) {
+      return json({
+        error: "private reference cacheControl must stay short"
+      }, {
+        status: 400
+      });
+    }
+
     return json({
       Key: "uploaded/fabric.png"
     });
@@ -118,6 +140,7 @@ globalThis.fetch = async (url, init = {}) => {
     return json({
       data: {
         upload: {
+          cache_control_seconds: isSwatch ? "31536000" : "3600",
           expires_at: "2026-04-28T12:00:00.000Z",
           method: "signed_upload",
           signed_upload_url: isSwatch
