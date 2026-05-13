@@ -34,15 +34,23 @@ function createFakeSupabase({ assets, links = [], variantAssets = [] } = {}) {
         requestUrl.match(/[?&]limit=([^&]+)/)?.[1] ?? assets.length,
       );
       const offset = Number(requestUrl.match(/[?&]offset=([^&]+)/)?.[1] ?? 0);
+      const requestedAssetKinds = requestUrl
+        .match(/asset_kind=in\.\(([^)]*)\)/)?.[1]
+        ?.split(",");
+      const matchingAssets = requestedAssetKinds
+        ? assets.filter((asset) =>
+            requestedAssetKinds.includes(asset.asset_kind),
+          )
+        : assets;
 
       if (requestUrl.includes("id=eq.")) {
         const assetId = decodeURIComponent(
           requestUrl.match(/id=eq\.([^&]+)/)?.[1] ?? "",
         );
-        return json(assets.filter((asset) => asset.id === assetId));
+        return json(matchingAssets.filter((asset) => asset.id === assetId));
       }
 
-      return json(assets.slice(offset, offset + limit));
+      return json(matchingAssets.slice(offset, offset + limit));
     }
 
     if (
@@ -168,6 +176,8 @@ describe("catalog image variant backfill script", () => {
         "dev",
         "--page-size",
         "25",
+        "--scope",
+        "swatches",
         "--limit",
         "5",
         "--asset-id",
@@ -179,7 +189,14 @@ describe("catalog image variant backfill script", () => {
       environment: "dev",
       limit: 5,
       pageSize: 25,
+      scope: "swatches",
     });
+  });
+
+  it("rejects unknown backfill scopes", () => {
+    expect(() => parseBackfillArgs(["--scope", "everything"])).toThrow(
+      "--scope must be all, renders, or swatches",
+    );
   });
 
   it("resolves DEV credentials from DEV-only variables", () => {
@@ -279,6 +296,40 @@ describe("catalog image variant backfill script", () => {
     expect(fake.requests.some((request) => request.method === "POST")).toBe(
       false,
     );
+  });
+
+  it("can scope a dry-run to public fabric swatches only", async () => {
+    const renderAsset = createAsset({
+      id: "00000000-0000-4000-8000-000000000101",
+    });
+    const swatchAsset = createAsset({
+      asset_kind: "fabric_swatch_public",
+      bucket_id: "catalog-public-assets",
+      id: "00000000-0000-4000-8000-000000000102",
+      object_path: "fabrics/boucle/swatch.png",
+      visibility: "public",
+    });
+    const fake = createFakeSupabase({
+      assets: [renderAsset, swatchAsset],
+    });
+
+    const result = await backfillCatalogImageVariants({
+      dryRun: true,
+      fetchImpl: fake.fetchImpl,
+      generateVariants: fakeGenerateVariants,
+      scope: "swatches",
+      serviceRoleKey: "service-role",
+      supabaseUrl: "http://127.0.0.1:54321",
+    });
+
+    expect(result).toMatchObject({
+      assetsScanned: 1,
+      variantsPlanned: 1,
+    });
+    expect(fake.requests[0].url).toContain(
+      "asset_kind=in.(fabric_swatch_public)",
+    );
+    expect(fake.requests[0].url).not.toContain("published_sofa_render");
   });
 
   it("skips assets that already have small and medium variant links", async () => {
@@ -492,6 +543,18 @@ describe("catalog image variant backfill script", () => {
     ).toContain("--environment prod --dry-run");
     expect(packageJson.scripts["catalog:variants:backfill:prod"]).toContain(
       "--environment prod --confirm-prod",
+    );
+    expect(
+      packageJson.scripts["catalog:swatches:backfill:dev:dry-run"],
+    ).toContain("--environment dev --scope swatches --page-size 25 --dry-run");
+    expect(packageJson.scripts["catalog:swatches:backfill:dev"]).toContain(
+      "--environment dev --scope swatches --page-size 25",
+    );
+    expect(
+      packageJson.scripts["catalog:swatches:backfill:prod:dry-run"],
+    ).toContain("--environment prod --scope swatches --page-size 25 --dry-run");
+    expect(packageJson.scripts["catalog:swatches:backfill:prod"]).toContain(
+      "--environment prod --scope swatches --page-size 25 --confirm-prod",
     );
   });
 });

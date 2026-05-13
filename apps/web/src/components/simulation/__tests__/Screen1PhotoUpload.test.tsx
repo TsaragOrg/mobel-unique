@@ -246,7 +246,7 @@ describe("Screen1PhotoUpload", () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the camera input from the room-photo target on touch devices", () => {
+  it("opens the file picker from the room-photo target on touch devices", () => {
     render(
       <Screen1PhotoUpload
         {...baseProps}
@@ -258,10 +258,10 @@ describe("Screen1PhotoUpload", () => {
       />
     );
 
-    const cameraInput = screen.getByTestId(
-      "simulation-camera-input"
+    const fileInput = screen.getByTestId(
+      "simulation-file-input"
     ) as HTMLInputElement;
-    const clickSpy = vi.spyOn(cameraInput, "click");
+    const clickSpy = vi.spyOn(fileInput, "click");
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -272,6 +272,9 @@ describe("Screen1PhotoUpload", () => {
     expect(
       screen.getByText(/Touchez ici pour uploader ou prendre une photo/i)
     ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("simulation-camera-input")
+    ).not.toBeInTheDocument();
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -322,7 +325,7 @@ describe("Screen1PhotoUpload", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the camera capture input only on touch devices", () => {
+  it("renders a single room-photo input without forced camera capture", () => {
     const { unmount } = render(
       <Screen1PhotoUpload
         {...baseProps}
@@ -333,14 +336,9 @@ describe("Screen1PhotoUpload", () => {
         isTouchDevice={() => true}
       />
     );
-    expect(screen.getByTestId("simulation-camera-input")).toHaveAttribute(
-      "capture",
-      "environment"
-    );
-    expect(screen.getByTestId("simulation-camera-input")).toHaveAttribute(
-      "accept",
-      "image/*,.heic,.heif"
-    );
+    expect(
+      screen.queryByTestId("simulation-camera-input")
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("simulation-file-input")).toHaveAttribute(
       "accept",
       "image/*,.heic,.heif"
@@ -363,7 +361,13 @@ describe("Screen1PhotoUpload", () => {
     expect(
       screen.queryByTestId("simulation-camera-input")
     ).not.toBeInTheDocument();
-    expect(screen.getByTestId("simulation-file-input")).toBeInTheDocument();
+    expect(screen.getByTestId("simulation-file-input")).toHaveAttribute(
+      "accept",
+      "image/*,.heic,.heif"
+    );
+    expect(screen.getByTestId("simulation-file-input")).not.toHaveAttribute(
+      "capture"
+    );
   });
 
   it("disables the Continue button until a file is prepared and shows a preview after selection", async () => {
