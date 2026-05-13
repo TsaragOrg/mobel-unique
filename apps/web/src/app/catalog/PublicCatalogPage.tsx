@@ -7,6 +7,8 @@ RU: Здесь можно фильтровать каталог, открыть 
 FR: Ce fichier sert a la page publique du catalogue de canapes.
 FR: A l'ecran, le visiteur voit les cartes de canapes, les filtres, les tissus, les images et le lien vers le canape choisi.
 FR: Ici, on peut filtrer le catalogue, ouvrir une fenetre avec tous les filtres, changer le tissu dans une carte sans chargement en plus, charger la suite et ouvrir la page du canape.
+RU: Фото в карточке тоже открывает страницу дивана, как и кнопка внизу карточки.
+FR: La photo dans la carte ouvre aussi la page du canape, comme le bouton en bas de la carte.
 RU: Пока каталог загружается, посетитель видит пустые карточки нужного размера, чтобы страница не прыгала.
 FR: Pendant le chargement, le visiteur voit des cartes vides de bonne taille pour eviter un saut de page.
 */
@@ -528,7 +530,14 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
 
   return (
     <article className="catalog-card">
-      <div className="catalog-card-image">
+      {/* RU: Эта область показывает фото дивана; по фото можно открыть страницу дивана.
+          FR: Cette zone montre la photo du canape; la photo ouvre la page du canape. */}
+      <a
+        aria-label={item.public_name}
+        className="catalog-card-image catalog-card-image-link"
+        href={`/sofas/${item.public_slug}`}
+        onClick={rememberSelection}
+      >
         {imageFailed ? (
           <span>Image indisponible</span>
         ) : (
@@ -540,7 +549,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
             src={activeRenderUrl}
           />
         )}
-      </div>
+      </a>
       <div className="catalog-card-body">
         <div>
           <h2>{item.public_name}</h2>
