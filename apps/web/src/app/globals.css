@@ -1067,6 +1067,17 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+.catalog-card-image-link {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.catalog-card-image-link:focus-visible {
+  outline: 2px solid var(--public-ink);
+  outline-offset: -2px;
+}
+
 .catalog-card-body {
   display: grid;
   gap: 16px;

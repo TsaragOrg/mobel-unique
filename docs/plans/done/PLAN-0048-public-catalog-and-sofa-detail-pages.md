@@ -286,3 +286,14 @@ to `Commander`.
 Follow-up verification completed:
 
 - `pnpm --filter @mobel-unique/web test -- 'src/app/sofas/[slug]/PublicSofaDetailPage.test.tsx'`
+
+Follow-up completed on branch
+`fix/web/spec-0012-plan-0048-public-catalog-card-image-link`.
+
+Public catalog card images now link to the matching sofa detail page and reuse
+the same selected-fabric handoff as the card CTA.
+
+Follow-up verification completed:
+
+- `pnpm --filter @mobel-unique/web test -- src/app/catalog/PublicCatalogPage.test.tsx`
+- `pnpm --filter @mobel-unique/web typecheck`
