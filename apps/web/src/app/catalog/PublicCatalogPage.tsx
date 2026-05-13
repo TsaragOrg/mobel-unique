@@ -534,6 +534,8 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
         ) : (
           <img
             alt={item.public_name}
+            decoding="async"
+            loading="lazy"
             onError={() => setImageFailed(true)}
             src={activeRenderUrl}
           />
@@ -558,7 +560,12 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
                   onClick={() => selectFabric(fabric.id)}
                   type="button"
                 >
-                  <img alt="" src={fabric.swatch_small_url} />
+                  <img
+                    alt=""
+                    decoding="async"
+                    loading="lazy"
+                    src={fabric.swatch_small_url}
+                  />
                 </button>
               ))}
               {hiddenFabricCount > 0 ? (

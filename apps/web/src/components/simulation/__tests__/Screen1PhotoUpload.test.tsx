@@ -120,8 +120,8 @@ describe("Screen1PhotoUpload", () => {
     ).toHaveTextContent("Canapé Rivoli · Bouclette écrue · Vue de face");
   });
 
-  it("shows the selected sofa, room-photo target, and selected-view guidance before upload", () => {
-    render(
+  it("shows the selected sofa and a concise room-photo target before upload", () => {
+    const { container } = render(
       <Screen1PhotoUpload
         {...baseProps}
         geometryMode="back_wall"
@@ -152,7 +152,40 @@ describe("Screen1PhotoUpload", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Photo à prendre/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Cliquez dans ce cadre pour choisir une image/i)
+      screen.getByText(
+        /Prenez la photo dans le même angle que le canapé/i
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Photo de votre intérieur/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Cliquez ici pour uploader ou prendre une photo/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Angle à reproduire")).toBeInTheDocument();
+    expect(screen.queryByText("Repère photo")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: /Animation montrant le canapé placé/i
+      })
+    ).toHaveAttribute(
+      "src",
+      "/images/simulation/angle-room-guide.webp"
+    );
+    expect(
+      container.querySelector(
+        'img[src="/images/simulation/angle-sofa-overlay.webp"]'
+      )
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(
+        'img[src="/images/simulation/angle-room-guide-corner.webp"]'
+      )
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(
+        'img[src="/images/simulation/angle-sofa-overlay-corner.webp"]'
+      )
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -162,8 +195,29 @@ describe("Screen1PhotoUpload", () => {
     expect(screen.queryByText("Choisir un fichier")).not.toBeInTheDocument();
     expect(screen.queryByText("Prendre une photo")).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Gardez le même angle que la vue sélectionnée : Vue de face/i)
-    ).toBeInTheDocument();
+      screen.queryByText("Même angle que le canapé")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected side-view label visible before the visitor chooses a photo", () => {
+    render(
+      <Screen1PhotoUpload
+        {...baseProps}
+        visualPositionLabel="Vue côté droit"
+        geometryMode="back_wall"
+        sofaPreviewAlt="Canapé Rivoli en bouclette écrue, Vue côté droit"
+        sofaPreviewUrl="https://assets.example/rivoli-right-boucle-medium.png"
+        compress={makePassthroughCompress()}
+        upload={makeImmediateUploadOk()}
+        generateIdempotencyKey={() => "idem-1"}
+        isTouchDevice={() => false}
+      />
+    );
+
+    expect(screen.getByText("Angle à reproduire")).toBeInTheDocument();
+    expect(screen.getAllByText("Vue côté droit").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/ne prenez pas une photo de face du mur/i))
+      .not.toBeInTheDocument();
   });
 
   it("opens the room-photo picker when the room-photo target is clicked", () => {
@@ -215,7 +269,9 @@ describe("Screen1PhotoUpload", () => {
       })
     );
 
-    expect(screen.getByText(/Touchez ce cadre pour prendre la photo/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Touchez ici pour uploader ou prendre une photo/i)
+    ).toBeInTheDocument();
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -237,11 +293,16 @@ describe("Screen1PhotoUpload", () => {
       )
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("img", {
+        name: /Animation montrant le canapé placé/i
+      })
+    ).toBeInTheDocument();
+    expect(
       screen.queryByText(/prise de vue frontale d'un mur/i)
     ).not.toBeInTheDocument();
   });
 
-  it("shows the back-wall disclaimer when the sofa geometry mode is back_wall", () => {
+  it("does not add a back-wall disclaimer when the sofa geometry mode is back_wall", () => {
     render(
       <Screen1PhotoUpload
         {...baseProps}
@@ -254,8 +315,8 @@ describe("Screen1PhotoUpload", () => {
     );
 
     expect(
-      screen.getByText(/Si le canapé sélectionné est vu de côté/i)
-    ).toBeInTheDocument();
+      screen.queryByText(/L'angle choisi compte autant que la distance/i)
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/prise de vue frontale/i)
     ).not.toBeInTheDocument();

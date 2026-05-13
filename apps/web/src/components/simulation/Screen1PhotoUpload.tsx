@@ -17,6 +17,14 @@ import { SimulationContextStrip } from "./SimulationContextStrip";
 
 const SIMULATIONS_ENDPOINT = "/api/public/simulations";
 const ROOM_PHOTO_ACCEPT = "image/*,.heic,.heif";
+const ANGLE_ROOM_GUIDE_FRONT_IMAGE_SRC =
+  "/images/simulation/angle-room-guide.webp";
+const ANGLE_SOFA_OVERLAY_FRONT_IMAGE_SRC =
+  "/images/simulation/angle-sofa-overlay.webp";
+const ANGLE_ROOM_GUIDE_CORNER_IMAGE_SRC =
+  "/images/simulation/angle-room-guide-corner.webp";
+const ANGLE_SOFA_OVERLAY_CORNER_IMAGE_SRC =
+  "/images/simulation/angle-sofa-overlay-corner.webp";
 
 export interface Screen1PhotoUploadProps {
   sofaSlug: string;
@@ -67,10 +75,6 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
   const selectedSofaAlt =
     props.sofaPreviewAlt ??
     `${props.sofaName} en ${props.fabricName}, ${props.visualPositionLabel}`;
-  const orientationGuidance = [
-    `${copy.orientationGuidancePrefix} ${props.visualPositionLabel}.`,
-    copy.orientationGuidanceSuffix
-  ].join(" ");
   const roomPhotoTargetActionLabel = pickedFile
     ? copy.replaceRoomPhotoActionLabel
     : copy.roomPhotoTargetActionLabel;
@@ -285,16 +289,12 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
                 <span>{copy.selectedSofaUnavailableInstruction}</span>
               </div>
             )}
+            <span className="simulation-photo-upload-sofa-view-badge">
+              <span>{copy.selectedSofaViewBadge}</span>
+              <strong>{props.visualPositionLabel}</strong>
+            </span>
           </div>
-          <p className="simulation-photo-upload-guidance-caption">
-            {props.sofaName} · {props.fabricName}
-          </p>
         </div>
-
-        <div
-          aria-hidden="true"
-          className="simulation-photo-upload-guidance-bridge"
-        />
 
         <div className="simulation-photo-upload-guidance-panel">
           <p className="simulation-photo-upload-guidance-label">
@@ -321,18 +321,58 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
 
             {!pickedFile ? (
               <div className="simulation-photo-upload-room-placeholder">
-                <svg
-                  aria-hidden="true"
-                  className="simulation-photo-upload-room-action-icon"
-                  focusable="false"
-                  viewBox="0 0 48 48"
-                >
-                  <path d="M24 7v24" />
-                  <path d="m15 16 9-9 9 9" />
-                  <path d="M12 31v7c0 1.7 1.3 3 3 3h18c1.7 0 3-1.3 3-3v-7" />
-                </svg>
-                <p>{copy.roomPhotoTargetTitle}</p>
-                <span>{roomPhotoTargetInstruction}</span>
+                <div className="simulation-photo-upload-angle-stage">
+                  <div className="simulation-photo-upload-angle-sequence">
+                    <div className="simulation-photo-upload-angle-scene simulation-photo-upload-angle-scene-front">
+                      <img
+                        alt={copy.angleGuideImageAlt}
+                        className="simulation-photo-upload-room-guide-image"
+                        src={ANGLE_ROOM_GUIDE_FRONT_IMAGE_SRC}
+                      />
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        className="simulation-photo-upload-sofa-overlay-image simulation-photo-upload-sofa-overlay-front"
+                        src={ANGLE_SOFA_OVERLAY_FRONT_IMAGE_SRC}
+                      />
+                    </div>
+                    <div
+                      aria-hidden="true"
+                      className="simulation-photo-upload-angle-scene simulation-photo-upload-angle-scene-corner"
+                    >
+                      <img
+                        alt=""
+                        className="simulation-photo-upload-room-guide-image"
+                        src={ANGLE_ROOM_GUIDE_CORNER_IMAGE_SRC}
+                      />
+                      <img
+                        alt=""
+                        className="simulation-photo-upload-sofa-overlay-image simulation-photo-upload-sofa-overlay-corner"
+                        src={ANGLE_SOFA_OVERLAY_CORNER_IMAGE_SRC}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="simulation-photo-upload-room-placeholder-copy">
+                  <p className="simulation-photo-upload-angle-message">
+                    {copy.angleGuideMessage}
+                  </p>
+                  <span className="simulation-photo-upload-room-upload-callout">
+                    <svg
+                      aria-hidden="true"
+                      focusable="false"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 3v11" />
+                      <path d="m7.5 7.5 4.5-4.5 4.5 4.5" />
+                      <path d="M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4" />
+                    </svg>
+                    <span>{copy.roomPhotoTargetTitle}</span>
+                  </span>
+                  <span className="simulation-photo-upload-room-upload-hint">
+                    {roomPhotoTargetInstruction}
+                  </span>
+                </div>
               </div>
             ) : null}
 
@@ -356,9 +396,6 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
               </span>
             ) : null}
           </button>
-          <p className="simulation-photo-upload-orientation">
-            {orientationGuidance}
-          </p>
         </div>
       </section>
 
@@ -366,11 +403,7 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         <p className="simulation-photo-upload-disclaimer" role="note">
           {copy.disclaimerCornerStrong}
         </p>
-      ) : (
-        <p className="simulation-photo-upload-disclaimer" role="note">
-          {copy.disclaimerBackWallShort}
-        </p>
-      )}
+      ) : null}
 
       {isTouch ? (
         <input

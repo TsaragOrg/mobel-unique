@@ -174,13 +174,16 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       ) ?? null,
     [detail?.renders, selectedFabricId, selectedVisualPositionId],
   );
-  // RU: Этот адрес показывает выбранную картинку дивана в более легком размере на обычной странице.
-  // FR: Cette adresse montre l'image choisie du canape en taille plus legere sur la page normale.
-  const selectedRenderMediumUrl = selectedRender?.render_medium_url ?? null;
-  // RU: Этот адрес нужен только для большого окна, где картинку можно рассмотреть ближе.
-  // FR: Cette adresse sert seulement a la grande fenetre pour regarder l'image de plus pres.
+  const selectedRenderPreviewUrl =
+    selectedRender?.render_medium_url ??
+    selectedRender?.render_url ??
+    selectedRender?.render_original_url ??
+    null;
   const selectedRenderOriginalUrl =
-    selectedRender?.render_original_url ?? selectedRender?.render_url ?? null;
+    selectedRender?.render_original_url ??
+    selectedRender?.render_url ??
+    selectedRender?.render_medium_url ??
+    null;
   const canLaunchSimulation = Boolean(
     detail &&
       selectedFabric &&
@@ -328,7 +331,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         <article className="sofa-detail">
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
-              {imageFailed || !selectedRenderMediumUrl ? (
+              {imageFailed || !selectedRenderPreviewUrl ? (
                 <span>Image indisponible</span>
               ) : (
                 <button
@@ -339,8 +342,9 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 >
                   <img
                     alt={selectedImageAlt}
+                    decoding="async"
                     onError={handleSelectedImageError}
-                    src={selectedRenderMediumUrl}
+                    src={selectedRenderPreviewUrl}
                   />
                   <span className="sofa-detail-image-viewer-icon">
                     <PublicExpandIcon />
@@ -382,7 +386,12 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                     onClick={() => chooseFabric(fabric.id)}
                     type="button"
                   >
-                    <img alt="" src={fabric.swatch_small_url} />
+                    <img
+                      alt=""
+                      decoding="async"
+                      loading="lazy"
+                      src={fabric.swatch_small_url}
+                    />
                     <span>{fabric.public_name}</span>
                   </button>
                 ))}
@@ -499,6 +508,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 <div className="sofa-image-viewer-frame">
                   <img
                     alt={selectedImageAlt}
+                    decoding="async"
                     onError={handleSelectedImageError}
                     src={selectedRenderOriginalUrl}
                   />
