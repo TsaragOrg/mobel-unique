@@ -22,6 +22,7 @@ function createFakeSupabase({ assets, links = [], variantAssets = [] } = {}) {
     const method = init.method ?? "GET";
     requests.push({
       body: init.body,
+      headers: init.headers,
       method,
       url: requestUrl,
     });
@@ -416,6 +417,59 @@ describe("catalog image variant backfill script", () => {
     ).toBe(false);
     expect(
       fake.storedLinks.some((link) => link.variant_kind === "swatch_small"),
+    ).toBe(false);
+  });
+
+  it("adds long-lived cache metadata only to public Storage variant uploads", async () => {
+    const privateAsset = createAsset({
+      id: "00000000-0000-4000-8000-000000000101",
+      object_path: "private/original.png",
+    });
+    const publicAsset = createAsset({
+      asset_kind: "published_sofa_render",
+      bucket_id: "catalog-public-assets",
+      id: "00000000-0000-4000-8000-000000000102",
+      object_path: "public/original.png",
+      visibility: "public",
+    });
+    const fake = createFakeSupabase({
+      assets: [privateAsset, publicAsset],
+    });
+    let nextId = 300;
+
+    await backfillCatalogImageVariants({
+      fetchImpl: fake.fetchImpl,
+      generateVariants: fakeGenerateVariants,
+      idGenerator: () =>
+        `00000000-0000-4000-8000-${String(nextId++).padStart(12, "0")}`,
+      serviceRoleKey: "service-role",
+      supabaseUrl: "http://127.0.0.1:54321",
+    });
+
+    const publicUploadRequests = fake.requests.filter(
+      (request) =>
+        request.method === "POST" &&
+        request.url.includes("/storage/v1/object/catalog-public-assets/"),
+    );
+    const privateUploadRequests = fake.requests.filter(
+      (request) =>
+        request.method === "POST" &&
+        request.url.includes("/storage/v1/object/catalog-private-assets/"),
+    );
+
+    expect(publicUploadRequests).toHaveLength(2);
+    expect(privateUploadRequests).toHaveLength(2);
+    expect(
+      publicUploadRequests.every(
+        (request) =>
+          request.headers?.["cache-control"] === "max-age=31536000",
+      ),
+    ).toBe(true);
+    expect(
+      privateUploadRequests.some(
+        (request) =>
+          request.headers?.["cache-control"] === "max-age=31536000",
+      ),
     ).toBe(false);
   });
 

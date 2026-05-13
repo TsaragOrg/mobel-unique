@@ -3,6 +3,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CATALOG_IMAGE_VARIANT_KINDS,
   CATALOG_RENDER_IMAGE_VARIANT_KINDS,
+  PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS,
   ensureCatalogImageVariants,
   ensureFabricSwatchSmallVariant,
   resolveCatalogImageDeliveryAsset,
@@ -125,6 +126,7 @@ export interface AdminFabricRecord {
 }
 
 export interface AdminUploadRecord {
+  cache_control_seconds: string;
   expires_at: string;
   method: "signed_upload";
   signed_upload_url: string;
@@ -636,6 +638,7 @@ const GENERATION_INPUT_UPLOAD_PURPOSES = [
 
 const MAX_ADMIN_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_RENDER_INPUT_EDGE_PX = 2048;
+const ADMIN_SIGNED_UPLOAD_DEFAULT_CACHE_CONTROL_SECONDS = "3600";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1323,6 +1326,7 @@ export function shapeFabricResponse(record: AdminFabricRecord | JsonObject) {
 
 export function shapeUploadResponse(record: AdminUploadRecord | JsonObject) {
   return {
+    cache_control_seconds: stringOrNull(record.cache_control_seconds),
     expires_at: stringOrNull(record.expires_at),
     method: record.method === "signed_upload" ? "signed_upload" : null,
     signed_upload_url: stringOrNull(record.signed_upload_url),
@@ -1992,6 +1996,9 @@ export function createSupabaseAdminCatalogStore(
       }
 
       return {
+        cache_control_seconds: cacheControlSecondsForUploadPurpose(
+          descriptor.purpose,
+        ),
         expires_at: descriptor.expires_at,
         method: "signed_upload",
         signed_upload_url: data.signedUrl,
@@ -4150,6 +4157,14 @@ function uploadPurposeRequiresCatalogImageVariants(
   );
 }
 
+function cacheControlSecondsForUploadPurpose(
+  purpose: UploadCreateInput["purpose"],
+) {
+  return purpose === "fabric_swatch"
+    ? PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS
+    : ADMIN_SIGNED_UPLOAD_DEFAULT_CACHE_CONTROL_SECONDS;
+}
+
 async function ensureUploadCatalogImageVariants(
   client: SupabaseCatalogClient,
   input: {
@@ -4294,6 +4309,7 @@ function createSupabaseCatalogImageVariantStorage(
       const { error } = await client.storage
         .from(input.bucketId)
         .upload(input.objectPath, input.body, {
+          ...(input.cacheControl ? { cacheControl: input.cacheControl } : {}),
           contentType: input.contentType,
           upsert: true,
         });
@@ -6110,6 +6126,7 @@ async function createPublicRenderAssetCopiesForPublication(
       const { error: uploadError } = await client.storage
         .from("catalog-public-assets")
         .upload(objectPath, bytes, {
+          cacheControl: PUBLIC_CATALOG_IMAGE_CACHE_CONTROL_SECONDS,
           contentType: asset.content_type,
           upsert: true,
         });

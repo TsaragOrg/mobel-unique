@@ -759,6 +759,50 @@ function firePointerCropEvent(
 }
 
 describe("Admin catalog pages", () => {
+  it("sends public and private signed upload cache times from the upload record", async () => {
+    // RU: Эта проверка смотрит, какое время кеша уходит вместе с файлом.
+    // FR: Cette verification regarde quel temps de cache part avec le fichier.
+    const fetchMock = vi.fn(
+      async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+        new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    // RU: Эти данные имитируют две ссылки: открытую картинку ткани и закрытую картинку для админа.
+    // FR: Ces donnees imitent deux liens: une image de tissu publique et une image privee pour l'admin.
+    const dependencies = createDefaultAdminCatalogDependencies(vi.fn(), vi.fn());
+    const publicUpload = {
+      cache_control_seconds: "31536000",
+      expires_at: "2026-04-28T12:00:00.000Z",
+      method: "signed_upload" as const,
+      signed_upload_url: "https://storage.example/public-swatch",
+      upload_id: "public-swatch-upload",
+    };
+    const privateUpload = {
+      cache_control_seconds: "3600",
+      expires_at: "2026-04-28T12:00:00.000Z",
+      method: "signed_upload" as const,
+      signed_upload_url: "https://storage.example/private-reference",
+      upload_id: "private-reference-upload",
+    };
+
+    await dependencies.uploadToSignedUrl(
+      publicUpload,
+      new File(["swatch"], "swatch.png", { type: "image/png" }),
+    );
+    await dependencies.uploadToSignedUrl(
+      privateUpload,
+      new File(["reference"], "reference.png", { type: "image/png" }),
+    );
+
+    // RU: Эти формы дают проверить число, которое браузер отправил в Storage.
+    // FR: Ces formulaires permettent de verifier le nombre envoye a Storage par le navigateur.
+    const publicBody = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    const privateBody = fetchMock.mock.calls[1]?.[1]?.body as FormData;
+    expect(publicBody.get("cacheControl")).toBe("31536000");
+    expect(privateBody.get("cacheControl")).toBe("3600");
+  });
+
   it("redirects anonymous visitors away from catalog pages", async () => {
     const dependencies = createDependencies({
       getAccessToken: vi.fn(async () => null),

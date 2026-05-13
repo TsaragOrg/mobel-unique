@@ -432,9 +432,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=3600, stale-while-revalidate=300",
-    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     await expect(response.json()).resolves.toEqual({
       data: {
         items: [
@@ -470,9 +468,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=3600, stale-while-revalidate=300",
-    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(seenInputs[0]).toMatchObject({
       limit: 13,
       tags: ["angle", "convertible"],
@@ -522,9 +518,7 @@ describe("public catalog route handlers", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=3600, stale-while-revalidate=300",
-    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     const body = await response.json();
 
     expect(body.data.items).toHaveLength(1);
