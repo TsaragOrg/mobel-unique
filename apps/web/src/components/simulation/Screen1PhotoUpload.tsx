@@ -54,7 +54,6 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
     props.generateIdempotencyKey ?? defaultIdempotencyKeyGenerator;
   const detectTouch = props.isTouchDevice ?? defaultIsTouchDevice;
 
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prepareRequestRef = useRef(0);
 
@@ -127,7 +126,7 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
 
   function openPhotoTargetPicker(): void {
     if (phase === "uploading") return;
-    const input = isTouch ? cameraInputRef.current : fileInputRef.current;
+    const input = fileInputRef.current;
     if (input) input.value = "";
     input?.click();
   }
@@ -405,18 +404,6 @@ export function Screen1PhotoUpload(props: Screen1PhotoUploadProps) {
         </p>
       ) : null}
 
-      {isTouch ? (
-        <input
-          accept={ROOM_PHOTO_ACCEPT}
-          capture="environment"
-          data-testid="simulation-camera-input"
-          hidden
-          id="simulation-camera-input"
-          onChange={(event) => chooseFile(event.target.files?.[0])}
-          ref={cameraInputRef}
-          type="file"
-        />
-      ) : null}
       <input
         accept={ROOM_PHOTO_ACCEPT}
         data-testid="simulation-file-input"
