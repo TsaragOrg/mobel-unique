@@ -51,7 +51,6 @@ describe("PublicSimulationEmailGate", () => {
     fireEvent.change(screen.getByTestId("simulation-email-gate-email"), {
       target: { value: "test@example.com" }
     });
-    fireEvent.click(screen.getByTestId("simulation-email-gate-consent-email"));
     fireEvent.click(screen.getByRole("button", { name: /recevoir le code/i }));
 
     const codeInput = await screen.findByTestId("simulation-email-gate-code");

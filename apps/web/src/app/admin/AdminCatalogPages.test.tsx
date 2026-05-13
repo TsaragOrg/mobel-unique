@@ -3275,6 +3275,102 @@ describe("Admin catalog pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks manual upload current render cells with the source image badge", async () => {
+    // RU: Эти значения описывают готовую ячейку, где админ загрузил картинку вручную.
+    // FR: Ces valeurs decrivent une case prete ou l'admin a envoye une image manuelle.
+    const assignedFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: "00000000-0000-4000-8000-000000000903",
+        internal_name: "Grey fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Grey fabric",
+        swatch_preview_url: null,
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        updated_at: "2026-04-28T10:00:00.000Z",
+      },
+      fabric_id: "00000000-0000-4000-8000-000000000903",
+      public_order: 1,
+      sofa_id: "00000000-0000-4000-8000-000000000701",
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    const visualColumn = {
+      admin_label: "Front",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: null,
+      deleted_at: null,
+      id: "00000000-0000-4000-8000-000000000904",
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: assignedFabric.sofa_id,
+      updated_at: "2026-04-28T10:00:00.000Z",
+    };
+    const manualUploadCell = {
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: 0,
+      current_private_asset_id: "00000000-0000-4000-8000-000000000909",
+      current_private_preview_url:
+        "https://storage.example/manual-render-preview",
+      current_public_asset_id: null,
+      fabric_id: assignedFabric.fabric_id,
+      has_private_render: true,
+      has_public_render: false,
+      id: "00000000-0000-4000-8000-000000000906",
+      latest_job: null,
+      sofa_id: assignedFabric.sofa_id,
+      source_photo_id: null,
+      source_type: "manual_upload",
+      updated_at: "2026-04-28T10:40:00.000Z",
+      visual_matrix_column_id: visualColumn.id,
+    };
+    const dependencies = createDependencies({
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [manualUploadCell],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: assignedFabric.sofa_id,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(
+      <AdminSofaEditPage
+        dependencies={dependencies}
+        sofaId="00000000-0000-4000-8000-000000000701"
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
+    const manualUploadCellButton = screen.getByRole("button", {
+      name: /Grey fabric, Front :/i,
+    });
+    const sourceImageMarker = within(manualUploadCellButton).getByText("SI");
+
+    expect(sourceImageMarker).toHaveClass("admin-render-cell-source-badge");
+    expect(sourceImageMarker.parentElement).toBe(manualUploadCellButton);
+    expect(
+      within(manualUploadCellButton).queryByText("Envoi manuel"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(manualUploadCellButton);
+    const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
+
+    expect(within(dialog).getByText("Envoi manuel")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("La photo source est le rendu actuel"),
+    ).not.toBeInTheDocument();
+  });
+
   it("replaces a source-photo current render after manual upload", async () => {
     // RU: Эти данные описывают готовую ячейку, где исходное фото сейчас является текущей картинкой.
     // FR: Ces donnees decrivent une case prete ou la photo source est l'image actuelle.
@@ -3414,9 +3510,10 @@ describe("Admin catalog pages", () => {
 
     await screen.findByRole("heading", { name: "Manual test sofa" });
     fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Grey fabric, Front : Prêt/i }),
-    );
+    const sourcePhotoCellButton = screen.getByRole("button", {
+      name: /Grey fabric, Front :/i,
+    });
+    fireEvent.click(sourcePhotoCellButton);
     const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
 
     const manualRenderInput = openManualRenderUpload(dialog);
@@ -3471,6 +3568,9 @@ describe("Admin catalog pages", () => {
       within(dialog).queryByText("La photo source est le rendu actuel"),
     ).toBeNull();
     expect(within(dialog).getByText("Envoi manuel")).toBeInTheDocument();
+    expect(within(sourcePhotoCellButton).getByText("SI")).toHaveClass(
+      "admin-render-cell-source-badge",
+    );
   });
 
   it("shows manual upload failures in the render cell sheet", async () => {

@@ -33,6 +33,7 @@ const detail = {
       is_premium: false,
       public_name: "Bouclé ivoire",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
       swatch_url: "https://assets.example/fabrics/boucle.png",
     },
     {
@@ -40,6 +41,7 @@ const detail = {
       is_premium: true,
       public_name: "Velours sauge",
       public_order: 2,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
       swatch_url: "https://assets.example/fabrics/sauge.png",
     },
   ],
@@ -47,36 +49,40 @@ const detail = {
     {
       fabric_id: "fabric-boucle",
       height_px: 1200,
+      render_medium_url: "https://assets.example/rivoli/boucle-face-medium.jpg",
       render_original_url:
         "https://assets.example/rivoli/boucle-face-original.png",
-      render_url: "https://assets.example/rivoli/boucle-face-medium.jpg",
+      render_url: "https://assets.example/rivoli/boucle-face-original.png",
       visual_position_id: "front",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-boucle",
       height_px: 1200,
+      render_medium_url: "https://assets.example/rivoli/boucle-profil-medium.jpg",
       render_original_url:
         "https://assets.example/rivoli/boucle-profil-original.png",
-      render_url: "https://assets.example/rivoli/boucle-profil-medium.jpg",
+      render_url: "https://assets.example/rivoli/boucle-profil-original.png",
       visual_position_id: "profile",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-sauge",
       height_px: 1200,
+      render_medium_url: "https://assets.example/rivoli/sauge-face-medium.jpg",
       render_original_url:
         "https://assets.example/rivoli/sauge-face-original.png",
-      render_url: "https://assets.example/rivoli/sauge-face-medium.jpg",
+      render_url: "https://assets.example/rivoli/sauge-face-original.png",
       visual_position_id: "front",
       width_px: 1600,
     },
     {
       fabric_id: "fabric-sauge",
       height_px: 1200,
+      render_medium_url: "https://assets.example/rivoli/sauge-profil-medium.jpg",
       render_original_url:
         "https://assets.example/rivoli/sauge-profil-original.png",
-      render_url: "https://assets.example/rivoli/sauge-profil-medium.jpg",
+      render_url: "https://assets.example/rivoli/sauge-profil-original.png",
       visual_position_id: "profile",
       width_px: 1600,
     },
@@ -158,6 +164,24 @@ describe("PublicSofaDetailPage", () => {
     window.sessionStorage.clear();
   });
 
+  it("uses a detail-hero shaped skeleton while the sofa detail loads", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    expect(
+      screen.getByRole("article", { name: "Chargement du canape" }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector(".public-status-panel")).toBeNull();
+    expect(container.querySelector(".sofa-detail-skeleton")).toBeInTheDocument();
+    expect(
+      container.querySelector(".sofa-detail-skeleton .sofa-detail-image"),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(".sofa-detail-skeleton .sofa-detail-copy"),
+    ).toBeInTheDocument();
+  });
+
   it("loads default fabric and visual position from direct entry", async () => {
     mockDetailResponse();
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
@@ -175,6 +199,9 @@ describe("PublicSofaDetailPage", () => {
     expect(screen.getByText("Hauteur 82 cm")).toBeInTheDocument();
     expect(screen.getByText("Angle")).toBeInTheDocument();
     expect(screen.getByText("Convertible")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /ivoire/ }).querySelector("img"),
+    ).toHaveAttribute("src", "https://assets.example/fabrics/boucle-small.png");
     expect(screen.getByRole("button", { name: "Bouclé ivoire" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -185,13 +212,13 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Face"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/boucle-face-original.png",
+      "https://assets.example/rivoli/boucle-face-medium.jpg",
     );
     expect(screen.getByRole("link", { name: "Lancer ma simulation" })).toHaveAttribute(
       "href",
       "/sofas/canape-rivoli/simulate/start",
     );
-    expect(screen.getByRole("link", { name: "Commander sur Shopify" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Commander" })).toHaveAttribute(
       "href",
       "https://shopify.example/products/canape-rivoli",
     );
@@ -244,7 +271,7 @@ describe("PublicSofaDetailPage", () => {
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Face"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/sauge-face-original.png",
+      "https://assets.example/rivoli/sauge-face-medium.jpg",
     );
     expect(
       window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli"),
@@ -259,16 +286,31 @@ describe("PublicSofaDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profil" }));
     expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Profil"]')).toHaveAttribute(
       "src",
-      "https://assets.example/rivoli/boucle-profil-original.png",
+      "https://assets.example/rivoli/boucle-profil-medium.jpg",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
 
+    expect(
+      screen.getByRole("button", { name: "Velours sauge" }).querySelector("img"),
+    ).toHaveAttribute("src", "https://assets.example/fabrics/sauge-small.png");
     expect(screen.getByRole("button", { name: "Profil" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     expect(container.querySelector('img[alt="Canapé Rivoli en Velours sauge, Profil"]')).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/sauge-profil-medium.jpg",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Agrandir l'image du canap/i }));
+
+    const dialog = screen.getByRole("dialog", { name: /Image du canap/i });
+    expect(
+      within(dialog).getByRole("img", {
+        name: /Rivoli en Velours sauge, Profil/,
+      }),
+    ).toHaveAttribute(
       "src",
       "https://assets.example/rivoli/sauge-profil-original.png",
     );

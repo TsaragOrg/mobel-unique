@@ -275,3 +275,25 @@ catalog data at desktop and mobile widths. The browser QA covered catalog
 loading, tag filter URL state, fabric preview image swapping, internal
 catalog-to-detail fabric restoration, detail selectors, dimensions, tags,
 Shopify secondary action, and the simulation CTA path.
+
+Follow-up completed on branch
+`fix/web/spec-0012-plan-0048-shorten-sofa-order-button-label`.
+
+The public sofa detail secondary order action keeps the stored Shopify order URL
+behavior, but the visible link label is shortened from `Commander sur Shopify`
+to `Commander`.
+
+Follow-up verification completed:
+
+- `pnpm --filter @mobel-unique/web test -- 'src/app/sofas/[slug]/PublicSofaDetailPage.test.tsx'`
+
+Follow-up completed on branch
+`fix/web/spec-0012-plan-0048-public-catalog-card-image-link`.
+
+Public catalog card images now link to the matching sofa detail page and reuse
+the same selected-fabric handoff as the card CTA.
+
+Follow-up verification completed:
+
+- `pnpm --filter @mobel-unique/web test -- src/app/catalog/PublicCatalogPage.test.tsx`
+- `pnpm --filter @mobel-unique/web typecheck`

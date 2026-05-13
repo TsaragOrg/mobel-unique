@@ -5,6 +5,8 @@ RU: Проверки помогают убедиться, что посетит�
 FR: Ce fichier verifie la page publique du catalogue de canapes.
 FR: Dans les controles, on voit les cartes, les filtres, les tissus, les images et le lien vers la page du canape.
 FR: Les controles aident a verifier que le visiteur peut filtrer, changer le tissu dans une carte et ouvrir le canape choisi.
+RU: Проверки также смотрят, что фото в карточке ведет на страницу дивана.
+FR: Les controles verifient aussi que la photo dans la carte mene vers la page du canape.
 */
 
 import {
@@ -39,6 +41,37 @@ const rivoli = {
     height_cm: 82,
     length_cm: 240,
   },
+  fabrics: [
+    {
+      id: "fabric-boucle",
+      is_premium: false,
+      public_name: "BouclГ© ivoire",
+      public_order: 1,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url:
+        "https://assets.example/rivoli/boucle-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
+      swatch_small_width_px: 96,
+    },
+    {
+      id: "fabric-sauge",
+      is_premium: true,
+      public_name: "Velours sauge",
+      public_order: 2,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url: "https://assets.example/rivoli/sauge-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
+      swatch_small_width_px: 96,
+    },
+  ],
   id: "sofa-rivoli",
   public_description: "Un canapé modulable pour le salon.",
   public_name: "Canapé Rivoli",
@@ -69,6 +102,22 @@ const marais = {
   default_fabric_id: "fabric-lin",
   default_render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
   default_render_url: "https://assets.example/marais/lin-face-original.png",
+  fabrics: [
+    {
+      id: "fabric-lin",
+      is_premium: false,
+      public_name: "Lin naturel",
+      public_order: 1,
+      render_medium_content_type: "image/jpeg",
+      render_medium_height_px: 960,
+      render_medium_url: "https://assets.example/marais/lin-face-medium.jpg",
+      render_medium_width_px: 1280,
+      swatch_small_content_type: "image/png",
+      swatch_small_height_px: 96,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
+      swatch_small_width_px: 96,
+    },
+  ],
   id: "sofa-marais",
   public_name: "Canapé Marais",
   public_slug: "canape-marais",
@@ -113,6 +162,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Bouclé ivoire",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/boucle-small.png",
       swatch_url: "https://assets.example/fabrics/boucle.png",
     },
     {
@@ -120,6 +170,7 @@ const rivoliDetail = {
       is_premium: true,
       public_name: "Velours sauge",
       public_order: 2,
+      swatch_small_url: "https://assets.example/fabrics/sauge-small.png",
       swatch_url: "https://assets.example/fabrics/sauge.png",
     },
     {
@@ -127,6 +178,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Lin naturel",
       public_order: 3,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
       swatch_url: "https://assets.example/fabrics/lin.png",
     },
     {
@@ -134,6 +186,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Chenille galet",
       public_order: 4,
+      swatch_small_url: "https://assets.example/fabrics/galet-small.png",
       swatch_url: "https://assets.example/fabrics/galet.png",
     },
     {
@@ -141,6 +194,7 @@ const rivoliDetail = {
       is_premium: false,
       public_name: "Bleu nuit",
       public_order: 5,
+      swatch_small_url: "https://assets.example/fabrics/nuit-small.png",
       swatch_url: "https://assets.example/fabrics/nuit.png",
     },
   ],
@@ -198,6 +252,7 @@ const maraisDetail = {
       is_premium: false,
       public_name: "Lin naturel",
       public_order: 1,
+      swatch_small_url: "https://assets.example/fabrics/lin-small.png",
       swatch_url: "https://assets.example/fabrics/lin.png",
     },
   ],
@@ -327,6 +382,26 @@ describe("PublicCatalogPage", () => {
     window.sessionStorage.clear();
   });
 
+  it("uses a catalog-card shaped skeleton while the first catalog page loads", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    const { container } = render(<PublicCatalogPage />);
+
+    expect(
+      screen.getByRole("region", { name: "Chargement du catalogue" }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(container.querySelector(".public-status-panel")).toBeNull();
+    expect(container.querySelectorAll(".catalog-card-skeleton")).toHaveLength(6);
+    expect(
+      container.querySelectorAll(
+        ".catalog-card-skeleton .catalog-card-image",
+      ),
+    ).toHaveLength(6);
+    expect(
+      container.querySelectorAll(".catalog-card-skeleton .catalog-card-body"),
+    ).toHaveLength(6);
+  });
+
   it("loads published sofas and hides filters when no public tags exist", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -345,7 +420,9 @@ describe("PublicCatalogPage", () => {
 
     render(<PublicCatalogPage />);
 
-    expect(screen.getByText("Chargement du catalogue...")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Chargement du catalogue" }),
+    ).toHaveAttribute("aria-busy", "true");
     expect(await screen.findByText("Canapé Rivoli")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Filtres de catalogue" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog/tags");
@@ -657,14 +734,6 @@ describe("PublicCatalogPage", () => {
         return Promise.resolve(jsonResponse(tagsEnvelope([])));
       }
 
-      if (url === "/api/public/sofas/canape-rivoli") {
-        return Promise.resolve(jsonResponse({ data: rivoliDetail, meta: {} }));
-      }
-
-      if (url === "/api/public/sofas/canape-marais") {
-        return Promise.resolve(jsonResponse({ data: maraisDetail, meta: {} }));
-      }
-
       return Promise.resolve(jsonResponse(catalogEnvelope([rivoli, marais])));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -683,13 +752,19 @@ describe("PublicCatalogPage", () => {
       "https://assets.example/rivoli/boucle-face-medium.jpg",
     );
 
-    expect(await screen.findByRole("button", { name: "Velours sauge" })).toBeInTheDocument();
+    const saugeButton = await screen.findByRole("button", {
+      name: "Velours sauge",
+    });
+    expect(saugeButton).toBeInTheDocument();
+    expect(saugeButton.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://assets.example/fabrics/sauge-small.png",
+    );
     expect(
       screen.queryByRole("button", { name: "Aperçu tissus pour Canapé Rivoli" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Velours sauge")).not.toBeInTheDocument();
-    expect(screen.getByText("+1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+    fireEvent.click(saugeButton);
 
     expect(rivoliImage).toHaveAttribute(
       "src",
@@ -708,6 +783,53 @@ describe("PublicCatalogPage", () => {
     expect(window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli")).toContain(
       "fabric-sauge",
     );
+    expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog/tags");
+    expect(fetchMock).toHaveBeenCalledWith("/api/public/catalog?limit=12");
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith("/api/public/sofas/"),
+      ),
+    ).toBe(false);
+  });
+
+  it("opens the sofa detail from the catalog card image and keeps the selected fabric", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope([])));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([rivoli])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PublicCatalogPage />);
+
+    await screen.findByText(rivoli.public_name);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: rivoli.fabrics[1]?.public_name,
+      }),
+    );
+
+    const imageLink = screen.getByRole("link", {
+      name: rivoli.public_name,
+    });
+    expect(imageLink).toHaveAttribute("href", "/sofas/canape-rivoli");
+
+    imageLink.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(imageLink);
+
+    expect(
+      window.sessionStorage.getItem(
+        "mobel-unique:catalog-selection:canape-rivoli",
+      ),
+    ).toContain("fabric-sauge");
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith("/api/public/sofas/"),
+      ),
+    ).toBe(false);
   });
 
   it("uses a French placeholder when a catalog image fails", async () => {

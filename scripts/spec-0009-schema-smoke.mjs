@@ -467,6 +467,124 @@ values (
   'manual_upload'
 );
 
+insert into public.sofas (
+  id,
+  lifecycle_state,
+  internal_name,
+  public_name,
+  shopify_order_url
+)
+values (
+  '00000000-0000-4000-8000-000000000205',
+  'published',
+  'SPEC-0009 Stale Render Cell Sofa',
+  'SPEC-0009 Stale Render Cell Sofa',
+  'https://shop.example/spec-0009-stale'
+);
+
+insert into public.fabrics (
+  id,
+  lifecycle_state,
+  internal_name,
+  public_name,
+  swatch_asset_id,
+  ai_reference_asset_id,
+  is_premium
+)
+values (
+  '00000000-0000-4000-8000-000000000302',
+  'active',
+  'SPEC-0009 Stale Fabric',
+  'SPEC-0009 Stale Fabric',
+  '00000000-0000-4000-8000-000000000101',
+  '00000000-0000-4000-8000-000000000102',
+  false
+);
+
+insert into public.sofa_fabrics (sofa_id, fabric_id, public_order)
+values
+  (
+    '00000000-0000-4000-8000-000000000205',
+    '00000000-0000-4000-8000-000000000301',
+    0
+  ),
+  (
+    '00000000-0000-4000-8000-000000000205',
+    '00000000-0000-4000-8000-000000000302',
+    1
+  );
+
+insert into public.visual_matrix_columns (id, sofa_id, sequence, admin_label, public_label)
+values (
+  '00000000-0000-4000-8000-000000000402',
+  '00000000-0000-4000-8000-000000000205',
+  1,
+  'Front stale',
+  'Front stale'
+);
+
+insert into public.sofa_render_cells (
+  id,
+  sofa_id,
+  fabric_id,
+  visual_matrix_column_id,
+  current_private_asset_id,
+  current_public_asset_id,
+  source_type
+)
+values
+  (
+    '00000000-0000-4000-8000-000000000502',
+    '00000000-0000-4000-8000-000000000205',
+    '00000000-0000-4000-8000-000000000301',
+    '00000000-0000-4000-8000-000000000402',
+    '00000000-0000-4000-8000-000000000103',
+    '00000000-0000-4000-8000-000000000104',
+    'manual_upload'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000503',
+    '00000000-0000-4000-8000-000000000205',
+    '00000000-0000-4000-8000-000000000302',
+    '00000000-0000-4000-8000-000000000402',
+    '00000000-0000-4000-8000-000000000103',
+    null,
+    'manual_upload'
+  );
+
+delete from public.sofa_fabrics
+where sofa_id = '00000000-0000-4000-8000-000000000205'
+  and fabric_id = '00000000-0000-4000-8000-000000000302';
+
+do $smoke$
+begin
+  perform public.admin_unpublish_sofa('00000000-0000-4000-8000-000000000205');
+exception
+  when others then
+    insert into spec_0009_smoke_failures (failure)
+    values ('admin_unpublish_sofa rejected a stale non-public render cell: ' || sqlerrm);
+end;
+$smoke$;
+
+insert into spec_0009_smoke_failures (failure)
+select 'admin_unpublish_sofa did not return stale render cell sofa to draft'
+where not exists (
+  select 1
+  from public.sofas
+  where id = '00000000-0000-4000-8000-000000000205'
+    and lifecycle_state = 'draft'
+    and published_at is null
+);
+
+insert into spec_0009_smoke_failures (failure)
+select 'admin_unpublish_sofa did not clear public render references'
+where exists (
+  select 1
+  from public.sofa_render_cells
+  where sofa_id = '00000000-0000-4000-8000-000000000205'
+    and current_public_asset_id is not null
+);
+
 insert into spec_0009_smoke_failures (failure)
 select 'publication readiness did not reject an incomplete sofa'
 where not (

@@ -6,7 +6,8 @@ import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Image } from "imagescript";
 import {
-  BACKFILL_VARIANT_KINDS,
+  BACKFILL_RENDER_VARIANT_KINDS,
+  BACKFILL_SWATCH_VARIANT_KINDS,
   buildVariantObjectPath,
   generateImageVariants,
 } from "./backfill-catalog-image-variants.mjs";
@@ -363,6 +364,7 @@ async function seedFabrics(manifest) {
         manifest.prefix,
         `fabrics/${definition.slug}/swatch${swatchImage.extension}`,
       ),
+      variantKinds: BACKFILL_SWATCH_VARIANT_KINDS,
       visibility: "public",
     });
     const aiReferenceAsset = await upsertImageAsset({
@@ -698,6 +700,7 @@ async function upsertImageAsset({
   bucketId,
   image,
   objectPath,
+  variantKinds = null,
   visibility,
 }) {
   await uploadStorageObject(
@@ -728,23 +731,25 @@ async function upsertImageAsset({
     ],
   );
 
-  if (VARIANT_SOURCE_ASSET_KINDS.has(assetKind)) {
+  if (variantKinds || VARIANT_SOURCE_ASSET_KINDS.has(assetKind)) {
     await upsertImageAssetVariants({
       asset,
       image,
+      variantKinds: variantKinds ?? BACKFILL_RENDER_VARIANT_KINDS,
     });
   }
 
   return asset;
 }
 
-async function upsertImageAssetVariants({ asset, image }) {
+async function upsertImageAssetVariants({ asset, image, variantKinds }) {
   const variants = await generateImageVariants({
     bytes: image.bytes,
     contentType: image.contentType,
+    variantKinds,
   });
 
-  for (const variantKind of BACKFILL_VARIANT_KINDS) {
+  for (const variantKind of variantKinds) {
     const existingLink = await selectSingle(
       `/rest/v1/storage_asset_variants?original_asset_id=eq.${asset.id}&variant_kind=eq.${variantKind}&select=variant_asset_id`,
     );

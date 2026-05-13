@@ -36,14 +36,9 @@ import {
 } from "./simulation-idempotency";
 import {
   createSupabaseSimulationRateLimitStore,
+  hashSimulationRateLimitSubject,
   type SimulationRateLimitStore,
 } from "./simulation-rate-limit";
-import {
-  decryptSimulationEmailAddress as decryptEmailAddress,
-  encryptSimulationEmailAddress as encryptEmailAddress,
-  hashSimulationEmailAddress as hashEmailAddress,
-  normalizeSimulationEmailAddress as normalizeEmailAddress,
-} from "./simulation-email-identity";
 import type {
   RoomGeometryMode,
   SimulationJobStatus,
@@ -55,31 +50,38 @@ const DEFAULT_CORNER_TAG_SLUG = "corner";
 const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_DISPATCH_TRIGGER_TIMEOUT_MS = 5_000;
 const DEFAULT_REALTIME_TOKEN_TTL_SECONDS = 5 * 60;
-const REQUIRED_EMAIL_CONSENT_WORDING_VERSION = "email-verification-v1";
-const OPTIONAL_MARKETING_CONSENT_WORDING_VERSION = "commercial-contact-v1";
+const LOCAL_EMAIL_OTP_BYPASS_CODE_REGEX = /^\d{6}$/;
 const PUBLIC_SIMULATION_AUTH_USER_METADATA = {
   public_simulation_transient: true,
   public_simulation_purpose: "in_home_simulation_email_otp",
 };
-const CONSENT_LOCALE = "fr-FR";
 
 const SIMULATION_PRIVATE_BUCKET = "simulation-private-artifacts";
 
 export function createDefaultSimulationPublicEmailHandlerDeps(): SimulationPublicEmailHandlerDeps {
   const client = createServiceRoleClient();
+  const environment = readSimulationEnvironment(process.env.NEXT_PUBLIC_APP_ENV);
+  const localOtpBypassCode = readLocalSimulationEmailOtpBypassCode({
+    appEnv: process.env.APP_ENV,
+    bypassCode: process.env.SIMULATION_EMAIL_OTP_BYPASS_CODE,
+    publicAppEnv: process.env.NEXT_PUBLIC_APP_ENV,
+  });
   return {
     accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
-    environment: readSimulationEnvironment(process.env.NEXT_PUBLIC_APP_ENV),
+    environment,
     emailVerificationStore: createSupabaseSimulationEmailVerificationStore(
       client,
       {
-        emailEncryptionSecret: requiredEnv(
-          "SIMULATION_EMAIL_ENCRYPTION_SECRET",
+        verificationSubjectSalt: requiredEnv(
+          "SIMULATION_RATE_LIMIT_SUBJECT_SALT",
         ),
-        emailHashSecret: requiredEnv("SIMULATION_EMAIL_HASH_SECRET"),
       },
     ),
-    otpProvider: createSupabaseSimulationEmailOtpProvider(client),
+    otpProvider: localOtpBypassCode
+      ? createLocalSimulationEmailOtpBypassProvider(client, {
+          bypassCode: localOtpBypassCode,
+        })
+      : createSupabaseSimulationEmailOtpProvider(client),
   };
 }
 
@@ -333,38 +335,61 @@ export function createSupabaseSimulationEmailOtpProvider(
       }
       return { ok: true, authUserId };
     },
+    async deleteTransientUser({ authUserId }) {
+      await deleteTransientAuthUser(client, authUserId);
+    },
+  };
+}
+
+export function createLocalSimulationEmailOtpBypassProvider(
+  client: SupabaseClient,
+  config: {
+    bypassCode: string;
+  },
+): SimulationEmailOtpProvider {
+  return {
+    async sendOtp() {
+      return { ok: true };
+    },
+    async verifyOtp({ email, code }) {
+      if (code !== config.bypassCode) {
+        return { ok: false, reason: "invalid" };
+      }
+
+      try {
+        const authUserId = await findOrCreateTransientLocalAuthUser(
+          client,
+          email,
+        );
+        return { ok: true, authUserId };
+      } catch (error) {
+        console.error("[simulations] local OTP bypass auth user failed:", error);
+        return { ok: false, reason: "provider_error" };
+      }
+    },
+    async deleteTransientUser({ authUserId }) {
+      await deleteTransientAuthUser(client, authUserId);
+    },
   };
 }
 
 export function createSupabaseSimulationEmailVerificationStore(
   client: SupabaseClient,
   config: {
-    emailEncryptionSecret: string;
-    emailHashSecret: string;
+    verificationSubjectSalt: string;
   },
 ): SimulationEmailVerificationStore {
   return {
-    async createRequest({ email, consentMarketing, expiresAt }) {
+    async createRequest({ email, expiresAt }) {
       const normalizedEmail = normalizeEmailAddress(email);
+      const verificationSubjectHash = hashSimulationRateLimitSubject(
+        normalizedEmail,
+        config.verificationSubjectSalt,
+      );
       const { data, error } = await client.rpc(
         "create_public_simulation_email_verification_request",
         {
-          p_email_address_encrypted: encryptEmailAddress(
-            normalizedEmail,
-            config.emailEncryptionSecret,
-          ),
-          p_email_normalized_hash: hashEmailAddress(
-            normalizedEmail,
-            config.emailHashSecret,
-          ),
-          p_required_wording_version: REQUIRED_EMAIL_CONSENT_WORDING_VERSION,
-          p_required_locale: CONSENT_LOCALE,
-          p_optional_commercial_decision: consentMarketing
-            ? "granted"
-            : "rejected",
-          p_optional_wording_version:
-            OPTIONAL_MARKETING_CONSENT_WORDING_VERSION,
-          p_optional_locale: CONSENT_LOCALE,
+          p_verification_subject_hash: verificationSubjectHash,
           p_expires_at: expiresAt.toISOString(),
         },
       );
@@ -385,12 +410,15 @@ export function createSupabaseSimulationEmailVerificationStore(
         expiresAt: new Date(rows[0].out_expires_at),
       };
     },
-    async findRequestForVerification({ verificationRequestId }) {
+    async findRequestForVerification({ email, verificationRequestId }) {
+      const normalizedEmail = normalizeEmailAddress(email);
+      const verificationSubjectHash = hashSimulationRateLimitSubject(
+        normalizedEmail,
+        config.verificationSubjectSalt,
+      );
       const { data, error } = await client
         .from("email_verification_requests")
-        .select(
-          "id,email_address_encrypted,email_normalized_hash,expires_at,status",
-        )
+        .select("id,verification_subject_hash,expires_at,status")
         .eq("id", verificationRequestId)
         .maybeSingle();
       if (error) {
@@ -398,12 +426,11 @@ export function createSupabaseSimulationEmailVerificationStore(
       }
       const row = data as {
         id: string;
-        email_address_encrypted: string | null;
-        email_normalized_hash: string;
+        verification_subject_hash: string | null;
         expires_at: string;
         status: string;
       } | null;
-      if (!row || !row.email_address_encrypted) {
+      if (!row || row.verification_subject_hash !== verificationSubjectHash) {
         return null;
       }
       if (row.status !== "code_sent" && row.status !== "verified") {
@@ -411,11 +438,7 @@ export function createSupabaseSimulationEmailVerificationStore(
       }
       return {
         verificationRequestId: row.id,
-        email: decryptEmailAddress(
-          row.email_address_encrypted,
-          config.emailEncryptionSecret,
-        ),
-        emailNormalizedHash: row.email_normalized_hash,
+        verificationSubjectHash: row.verification_subject_hash,
         expiresAt: new Date(row.expires_at),
       };
     },
@@ -434,6 +457,7 @@ export function createSupabaseSimulationEmailVerificationStore(
         {
           p_verification_request_id: input.verificationRequestId,
           p_auth_user_id: input.authUserId,
+          p_verification_subject_hash: input.verificationSubjectHash,
           p_access_token_hash: input.accessTokenHash,
           p_session_expires_at: input.expiresAt.toISOString(),
         },
@@ -557,24 +581,24 @@ export function createSupabaseSimulationSessionAccessReader(
     async findVerifiedSession({ accessTokenHash }) {
       const { data, error } = await client
         .from("simulation_sessions")
-        .select("email_normalized_hash,status,expires_at")
+        .select("verification_subject_hash,status,expires_at")
         .eq("access_token_hash", accessTokenHash)
         .maybeSingle();
       if (error) {
         throw error;
       }
       const row = data as {
-        email_normalized_hash: string;
+        verification_subject_hash: string | null;
         status: string;
         expires_at: string;
       } | null;
-      if (!row || row.status !== "active") {
+      if (!row || row.status !== "active" || !row.verification_subject_hash) {
         return null;
       }
       if (new Date(row.expires_at).getTime() <= Date.now()) {
         return null;
       }
-      return { emailNormalizedHash: row.email_normalized_hash };
+      return { verificationSubjectHash: row.verification_subject_hash };
     },
   };
 }
@@ -653,6 +677,10 @@ function readPositiveInt(name: string, fallback: number): number {
   return parsed;
 }
 
+function normalizeEmailAddress(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export function createSupabaseSimulationJobReader(
   client: SupabaseClient,
 ): SimulationJobReader {
@@ -729,6 +757,31 @@ export function readSimulationEnvironment(
   return "local";
 }
 
+export function readLocalSimulationEmailOtpBypassCode(input: {
+  appEnv: string | undefined;
+  bypassCode: string | undefined;
+  publicAppEnv: string | undefined;
+}): string | null {
+  const bypassCode = input.bypassCode?.trim();
+  if (!bypassCode) {
+    return null;
+  }
+
+  if (!LOCAL_EMAIL_OTP_BYPASS_CODE_REGEX.test(bypassCode)) {
+    throw new Error(
+      "SIMULATION_EMAIL_OTP_BYPASS_CODE must be a six-digit code.",
+    );
+  }
+
+  if (input.appEnv !== "local" || input.publicAppEnv !== "local") {
+    throw new Error(
+      "SIMULATION_EMAIL_OTP_BYPASS_CODE can only be set when APP_ENV and NEXT_PUBLIC_APP_ENV are local.",
+    );
+  }
+
+  return bypassCode;
+}
+
 function createServiceRoleClient(): SupabaseClient {
   return createClient(
     requiredEnv("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"),
@@ -739,6 +792,110 @@ function createServiceRoleClient(): SupabaseClient {
         persistSession: false,
       },
     },
+  );
+}
+
+async function deleteTransientAuthUser(
+  client: SupabaseClient,
+  authUserId: string,
+): Promise<void> {
+  const { error } = await client.auth.admin.deleteUser(authUserId);
+  if (!error) {
+    return;
+  }
+  const status =
+    typeof error === "object" && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  const message = error.message;
+  if (status === 404 || message.toLowerCase().includes("not found")) {
+    return;
+  }
+  throw error;
+}
+
+async function findOrCreateTransientLocalAuthUser(
+  client: SupabaseClient,
+  email: string,
+): Promise<string> {
+  const normalizedEmail = normalizeEmailAddress(email);
+  const { data, error } = await client.auth.admin.createUser({
+    email: normalizedEmail,
+    email_confirm: true,
+    user_metadata: PUBLIC_SIMULATION_AUTH_USER_METADATA,
+  });
+  if (!error && data.user?.id) {
+    return data.user.id;
+  }
+
+  if (error && !isAuthUserAlreadyRegisteredError(error)) {
+    throw error;
+  }
+
+  const existingUser = await findTransientLocalAuthUserByEmail(
+    client,
+    normalizedEmail,
+  );
+  if (existingUser) {
+    return existingUser.id;
+  }
+
+  throw error ?? new Error("Could not create local simulation auth user.");
+}
+
+async function findTransientLocalAuthUserByEmail(
+  client: SupabaseClient,
+  normalizedEmail: string,
+): Promise<{ id: string } | null> {
+  const perPage = 100;
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (error) {
+      throw error;
+    }
+    const users = data.users ?? [];
+    const match = users.find(
+      (user) =>
+        user.email?.trim().toLowerCase() === normalizedEmail &&
+        isPublicSimulationTransientUser(user),
+    );
+    if (match?.id) {
+      return { id: match.id };
+    }
+    if (users.length < perPage) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function isPublicSimulationTransientUser(user: {
+  user_metadata?: unknown;
+}): boolean {
+  const metadata = user.user_metadata;
+  return (
+    typeof metadata === "object" &&
+    metadata !== null &&
+    (metadata as Record<string, unknown>).public_simulation_transient === true &&
+    (metadata as Record<string, unknown>).public_simulation_purpose ===
+      PUBLIC_SIMULATION_AUTH_USER_METADATA.public_simulation_purpose
+  );
+}
+
+function isAuthUserAlreadyRegisteredError(error: unknown): boolean {
+  const status =
+    typeof error === "object" && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    status === 400 ||
+    status === 422 ||
+    message.includes("already") ||
+    message.includes("registered")
   );
 }
 

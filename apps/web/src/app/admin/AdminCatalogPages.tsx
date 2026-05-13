@@ -4600,18 +4600,18 @@ function getRenderCellButtonAriaLabel({
   isMobile?: boolean;
   status: RenderCellDisplayStatus;
 }) {
-  // RU: Эта часть добавляет подсказку для случая, когда картинка взята из исходного фото.
-  // FR: Cette partie ajoute un indice quand l'image vient de la photo source.
-  const sourcePhotoSuffix =
-    cell && isSourcePhotoCompleteCell(cell) ? ", photo source" : "";
+  // RU: Эта часть добавляет подсказку, когда картинка пришла от админа.
+  // FR: Cette partie ajoute un indice quand l'image vient de l'admin.
+  const sourceImageSuffix =
+    cell && isSourceImageBadgeCell(cell) ? ", photo source" : "";
 
   return isMobile
     ? `Cellule mobile ${columnName} pour ${fabricName} : ${getRenderCellStatusLabel(
         status,
-      )}${sourcePhotoSuffix}`
+      )}${sourceImageSuffix}`
     : `${fabricName}, ${columnName} : ${getRenderCellStatusLabel(
         status,
-      )}${sourcePhotoSuffix}`;
+      )}${sourceImageSuffix}`;
 }
 
 function getVisualMatrixColumnLabel(column: AdminCatalogVisualMatrixColumn) {
@@ -4704,13 +4704,13 @@ function RenderCellButtonContent({
   const hasPreview = Boolean(previewUrl);
   const latestJobStatus = cell.latest_job?.status ?? null;
   const displayBlockers = getRenderCellDisplayBlockers(cell.blockers);
-  // RU: Эта отметка говорит, что текущая картинка взята из исходного фото.
-  // FR: Ce repere dit que l'image actuelle vient de la photo source.
-  const isSourcePhotoCurrent = isSourcePhotoCompleteCell(cell);
+  // RU: Эта отметка говорит, что текущая картинка пришла от админа, а не из AI.
+  // FR: Ce repere dit que l'image actuelle vient de l'admin, pas de l'IA.
+  const showsSourceImageBadge = isSourceImageBadgeCell(cell);
 
   return (
     <>
-      {isSourcePhotoCurrent ? (
+      {showsSourceImageBadge ? (
         <span aria-hidden="true" className="admin-render-cell-source-badge">
           SI
         </span>
@@ -4736,6 +4736,20 @@ function RenderCellButtonContent({
       </span>
     </>
   );
+}
+
+// RU: Эта проверка решает, нужен ли знак SI в углу ячейки с картинкой.
+// FR: Cette verification choisit si le signe SI apparait dans le coin de la case image.
+function isSourceImageBadgeCell(cell: AdminCatalogRenderCell) {
+  if (!cell.has_private_render) {
+    return false;
+  }
+
+  if (cell.source_type === "manual_upload") {
+    return true;
+  }
+
+  return isSourcePhotoCompleteCell(cell);
 }
 
 function isSourcePhotoCompleteCell(cell: AdminCatalogRenderCell) {

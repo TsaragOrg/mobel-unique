@@ -7,6 +7,10 @@ RU: Здесь можно выбрать ткань и вид, открыть с
 FR: Ce fichier sert a la page d'un canape sur le site public.
 FR: A l'ecran, le visiteur voit le canape, le prix, le tissu, la vue, les tailles, les etiquettes et les boutons pour la simulation ou la commande.
 FR: Ici, on peut choisir le tissu et la vue, ouvrir la simulation, aller vers la commande et verifier les donnees principales du canape.
+RU: Пока данные дивана загружаются, посетитель видит пустую область с местом под картинку, выборы и кнопки.
+FR: Pendant le chargement, le visiteur voit une zone vide avec la place pour l'image, les choix et les boutons.
+RU: Обычная картинка на странице легче, а большая картинка открывается только в отдельном окне.
+FR: L'image normale sur la page est plus legere, et la grande image s'ouvre seulement dans une fenetre separee.
 RU: Картинку дивана можно открыть большим окном, чтобы рассмотреть ее ближе.
 FR: L'image du canape peut s'ouvrir en grand pour mieux la regarder.
 */
@@ -170,10 +174,16 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       ) ?? null,
     [detail?.renders, selectedFabricId, selectedVisualPositionId],
   );
-  // RU: Этот адрес показывает выбранную картинку дивана в исходном размере.
-  // FR: Cette adresse montre l'image choisie du canape en taille originale.
+  const selectedRenderPreviewUrl =
+    selectedRender?.render_medium_url ??
+    selectedRender?.render_url ??
+    selectedRender?.render_original_url ??
+    null;
   const selectedRenderOriginalUrl =
-    selectedRender?.render_original_url ?? selectedRender?.render_url ?? null;
+    selectedRender?.render_original_url ??
+    selectedRender?.render_url ??
+    selectedRender?.render_medium_url ??
+    null;
   const canLaunchSimulation = Boolean(
     detail &&
       selectedFabric &&
@@ -290,12 +300,10 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         Retour au catalogue
       </a>
 
-      {/* RU: Эти части показывают загрузку, ошибку или недоступный диван. */}
-      {/* FR: Ces parties montrent le chargement, l'erreur ou le canape indisponible. */}
+      {/* RU: Эти части показывают пустую область загрузки, ошибку или недоступный диван. */}
+      {/* FR: Ces parties montrent la zone vide de chargement, l'erreur ou le canape indisponible. */}
       {status === "loading" || status === "idle" ? (
-        <section className="public-status-panel" aria-live="polite">
-          Chargement du canapé...
-        </section>
+        <SofaDetailLoadingSkeleton />
       ) : null}
 
       {status === "error" ? (
@@ -323,7 +331,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         <article className="sofa-detail">
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
-              {imageFailed || !selectedRenderOriginalUrl ? (
+              {imageFailed || !selectedRenderPreviewUrl ? (
                 <span>Image indisponible</span>
               ) : (
                 <button
@@ -334,8 +342,9 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 >
                   <img
                     alt={selectedImageAlt}
+                    decoding="async"
                     onError={handleSelectedImageError}
-                    src={selectedRenderOriginalUrl}
+                    src={selectedRenderPreviewUrl}
                   />
                   <span className="sofa-detail-image-viewer-icon">
                     <PublicExpandIcon />
@@ -377,7 +386,12 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                     onClick={() => chooseFabric(fabric.id)}
                     type="button"
                   >
-                    <img alt="" src={fabric.swatch_url} />
+                    <img
+                      alt=""
+                      decoding="async"
+                      loading="lazy"
+                      src={fabric.swatch_small_url}
+                    />
                     <span>{fabric.public_name}</span>
                   </button>
                 ))}
@@ -413,7 +427,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   href={detail.sofa.shopify_order_url ?? undefined}
                   rel="noreferrer"
                 >
-                  Commander sur Shopify
+                  Commander
                 </a>
               ) : null}
             </div>
@@ -494,6 +508,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 <div className="sofa-image-viewer-frame">
                   <img
                     alt={selectedImageAlt}
+                    decoding="async"
                     onError={handleSelectedImageError}
                     src={selectedRenderOriginalUrl}
                   />
@@ -504,6 +519,45 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         </article>
       ) : null}
     </PublicShell>
+  );
+}
+
+// RU: Эта область держит место под страницу дивана, пока данные еще загружаются.
+// FR: Cette zone garde la place de la fiche canape pendant que les donnees chargent.
+function SofaDetailLoadingSkeleton() {
+  return (
+    <article
+      aria-busy="true"
+      aria-label="Chargement du canape"
+      aria-live="polite"
+      className="sofa-detail sofa-detail-skeleton"
+    >
+      <section className="sofa-detail-media" aria-hidden="true">
+        <div className="sofa-detail-image catalog-skeleton-block" />
+      </section>
+      <section className="sofa-detail-copy" aria-hidden="true">
+        <div className="sofa-detail-skeleton-heading">
+          <span className="catalog-skeleton-line sofa-detail-skeleton-eyebrow" />
+          <span className="catalog-skeleton-line sofa-detail-skeleton-title" />
+          <span className="catalog-skeleton-line sofa-detail-skeleton-description" />
+        </div>
+        <div className="sofa-detail-skeleton-selector">
+          <span className="catalog-skeleton-line sofa-detail-skeleton-label" />
+          <span className="sofa-detail-skeleton-choice-row" />
+          <span className="catalog-skeleton-line sofa-detail-skeleton-label" />
+          <span className="sofa-detail-skeleton-view-row" />
+        </div>
+        <div className="sofa-detail-skeleton-actions">
+          <span />
+          <span />
+        </div>
+        <div className="sofa-detail-skeleton-info">
+          <span />
+          <span />
+        </div>
+        <span className="catalog-skeleton-line sofa-detail-skeleton-note" />
+      </section>
+    </article>
   );
 }
 

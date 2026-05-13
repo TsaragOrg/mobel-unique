@@ -32,6 +32,7 @@ This spec also incorporates the accepted change requests that affect API behavio
 - `CR-SPEC-0009 Resolve Open Questions`.
 - `CR-SPEC-0007-SPEC-0009-SPEC-0010-SPEC-0012-SPEC-0015 In-Home Checkpoint
   Pump And Realtime Progress`.
+- `CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention`.
 
 ## Goal
 
@@ -52,7 +53,7 @@ This spec includes:
 - canonical logical API route contracts for public visitor flows;
 - canonical logical API route contracts for administrator catalog and render workflows;
 - upload initiation and completion contracts for admin and visitor image uploads;
-- email verification and consent API contracts needed before simulation generation;
+- email verification API contracts needed before simulation generation;
 - fabric render job creation, retry, cancellation, candidate review, and current-render selection contracts;
 - in-home simulation job creation, polling, dimension submission, regeneration, and signed result URL contracts;
 - ZIP export request, status, and download contracts;

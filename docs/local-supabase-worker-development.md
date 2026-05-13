@@ -39,6 +39,25 @@ Copy the local anon key and service-role key from `pnpm supabase:status` into
 the local `.env` files. Service-role keys belong only in local server-side env
 files such as `supabase/.env.local`, `apps/api/.env`, and `workers/image/.env`.
 
+### Local Simulation OTP Bypass
+
+The public simulation email gate normally sends a Supabase Auth OTP. Local
+Supabase delivers that email to Mailpit at `http://127.0.0.1:54324`.
+
+For faster browser testing, `apps/web/.env` may set a fixed local-only bypass
+code:
+
+```bash
+APP_ENV=local
+NEXT_PUBLIC_APP_ENV=local
+SIMULATION_EMAIL_OTP_BYPASS_CODE=000000
+```
+
+When this code is configured, the email gate still creates the normal
+verification request, simulation session, cookie, and rate-limit subject. Only
+the external OTP send/verify step is bypassed. The server rejects this variable
+unless both app environment values are `local`; never set it in DEV or PROD.
+
 ## Local Commands
 
 Start local Supabase:

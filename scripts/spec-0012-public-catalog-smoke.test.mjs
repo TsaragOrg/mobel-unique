@@ -35,7 +35,11 @@ function runSmoke(env, nodeArgs = []) {
   });
 }
 
-function createFetchMock({ emptyCatalog = false } = {}) {
+function createFetchMock({
+  emptyCatalog = false,
+  missingCatalogFabrics = false,
+  missingSmallSwatch = false,
+} = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "mobel-spec-0012-fetch-mock-"));
   const mockPath = join(cwd, "fetch-mock.mjs");
 
@@ -43,6 +47,8 @@ function createFetchMock({ emptyCatalog = false } = {}) {
     mockPath,
     `
 const emptyCatalog = ${JSON.stringify(emptyCatalog)};
+const missingCatalogFabrics = ${JSON.stringify(missingCatalogFabrics)};
+const missingSmallSwatch = ${JSON.stringify(missingSmallSwatch)};
 
 globalThis.fetch = async (url) => {
   const requestUrl = String(url);
@@ -83,6 +89,24 @@ globalThis.fetch = async (url) => {
             default_render_medium_width_px: 1280,
             default_render_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front-medium.jpg",
             default_visual_position_id: "00000000-0000-4000-8000-000000000601",
+            ...(missingCatalogFabrics ? {} : {
+              fabrics: [
+                {
+                  id: "00000000-0000-4000-8000-000000000501",
+                  is_premium: false,
+                  public_name: "BouclГ© ivoire",
+                  public_order: 1,
+                  render_medium_content_type: "image/jpeg",
+                  render_medium_height_px: 960,
+                  render_medium_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/sofas/rivoli/front-medium.jpg",
+                  render_medium_width_px: 1280,
+                  swatch_small_content_type: "image/png",
+                  swatch_small_height_px: 96,
+                  swatch_small_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/variants/00000000-0000-4000-8000-000000000701/swatch_small/00000000-0000-4000-8000-000000000702.png",
+                  swatch_small_width_px: 96
+                }
+              ]
+            }),
             dimensions: {
               depth_cm: 96,
               footprint_measurements: null,
@@ -122,6 +146,12 @@ globalThis.fetch = async (url) => {
             is_premium: false,
             public_name: "Bouclé ivoire",
             public_order: 1,
+            ...(missingSmallSwatch ? {} : {
+              swatch_small_content_type: "image/png",
+              swatch_small_height_px: 96,
+              swatch_small_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/variants/00000000-0000-4000-8000-000000000701/swatch_small/00000000-0000-4000-8000-000000000702.png",
+              swatch_small_width_px: 96
+            }),
             swatch_url: "http://127.0.0.1:54321/storage/v1/object/public/catalog-public-assets/catalog/fabrics/boucle/swatch.png"
           }
         ],
@@ -226,6 +256,31 @@ describe("SPEC-0012 public catalog smoke script", () => {
     expect(result.stdout).toContain("PASS SPEC-0012 public catalog smoke");
     expect(result.stdout).toContain("medium catalog render");
     expect(result.stdout).toContain("original sofa detail render");
+    expect(result.stdout).toContain("swatch_small fabric swatch");
     expect(result.stdout).toContain("canape-rivoli");
+  });
+
+  it("fails when catalog items do not expose card fabric preview data", async () => {
+    const result = await runSmoke(
+      {
+        SPEC_0012_PUBLIC_CATALOG_SMOKE_WEB_URL: "http://127.0.0.1:3000",
+      },
+      ["--import", createFetchMock({ missingCatalogFabrics: true })],
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("catalog item is missing fabrics");
+  });
+
+  it("fails when sofa detail fabrics do not expose swatch small delivery", async () => {
+    const result = await runSmoke(
+      {
+        SPEC_0012_PUBLIC_CATALOG_SMOKE_WEB_URL: "http://127.0.0.1:3000",
+      },
+      ["--import", createFetchMock({ missingSmallSwatch: true })],
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("swatch_small_url");
   });
 });

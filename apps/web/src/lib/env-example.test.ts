@@ -33,11 +33,13 @@ describe("web environment example", () => {
     expect(envExample).toContain("SUPABASE_SERVICE_ROLE_KEY=");
     expect(envExample).toContain("SUPABASE_JWT_SECRET=");
     expect(envExample).toContain("SIMULATION_ACCESS_TOKEN_SECRET=");
-    expect(envExample).toContain("SIMULATION_EMAIL_ENCRYPTION_SECRET=");
-    expect(envExample).toContain("SIMULATION_EMAIL_HASH_SECRET=");
+    expect(envExample).not.toContain("SIMULATION_EMAIL_ENCRYPTION_SECRET=");
+    expect(envExample).not.toContain("SIMULATION_EMAIL_HASH_SECRET=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_SUBJECT_SALT=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_IP_PER_DAY=");
     expect(envExample).toContain("SIMULATION_RATE_LIMIT_EMAIL_PER_DAY=");
+    expect(envExample).toContain("SIMULATION_EMAIL_OTP_BYPASS_CODE=000000");
+    expect(envExample).not.toContain("NEXT_PUBLIC_SIMULATION_EMAIL_OTP_BYPASS");
     expect(envExample).not.toContain("SIMULATION_QUEUE_NAME=");
     expect(envExample).not.toContain("SIMULATION_WORKER_PUMP_TIMEOUT_MS=");
     expect(envExample).toContain("IN_HOME_SIMULATION_WORKER_FUNCTION_URL=");

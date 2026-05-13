@@ -2,7 +2,7 @@
 //
 // The public upload route handler enforces two daily caps before
 // creating a job: 3 simulations per IP and 2 simulations per
-// verified email. Counters live in `simulation_rate_limits`
+// verified email subject. Counters live in `simulation_rate_limits`
 // keyed by (subject_kind, subject_value_hash, window_start). The
 // atomic increment lives in the SQL RPC
 // `increment_simulation_rate_limit` so the SELECT-then-UPDATE race
@@ -12,7 +12,7 @@ import { createHmac } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type RateLimitSubjectKind = "ip" | "email";
+export type RateLimitSubjectKind = "ip" | "verification_subject";
 
 export interface SimulationRateLimitStore {
   increment(input: {
@@ -25,7 +25,7 @@ export interface SimulationRateLimitStore {
 
 export interface CheckSimulationRateLimitsInput {
   ip: string;
-  email: string;
+  verificationSubject: string;
   ipCap: number;
   emailCap: number;
   salt: string;
@@ -75,13 +75,20 @@ export async function checkSimulationRateLimits(
   }
 
   const emailResult = await input.store.increment({
-    subjectKind: "email",
-    subjectValueHash: hashSimulationRateLimitSubject(input.email, input.salt),
+    subjectKind: "verification_subject",
+    subjectValueHash: hashSimulationRateLimitSubject(
+      input.verificationSubject,
+      input.salt
+    ),
     windowStart,
     cap: input.emailCap
   });
   if (!emailResult.allowed) {
-    return { allowed: false, tripped: "email", count: emailResult.count };
+    return {
+      allowed: false,
+      tripped: "verification_subject",
+      count: emailResult.count
+    };
   }
 
   return { allowed: true };

@@ -78,14 +78,14 @@ describe("currentSimulationRateLimitWindowStart", () => {
 });
 
 describe("checkSimulationRateLimits", () => {
-  it("returns allowed when both IP and email increments are within cap", async () => {
+  it("returns allowed when both IP and verified subject increments are within cap", async () => {
     const { store, calls } = createStubStore([
       { count: 1, allowed: true },
       { count: 1, allowed: true }
     ]);
     const result = await checkSimulationRateLimits({
       ip: "203.0.113.7",
-      email: "visitor@example.com",
+      verificationSubject: "verification-subject-1",
       ipCap: 3,
       emailCap: 2,
       salt: SALT,
@@ -100,20 +100,20 @@ describe("checkSimulationRateLimits", () => {
       windowStart: new Date("2026-05-02T00:00:00Z")
     });
     expect(calls[1]).toMatchObject({
-      subjectKind: "email",
+      subjectKind: "verification_subject",
       cap: 2,
       windowStart: new Date("2026-05-02T00:00:00Z")
     });
   });
 
-  it("hashes the IP and email before sending them to the store", async () => {
+  it("hashes the IP and verified subject before sending them to the store", async () => {
     const { store, calls } = createStubStore([
       { count: 1, allowed: true },
       { count: 1, allowed: true }
     ]);
     await checkSimulationRateLimits({
       ip: "203.0.113.7",
-      email: "visitor@example.com",
+      verificationSubject: "verification-subject-1",
       ipCap: 3,
       emailCap: 2,
       salt: SALT,
@@ -124,7 +124,7 @@ describe("checkSimulationRateLimits", () => {
       hashSimulationRateLimitSubject("203.0.113.7", SALT)
     );
     expect(calls[1].subjectValueHash).toBe(
-      hashSimulationRateLimitSubject("visitor@example.com", SALT)
+      hashSimulationRateLimitSubject("verification-subject-1", SALT)
     );
     expect(calls[0].subjectValueHash).not.toBe("203.0.113.7");
   });
@@ -133,7 +133,7 @@ describe("checkSimulationRateLimits", () => {
     const stub = createStubStore([{ count: 4, allowed: false }]);
     const result = await checkSimulationRateLimits({
       ip: "203.0.113.7",
-      email: "visitor@example.com",
+      verificationSubject: "verification-subject-1",
       ipCap: 3,
       emailCap: 2,
       salt: SALT,
@@ -148,14 +148,14 @@ describe("checkSimulationRateLimits", () => {
     expect(stub.calls).toHaveLength(1);
   });
 
-  it("reports email when only the email cap is exceeded", async () => {
+  it("reports verification_subject when only the per-email cap is exceeded", async () => {
     const stub = createStubStore([
       { count: 2, allowed: true },
       { count: 3, allowed: false }
     ]);
     const result = await checkSimulationRateLimits({
       ip: "203.0.113.7",
-      email: "visitor@example.com",
+      verificationSubject: "verification-subject-1",
       ipCap: 3,
       emailCap: 2,
       salt: SALT,
@@ -164,7 +164,7 @@ describe("checkSimulationRateLimits", () => {
     });
     expect(result).toEqual({
       allowed: false,
-      tripped: "email",
+      tripped: "verification_subject",
       count: 3
     });
     expect(stub.calls).toHaveLength(2);
@@ -177,7 +177,7 @@ describe("checkSimulationRateLimits", () => {
     ]);
     await checkSimulationRateLimits({
       ip: "203.0.113.7",
-      email: "visitor@example.com",
+      verificationSubject: "verification-subject-1",
       ipCap: 3,
       emailCap: 2,
       salt: SALT,
@@ -199,7 +199,7 @@ describe("checkSimulationRateLimits", () => {
     await expect(
       checkSimulationRateLimits({
         ip: "203.0.113.7",
-        email: "visitor@example.com",
+        verificationSubject: "verification-subject-1",
         ipCap: 3,
         emailCap: 2,
         salt: SALT,

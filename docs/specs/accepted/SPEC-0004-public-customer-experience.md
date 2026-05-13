@@ -27,6 +27,11 @@ This spec must preserve the `SPEC-0003` business decisions:
 
 This spec refines the original `SPEC-0003` result-download decision through `CR-SPEC-0003-result-email-delivery` and supersedes the MVP result-email behavior through `CR-SPEC-0003-SPEC-0004-email-verification-before-simulation`: the MVP should not provide a direct browser download button for the private generated simulation image. Instead, visitors must verify an email address before simulation generation, and the generated result is displayed directly in the browser while it is retained.
 
+`CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention` further narrows that
+email-verification behavior: the public simulation email address must not be
+retained as a commercial lead or contact record. It is used only to send and
+verify the code and to enforce the short-lived simulation cap.
+
 This spec feeds later specs for in-home simulation flow, privacy and retention, data model and storage, API contracts, and environment configuration.
 
 ## Goal

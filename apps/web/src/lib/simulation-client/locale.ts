@@ -18,13 +18,10 @@ export const SIMULATION_LOCALE = {
       "Saisissez votre adresse e-mail pour recevoir un code de vérification à usage unique. Ce code ouvre l'accès à la simulation.",
     emailFieldLabel: "Adresse e-mail",
     emailFieldPlaceholder: "vous@exemple.com",
-    // TODO: FR native review — consent for simulation email delivery. Confirm legal wording.
-    consentEmailUseLabel:
-      "J'accepte que MÖBEL UNIQUE utilise mon adresse e-mail pour démarrer ma simulation et m'envoyer le code de vérification. " +
-      "Je comprends que ma photo de pièce et les images générées restent privées et sont supprimées automatiquement sous 24 heures.",
-    // TODO: FR native review — optional marketing consent. Confirm wording and legal status.
-    consentMarketingLabel:
-      "J'accepte de recevoir occasionnellement des actualités MÖBEL UNIQUE (facultatif).",
+    // TODO: FR native review — email verification and retention notice.
+    emailUseNotice:
+      "Votre adresse e-mail sert uniquement à envoyer ce code et à limiter les abus de simulation sur 24 heures. " +
+      "Elle n'est pas conservée comme contact commercial.",
     submitEmailButton: "Recevoir le code",
     instructionCode:
       "Saisissez le code à 6 chiffres que vous venez de recevoir par e-mail.",
@@ -34,9 +31,6 @@ export const SIMULATION_LOCALE = {
     backToEmailLink: "Modifier l'adresse e-mail",
     // TODO: FR native review — error wording shown when the email payload is invalid.
     errorInvalidEmail: "Cette adresse e-mail ne semble pas valide.",
-    // TODO: FR native review — error wording shown when consent is missing.
-    errorConsentRequired:
-      "Vous devez accepter l'utilisation de votre e-mail pour continuer.",
     // TODO: FR native review — error wording for an invalid or expired code.
     errorInvalidCode:
       "Ce code n'est pas valide ou a expiré. Demandez un nouveau code.",
@@ -51,30 +45,29 @@ export const SIMULATION_LOCALE = {
     eyebrow: "Étape 1 sur 3 — Photo de la pièce",
     title: "Photo de votre pièce",
     instructionBackWall:
-      "Prenez une photo nette de l'emplacement du canapé en gardant la même direction que l'image du canapé sélectionné.",
+      "Cadrez l'emplacement du canapé avec assez de mur et de sol visibles.",
     instructionCorner:
       "Placez-vous face au coin où viendra le canapé d'angle. Cadrez les deux murs qui se rejoignent ainsi que le sol jusqu'à vos pieds.",
     guidanceAriaLabel: "Canapé sélectionné et photo de la pièce",
     selectedSofaLabel: "Canapé sélectionné",
+    selectedSofaViewBadge: "Angle à reproduire",
     selectedSofaUnavailableTitle: "Aperçu du canapé indisponible",
     selectedSofaUnavailableInstruction:
       "La sélection reste bien prise en compte pour la simulation.",
     roomPhotoTargetLabel: "Photo à prendre",
     roomPhotoTargetActionLabel: "Ajouter une photo de votre pièce",
     replaceRoomPhotoActionLabel: "Remplacer la photo de votre pièce",
-    roomPhotoTargetTitle: "Ajouter une photo de votre pièce",
+    roomPhotoTargetTitle: "Photo de votre intérieur",
     roomPhotoTargetInstructionDesktop:
-      "Cliquez dans ce cadre pour choisir une image.",
+      "Cliquez ici pour uploader ou prendre une photo.",
     roomPhotoTargetInstructionTouch:
-      "Touchez ce cadre pour prendre la photo.",
-    orientationGuidancePrefix:
-      "Gardez le même angle que la vue sélectionnée :",
-    orientationGuidanceSuffix:
-      "Si cette vue est de côté, prenez la pièce depuis ce même côté.",
+      "Touchez ici pour uploader ou prendre une photo.",
+    angleGuideMessage:
+      "Prenez la photo dans le même angle que le canapé.",
+    angleGuideImageAlt:
+      "Animation montrant le canapé placé dans la pièce avec le même angle de vue.",
     disclaimerCornerStrong:
       "Le canapé sélectionné est un modèle d'angle. La photo doit montrer un coin de la pièce — deux murs qui se rencontrent — sinon la simulation ne pourra pas se positionner correctement.",
-    disclaimerBackWallShort:
-      "Cadrez le mur et le sol où viendra le canapé. Si le canapé sélectionné est vu de côté, prenez aussi votre pièce depuis ce côté.",
     previewAlt: "Aperçu de la photo de votre pièce",
     previewUnavailableTitle: "Aperçu indisponible pour ce fichier",
     replaceLink: "Remplacer la photo",

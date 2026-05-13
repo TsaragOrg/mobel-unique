@@ -1,15 +1,23 @@
-#!/usr/bin/env node
-
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { Image } from "imagescript";
 
-export const BACKFILL_VARIANT_KINDS = ["small", "medium"];
-export const BACKFILL_ASSET_KINDS = [
+export const BACKFILL_RENDER_VARIANT_KINDS = ["small", "medium"];
+export const BACKFILL_SWATCH_VARIANT_KINDS = ["swatch_small"];
+export const BACKFILL_VARIANT_KINDS = [
+  ...BACKFILL_RENDER_VARIANT_KINDS,
+  ...BACKFILL_SWATCH_VARIANT_KINDS,
+];
+export const BACKFILL_RENDER_ASSET_KINDS = [
   "sofa_source_photo",
   "manual_render",
   "fabric_render_candidate",
   "published_sofa_render",
+];
+export const BACKFILL_SWATCH_ASSET_KINDS = ["fabric_swatch_public"];
+export const BACKFILL_ASSET_KINDS = [
+  ...BACKFILL_RENDER_ASSET_KINDS,
+  ...BACKFILL_SWATCH_ASSET_KINDS,
 ];
 export const BACKFILL_VARIANT_PRESETS = {
   medium: {
@@ -18,9 +26,13 @@ export const BACKFILL_VARIANT_PRESETS = {
   small: {
     maxLongestEdgePx: 320,
   },
+  swatch_small: {
+    maxLongestEdgePx: 96,
+  },
 };
 export const BACKFILL_JPEG_QUALITY = 84;
 export const BACKFILL_ENVIRONMENTS = ["local", "dev", "prod"];
+export const BACKFILL_SCOPES = ["all", "renders", "swatches"];
 export const DEFAULT_BACKFILL_PAGE_SIZE = 100;
 
 export function parseBackfillArgs(argv) {
@@ -32,6 +44,7 @@ export function parseBackfillArgs(argv) {
     help: false,
     limit: null,
     pageSize: DEFAULT_BACKFILL_PAGE_SIZE,
+    scope: "all",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -63,6 +76,12 @@ export function parseBackfillArgs(argv) {
         throw new Error("--page-size must be a positive integer.");
       }
       options.pageSize = value;
+    } else if (arg === "--scope") {
+      const value = argv[++index];
+      if (!BACKFILL_SCOPES.includes(value)) {
+        throw new Error("--scope must be all, renders, or swatches.");
+      }
+      options.scope = value;
     } else if (arg === "--asset-id") {
       const value = argv[++index];
       if (!value || !/^[0-9a-f-]{36}$/i.test(value)) {
@@ -86,6 +105,7 @@ Options:
   --confirm-prod        Required for non-dry-run writes when --environment prod.
   --limit <count>       Maximum number of original assets to inspect. Default: all.
   --page-size <count>   REST page size for candidate asset scans. Default: 100.
+  --scope <scope>       Asset scope: all, renders, or swatches. Default: all.
   --asset-id <uuid>     Backfill one original asset.
   --help                Show this help.
 
@@ -195,6 +215,7 @@ export async function backfillCatalogImageVariants(input) {
   };
 
   const pageSize = input.pageSize ?? DEFAULT_BACKFILL_PAGE_SIZE;
+  const assetKinds = assetKindsForScope(input.scope ?? "all");
   const maxAssets = input.assetId ? 1 : (input.limit ?? null);
   let offset = 0;
 
@@ -203,6 +224,7 @@ export async function backfillCatalogImageVariants(input) {
       maxAssets === null ? pageSize : maxAssets - result.assetsScanned;
     const originalAssets = await listCandidateAssets(client, {
       assetId: input.assetId ?? null,
+      assetKinds,
       limit: Math.min(pageSize, remaining),
       offset,
     });
@@ -214,11 +236,13 @@ export async function backfillCatalogImageVariants(input) {
     for (const originalAsset of originalAssets) {
       result.assetsScanned += 1;
 
+      const requestedVariantKinds = variantKindsForAsset(originalAsset);
       const existingKinds = await listExistingVariantKinds(
         client,
         originalAsset.id,
+        requestedVariantKinds,
       );
-      const missingKinds = BACKFILL_VARIANT_KINDS.filter(
+      const missingKinds = requestedVariantKinds.filter(
         (variantKind) => !existingKinds.has(variantKind),
       );
 
@@ -239,6 +263,7 @@ export async function backfillCatalogImageVariants(input) {
       const generatedVariants = await generateVariants({
         bytes: originalBytes,
         contentType: originalAsset.content_type,
+        variantKinds: missingKinds,
       });
 
       for (const variantKind of missingKinds) {
@@ -378,11 +403,12 @@ function createSupabaseBackfillClient({
   };
 }
 
-function buildCandidateAssetsPath({ assetId, limit, offset = 0 }) {
+function buildCandidateAssetsPath({ assetId, assetKinds, limit, offset = 0 }) {
+  const scopedAssetKinds = assetKinds ?? BACKFILL_ASSET_KINDS;
   const query = [
     "select=*",
     "lifecycle_state=eq.active",
-    `asset_kind=in.(${BACKFILL_ASSET_KINDS.join(",")})`,
+    `asset_kind=in.(${scopedAssetKinds.join(",")})`,
     "content_type=in.(image/png,image/jpeg,image/webp)",
     "order=id.asc",
     `limit=${limit}`,
@@ -399,17 +425,41 @@ function buildCandidateAssetsPath({ assetId, limit, offset = 0 }) {
   return `/rest/v1/storage_assets?${query.join("&")}`;
 }
 
+export function assetKindsForScope(scope) {
+  if (scope === "renders") {
+    return BACKFILL_RENDER_ASSET_KINDS;
+  }
+
+  if (scope === "swatches") {
+    return BACKFILL_SWATCH_ASSET_KINDS;
+  }
+
+  if (scope === "all") {
+    return BACKFILL_ASSET_KINDS;
+  }
+
+  throw new Error("--scope must be all, renders, or swatches.");
+}
+
 async function listCandidateAssets(client, options) {
   return client.listCandidateAssets(options);
 }
 
-async function listExistingVariantKinds(client, originalAssetId) {
+function variantKindsForAsset(asset) {
+  if (BACKFILL_SWATCH_ASSET_KINDS.includes(asset.asset_kind)) {
+    return BACKFILL_SWATCH_VARIANT_KINDS;
+  }
+
+  return BACKFILL_RENDER_VARIANT_KINDS;
+}
+
+async function listExistingVariantKinds(client, originalAssetId, variantKinds) {
   const links = await client.listVariantLinks(originalAssetId);
 
   return new Set(
     links
       .map((link) => link.variant_kind)
-      .filter((variantKind) => BACKFILL_VARIANT_KINDS.includes(variantKind)),
+      .filter((variantKind) => variantKinds.includes(variantKind)),
   );
 }
 
@@ -489,14 +539,17 @@ export function buildVariantObjectPath({
   ].join("/");
 }
 
-export async function generateImageVariants({ bytes }) {
+export async function generateImageVariants({
+  bytes,
+  variantKinds = BACKFILL_RENDER_VARIANT_KINDS,
+}) {
   const sourceImage = await Image.decode(bytes);
   const outputContentType = imageContainsAlpha(sourceImage)
     ? "image/png"
     : "image/jpeg";
   const variants = {};
 
-  for (const variantKind of BACKFILL_VARIANT_KINDS) {
+  for (const variantKind of variantKinds) {
     const image = await Image.decode(bytes);
     const dimensions = calculateVariantDimensions({
       heightPx: image.height,

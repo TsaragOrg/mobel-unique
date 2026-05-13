@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createLocalSimulationEmailOtpBypassProvider,
   createSupabaseSimulationDispatchTrigger,
   createSupabaseSimulationEmailOtpProvider,
   createSupabaseSimulationEmailVerificationStore,
@@ -9,6 +10,7 @@ import {
   createSupabaseSimulationRegenerationStore,
   createSupabaseSimulationRealtimeTokenIssuer,
   createSupabaseSimulationSessionAccessReader,
+  readLocalSimulationEmailOtpBypassCode,
 } from "./simulation-public-server";
 
 afterEach(() => {
@@ -62,7 +64,7 @@ describe("public simulation Supabase stores", () => {
     });
   });
 
-  it("creates email verification requests through the PLAN-0074 RPC without plaintext email", async () => {
+  it("creates email verification requests without storing encrypted email", async () => {
     const client = {
       rpc: vi.fn().mockResolvedValue({
         data: [
@@ -77,16 +79,13 @@ describe("public simulation Supabase stores", () => {
     const store = createSupabaseSimulationEmailVerificationStore(
       client as never,
       {
-        emailEncryptionSecret: "email-encryption-secret",
-        emailHashSecret: "email-hash-secret",
+        verificationSubjectSalt: "verification-subject-salt",
       },
     );
 
     await expect(
       store.createRequest({
         email: "Visitor@Example.com",
-        consentEmailUse: true,
-        consentMarketing: false,
         expiresAt: new Date("2026-05-08T01:00:00.000Z"),
       }),
     ).resolves.toEqual({
@@ -97,13 +96,12 @@ describe("public simulation Supabase stores", () => {
     expect(client.rpc).toHaveBeenCalledWith(
       "create_public_simulation_email_verification_request",
       expect.objectContaining({
-        p_email_address_encrypted: expect.not.stringContaining(
-          "Visitor@Example.com",
-        ),
-        p_email_normalized_hash: expect.any(String),
-        p_optional_commercial_decision: "rejected",
+        p_verification_subject_hash: expect.any(String),
         p_expires_at: "2026-05-08T01:00:00.000Z",
       }),
+    );
+    expect(JSON.stringify(client.rpc.mock.calls)).not.toContain(
+      "Visitor@Example.com",
     );
   });
 
@@ -121,6 +119,9 @@ describe("public simulation Supabase stores", () => {
           },
           error: null,
         }),
+        admin: {
+          deleteUser: vi.fn().mockResolvedValue({ error: null }),
+        },
       },
     };
     const provider = createSupabaseSimulationEmailOtpProvider(client as never);
@@ -150,6 +151,155 @@ describe("public simulation Supabase stores", () => {
       token: "123456",
       type: "email",
     });
+    await expect(
+      provider.deleteTransientUser?.({
+        authUserId: "00000000-0000-4000-8000-000000000202",
+      }),
+    ).resolves.toBeUndefined();
+    expect(client.auth.admin.deleteUser).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000202",
+    );
+  });
+
+  it("accepts a configured local OTP bypass code without sending an email", async () => {
+    const client = {
+      auth: {
+        signInWithOtp: vi.fn(),
+        verifyOtp: vi.fn(),
+        admin: {
+          createUser: vi.fn().mockResolvedValue({
+            data: {
+              user: { id: "00000000-0000-4000-8000-000000000303" },
+            },
+            error: null,
+          }),
+          deleteUser: vi.fn().mockResolvedValue({ error: null }),
+          listUsers: vi.fn(),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.sendOtp({ email: "Visitor@Example.com" }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      provider.verifyOtp({ email: "Visitor@Example.com", code: "000000" }),
+    ).resolves.toEqual({
+      ok: true,
+      authUserId: "00000000-0000-4000-8000-000000000303",
+    });
+
+    expect(client.auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(client.auth.verifyOtp).not.toHaveBeenCalled();
+    expect(client.auth.admin.createUser).toHaveBeenCalledWith({
+      email: "visitor@example.com",
+      email_confirm: true,
+      user_metadata: {
+        public_simulation_transient: true,
+        public_simulation_purpose: "in_home_simulation_email_otp",
+      },
+    });
+  });
+
+  it("rejects wrong local OTP bypass codes without creating Auth users", async () => {
+    const client = {
+      auth: {
+        admin: {
+          createUser: vi.fn(),
+          deleteUser: vi.fn(),
+          listUsers: vi.fn(),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.verifyOtp({ email: "visitor@example.com", code: "123456" }),
+    ).resolves.toEqual({ ok: false, reason: "invalid" });
+
+    expect(client.auth.admin.createUser).not.toHaveBeenCalled();
+  });
+
+  it("reuses only transient local bypass Auth users when the email already exists", async () => {
+    const alreadyRegisteredError = Object.assign(
+      new Error("User already registered"),
+      { status: 422 },
+    );
+    const client = {
+      auth: {
+        admin: {
+          createUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: alreadyRegisteredError,
+          }),
+          deleteUser: vi.fn(),
+          listUsers: vi.fn().mockResolvedValue({
+            data: {
+              users: [
+                {
+                  id: "00000000-0000-4000-8000-000000000404",
+                  email: "visitor@example.com",
+                  user_metadata: {
+                    public_simulation_transient: true,
+                    public_simulation_purpose: "in_home_simulation_email_otp",
+                  },
+                },
+              ],
+            },
+            error: null,
+          }),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.verifyOtp({ email: "visitor@example.com", code: "000000" }),
+    ).resolves.toEqual({
+      ok: true,
+      authUserId: "00000000-0000-4000-8000-000000000404",
+    });
+  });
+
+  it("allows the local OTP bypass env code only in local app environments", () => {
+    expect(
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: "000000",
+        publicAppEnv: "local",
+      }),
+    ).toBe("000000");
+    expect(
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: undefined,
+        publicAppEnv: "local",
+      }),
+    ).toBeNull();
+    expect(() =>
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "dev",
+        bypassCode: "000000",
+        publicAppEnv: "dev",
+      }),
+    ).toThrow(/only be set/);
+    expect(() =>
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: "abc",
+        publicAppEnv: "local",
+      }),
+    ).toThrow(/six-digit/);
   });
 
   it("reads only active non-expired verified simulation sessions", async () => {
@@ -159,7 +309,7 @@ describe("public simulation Supabase stores", () => {
           eq: vi.fn().mockReturnValue({
             maybeSingle: vi.fn().mockResolvedValue({
               data: {
-                email_normalized_hash: "email-hash-1",
+                verification_subject_hash: "verification-subject-1",
                 status: "active",
                 expires_at: "2999-01-01T00:00:00.000Z",
               },
@@ -173,7 +323,9 @@ describe("public simulation Supabase stores", () => {
 
     await expect(
       reader.findVerifiedSession({ accessTokenHash: "token-hash-1" }),
-    ).resolves.toEqual({ emailNormalizedHash: "email-hash-1" });
+    ).resolves.toEqual({
+      verificationSubjectHash: "verification-subject-1",
+    });
   });
 
   it("mints short-lived Realtime JWTs scoped to one simulation progress row", async () => {

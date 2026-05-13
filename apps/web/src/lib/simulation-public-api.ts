@@ -34,8 +34,6 @@ export type SuppliedDimensionsBody =
 
 export interface CreateEmailVerificationRequestBody {
   email: string;
-  consent_email_use: boolean;
-  consent_marketing?: boolean;
 }
 
 export interface CreateEmailVerificationResponse {
@@ -44,6 +42,7 @@ export interface CreateEmailVerificationResponse {
 }
 
 export interface VerifyEmailVerificationRequestBody {
+  email: string;
   code: string;
 }
 

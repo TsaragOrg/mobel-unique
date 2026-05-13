@@ -20,7 +20,6 @@ describe("admin copy", () => {
     expect(ADMIN_COPY.shell.navigation).toMatchObject({
       dashboard: "Tableau de bord",
       fabrics: "Tissus",
-      leads: "Leads",
       sofas: "Canapés",
       tags: "Étiquettes",
     });
@@ -28,9 +27,6 @@ describe("admin copy", () => {
     expect(ADMIN_COPY.dashboard.actions.newSofa.label).toBe(
       "Nouveau canapé",
     );
-    expect(ADMIN_COPY.dashboard.actions.leads.label).toBe("Leads simulation");
-    expect(ADMIN_COPY.leads.actions.search).toBe("Rechercher");
-    expect(ADMIN_COPY.leads.empty.noRetainedLeads).toBe("Aucun lead conservé.");
     expect(ADMIN_COPY.login.form.submitLabel).toBe("Se connecter");
     expect(ADMIN_COPY.login.form.emailLabel).toBe("Adresse e-mail");
     expect(ADMIN_COPY.login.form.passwordLabel).toBe("Mot de passe");
@@ -93,9 +89,6 @@ describe("admin copy", () => {
     );
     expect(formatAdminErrorCodeMessage("INVALID_STORAGE_ASSET_VARIANT")).toBe(
       "Cette variante d'aperçu n'est pas disponible.",
-    );
-    expect(formatAdminErrorCodeMessage("SIMULATION_LEADS_UNAVAILABLE")).toBe(
-      "Les leads de simulation sont indisponibles. Réessayez.",
     );
     expect(formatAdminErrorCodeMessage("SOFA_LIST_FAILED")).toBe(
       "Une erreur est survenue. Réessayez.",

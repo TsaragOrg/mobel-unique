@@ -2,7 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CATALOG_IMAGE_VARIANT_KINDS,
+  CATALOG_RENDER_IMAGE_VARIANT_KINDS,
   ensureCatalogImageVariants,
+  ensureFabricSwatchSmallVariant,
   resolveCatalogImageDeliveryAsset,
   type CatalogImageDeliveryVariant,
   type CatalogImageVariantRepository,
@@ -1785,6 +1787,7 @@ export function createSupabaseAdminCatalogStore(
         const variantError = await ensureUploadCatalogImageVariants(client, {
           bytes,
           originalAsset: data as AdminStorageAssetRecord,
+          purpose: descriptor.purpose,
         });
 
         if (variantError) {
@@ -4140,7 +4143,11 @@ function uploadTtlMs(env: NodeJS.ProcessEnv) {
 function uploadPurposeRequiresCatalogImageVariants(
   purpose: UploadCreateInput["purpose"],
 ) {
-  return purpose === "sofa_source_photo" || purpose === "manual_render";
+  return (
+    purpose === "sofa_source_photo" ||
+    purpose === "manual_render" ||
+    purpose === "fabric_swatch"
+  );
 }
 
 async function ensureUploadCatalogImageVariants(
@@ -4148,15 +4155,25 @@ async function ensureUploadCatalogImageVariants(
   input: {
     bytes: Uint8Array;
     originalAsset: AdminStorageAssetRecord;
+    purpose: UploadCreateInput["purpose"];
   },
 ): Promise<AdminCatalogOperationErrorData | null> {
   try {
-    await ensureCatalogImageVariants({
+    const sharedInput = {
       bytes: input.bytes,
       originalAsset: input.originalAsset as CatalogStorageAssetRecord,
       repository: createSupabaseCatalogImageVariantRepository(client),
       storage: createSupabaseCatalogImageVariantStorage(client),
-    });
+    };
+
+    if (input.purpose === "fabric_swatch") {
+      await ensureFabricSwatchSmallVariant(sharedInput);
+    } else {
+      await ensureCatalogImageVariants({
+        ...sharedInput,
+        variantKinds: CATALOG_RENDER_IMAGE_VARIANT_KINDS,
+      });
+    }
 
     return null;
   } catch {

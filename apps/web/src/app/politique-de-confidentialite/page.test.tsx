@@ -1,6 +1,6 @@
 /*
 RU: Этот файл проверяет публичную страницу политики конфиденциальности. Посетитель видит короткие правила о данных, симуляции и контакте. Здесь можно прочитать, какие данные нужны и как написать по вопросам конфиденциальности.
-FR: Ce fichier verifie la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la simulation, le contact et les fiches gardees avec accord. Ici, il peut lire quelles donnees sont utiles et comment ecrire pour la confidentialite.
+FR: Ce fichier verifie la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees et la simulation. Ici, il peut lire quelles donnees sont utiles et comment ecrire pour la confidentialite.
 */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -40,8 +40,13 @@ describe("Privacy policy page", () => {
     );
     expect(pageText).toContain("aucun compte client");
     expect(pageText).toContain("vérification par e-mail");
-    expect(pageText).toContain("accord obligatoire pour utiliser votre e-mail");
-    expect(pageText).toContain("accord facultatif pour un contact commercial");
+    expect(pageText).toContain(
+      "uniquement pour envoyer le code de vérification",
+    );
+    expect(pageText).toContain("fenêtre de 24 heures");
+    expect(pageText).toContain(
+      "pas conservée comme fiche de contact commercial",
+    );
     expect(pageText).toContain("photo de votre pièce");
     expect(pageText).toContain("image guide générée");
     expect(pageText).toContain("résultat de simulation généré");
@@ -68,10 +73,11 @@ describe("Privacy policy page", () => {
     expect(pageText).toContain("afficher le résultat");
     expect(pageText).toContain("limiter les abus");
     expect(pageText).toContain("résoudre les problèmes");
-    expect(pageText).toContain("seulement avec votre accord facultatif");
+    expect(pageText).toContain(
+      "ne conserve pas l'adresse e-mail de simulation pour vous contacter commercialement",
+    );
     expect(pageText).toContain("visualisation demandée par le visiteur");
     expect(pageText).toContain("intérêt légitime");
-    expect(pageText).toContain("consentement");
     expect(pageText).toContain("supprimés au plus tard 24 heures après leur création");
     expect(pageText).toContain("photos de pièce privées");
     expect(pageText).toContain("images intermédiaires");
@@ -94,32 +100,26 @@ describe("Privacy policy page", () => {
     ).toHaveAttribute("href", "mailto:mobel.unique.it@gmail.com");
   });
 
-  it("explains retained commercial contact records and deletion", async () => {
+  it("does not describe retained commercial contact records", async () => {
     const { default: PrivacyPolicyPage } = await import("./page");
 
     render(<PrivacyPolicyPage />);
 
-    // RU: Этот текст нужен для проверки сохраненной записи при согласии на контакт.
-    // FR: Ce texte sert a verifier la fiche gardee avec accord de contact.
+    // RU: Этот текст проверяет, что страница больше не обещает хранить контакт.
+    // FR: Ce texte verifie que la page ne promet plus de garder un contact.
     const pageText = document.body.textContent ?? "";
 
-    expect(pageText).toContain(
-      "Votre accord facultatif pour un contact commercial peut créer une fiche de contact conservée.",
-    );
-    expect(pageText).toContain(
-      "Cette fiche peut contenir votre e-mail lisible pour une personne autorisée de MÖBEL UNIQUE",
-    );
+    expect(pageText).not.toContain("fiche de contact conservée");
+    expect(pageText).not.toContain("e-mail lisible");
+    expect(pageText).not.toContain("accord facultatif pour un contact commercial");
     expect(pageText).toContain("canapé choisi");
     expect(pageText).toContain("tissu choisi");
     expect(pageText).toContain("position visuelle choisie");
-    expect(pageText).toContain("date de simulation");
-    expect(pageText).toContain("statut sans information privée");
     expect(pageText).toContain(
       "Les photos de pièce et les résultats générés restent supprimés au plus tard 24 heures après leur création.",
     );
-    expect(pageText).toContain("Vous pouvez demander la suppression de cette fiche.");
     expect(pageText).toContain(
-      "La suppression retire aussi l'identité e-mail gardée par le site.",
+      "L'adresse e-mail de simulation n'est pas gardée comme fiche de contact commercial.",
     );
   });
 

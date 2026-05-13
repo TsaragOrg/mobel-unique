@@ -23,8 +23,10 @@ It follows:
 - `SPEC-0010 API Contracts And Edge Functions`, which defines `/api/admin/*`, upload, render coverage, publication, ZIP export, worker, cleanup, and public route contracts;
 - `SPEC-0011 Admin Authentication And Authorization`, which defines Supabase Auth, trusted admin device sessions, the first-party Next.js admin API facade, and admin authorization boundaries;
 - `SPEC-0012 Public Frontend Experience And Page Flows`, which defines public route behavior that admin copy/open-link flows must target.
-- `SPEC-0020 Admin Simulation Leads Dashboard`, which defines the separate
-  consent-backed lead dashboard route and safe simulation lead data boundaries.
+- `CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention`, which supersedes
+  the separate consent-backed simulation lead dashboard. Admin simulation
+  insight must now be built from anonymized simulation metadata, not retained
+  email lead records.
 
 This spec is expected to feed admin web implementation plans, route structure, component planning, frontend tests, and QA scenarios.
 

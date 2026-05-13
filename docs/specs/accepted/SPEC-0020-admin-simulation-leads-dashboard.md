@@ -6,7 +6,16 @@ Layer: feature
 Parent Spec: SPEC-0013
 Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0012, SPEC-0013, SPEC-0015, SPEC-0018
 Areas: web, supabase
-Implementation Plans: PLAN-0080
+Implementation Plans: PLAN-0080, PLAN-0081
+
+## Supersession
+
+`CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention` supersedes this
+feature. `PLAN-0081` removes application-owned public simulation email
+retention, optional commercial contact consent, retained simulation lead tables,
+lead RPCs, and the `/admin/leads` surface. No future implementation should
+create or restore readable/encrypted simulation email lead records without a new
+accepted change request.
 
 ## Traceability
 

@@ -127,6 +127,25 @@ for (const requiredField of [
   }
 }
 
+if (!Array.isArray(firstItem.fabrics) || firstItem.fabrics.length === 0) {
+  fail(`catalog item is missing fabrics: ${JSON.stringify(firstItem)}`);
+}
+
+const firstFabric = firstItem.fabrics[0];
+
+for (const requiredFabricField of [
+  "id",
+  "public_name",
+  "swatch_small_url",
+  "render_medium_url",
+]) {
+  if (!firstFabric?.[requiredFabricField]) {
+    fail(
+      `catalog item fabric is missing ${requiredFabricField}: ${JSON.stringify(firstFabric)}`,
+    );
+  }
+}
+
 if (firstItem.default_render_url !== firstItem.default_render_medium_url) {
   fail(
     `catalog default render compatibility alias does not point at medium delivery: ${JSON.stringify(firstItem)}`,
@@ -178,6 +197,29 @@ if (
   fail(`sofa detail is missing public selection state: ${JSON.stringify(sofaBody)}`);
 }
 
+const firstDetailFabric = sofaBody.data.fabrics[0];
+
+if (
+  !firstDetailFabric?.swatch_small_url ||
+  !firstDetailFabric.swatch_small_content_type ||
+  typeof firstDetailFabric.swatch_small_width_px !== "number" ||
+  typeof firstDetailFabric.swatch_small_height_px !== "number"
+) {
+  fail(
+    `sofa detail fabric is missing swatch_small_url delivery fields: ${JSON.stringify(firstDetailFabric)}`,
+  );
+}
+
+if (
+  !String(firstDetailFabric.swatch_small_url).includes(
+    "/storage/v1/object/public/",
+  )
+) {
+  fail(
+    `sofa detail swatch_small_url is not a public storage URL: ${JSON.stringify(firstDetailFabric)}`,
+  );
+}
+
 const defaultDetailRender = sofaBody.data.renders.find(
   (render) =>
     render.fabric_id === sofaBody.data.defaults.fabric_id &&
@@ -210,5 +252,5 @@ if (
 }
 
 console.log(
-  `PASS SPEC-0012 public catalog smoke: read medium catalog render and original sofa detail render for ${firstItem.public_slug}`,
+  `PASS SPEC-0012 public catalog smoke: read medium catalog render, original sofa detail render, and swatch_small fabric swatch for ${firstItem.public_slug}`,
 );

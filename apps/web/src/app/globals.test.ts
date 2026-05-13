@@ -100,6 +100,31 @@ describe("global public catalog styles", () => {
 }`);
   });
 
+  it("keeps catalog loading skeletons aligned to the real card grid", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(css).toContain(".catalog-skeleton-grid");
+    expect(css).toContain(".catalog-card-skeleton");
+    expect(css).toContain(".catalog-card-skeleton .catalog-card-image");
+    expect(css).toContain(".catalog-skeleton-action");
+    expect(css).toContain(`@media (max-width: 1040px) {
+  .catalog-grid {`);
+    expect(css).toContain(`@media (max-width: 680px) {
+  .public-header {`);
+  });
+
+  it("keeps sofa detail loading skeletons aligned to the real hero layout", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(css).toContain(".sofa-detail-skeleton");
+    expect(css).toContain(".sofa-detail-skeleton .sofa-detail-image");
+    expect(css).toContain(".sofa-detail-skeleton .sofa-detail-copy");
+    expect(css).toContain(".sofa-detail-skeleton-actions");
+    expect(css).toContain(".sofa-detail-skeleton-info");
+  });
+
   it("keeps sofa detail tags as a two-line expandable chip list", () => {
     const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
       .replace(/\r\n/g, "\n");

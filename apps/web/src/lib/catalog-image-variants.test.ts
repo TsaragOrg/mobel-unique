@@ -4,8 +4,10 @@ import {
   buildCatalogImageVariantObjectPath,
   calculateCatalogImageVariantDimensions,
   ensureCatalogImageVariants,
+  ensureFabricSwatchSmallVariant,
   generateCatalogImageVariants,
   resolveCatalogImageDeliveryAsset,
+  type CatalogImageVariantKind,
   type CatalogImageVariantProcessor,
   type CatalogImageVariantRepository,
   type CatalogImageVariantStorage,
@@ -47,6 +49,14 @@ const mediumAsset: CatalogStorageAssetRecord = {
   width_px: 1280,
 };
 
+const fabricSwatchAsset: CatalogStorageAssetRecord = {
+  ...originalAsset,
+  asset_kind: "fabric_swatch_public",
+  bucket_id: "catalog-public-assets",
+  object_path: "fabrics/linen/swatch.png",
+  visibility: "public",
+};
+
 describe("catalog image variant helpers", () => {
   it("calculates no-crop longest-edge dimensions without upscaling", () => {
     expect(
@@ -72,6 +82,24 @@ describe("catalog image variant helpers", () => {
         widthPx: 100,
       }),
     ).toEqual({ heightPx: 80, widthPx: 100 });
+  });
+
+  it("keeps render small at 320 px and swatch_small at 96 px", () => {
+    expect(
+      calculateCatalogImageVariantDimensions({
+        heightPx: 1000,
+        variantKind: "small",
+        widthPx: 2000,
+      }),
+    ).toEqual({ heightPx: 160, widthPx: 320 });
+
+    expect(
+      calculateCatalogImageVariantDimensions({
+        heightPx: 1000,
+        variantKind: "swatch_small",
+        widthPx: 2000,
+      }),
+    ).toEqual({ heightPx: 48, widthPx: 96 });
   });
 
   it("builds immutable variant object paths from original and variant ids", () => {
@@ -123,8 +151,19 @@ describe("catalog image variant helpers", () => {
       processor: createProcessor({ hasAlpha: true }),
     });
 
-    expect(alphaVariants.small.contentType).toBe("image/png");
-    expect(alphaVariants.medium.contentType).toBe("image/png");
+    expect(alphaVariants.small?.contentType).toBe("image/png");
+    expect(alphaVariants.medium?.contentType).toBe("image/png");
+  });
+
+  it("keeps default render generation limited to small and medium", async () => {
+    const variants = await generateCatalogImageVariants({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "image/png",
+      processor: createProcessor({ hasAlpha: false }),
+    });
+
+    expect(Object.keys(variants).sort()).toEqual(["medium", "small"]);
+    expect(variants).not.toHaveProperty("swatch_small");
   });
 
   it("skips uploads and inserts when active small and medium variants already exist", async () => {
@@ -204,6 +243,36 @@ describe("catalog image variant helpers", () => {
       );
     },
   );
+
+  it("creates only swatch_small for fabric swatches", async () => {
+    const repository = createRepository({ original: fabricSwatchAsset });
+    const storage = createStorage();
+
+    const result = await ensureFabricSwatchSmallVariant({
+      bytes: new Uint8Array([1, 2, 3]),
+      idGenerator: () => "00000000-0000-4000-8000-000000000301",
+      originalAsset: fabricSwatchAsset,
+      processor: createProcessor({ hasAlpha: false }),
+      repository,
+      storage,
+    });
+
+    expect(result.created).toEqual(["swatch_small"]);
+    expect(Object.keys(result.variants)).toEqual(["swatch_small"]);
+    expect(result.variants.swatch_small).toMatchObject({
+      height_px: 48,
+      object_path:
+        "variants/00000000-0000-4000-8000-000000000101/swatch_small/00000000-0000-4000-8000-000000000301.jpg",
+      width_px: 96,
+    });
+    expect(storage.uploadObject).toHaveBeenCalledTimes(1);
+    expect(repository.upsertVariantLink).toHaveBeenCalledWith({
+      generationKind: "stored",
+      originalAssetId: fabricSwatchAsset.id,
+      variantAssetId: "00000000-0000-4000-8000-000000000301",
+      variantKind: "swatch_small",
+    });
+  });
 
   it("removes already uploaded objects when a later variant upload fails", async () => {
     const repository = createRepository({ original: originalAsset });
@@ -315,9 +384,14 @@ function createDecodedImage(input: { hasAlpha: boolean }) {
 
 function createRepository(input: {
   original: CatalogStorageAssetRecord;
-  variants?: Partial<Record<"medium" | "small", CatalogStorageAssetRecord>>;
+  variants?: Partial<Record<CatalogImageVariantKind, CatalogStorageAssetRecord>>;
 }): CatalogImageVariantRepository {
-  const variants = new Map(Object.entries(input.variants ?? {}));
+  const variants = new Map<CatalogImageVariantKind, CatalogStorageAssetRecord>(
+    Object.entries(input.variants ?? {}) as [
+      CatalogImageVariantKind,
+      CatalogStorageAssetRecord,
+    ][],
+  );
 
   return {
     findActiveVariantAsset: vi.fn(async (_originalAssetId, variantKind) => {
@@ -327,10 +401,12 @@ function createRepository(input: {
       return assetId === input.original.id ? input.original : null;
     }),
     insertStorageAsset: vi.fn(async (asset) => {
-      variants.set(
-        asset.object_path.includes("/small/") ? "small" : "medium",
-        asset,
-      );
+      const variantKind = asset.object_path.includes("/swatch_small/")
+        ? "swatch_small"
+        : asset.object_path.includes("/small/")
+          ? "small"
+          : "medium";
+      variants.set(variantKind, asset);
     }),
     upsertVariantLink: vi.fn(async () => undefined),
   };

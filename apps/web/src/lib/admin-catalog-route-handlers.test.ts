@@ -1,6 +1,16 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const supabaseMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
+}));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: supabaseMocks.createClient,
+}));
+
 import { createAdminAuth, type AdminAuthUser } from "./admin-auth";
+import { createSupabaseAdminCatalogStore } from "./admin-catalog";
 import {
   handleArchiveFabricRequest,
   handleArchiveSofaRequest,
@@ -62,6 +72,7 @@ const nonAdminUser: AdminAuthUser = {
 };
 
 afterEach(() => {
+  supabaseMocks.createClient.mockReset();
   vi.unstubAllEnvs();
 });
 
@@ -2244,6 +2255,47 @@ describe("admin catalog route handlers", () => {
     expect(removeAssignmentResponse.status).toBe(204);
   });
 
+  it("runs the concrete fabric swatch upload route path with swatch_small variant coverage", async () => {
+    const fakeSupabase = createRouteUploadSupabaseClient({
+      variantLookup: {
+        data: {
+          variant_asset_id: "00000000-0000-4000-8000-000000000777",
+        },
+        error: null,
+      },
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createRouteStoreEnv());
+    const input = createInput(store);
+
+    const uploadResponse = await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1200,
+        content_type: "image/png",
+        purpose: "fabric_swatch",
+      }),
+    });
+    expect(uploadResponse.status).toBe(201);
+    const uploadBody = await uploadResponse.json();
+
+    const completeResponse = await handleCompleteUploadRequest({
+      ...input,
+      uploadId: uploadBody.data.upload.upload_id,
+    });
+
+    expect(completeResponse.status).toBe(200);
+    await expect(completeResponse.json()).resolves.toMatchObject({
+      data: {
+        asset: {
+          asset_kind: "fabric_swatch_public",
+          visibility: "public",
+        },
+      },
+    });
+    expect(fakeSupabase.variantKinds).toEqual(["swatch_small"]);
+  });
+
   it("runs the visual matrix, source photo, coverage, and render job flow", async () => {
     const store = createFakeStore();
     const input = createInput(store);
@@ -2788,3 +2840,153 @@ describe("admin catalog route handlers", () => {
     });
   });
 });
+
+function createRouteStoreEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ADMIN_UPLOAD_TOKEN_SECRET: "test-upload-secret",
+    NEXT_PUBLIC_SUPABASE_URL: "https://supabase.example",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+  };
+}
+
+function createRouteUploadSupabaseClient(input: {
+  variantLookup: {
+    data: { variant_asset_id: string } | null;
+    error: Record<string, unknown> | null;
+  };
+}) {
+  const variantKinds: string[] = [];
+  const insertedOriginalAsset = {
+    asset_kind: "fabric_swatch_public",
+    bucket_id: "catalog-public-assets",
+    byte_size: 24,
+    content_type: "image/png",
+    height_px: 128,
+    id: "00000000-0000-4000-8000-000000000601",
+    lifecycle_state: "active",
+    object_path: "fabrics/pending/swatches/original.png",
+    visibility: "public",
+    width_px: 256,
+  };
+  const existingVariantAsset = {
+    ...insertedOriginalAsset,
+    asset_kind: "fabric_swatch_public_variant",
+    height_px: 48,
+    id: input.variantLookup.data?.variant_asset_id,
+    object_path:
+      "variants/00000000-0000-4000-8000-000000000601/swatch_small/00000000-0000-4000-8000-000000000777.jpg",
+    width_px: 96,
+  };
+
+  const client = {
+    from(table: string) {
+      return createRouteUploadQuery({
+        existingVariantAsset,
+        insertedOriginalAsset,
+        table,
+        variantKinds,
+        variantLookup: input.variantLookup,
+      });
+    },
+    storage: {
+      from: vi.fn(() => ({
+        createSignedUploadUrl: vi.fn(async () => ({
+          data: {
+            signedUrl: "https://upload.example/fabric-swatch",
+          },
+          error: null,
+        })),
+        download: vi.fn(async () => ({
+          data: new NodeBlob([
+            createRoutePngHeaderBytes({ heightPx: 128, widthPx: 256 }),
+          ]),
+          error: null,
+        })),
+        remove: vi.fn(async () => ({
+          data: null,
+          error: null,
+        })),
+        upload: vi.fn(async () => ({
+          data: null,
+          error: null,
+        })),
+      })),
+    },
+  };
+
+  return {
+    client,
+    variantKinds,
+  };
+}
+
+function createRouteUploadQuery(input: {
+  existingVariantAsset: Record<string, unknown>;
+  insertedOriginalAsset: Record<string, unknown>;
+  table: string;
+  variantKinds: string[];
+  variantLookup: {
+    data: { variant_asset_id: string } | null;
+    error: Record<string, unknown> | null;
+  };
+}) {
+  const query = {
+    eq: vi.fn((column: string, value: string) => {
+      if (input.table === "storage_asset_variants" && column === "variant_kind") {
+        input.variantKinds.push(value);
+      }
+
+      return query;
+    }),
+    in: vi.fn(async () => ({
+      data:
+        input.existingVariantAsset.id === undefined
+          ? []
+          : [input.existingVariantAsset],
+      error: null,
+    })),
+    insert: vi.fn((asset: Record<string, unknown>) => ({
+      select: vi.fn(() => ({
+        single: vi.fn(async () => ({
+          data: {
+            ...input.insertedOriginalAsset,
+            ...asset,
+            id: input.insertedOriginalAsset.id,
+          },
+          error: null,
+        })),
+      })),
+    })),
+    maybeSingle: vi.fn(async () => input.variantLookup),
+    select: vi.fn(() => query),
+    update: vi.fn(() => ({
+      eq: vi.fn(async () => ({
+        data: null,
+        error: null,
+      })),
+    })),
+    upsert: vi.fn(async () => ({
+      data: null,
+      error: null,
+    })),
+  };
+
+  return query;
+}
+
+function createRoutePngHeaderBytes(input: { heightPx: number; widthPx: number }) {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47], 0);
+  writeRouteUint32Be(bytes, 16, input.widthPx);
+  writeRouteUint32Be(bytes, 20, input.heightPx);
+
+  return bytes;
+}
+
+function writeRouteUint32Be(bytes: Uint8Array, offset: number, value: number) {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
+}

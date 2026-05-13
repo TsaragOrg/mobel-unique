@@ -7,7 +7,7 @@ import {
   requestSimulationVerification,
   verifySimulationCode,
   type RequestVerificationOutcome,
-  type VerifyCodeOutcome
+  type VerifyCodeOutcome,
 } from "../../lib/simulation-client/auth";
 
 type Step = "email" | "code";
@@ -16,10 +16,9 @@ export interface EmailGateFormProps {
   onVerified: () => void;
   requestVerification?: (input: {
     email: string;
-    consentEmailUse: boolean;
-    consentMarketing: boolean;
   }) => Promise<RequestVerificationOutcome>;
   verifyCode?: (input: {
+    email: string;
     verificationRequestId: string;
     code: string;
   }) => Promise<VerifyCodeOutcome>;
@@ -32,15 +31,13 @@ export function EmailGateForm(props: EmailGateFormProps) {
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [consentEmailUse, setConsentEmailUse] = useState(false);
-  const [consentMarketing, setConsentMarketing] = useState(false);
   const [verificationRequestId, setVerificationRequestId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [serverErrorCode, setServerErrorCode] = useState<string | null>(null);
 
   const emailValid = isValidEmail(email);
-  const canSubmitEmail = emailValid && consentEmailUse && !submitting;
+  const canSubmitEmail = emailValid && !submitting;
   const codeValid = /^\d{6}$/.test(code);
   const canSubmitCode = codeValid && verificationRequestId !== null && !submitting;
 
@@ -51,8 +48,6 @@ export function EmailGateForm(props: EmailGateFormProps) {
     setServerErrorCode(null);
     const outcome = await requestVerification({
       email,
-      consentEmailUse,
-      consentMarketing
     });
     setSubmitting(false);
     if (outcome.ok) {
@@ -69,7 +64,7 @@ export function EmailGateForm(props: EmailGateFormProps) {
     if (!canSubmitCode || !verificationRequestId) return;
     setSubmitting(true);
     setServerErrorCode(null);
-    const outcome = await verifyCode({ verificationRequestId, code });
+    const outcome = await verifyCode({ email, verificationRequestId, code });
     setSubmitting(false);
     if (outcome.ok) {
       props.onVerified();
@@ -153,25 +148,7 @@ export function EmailGateForm(props: EmailGateFormProps) {
         />
       </label>
 
-      <label className="simulation-email-gate-consent">
-        <input
-          checked={consentEmailUse}
-          data-testid="simulation-email-gate-consent-email"
-          onChange={(e) => setConsentEmailUse(e.target.checked)}
-          type="checkbox"
-        />
-        <span>{copy.consentEmailUseLabel}</span>
-      </label>
-
-      <label className="simulation-email-gate-consent">
-        <input
-          checked={consentMarketing}
-          data-testid="simulation-email-gate-consent-marketing"
-          onChange={(e) => setConsentMarketing(e.target.checked)}
-          type="checkbox"
-        />
-        <span>{copy.consentMarketingLabel}</span>
-      </label>
+      <p className="simulation-email-gate-notice">{copy.emailUseNotice}</p>
 
       {serverErrorCode ? (
         <p className="simulation-email-gate-error" role="alert">

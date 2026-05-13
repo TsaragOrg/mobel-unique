@@ -18,6 +18,12 @@ It creates the product frame for the domain, technical, and cross-cutting specs 
 
 Follow-up specs must preserve the business decisions and product invariants defined here. If a follow-up spec needs to change one of those decisions after this spec is accepted, it must use a change request.
 
+`CR-SPEC-0015-SPEC-0020-remove-simulation-email-retention` supersedes older
+simulation-email wording that allowed contact or operational follow-up from the
+public simulation email address. The active decision is that the email address
+is used only for OTP delivery and short-lived 24-hour abuse prevention; admin
+insight must rely on anonymized simulation metadata.
+
 Expected follow-up specification areas:
 
 - public customer experience;

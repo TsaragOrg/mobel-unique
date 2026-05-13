@@ -20,8 +20,6 @@ export type SimulationAuthErrorCode =
 
 export interface RequestVerificationInput {
   email: string;
-  consentEmailUse: boolean;
-  consentMarketing: boolean;
 }
 
 export type RequestVerificationOutcome =
@@ -37,6 +35,7 @@ export type RequestVerificationOutcome =
     };
 
 export interface VerifyCodeInput {
+  email: string;
   verificationRequestId: string;
   code: string;
 }
@@ -65,9 +64,7 @@ export async function requestSimulationVerification(
   try {
     response = await fetchFn(REQUEST_VERIFICATION_URL, {
       body: JSON.stringify({
-        email: input.email,
-        consent_email_use: input.consentEmailUse,
-        consent_marketing: input.consentMarketing
+        email: input.email
       }),
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -110,7 +107,7 @@ export async function verifySimulationCode(
   let response: Response;
   try {
     response = await fetchFn(verifyUrl, {
-      body: JSON.stringify({ code: input.code }),
+      body: JSON.stringify({ email: input.email, code: input.code }),
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       method: "POST"

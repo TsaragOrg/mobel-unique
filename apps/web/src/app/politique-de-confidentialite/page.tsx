@@ -1,6 +1,6 @@
 /*
 RU: Этот файл нужен для публичной страницы политики конфиденциальности. Посетитель видит короткие правила о данных, фото комнаты, симуляции, контакте и записи после согласия. Здесь можно понять, зачем нужны данные, сколько хранятся частные изображения и куда написать по вопросам конфиденциальности.
-FR: Ce fichier sert a la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la photo de la piece, la simulation, le contact et la fiche gardee avec accord. Ici, il peut comprendre pourquoi les donnees sont utiles, combien de temps les images privees restent gardees et ou ecrire pour la confidentialite.
+FR: Ce fichier sert a la page publique de confidentialite. Le visiteur voit des regles courtes sur les donnees, la photo de la piece et la simulation. Ici, il peut comprendre pourquoi les donnees sont utiles, combien de temps les images privees restent gardees et ou ecrire pour la confidentialite.
 */
 
 import type { Metadata } from "next";
@@ -28,11 +28,9 @@ const privacySections = [
   },
   {
     items: [
-      "Pour une simulation, nous utilisons votre adresse de vérification par e-mail.",
-      "Un accord obligatoire pour utiliser votre e-mail est demandé avant la simulation.",
-      "Un accord facultatif pour un contact commercial peut être donné, mais il n'est pas nécessaire pour lancer la simulation.",
-      "Votre accord facultatif pour un contact commercial peut créer une fiche de contact conservée.",
-      "Cette fiche peut contenir votre e-mail lisible pour une personne autorisée de MÖBEL UNIQUE, le canapé choisi, le tissu choisi, la position visuelle choisie, la date de simulation et un statut sans information privée.",
+      "Pour une simulation, nous utilisons votre adresse e-mail uniquement pour envoyer le code de vérification.",
+      "Cette adresse sert aussi à limiter les abus et les demandes répétées pendant une fenêtre de 24 heures.",
+      "Elle n'est pas conservée comme fiche de contact commercial dans le parcours de simulation.",
       "La simulation utilise la photo de votre pièce, une image guide générée et le résultat de simulation généré.",
       "Un accès temporaire dans votre navigateur protège l'ouverture du résultat pendant la durée prévue.",
       "Nous gardons aussi le canapé choisi, le tissu choisi, la position visuelle choisie, le statut du travail, les horodatages, l'état d'échec et les compteurs d'utilisation.",
@@ -45,15 +43,14 @@ const privacySections = [
       "Elles servent à afficher le résultat dans votre navigateur.",
       "Elles aident à limiter les abus et les demandes répétées.",
       "Elles permettent de résoudre les problèmes du service MÖBEL UNIQUE.",
-      "MÖBEL UNIQUE peut vous contacter pour une suite commerciale seulement avec votre accord facultatif.",
+      "MÖBEL UNIQUE ne conserve pas l'adresse e-mail de simulation pour vous contacter commercialement.",
     ],
     title: "Pourquoi ces données sont utilisées",
   },
   {
     items: [
-      "La vérification par e-mail, la photo de pièce, l'image guide et le résultat servent à fournir la visualisation demandée par le visiteur et à protéger l'accès au résultat.",
+      "La vérification par e-mail, la limitation des abus, la photo de pièce, l'image guide et le résultat servent à fournir la visualisation demandée par le visiteur et à protéger l'accès au résultat.",
       "Les données de fonctionnement, de résolution des problèmes et de limitation des abus servent l'intérêt légitime de MÖBEL UNIQUE pour faire fonctionner, sécuriser et améliorer le service MÖBEL UNIQUE.",
-      "Le contact commercial facultatif repose seulement sur votre consentement et reste séparé de la simulation.",
     ],
     title: "Base légale",
   },
@@ -88,8 +85,7 @@ const privacySections = [
   {
     items: [
       "Vous pouvez demander l'accès, la correction, la suppression, l'opposition, la limitation et la portabilité de vos données.",
-      "Vous pouvez demander la suppression de cette fiche.",
-      "La suppression retire aussi l'identité e-mail gardée par le site.",
+      "L'adresse e-mail de simulation n'est pas gardée comme fiche de contact commercial.",
       "Pour une question sur vos données, écrivez au contact confidentialité.",
     ],
     title: "Vos droits",
