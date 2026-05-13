@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createLocalSimulationEmailOtpBypassProvider,
   createSupabaseSimulationDispatchTrigger,
   createSupabaseSimulationEmailOtpProvider,
   createSupabaseSimulationEmailVerificationStore,
@@ -9,6 +10,7 @@ import {
   createSupabaseSimulationRegenerationStore,
   createSupabaseSimulationRealtimeTokenIssuer,
   createSupabaseSimulationSessionAccessReader,
+  readLocalSimulationEmailOtpBypassCode,
 } from "./simulation-public-server";
 
 afterEach(() => {
@@ -157,6 +159,147 @@ describe("public simulation Supabase stores", () => {
     expect(client.auth.admin.deleteUser).toHaveBeenCalledWith(
       "00000000-0000-4000-8000-000000000202",
     );
+  });
+
+  it("accepts a configured local OTP bypass code without sending an email", async () => {
+    const client = {
+      auth: {
+        signInWithOtp: vi.fn(),
+        verifyOtp: vi.fn(),
+        admin: {
+          createUser: vi.fn().mockResolvedValue({
+            data: {
+              user: { id: "00000000-0000-4000-8000-000000000303" },
+            },
+            error: null,
+          }),
+          deleteUser: vi.fn().mockResolvedValue({ error: null }),
+          listUsers: vi.fn(),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.sendOtp({ email: "Visitor@Example.com" }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      provider.verifyOtp({ email: "Visitor@Example.com", code: "000000" }),
+    ).resolves.toEqual({
+      ok: true,
+      authUserId: "00000000-0000-4000-8000-000000000303",
+    });
+
+    expect(client.auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(client.auth.verifyOtp).not.toHaveBeenCalled();
+    expect(client.auth.admin.createUser).toHaveBeenCalledWith({
+      email: "visitor@example.com",
+      email_confirm: true,
+      user_metadata: {
+        public_simulation_transient: true,
+        public_simulation_purpose: "in_home_simulation_email_otp",
+      },
+    });
+  });
+
+  it("rejects wrong local OTP bypass codes without creating Auth users", async () => {
+    const client = {
+      auth: {
+        admin: {
+          createUser: vi.fn(),
+          deleteUser: vi.fn(),
+          listUsers: vi.fn(),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.verifyOtp({ email: "visitor@example.com", code: "123456" }),
+    ).resolves.toEqual({ ok: false, reason: "invalid" });
+
+    expect(client.auth.admin.createUser).not.toHaveBeenCalled();
+  });
+
+  it("reuses only transient local bypass Auth users when the email already exists", async () => {
+    const alreadyRegisteredError = Object.assign(
+      new Error("User already registered"),
+      { status: 422 },
+    );
+    const client = {
+      auth: {
+        admin: {
+          createUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: alreadyRegisteredError,
+          }),
+          deleteUser: vi.fn(),
+          listUsers: vi.fn().mockResolvedValue({
+            data: {
+              users: [
+                {
+                  id: "00000000-0000-4000-8000-000000000404",
+                  email: "visitor@example.com",
+                  user_metadata: {
+                    public_simulation_transient: true,
+                    public_simulation_purpose: "in_home_simulation_email_otp",
+                  },
+                },
+              ],
+            },
+            error: null,
+          }),
+        },
+      },
+    };
+    const provider = createLocalSimulationEmailOtpBypassProvider(
+      client as never,
+      { bypassCode: "000000" },
+    );
+
+    await expect(
+      provider.verifyOtp({ email: "visitor@example.com", code: "000000" }),
+    ).resolves.toEqual({
+      ok: true,
+      authUserId: "00000000-0000-4000-8000-000000000404",
+    });
+  });
+
+  it("allows the local OTP bypass env code only in local app environments", () => {
+    expect(
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: "000000",
+        publicAppEnv: "local",
+      }),
+    ).toBe("000000");
+    expect(
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: undefined,
+        publicAppEnv: "local",
+      }),
+    ).toBeNull();
+    expect(() =>
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "dev",
+        bypassCode: "000000",
+        publicAppEnv: "dev",
+      }),
+    ).toThrow(/only be set/);
+    expect(() =>
+      readLocalSimulationEmailOtpBypassCode({
+        appEnv: "local",
+        bypassCode: "abc",
+        publicAppEnv: "local",
+      }),
+    ).toThrow(/six-digit/);
   });
 
   it("reads only active non-expired verified simulation sessions", async () => {

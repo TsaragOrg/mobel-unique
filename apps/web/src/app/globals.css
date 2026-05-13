@@ -1725,22 +1725,22 @@ button:disabled {
 .simulation-photo-upload {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
   padding: 0 0 60px;
 }
 
 .simulation-photo-upload-heading {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 28px clamp(22px, 5vw, 70px) 0;
+  gap: 12px;
+  padding: 24px clamp(22px, 5vw, 70px) 0;
 }
 
 .simulation-photo-upload-heading h1 {
   color: var(--public-ink);
   font-family:
     "HelveticaNeue-Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: clamp(2rem, 4.6vw, 3.2rem);
+  font-size: clamp(2rem, 3.6vw, 2.8rem);
   font-weight: 200;
   line-height: 1.05;
   margin: 0;
@@ -1766,14 +1766,14 @@ button:disabled {
   align-items: stretch;
   display: grid;
   gap: clamp(16px, 2.4vw, 26px);
-  grid-template-columns: minmax(0, 1fr) minmax(42px, 62px) minmax(0, 1.08fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
   margin: 0 clamp(22px, 5vw, 70px);
 }
 
 .simulation-photo-upload-guidance-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1791,21 +1791,14 @@ button:disabled {
   background: #f6f6f4;
   border: 1px solid var(--public-line);
   display: flex;
-  height: clamp(220px, 28vw, 380px);
+  height: clamp(240px, 30vw, 420px);
   justify-content: center;
   overflow: hidden;
   position: relative;
 }
 
 .simulation-photo-upload-room-frame {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.78),
-      rgba(246, 246, 244, 0.95)
-    ),
-    #f6f6f4;
-  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.38);
+  background: #f7f5ef;
   color: var(--public-muted);
   min-height: 0;
   padding: 0;
@@ -1833,14 +1826,6 @@ button:disabled {
 
 .simulation-photo-upload-room-frame-busy {
   cursor: progress;
-}
-
-.simulation-photo-upload-room-frame-empty::after {
-  border: 1px solid rgba(12, 12, 12, 0.18);
-  content: "";
-  inset: 14px;
-  pointer-events: none;
-  position: absolute;
 }
 
 .simulation-photo-upload-room-replace-hint {
@@ -1890,6 +1875,32 @@ button:disabled {
   padding: clamp(16px, 3vw, 32px);
 }
 
+.simulation-photo-upload-sofa-view-badge {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--public-line);
+  color: var(--public-muted);
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  gap: 2px;
+  left: 12px;
+  line-height: 1.15;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px;
+  position: absolute;
+  text-align: left;
+  text-transform: uppercase;
+  top: 12px;
+}
+
+.simulation-photo-upload-sofa-view-badge strong {
+  color: var(--public-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
 .simulation-photo-upload-room-frame img {
   background: #f4f4f4;
 }
@@ -1900,29 +1911,139 @@ button:disabled {
   color: var(--public-muted);
   display: flex;
   flex-direction: column;
+  text-align: center;
+  width: 100%;
+}
+
+.simulation-photo-upload-sofa-unavailable {
   gap: 8px;
   max-width: min(100%, 320px);
   padding: 24px;
-  text-align: center;
 }
 
-.simulation-photo-upload-room-action-icon {
-  color: var(--public-ink);
-  display: block;
-  fill: none;
-  height: 54px;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
-  width: 54px;
+.simulation-photo-upload-room-placeholder {
+  inset: 0;
+  justify-content: stretch;
+  max-width: none;
+  padding: 0;
+  position: absolute;
+}
+
+.simulation-photo-upload-angle-stage {
+  align-items: center;
+  background: #fbfaf7;
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.simulation-photo-upload-angle-sequence {
+  aspect-ratio: 1;
+  height: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.simulation-photo-upload-angle-scene {
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.simulation-photo-upload-angle-scene-front {
+  opacity: 1;
+}
+
+.simulation-photo-upload-room-frame
+  .simulation-photo-upload-room-guide-image {
+  background: #fbfaf7;
+  height: 100%;
+  object-fit: contain;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+}
+
+.simulation-photo-upload-room-frame
+  .simulation-photo-upload-sofa-overlay-image {
+  background: transparent;
+  height: auto;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(0, 0) scale(1);
+  transform-origin: center;
+}
+
+.simulation-photo-upload-room-frame
+  .simulation-photo-upload-sofa-overlay-front {
+  left: 12%;
+  opacity: 0.58;
+  top: 45%;
+  width: 76%;
+}
+
+.simulation-photo-upload-room-frame
+  .simulation-photo-upload-sofa-overlay-corner {
+  left: 9%;
+  top: 48%;
+  width: 79%;
+}
+
+.simulation-photo-upload-room-placeholder-copy {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  border-top: 1px solid var(--public-line);
+  display: flex;
+  flex: 0 0 118px;
+  flex-direction: column;
+  gap: 7px;
+  justify-content: center;
+  padding: 12px 16px;
+  width: 100%;
 }
 
 .simulation-photo-upload-sofa-unavailable p,
 .simulation-photo-upload-room-placeholder p {
   color: var(--public-ink);
-  font-size: 1rem;
   margin: 0;
+}
+
+.simulation-photo-upload-angle-message {
+  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.simulation-photo-upload-room-upload-callout {
+  align-items: center;
+  color: var(--public-ink);
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 600;
+  gap: 8px;
+  line-height: 1.2;
+}
+
+.simulation-photo-upload-room-upload-callout svg {
+  display: block;
+  fill: none;
+  flex: 0 0 auto;
+  height: 22px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 22px;
+}
+
+.simulation-photo-upload-room-upload-hint {
+  color: var(--public-muted);
 }
 
 .simulation-photo-upload-sofa-unavailable span,
@@ -1931,48 +2052,8 @@ button:disabled {
   line-height: 1.45;
 }
 
-.simulation-photo-upload-guidance-caption,
-.simulation-photo-upload-orientation {
-  color: var(--public-muted);
-  font-size: 0.94rem;
-  line-height: 1.45;
-  margin: 0;
-}
-
-.simulation-photo-upload-orientation {
-  color: var(--public-ink);
-}
-
 .simulation-photo-upload-guidance-panel > .public-secondary-button {
   align-self: flex-start;
-}
-
-.simulation-photo-upload-guidance-bridge {
-  align-self: center;
-  min-height: 44px;
-  position: relative;
-}
-
-.simulation-photo-upload-guidance-bridge::before {
-  background: var(--public-line);
-  content: "";
-  height: 1px;
-  left: 0;
-  position: absolute;
-  right: 2px;
-  top: 50%;
-}
-
-.simulation-photo-upload-guidance-bridge::after {
-  border-right: 1px solid var(--public-muted);
-  border-top: 1px solid var(--public-muted);
-  content: "";
-  height: 10px;
-  position: absolute;
-  right: 2px;
-  top: calc(50% - 5px);
-  transform: rotate(45deg);
-  width: 10px;
 }
 
 .simulation-photo-upload-preview-placeholder {
@@ -2011,13 +2092,22 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .simulation-photo-upload-room-frame-empty::after {
-    animation: simulation-photo-target-callout 2.8s ease-in-out infinite;
+  .simulation-photo-upload-angle-scene-front {
+    animation: simulation-angle-scene-front 8.8s linear infinite;
   }
 
-  .simulation-photo-upload-room-frame-empty
-    .simulation-photo-upload-room-action-icon {
-    animation: simulation-upload-icon-lift 2.8s ease-in-out infinite;
+  .simulation-photo-upload-angle-scene-corner {
+    animation: simulation-angle-scene-corner 8.8s linear infinite;
+  }
+
+  .simulation-photo-upload-sofa-overlay-front {
+    animation: simulation-sofa-placement-front 8.8s ease-in-out infinite;
+    will-change: opacity, transform;
+  }
+
+  .simulation-photo-upload-sofa-overlay-corner {
+    animation: simulation-sofa-placement-corner 8.8s ease-in-out infinite;
+    will-change: opacity, transform;
   }
 
   .simulation-photo-upload-spinner {
@@ -2025,27 +2115,101 @@ button:disabled {
   }
 }
 
-@keyframes simulation-photo-target-callout {
+@keyframes simulation-angle-scene-front {
   0%,
-  100% {
-    opacity: 0.38;
-    transform: scale(0.985);
+  46% {
+    opacity: 1;
   }
 
-  45% {
-    opacity: 0.78;
-    transform: scale(1);
+  49%,
+  100% {
+    opacity: 0;
   }
 }
 
-@keyframes simulation-upload-icon-lift {
+@keyframes simulation-angle-scene-corner {
   0%,
-  100% {
-    transform: translateY(0);
+  49% {
+    opacity: 0;
   }
 
-  45% {
-    transform: translateY(-3px);
+  52%,
+  96% {
+    opacity: 1;
+  }
+
+  99%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes simulation-sofa-placement-front {
+  0% {
+    opacity: 0;
+    transform: translate(-42%, 8%) scale(0.9);
+  }
+
+  6% {
+    opacity: 0.62;
+  }
+
+  28% {
+    opacity: 0.62;
+    transform: translate(0, 0) scale(1);
+  }
+
+  40% {
+    opacity: 0.62;
+    transform: translate(0, 0) scale(1);
+  }
+
+  48% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1);
+  }
+
+  49% {
+    opacity: 0;
+    transform: translate(-42%, 8%) scale(0.9);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-42%, 8%) scale(0.9);
+  }
+}
+
+@keyframes simulation-sofa-placement-corner {
+  0%,
+  50% {
+    opacity: 0;
+    transform: translate(-42%, 8%) scale(0.9);
+  }
+
+  56% {
+    opacity: 0.62;
+  }
+
+  78% {
+    opacity: 0.62;
+    transform: translate(0, 0) scale(1);
+  }
+
+  90% {
+    opacity: 0.62;
+    transform: translate(0, 0) scale(1);
+  }
+
+  98% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1);
+  }
+
+  99%,
+  100% {
+    opacity: 0;
+    transform: translate(-42%, 8%) scale(0.9);
   }
 }
 
@@ -2060,28 +2224,13 @@ button:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .simulation-photo-upload-guidance-bridge {
-    height: 34px;
-    justify-self: center;
-    min-height: 34px;
-    width: 34px;
+  .simulation-photo-upload-room-frame {
+    height: 360px;
   }
 
-  .simulation-photo-upload-guidance-bridge::before {
-    bottom: 0;
-    height: auto;
-    left: 50%;
-    right: auto;
-    top: 0;
-    width: 1px;
-  }
-
-  .simulation-photo-upload-guidance-bridge::after {
-    left: calc(50% - 5px);
-    right: auto;
-    top: auto;
-    bottom: 2px;
-    transform: rotate(135deg);
+  .simulation-photo-upload-room-placeholder-copy {
+    flex-basis: 126px;
+    padding: 8px 12px;
   }
 }
 

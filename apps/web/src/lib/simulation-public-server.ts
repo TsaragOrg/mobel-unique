@@ -50,6 +50,7 @@ const DEFAULT_CORNER_TAG_SLUG = "corner";
 const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_DISPATCH_TRIGGER_TIMEOUT_MS = 5_000;
 const DEFAULT_REALTIME_TOKEN_TTL_SECONDS = 5 * 60;
+const LOCAL_EMAIL_OTP_BYPASS_CODE_REGEX = /^\d{6}$/;
 const PUBLIC_SIMULATION_AUTH_USER_METADATA = {
   public_simulation_transient: true,
   public_simulation_purpose: "in_home_simulation_email_otp",
@@ -59,9 +60,15 @@ const SIMULATION_PRIVATE_BUCKET = "simulation-private-artifacts";
 
 export function createDefaultSimulationPublicEmailHandlerDeps(): SimulationPublicEmailHandlerDeps {
   const client = createServiceRoleClient();
+  const environment = readSimulationEnvironment(process.env.NEXT_PUBLIC_APP_ENV);
+  const localOtpBypassCode = readLocalSimulationEmailOtpBypassCode({
+    appEnv: process.env.APP_ENV,
+    bypassCode: process.env.SIMULATION_EMAIL_OTP_BYPASS_CODE,
+    publicAppEnv: process.env.NEXT_PUBLIC_APP_ENV,
+  });
   return {
     accessTokenSecret: requiredEnv("SIMULATION_ACCESS_TOKEN_SECRET"),
-    environment: readSimulationEnvironment(process.env.NEXT_PUBLIC_APP_ENV),
+    environment,
     emailVerificationStore: createSupabaseSimulationEmailVerificationStore(
       client,
       {
@@ -70,7 +77,11 @@ export function createDefaultSimulationPublicEmailHandlerDeps(): SimulationPubli
         ),
       },
     ),
-    otpProvider: createSupabaseSimulationEmailOtpProvider(client),
+    otpProvider: localOtpBypassCode
+      ? createLocalSimulationEmailOtpBypassProvider(client, {
+          bypassCode: localOtpBypassCode,
+        })
+      : createSupabaseSimulationEmailOtpProvider(client),
   };
 }
 
@@ -325,19 +336,39 @@ export function createSupabaseSimulationEmailOtpProvider(
       return { ok: true, authUserId };
     },
     async deleteTransientUser({ authUserId }) {
-      const { error } = await client.auth.admin.deleteUser(authUserId);
-      if (!error) {
-        return;
+      await deleteTransientAuthUser(client, authUserId);
+    },
+  };
+}
+
+export function createLocalSimulationEmailOtpBypassProvider(
+  client: SupabaseClient,
+  config: {
+    bypassCode: string;
+  },
+): SimulationEmailOtpProvider {
+  return {
+    async sendOtp() {
+      return { ok: true };
+    },
+    async verifyOtp({ email, code }) {
+      if (code !== config.bypassCode) {
+        return { ok: false, reason: "invalid" };
       }
-      const status =
-        typeof error === "object" && error !== null
-          ? (error as { status?: unknown }).status
-          : undefined;
-      const message = error.message;
-      if (status === 404 || message.toLowerCase().includes("not found")) {
-        return;
+
+      try {
+        const authUserId = await findOrCreateTransientLocalAuthUser(
+          client,
+          email,
+        );
+        return { ok: true, authUserId };
+      } catch (error) {
+        console.error("[simulations] local OTP bypass auth user failed:", error);
+        return { ok: false, reason: "provider_error" };
       }
-      throw error;
+    },
+    async deleteTransientUser({ authUserId }) {
+      await deleteTransientAuthUser(client, authUserId);
     },
   };
 }
@@ -726,6 +757,31 @@ export function readSimulationEnvironment(
   return "local";
 }
 
+export function readLocalSimulationEmailOtpBypassCode(input: {
+  appEnv: string | undefined;
+  bypassCode: string | undefined;
+  publicAppEnv: string | undefined;
+}): string | null {
+  const bypassCode = input.bypassCode?.trim();
+  if (!bypassCode) {
+    return null;
+  }
+
+  if (!LOCAL_EMAIL_OTP_BYPASS_CODE_REGEX.test(bypassCode)) {
+    throw new Error(
+      "SIMULATION_EMAIL_OTP_BYPASS_CODE must be a six-digit code.",
+    );
+  }
+
+  if (input.appEnv !== "local" || input.publicAppEnv !== "local") {
+    throw new Error(
+      "SIMULATION_EMAIL_OTP_BYPASS_CODE can only be set when APP_ENV and NEXT_PUBLIC_APP_ENV are local.",
+    );
+  }
+
+  return bypassCode;
+}
+
 function createServiceRoleClient(): SupabaseClient {
   return createClient(
     requiredEnv("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"),
@@ -736,6 +792,110 @@ function createServiceRoleClient(): SupabaseClient {
         persistSession: false,
       },
     },
+  );
+}
+
+async function deleteTransientAuthUser(
+  client: SupabaseClient,
+  authUserId: string,
+): Promise<void> {
+  const { error } = await client.auth.admin.deleteUser(authUserId);
+  if (!error) {
+    return;
+  }
+  const status =
+    typeof error === "object" && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  const message = error.message;
+  if (status === 404 || message.toLowerCase().includes("not found")) {
+    return;
+  }
+  throw error;
+}
+
+async function findOrCreateTransientLocalAuthUser(
+  client: SupabaseClient,
+  email: string,
+): Promise<string> {
+  const normalizedEmail = normalizeEmailAddress(email);
+  const { data, error } = await client.auth.admin.createUser({
+    email: normalizedEmail,
+    email_confirm: true,
+    user_metadata: PUBLIC_SIMULATION_AUTH_USER_METADATA,
+  });
+  if (!error && data.user?.id) {
+    return data.user.id;
+  }
+
+  if (error && !isAuthUserAlreadyRegisteredError(error)) {
+    throw error;
+  }
+
+  const existingUser = await findTransientLocalAuthUserByEmail(
+    client,
+    normalizedEmail,
+  );
+  if (existingUser) {
+    return existingUser.id;
+  }
+
+  throw error ?? new Error("Could not create local simulation auth user.");
+}
+
+async function findTransientLocalAuthUserByEmail(
+  client: SupabaseClient,
+  normalizedEmail: string,
+): Promise<{ id: string } | null> {
+  const perPage = 100;
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (error) {
+      throw error;
+    }
+    const users = data.users ?? [];
+    const match = users.find(
+      (user) =>
+        user.email?.trim().toLowerCase() === normalizedEmail &&
+        isPublicSimulationTransientUser(user),
+    );
+    if (match?.id) {
+      return { id: match.id };
+    }
+    if (users.length < perPage) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function isPublicSimulationTransientUser(user: {
+  user_metadata?: unknown;
+}): boolean {
+  const metadata = user.user_metadata;
+  return (
+    typeof metadata === "object" &&
+    metadata !== null &&
+    (metadata as Record<string, unknown>).public_simulation_transient === true &&
+    (metadata as Record<string, unknown>).public_simulation_purpose ===
+      PUBLIC_SIMULATION_AUTH_USER_METADATA.public_simulation_purpose
+  );
+}
+
+function isAuthUserAlreadyRegisteredError(error: unknown): boolean {
+  const status =
+    typeof error === "object" && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    status === 400 ||
+    status === 422 ||
+    message.includes("already") ||
+    message.includes("registered")
   );
 }
 
