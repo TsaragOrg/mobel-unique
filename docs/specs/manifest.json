@@ -207,7 +207,8 @@
         "PLAN-0048",
         "PLAN-0052",
         "PLAN-0059",
-        "PLAN-0065"
+        "PLAN-0065",
+        "PLAN-0089"
       ],
       "path": "docs/specs/accepted/SPEC-0014-admin-sofa-edit-ux-simplification.md",
       "areas": ["web", "api"]
