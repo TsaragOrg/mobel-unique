@@ -497,6 +497,54 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
     item.fabrics.find((fabric) => fabric.id === item.default_fabric_id);
   const activeRenderUrl =
     selectedFabric?.render_medium_url ?? item.default_render_medium_url;
+
+  // RU: Здесь хранится адрес картинки, которая сейчас видна посетителю на карточке.
+  // FR: Ici on garde l'adresse de l'image visible en ce moment sur la carte.
+  const [displayedRenderUrl, setDisplayedRenderUrl] = useState(
+    item.default_render_medium_url,
+  );
+
+  // RU: Заранее качаем и расшифровываем картинки всех тканей карточки, чтобы переключение было быстрым.
+  // FR: On telecharge et on prepare a l'avance les images de tous les tissus de la carte pour un changement rapide.
+  useEffect(() => {
+    for (const fabric of item.fabrics) {
+      if (!fabric.render_medium_url) {
+        continue;
+      }
+
+      const preloader = new Image();
+      preloader.src = fabric.render_medium_url;
+      preloader.decode().catch(() => {
+        // RU: Ошибка ранней расшифровки безопасна: видимая картинка повторит попытку при переключении.
+        // FR: Une erreur de preparation reste sans risque: l'image visible reessayera lors du changement.
+      });
+    }
+  }, [item.fabrics]);
+
+  // RU: Меняем видимую картинку только когда новая полностью готова к показу, чтобы не было пустого белого места.
+  // FR: On change l'image visible seulement quand la nouvelle est prete a etre affichee, pour eviter un blanc.
+  useEffect(() => {
+    if (activeRenderUrl === displayedRenderUrl) {
+      return;
+    }
+
+    let isCurrent = true;
+    const preloader = new Image();
+
+    function finishSwap() {
+      if (isCurrent) {
+        setDisplayedRenderUrl(activeRenderUrl);
+      }
+    }
+
+    preloader.src = activeRenderUrl;
+    preloader.decode().then(finishSwap, finishSwap);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeRenderUrl, displayedRenderUrl]);
+
   const visibleFabrics = item.fabrics.slice(0, VISIBLE_FABRIC_LIMIT);
   const hiddenFabricCount = Math.max(
     0,
@@ -546,7 +594,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
             decoding="async"
             loading="lazy"
             onError={() => setImageFailed(true)}
-            src={activeRenderUrl}
+            src={displayedRenderUrl}
           />
         )}
       </a>
@@ -588,8 +636,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
           href={`/sofas/${item.public_slug}`}
           onClick={rememberSelection}
         >
-          <span aria-hidden="true">✧</span>
-          <span>Simuler {item.public_name}</span>
+          <span>Simuler</span>
         </a>
       </div>
     </article>

@@ -48,6 +48,13 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   const [selectedFabricId, setSelectedFabricId] = useState<string | null>(null);
   const [selectedVisualPositionId, setSelectedVisualPositionId] =
     useState<string | null>(null);
+  // RU: Здесь хранится ткань, которая сейчас видна на большой картинке дивана.
+  // FR: Ici on garde le tissu visible en ce moment sur la grande image du canape.
+  const [displayedFabricId, setDisplayedFabricId] = useState<string | null>(null);
+  // RU: Здесь хранится вид дивана, который сейчас виден на большой картинке.
+  // FR: Ici on garde la vue du canape visible en ce moment sur la grande image.
+  const [displayedVisualPositionId, setDisplayedVisualPositionId] =
+    useState<string | null>(null);
   const [staleSelection, setStaleSelection] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   // RU: Это значение показывает, открыто ли большое окно с картинкой.
@@ -113,6 +120,20 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
               ? storedVisualPosition
               : body.data.defaults.visual_position_id,
         );
+        setDisplayedFabricId(
+          hasStaleFabric
+            ? null
+            : storedFabric && fabricIds.has(storedFabric)
+              ? storedFabric
+              : body.data.defaults.fabric_id,
+        );
+        setDisplayedVisualPositionId(
+          hasStaleVisualPosition
+            ? null
+            : storedVisualPosition && visualPositionIds.has(storedVisualPosition)
+              ? storedVisualPosition
+              : body.data.defaults.visual_position_id,
+        );
         setStatus("ready");
       } catch {
         if (isCurrent) {
@@ -152,8 +173,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     };
   }, [isImageViewerOpen]);
 
-  // RU: Эти данные находят выбранную ткань, выбранный вид, нужную картинку и готовность кнопки симуляции.
-  // FR: Ces donnees trouvent le tissu choisi, la vue choisie, la bonne image et le bouton de simulation pret.
+  // RU: Эти данные находят выбранные ткань, вид и картинку для кнопок и большой просмотровой.
+  // FR: Ces donnees trouvent le tissu, la vue et l'image choisis pour les boutons et la grande vue.
   const selectedFabric = useMemo(
     () => detail?.fabrics.find((fabric) => fabric.id === selectedFabricId) ?? null,
     [detail?.fabrics, selectedFabricId],
@@ -184,6 +205,102 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     selectedRender?.render_url ??
     selectedRender?.render_medium_url ??
     null;
+
+  // RU: Эти данные находят ткань, вид и картинку, которые сейчас видны на странице.
+  // FR: Ces donnees trouvent le tissu, la vue et l'image visibles en ce moment sur la page.
+  const displayedFabric = useMemo(
+    () => detail?.fabrics.find((fabric) => fabric.id === displayedFabricId) ?? null,
+    [detail?.fabrics, displayedFabricId],
+  );
+  const displayedVisualPosition = useMemo(
+    () =>
+      detail?.visual_positions.find(
+        (position) => position.id === displayedVisualPositionId,
+      ) ?? null,
+    [detail?.visual_positions, displayedVisualPositionId],
+  );
+  const displayedRender = useMemo(
+    () =>
+      detail?.renders.find(
+        (render) =>
+          render.fabric_id === displayedFabricId &&
+          render.visual_position_id === displayedVisualPositionId,
+      ) ?? null,
+    [detail?.renders, displayedFabricId, displayedVisualPositionId],
+  );
+  const displayedRenderPreviewUrl =
+    displayedRender?.render_medium_url ??
+    displayedRender?.render_url ??
+    displayedRender?.render_original_url ??
+    null;
+
+  // RU: Заранее качаем и расшифровываем картинки всех тканей выбранного вида, чтобы переключение было быстрым.
+  // FR: On telecharge et on prepare a l'avance les images de tous les tissus de la vue choisie pour un changement rapide.
+  useEffect(() => {
+    if (!detail || !selectedVisualPositionId) {
+      return;
+    }
+
+    for (const render of detail.renders) {
+      if (render.visual_position_id !== selectedVisualPositionId) {
+        continue;
+      }
+
+      if (!render.render_medium_url) {
+        continue;
+      }
+
+      const preloader = new Image();
+      preloader.src = render.render_medium_url;
+      preloader.decode().catch(() => {
+        // RU: Ошибка ранней расшифровки безопасна: видимая картинка повторит попытку при переключении.
+        // FR: Une erreur de preparation reste sans risque: l'image visible reessayera lors du changement.
+      });
+    }
+  }, [detail, selectedVisualPositionId]);
+
+  // RU: Меняем видимую картинку только когда новая полностью готова к показу, чтобы не было пустого белого места.
+  // FR: On change l'image visible seulement quand la nouvelle est prete a etre affichee, pour eviter un blanc.
+  useEffect(() => {
+    if (
+      !selectedFabricId ||
+      !selectedVisualPositionId ||
+      !selectedRenderPreviewUrl
+    ) {
+      return;
+    }
+
+    if (
+      selectedFabricId === displayedFabricId &&
+      selectedVisualPositionId === displayedVisualPositionId
+    ) {
+      return;
+    }
+
+    let isCurrent = true;
+    const preloader = new Image();
+
+    function finishSwap() {
+      if (isCurrent) {
+        setDisplayedFabricId(selectedFabricId);
+        setDisplayedVisualPositionId(selectedVisualPositionId);
+      }
+    }
+
+    preloader.src = selectedRenderPreviewUrl;
+    preloader.decode().then(finishSwap, finishSwap);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    displayedFabricId,
+    displayedVisualPositionId,
+    selectedFabricId,
+    selectedRenderPreviewUrl,
+    selectedVisualPositionId,
+  ]);
+
   const canLaunchSimulation = Boolean(
     detail &&
       selectedFabric &&
@@ -191,10 +308,10 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       selectedRender &&
       !staleSelection,
   );
-  // RU: Этот текст описывает выбранную картинку дивана для читателей экрана.
-  // FR: Ce texte decrit l'image choisie du canape pour les lecteurs d'ecran.
+  // RU: Этот текст описывает картинку, которая сейчас видна, для читателей экрана.
+  // FR: Ce texte decrit l'image visible en ce moment pour les lecteurs d'ecran.
   const selectedImageAlt = detail
-    ? `${detail.sofa.public_name} en ${selectedFabric?.public_name ?? "tissu sélectionné"}, ${selectedVisualPosition?.public_label ?? "vue sélectionnée"}`
+    ? `${detail.sofa.public_name} en ${displayedFabric?.public_name ?? "tissu sélectionné"}, ${displayedVisualPosition?.public_label ?? "vue sélectionnée"}`
     : "";
   // RU: Эта проверка говорит, можно ли открыть выбранную картинку большим окном.
   // FR: Cette verification dit si l'image choisie peut s'ouvrir en grand.
@@ -240,6 +357,8 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
 
     setSelectedFabricId(detail.defaults.fabric_id);
     setSelectedVisualPositionId(detail.defaults.visual_position_id);
+    setDisplayedFabricId(detail.defaults.fabric_id);
+    setDisplayedVisualPositionId(detail.defaults.visual_position_id);
     setStaleSelection(false);
     setImageFailed(false);
     setImageViewerOpen(false);
@@ -331,7 +450,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
         <article className="sofa-detail">
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
-              {imageFailed || !selectedRenderPreviewUrl ? (
+              {imageFailed || !displayedRenderPreviewUrl ? (
                 <span>Image indisponible</span>
               ) : (
                 <button
@@ -344,7 +463,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                     alt={selectedImageAlt}
                     decoding="async"
                     onError={handleSelectedImageError}
-                    src={selectedRenderPreviewUrl}
+                    src={displayedRenderPreviewUrl}
                   />
                   <span className="sofa-detail-image-viewer-icon">
                     <PublicExpandIcon />
