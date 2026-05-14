@@ -636,8 +636,7 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
           href={`/sofas/${item.public_slug}`}
           onClick={rememberSelection}
         >
-          <span aria-hidden="true">✧</span>
-          <span>Simuler {item.public_name}</span>
+          <span>Simuler</span>
         </a>
       </div>
     </article>

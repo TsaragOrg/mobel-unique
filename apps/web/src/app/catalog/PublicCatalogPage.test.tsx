@@ -802,9 +802,15 @@ describe("PublicCatalogPage", () => {
       "https://assets.example/marais/lin-face-medium.jpg",
     );
 
-    const detailLink = screen.getByRole("link", {
-      name: "Simuler Canapé Rivoli",
-    });
+    const detailLink = container.querySelector<HTMLAnchorElement>(
+      'a.catalog-card-link[href="/sofas/canape-rivoli"]',
+    );
+    if (!detailLink) {
+      throw new Error("Detail link for canape-rivoli not found");
+    }
+    // RU: Проверяем, что подпись кнопки — это просто «Simuler», без названия дивана и звёздочки.
+    // FR: On verifie que le texte du bouton est seulement «Simuler», sans le nom du canape ni l'etoile.
+    expect(detailLink.textContent?.trim()).toBe("Simuler");
     detailLink.addEventListener("click", (event) => event.preventDefault());
     fireEvent.click(detailLink);
     expect(window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli")).toContain(
