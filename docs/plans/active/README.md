@@ -12,3 +12,4 @@ continues.
 | PLAN-0042 | SPEC-0015 | active | workflow | Production launch test, cross-team sign-off, and operations runbook. |
 | PLAN-0087 | SPEC-0012 | active | web | Public catalog and sofa detail loading states will reserve card and hero-shaped skeleton space to reduce CLS from the old 150 px loading panel replacement. |
 | PLAN-0094 | SPEC-0012 | active | web | Public catalog cache boundary will keep catalog JSON fresh after publish/unpublish while making public image objects long-cacheable through immutable Storage paths. |
+| PLAN-0095 | SPEC-0012 | active | web | Public fabric switching preloads variant renders and keeps the previous render visible until the next render is decoded, removing the desktop white flash and the first-switch network delay. |

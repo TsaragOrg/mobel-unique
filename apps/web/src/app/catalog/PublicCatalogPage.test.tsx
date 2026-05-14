@@ -277,6 +277,29 @@ const maraisDetail = {
   },
 };
 
+// RU: Этот класс заменяет встроенную картинку браузера, чтобы она сразу сообщала о готовности.
+// FR: Cette classe remplace l'image du navigateur pour qu'elle signale tout de suite qu'elle est prete.
+class InstantImage {
+  private _src = "";
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  static loaded: string[] = [];
+
+  set src(value: string) {
+    this._src = value;
+    InstantImage.loaded.push(value);
+    queueMicrotask(() => this.onload?.());
+  }
+
+  get src() {
+    return this._src;
+  }
+
+  decode(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: {
@@ -370,6 +393,8 @@ function mockFilterMeasurements(input: {
 
 describe("PublicCatalogPage", () => {
   beforeEach(() => {
+    InstantImage.loaded = [];
+    vi.stubGlobal("Image", InstantImage);
     setCatalogViewport(390);
     window.history.replaceState({}, "", "/catalog");
     window.sessionStorage.clear();
@@ -766,9 +791,11 @@ describe("PublicCatalogPage", () => {
     expect(screen.queryByText("Velours sauge")).not.toBeInTheDocument();
     fireEvent.click(saugeButton);
 
-    expect(rivoliImage).toHaveAttribute(
-      "src",
-      "https://assets.example/rivoli/sauge-face-medium.jpg",
+    await waitFor(() =>
+      expect(rivoliImage).toHaveAttribute(
+        "src",
+        "https://assets.example/rivoli/sauge-face-medium.jpg",
+      ),
     );
     expect(maraisImage).toHaveAttribute(
       "src",
@@ -830,6 +857,98 @@ describe("PublicCatalogPage", () => {
         String(input).startsWith("/api/public/sofas/"),
       ),
     ).toBe(false);
+  });
+
+  it("preloads every fabric render variant for a catalog card", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope([])));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([rivoli])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PublicCatalogPage />);
+
+    await screen.findByRole("heading", { name: "Canapé Rivoli" });
+
+    await waitFor(() => {
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/boucle-face-medium.jpg",
+      );
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/sauge-face-medium.jpg",
+      );
+    });
+  });
+
+  it("keeps the previous catalog card image visible until the next render is decoded", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === "/api/public/catalog/tags") {
+        return Promise.resolve(jsonResponse(tagsEnvelope([])));
+      }
+
+      return Promise.resolve(jsonResponse(catalogEnvelope([rivoli])));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const gate: { resolveSauge: (() => void) | null } = { resolveSauge: null };
+
+    class GatedImage extends InstantImage {
+      set src(value: string) {
+        if (value === "https://assets.example/rivoli/sauge-face-medium.jpg") {
+          InstantImage.loaded.push(value);
+          (this as unknown as { _src: string })._src = value;
+          return;
+        }
+
+        super.src = value;
+      }
+
+      decode(): Promise<void> {
+        if (
+          (this as unknown as { _src: string })._src ===
+          "https://assets.example/rivoli/sauge-face-medium.jpg"
+        ) {
+          return new Promise((resolve) => {
+            gate.resolveSauge = resolve;
+          });
+        }
+
+        return super.decode();
+      }
+    }
+
+    vi.stubGlobal("Image", GatedImage);
+
+    const { container } = render(<PublicCatalogPage />);
+
+    await screen.findByRole("heading", { name: "Canapé Rivoli" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+
+    expect(
+      container.querySelector('img[alt="Canapé Rivoli"]'),
+    ).toHaveAttribute(
+      "src",
+      "https://assets.example/rivoli/boucle-face-medium.jpg",
+    );
+
+    gate.resolveSauge?.();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[alt="Canapé Rivoli"]'),
+      ).toHaveAttribute(
+        "src",
+        "https://assets.example/rivoli/sauge-face-medium.jpg",
+      ),
+    );
   });
 
   it("uses a French placeholder when a catalog image fails", async () => {
