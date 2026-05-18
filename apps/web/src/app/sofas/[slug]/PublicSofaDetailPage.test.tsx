@@ -346,6 +346,34 @@ describe("PublicSofaDetailPage", () => {
     });
   });
 
+  it("preloads every visual position render for the active fabric before photo controls are used", async () => {
+    mockDetailResponse();
+
+    render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    await screen.findByRole("heading", { name: detail.sofa.public_name });
+
+    await waitFor(() => {
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/boucle-face-medium.jpg",
+      );
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/boucle-profil-medium.jpg",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+
+    await waitFor(() => {
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/sauge-face-medium.jpg",
+      );
+      expect(InstantImage.loaded).toContain(
+        "https://assets.example/rivoli/sauge-profil-medium.jpg",
+      );
+    });
+  });
+
   it("keeps the previous detail image visible until the next render is decoded", async () => {
     mockDetailResponse();
 
