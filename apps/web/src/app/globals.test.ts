@@ -185,6 +185,15 @@ describe("global public catalog styles", () => {
     expect(css).toContain(".sofa-detail-skeleton-info");
   });
 
+  it("does not animate the sofa detail image when fabric changes", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(css).not.toContain("sofa-detail-image-enter");
+    expect(css).not.toContain(`.sofa-detail-image-button img {
+  animation:`);
+  });
+
   it("keeps sofa detail tags as a two-line expandable chip list", () => {
     const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
       .replace(/\r\n/g, "\n");
