@@ -332,6 +332,28 @@
       "implementationPlans": ["PLAN-0080", "PLAN-0081"],
       "path": "docs/specs/accepted/SPEC-0020-admin-simulation-leads-dashboard.md",
       "areas": ["web", "supabase"]
+    },
+    {
+      "id": "SPEC-0021",
+      "title": "Admin Simulation Analytics",
+      "status": "accepted",
+      "layer": "feature",
+      "parent": "SPEC-0013",
+      "dependsOn": [
+        "SPEC-0003",
+        "SPEC-0004",
+        "SPEC-0007",
+        "SPEC-0009",
+        "SPEC-0010",
+        "SPEC-0011",
+        "SPEC-0012",
+        "SPEC-0013",
+        "SPEC-0015",
+        "SPEC-0018"
+      ],
+      "implementationPlans": ["PLAN-0098"],
+      "path": "docs/specs/accepted/SPEC-0021-admin-simulation-analytics.md",
+      "areas": ["web", "supabase"]
     }
   ]
 }

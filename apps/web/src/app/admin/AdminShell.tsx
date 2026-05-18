@@ -15,6 +15,10 @@ const ADMIN_NAV_ITEMS = [
     label: ADMIN_COPY.shell.navigation.dashboard,
   },
   {
+    href: "/admin/analytics",
+    label: ADMIN_COPY.shell.navigation.analytics,
+  },
+  {
     href: "/admin/sofas",
     label: ADMIN_COPY.shell.navigation.sofas,
   },

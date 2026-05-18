@@ -1,12 +1,12 @@
 # SPEC-0021 Admin Simulation Analytics
 
 Spec: SPEC-0021
-Status: draft
+Status: accepted
 Layer: feature
 Parent Spec: SPEC-0013
 Depends On: SPEC-0003, SPEC-0004, SPEC-0007, SPEC-0009, SPEC-0010, SPEC-0011, SPEC-0012, SPEC-0013, SPEC-0015, SPEC-0018
 Areas: web, supabase
-Implementation Plans: none yet
+Implementation Plans: PLAN-0098
 
 ## Traceability
 
