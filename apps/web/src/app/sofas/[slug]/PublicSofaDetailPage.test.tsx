@@ -211,12 +211,11 @@ describe("PublicSofaDetailPage", () => {
     mockDetailResponse();
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
 
-    expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
+    expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Revenir au catalogue" })).toHaveAttribute(
       "href",
       "/catalog",
     );
-    expect(await screen.findByRole("heading", { name: "Canapé Rivoli" })).toBeInTheDocument();
     expect(screen.getByText("Un canapé modulable pour le salon.")).toBeInTheDocument();
     expect(screen.getByText("1 299 €")).toBeInTheDocument();
     expect(screen.getByText("Longueur 240 cm")).toBeInTheDocument();
@@ -231,10 +230,9 @@ describe("PublicSofaDetailPage", () => {
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "Face" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByText("Photo 1 sur 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Photo précédente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Photo suivante" })).not.toBeDisabled();
     expect(container.querySelector('img[alt="Canapé Rivoli en Bouclé ivoire, Face"]')).toHaveAttribute(
       "src",
       "https://assets.example/rivoli/boucle-face-medium.jpg",
@@ -282,6 +280,23 @@ describe("PublicSofaDetailPage", () => {
     );
   });
 
+  it("shows the active fabric name outside the swatch buttons", async () => {
+    mockDetailResponse();
+    const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
+
+    await screen.findByRole("heading", { name: "Canapé Rivoli" });
+
+    expect(container.querySelector(".sofa-selected-choice-name")).toHaveTextContent(
+      "Bouclé ivoire",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Velours sauge" }));
+
+    expect(container.querySelector(".sofa-selected-choice-name")).toHaveTextContent(
+      "Velours sauge",
+    );
+  });
+
   it("restores a valid internal catalog preview fabric from session storage", async () => {
     window.sessionStorage.setItem(
       "mobel-unique:catalog-selection:canape-rivoli",
@@ -319,7 +334,7 @@ describe("PublicSofaDetailPage", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Profil" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo suivante" }));
 
     await waitFor(() => {
       expect(InstantImage.loaded).toContain(
@@ -397,7 +412,7 @@ describe("PublicSofaDetailPage", () => {
     const { container } = render(<PublicSofaDetailPage slug="canape-rivoli" />);
 
     await screen.findByRole("heading", { name: "Canapé Rivoli" });
-    fireEvent.click(screen.getByRole("button", { name: "Profil" }));
+    fireEvent.click(screen.getByRole("button", { name: "Photo suivante" }));
     await waitFor(() =>
       expect(
         container.querySelector(
@@ -414,10 +429,9 @@ describe("PublicSofaDetailPage", () => {
     expect(
       screen.getByRole("button", { name: "Velours sauge" }).querySelector("img"),
     ).toHaveAttribute("src", "https://assets.example/fabrics/sauge-small.png");
-    expect(screen.getByRole("button", { name: "Profil" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByText("Photo 2 sur 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Photo précédente" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Photo suivante" })).toBeDisabled();
     await waitFor(() =>
       expect(
         container.querySelector(
@@ -522,7 +536,7 @@ describe("PublicSofaDetailPage", () => {
 
     expect(await screen.findByText("Ce canapé n'est pas disponible.")).toBeInTheDocument();
     expect(screen.queryByText(/archived|draft|unpublished|storage/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Revenir au catalogue" })).toHaveAttribute(
       "href",
       "/catalog",
     );

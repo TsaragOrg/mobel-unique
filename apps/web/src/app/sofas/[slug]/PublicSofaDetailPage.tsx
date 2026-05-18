@@ -186,6 +186,26 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       ) ?? null,
     [detail?.visual_positions, selectedVisualPositionId],
   );
+  const selectedVisualPositionIndex = useMemo(
+    () =>
+      detail?.visual_positions.findIndex(
+        (position) => position.id === selectedVisualPositionId,
+      ) ?? -1,
+    [detail?.visual_positions, selectedVisualPositionId],
+  );
+  const previousVisualPosition =
+    detail && selectedVisualPositionIndex > 0
+      ? (detail.visual_positions[selectedVisualPositionIndex - 1] ?? null)
+      : null;
+  const nextVisualPosition =
+    detail &&
+    selectedVisualPositionIndex >= 0 &&
+    selectedVisualPositionIndex < detail.visual_positions.length - 1
+      ? (detail.visual_positions[selectedVisualPositionIndex + 1] ?? null)
+      : null;
+  const selectedVisualPositionLabel = selectedVisualPosition
+    ? formatVisualPositionLabel(selectedVisualPosition)
+    : null;
   const selectedRender = useMemo(
     () =>
       detail?.renders.find(
@@ -311,7 +331,11 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
   // RU: Этот текст описывает картинку, которая сейчас видна, для читателей экрана.
   // FR: Ce texte decrit l'image visible en ce moment pour les lecteurs d'ecran.
   const selectedImageAlt = detail
-    ? `${detail.sofa.public_name} en ${displayedFabric?.public_name ?? "tissu sélectionné"}, ${displayedVisualPosition?.public_label ?? "vue sélectionnée"}`
+    ? `${detail.sofa.public_name} en ${displayedFabric?.public_name ?? "tissu sélectionné"}, ${
+        displayedVisualPosition
+          ? formatVisualPositionLabel(displayedVisualPosition)
+          : "vue sélectionnée"
+      }`
     : "";
   // RU: Эта проверка говорит, можно ли открыть выбранную картинку большим окном.
   // FR: Cette verification dit si l'image choisie peut s'ouvrir en grand.
@@ -415,10 +439,6 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
 
   return (
     <PublicShell currentPath="detail">
-      <a className="public-back-link" href="/catalog">
-        Retour au catalogue
-      </a>
-
       {/* RU: Эти части показывают пустую область загрузки, ошибку или недоступный диван. */}
       {/* FR: Ces parties montrent la zone vide de chargement, l'erreur ou le canape indisponible. */}
       {status === "loading" || status === "idle" ? (
@@ -435,12 +455,18 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
           >
             Réessayer
           </button>
+          <a className="public-secondary-link" href="/catalog">
+            Revenir au catalogue
+          </a>
         </section>
       ) : null}
 
       {status === "unavailable" ? (
         <section className="public-status-panel">
           <p>Ce canapé n'est pas disponible.</p>
+          <a className="public-secondary-link" href="/catalog">
+            Revenir au catalogue
+          </a>
         </section>
       ) : null}
 
@@ -448,6 +474,11 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
       {/* FR: Cette grande partie montre le canape choisi et les actions du visiteur. */}
       {status === "ready" && detail ? (
         <article className="sofa-detail">
+          <a className="sofa-detail-return-link" href="/catalog">
+            <span aria-hidden="true">←</span>
+            <span>Revenir au catalogue</span>
+          </a>
+
           <section className="sofa-detail-media">
             <div className="sofa-detail-image">
               {imageFailed || !displayedRenderPreviewUrl ? (
@@ -460,6 +491,7 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                   type="button"
                 >
                   <img
+                    key={displayedRenderPreviewUrl}
                     alt={selectedImageAlt}
                     decoding="async"
                     onError={handleSelectedImageError}
@@ -471,6 +503,42 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 </button>
               )}
             </div>
+            {detail.visual_positions.length > 1 &&
+            selectedVisualPositionLabel &&
+            selectedVisualPositionIndex >= 0 ? (
+              <div className="sofa-photo-controls" aria-label="Changer de photo">
+                <button
+                  aria-label="Photo précédente"
+                  className="sofa-photo-control-button"
+                  disabled={!previousVisualPosition}
+                  onClick={() => {
+                    if (previousVisualPosition) {
+                      chooseVisualPosition(previousVisualPosition.id);
+                    }
+                  }}
+                  type="button"
+                >
+                  <PublicArrowLeftIcon />
+                </button>
+                <p className="sofa-photo-control-label">
+                  Photo {selectedVisualPositionIndex + 1} sur{" "}
+                  {detail.visual_positions.length}
+                </p>
+                <button
+                  aria-label="Photo suivante"
+                  className="sofa-photo-control-button"
+                  disabled={!nextVisualPosition}
+                  onClick={() => {
+                    if (nextVisualPosition) {
+                      chooseVisualPosition(nextVisualPosition.id);
+                    }
+                  }}
+                  type="button"
+                >
+                  <PublicArrowRightIcon />
+                </button>
+              </div>
+            ) : null}
           </section>
 
           <section className="sofa-detail-copy" aria-labelledby="sofa-title">
@@ -496,7 +564,10 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
             ) : null}
 
             <div className="sofa-selector-panel">
-              <SelectionGroup title="Tissu">
+              <SelectionGroup
+                title="Tissu"
+                selectedLabel={selectedFabric?.public_name}
+              >
                 {detail.fabrics.map((fabric) => (
                   <button
                     aria-pressed={selectedFabricId === fabric.id}
@@ -516,19 +587,6 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
                 ))}
               </SelectionGroup>
 
-              <SelectionGroup title="Vue">
-                {detail.visual_positions.map((position) => (
-                  <button
-                    aria-pressed={selectedVisualPositionId === position.id}
-                    className="sofa-view-button"
-                    key={position.id}
-                    onClick={() => chooseVisualPosition(position.id)}
-                    type="button"
-                  >
-                    {position.public_label ?? `Vue ${position.sequence}`}
-                  </button>
-                ))}
-              </SelectionGroup>
             </div>
 
             <div className="sofa-actions">
@@ -704,17 +762,42 @@ function PublicCloseIcon() {
   );
 }
 
+function PublicArrowLeftIcon() {
+  return (
+    <svg aria-hidden="true" className="sofa-photo-control-icon" viewBox="0 0 24 24">
+      <path d="M15.5 5.4 9 12l6.5 6.6-1.4 1.4L6.1 12l8-8 1.4 1.4Z" />
+    </svg>
+  );
+}
+
+function PublicArrowRightIcon() {
+  return (
+    <svg aria-hidden="true" className="sofa-photo-control-icon" viewBox="0 0 24 24">
+      <path d="m8.5 18.6 6.5-6.6-6.5-6.6L9.9 4l8 8-8 8-1.4-1.4Z" />
+    </svg>
+  );
+}
+
 function SelectionGroup({
   children,
+  selectedLabel,
   title,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  selectedLabel?: string | null;
   title: string;
 }) {
   return (
     <section className="sofa-selection-group" aria-label={title}>
-      <h2>{title}</h2>
-      <div>{children}</div>
+      <div className="sofa-selection-group-heading">
+        <h2>{title}</h2>
+        {selectedLabel ? (
+          <p className="sofa-selected-choice-name">{selectedLabel}</p>
+        ) : null}
+      </div>
+      {children ? (
+        <div className="sofa-selection-group-options">{children}</div>
+      ) : null}
     </section>
   );
 }
@@ -755,6 +838,12 @@ function formatPublicWholeEuroPrice(
   })
     .format(price.amount_cents / 100)
     .replace(/\u202f|\u00a0/g, " ")} €`;
+}
+
+function formatVisualPositionLabel(
+  position: PublicSofaDetailResponse["visual_positions"][number],
+) {
+  return position.public_label ?? `Vue ${position.sequence}`;
 }
 
 function consumeStoredSelection(slug: string): StoredSelection | null {
