@@ -17,6 +17,8 @@ const adminSofaUnarchiveMigrationPath =
   "supabase/migrations/20260505000200_admin_sofa_unarchive.sql";
 const adminPublicationStaleRenderCellsMigrationPath =
   "supabase/migrations/20260512000400_admin_publication_stale_render_cells.sql";
+const adminZipExportSizeLimitMigrationPath =
+  "supabase/migrations/20260518000100_admin_zip_export_size_limit.sql";
 const adminRenderPromptRefineMigrationPath =
   "supabase/migrations/20260430000200_admin_render_prompt_and_refine_flow.sql";
 const manualPumpRealtimeMigrationPath =
@@ -122,6 +124,17 @@ describe("fabric render worker foundation migration", () => {
     expect(sql).toContain("update public.sofas");
     expect(sql).toContain("lifecycle_state = 'published'");
     expect(sql).toContain("lifecycle_state = 'draft'");
+  });
+
+  it("raises only the catalog private ZIP artifact object limit", async () => {
+    const sql = await readFile(adminZipExportSizeLimitMigrationPath, "utf8");
+
+    expect(sql).toContain("update storage.buckets");
+    expect(sql).toContain("file_size_limit = 209715200");
+    expect(sql).toContain("where id = 'catalog-private-assets'");
+    expect(sql).toContain("'application/zip'");
+    expect(sql).not.toContain("where id = 'catalog-public-assets'");
+    expect(sql).not.toContain("where id = 'simulation-private-artifacts'");
   });
 
   it("adds an admin sofa archive helper that removes public references", async () => {

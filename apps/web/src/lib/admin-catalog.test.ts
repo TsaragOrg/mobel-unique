@@ -245,6 +245,18 @@ describe("admin catalog validation", () => {
     expect(source).not.toContain("fabric_render_admin_enqueue_job");
   });
 
+  it("keeps admin ZIP export route duration explicit", () => {
+    const routeSource = readFileSync(
+      join(
+        process.cwd(),
+        "src/app/api/admin/sofas/[sofa_id]/render-exports/route.ts",
+      ),
+      "utf8",
+    );
+
+    expect(routeSource).toContain("export const maxDuration = 60");
+  });
+
   it("validates selected queued render cell resume payloads exclusively", () => {
     const renderCellId = "00000000-0000-4000-8000-000000000908";
     const requestId = "00000000-0000-4000-8000-000000000917";
