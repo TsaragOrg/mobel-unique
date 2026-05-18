@@ -14,7 +14,7 @@ This spec turns the accepted public product, worker, data, and API contracts int
 
 It follows:
 
-- `SPEC-0001 Repo Foundation`, which defines `apps/web` as the Next.js frontend and Vercel as the web hosting target;
+- `SPEC-0001 Repo Foundation`, which defines `apps/web` as the Next.js hehe frontend and Vercel as the web hosting target;
 - `SPEC-0003 Business Context - AI Sofa Visualization`, which defines the simulation-first MVP, Shopify separation, privacy-by-default posture, and 24-hour maximum retention for customer room photos and generated in-home simulation outputs;
 - `SPEC-0004 Public Customer Experience`, which defines public home, catalog, sofa detail, fabric and visual position selection, email verification before generation, result display, regeneration, Shopify return, public language, SEO, analytics, and mobile-first requirements;
 - `SPEC-0007 In-Home Simulation Worker`, which defines the two-stage simulation job lifecycle, statuses, dimension guide checkpoint, regeneration behavior, and result retention behavior that the frontend must present;
