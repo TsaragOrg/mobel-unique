@@ -15,6 +15,44 @@ export type AdminUploadPreparationMessageInput =
     };
 
 export const ADMIN_COPY = {
+  analytics: {
+    description:
+      "Suivez les choix de simulation sans données de contact ni images privées.",
+    empty: "Aucune simulation n'a été trouvée pour cette période.",
+    eyebrow: "Analyse",
+    labels: {
+      period: "Période",
+      sort: "Tri",
+      summary: "Résumé des simulations",
+    },
+    loading: "Chargement des simulations.",
+    periods: {
+      allTime: "Tout",
+      last7Days: "7 jours",
+      last30Days: "30 jours",
+    },
+    sections: {
+      combinations: "Associations canapé + tissu",
+      fabrics: "Tissus simulés",
+      sofas: "Canapés simulés",
+    },
+    sorts: {
+      least: "Moins simulés",
+      most: "Plus simulés",
+    },
+    summary: {
+      fabrics: "Tissus uniques",
+      sofas: "Canapés uniques",
+      total: "Simulations",
+    },
+    tableHeaders: {
+      count: "Simulations",
+      fabric: "Tissu",
+      sofa: "Canapé",
+      topFabric: "Tissu dominant",
+    },
+    title: "Simulations",
+  },
   auth: {
     checkingSession: "Vérification de la session admin.",
     deniedDescription:
@@ -177,6 +215,7 @@ export const ADMIN_COPY = {
       tags: "Chargement des étiquettes.",
     },
     metadataTitles: {
+      analytics: "Simulations | Mobel Unique",
       dashboard: "Tableau de bord admin | Mobel Unique",
       editFabric: "Modifier le tissu | Mobel Unique",
       editSofa: "Modifier le canapé | Mobel Unique",
@@ -214,6 +253,12 @@ export const ADMIN_COPY = {
         kicker: "Matières",
         label: "Tissus",
       },
+      analytics: {
+        description:
+          "Voir les canapés, tissus et associations les plus simulés.",
+        kicker: "Analyse",
+        label: "Simulations",
+      },
       newSofa: {
         description: "Commencer une nouvelle fiche canapé.",
         kicker: "Création",
@@ -231,7 +276,7 @@ export const ADMIN_COPY = {
         label: "Étiquettes",
       },
     },
-    actionsAriaLabel: "Actions du catalogue",
+    actionsAriaLabel: "Actions admin",
     description:
       "Gérez le contenu du catalogue, les tissus, les étiquettes et la préparation visuelle depuis un seul espace.",
     eyebrow: "Espace de travail",
@@ -241,6 +286,8 @@ export const ADMIN_COPY = {
   errors: {
     codes: {
       ADMIN_REQUIRED: "Ce compte ne peut pas ouvrir l'espace admin.",
+      ANALYTICS_UNAVAILABLE:
+        "Les statistiques des simulations sont indisponibles.",
       ASSET_PREVIEW_UNAVAILABLE:
         "L'aperçu de l'image n'est pas disponible pour le moment. Réessayez.",
       AUTH_INVALID: "Votre session admin a expiré. Connectez-vous à nouveau.",
@@ -355,6 +402,7 @@ export const ADMIN_COPY = {
   shell: {
     brand: "MOBEL UNIQUE",
     navigation: {
+      analytics: "Simulations",
       dashboard: "Tableau de bord",
       fabrics: "Tissus",
       sofas: "Canapés",

@@ -79,13 +79,16 @@ describe("Admin dashboard", () => {
       }),
     ).toBeInTheDocument();
     const catalogActions = screen.getByRole("navigation", {
-      name: "Actions du catalogue",
+      name: "Actions admin",
     });
     const actionIcons = catalogActions.querySelectorAll(".admin-action-icon");
 
     expect(
       within(catalogActions).getByRole("link", { name: "Canapés" }),
     ).toHaveAttribute("href", "/admin/sofas");
+    expect(
+      within(catalogActions).getByRole("link", { name: "Simulations" }),
+    ).toHaveAttribute("href", "/admin/analytics");
     expect(
       within(catalogActions).getByRole("link", { name: "Nouveau canapé" }),
     ).toHaveAttribute("href", "/admin/sofas/new");
@@ -98,7 +101,7 @@ describe("Admin dashboard", () => {
     expect(
       within(catalogActions).queryByRole("link", { name: "Leads simulation" }),
     ).not.toBeInTheDocument();
-    expect(actionIcons).toHaveLength(4);
+    expect(actionIcons).toHaveLength(5);
     for (const icon of actionIcons) {
       expect(icon).toHaveAttribute("aria-hidden", "true");
     }

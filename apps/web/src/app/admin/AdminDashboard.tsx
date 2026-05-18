@@ -13,7 +13,12 @@ import { ADMIN_COPY } from "./admin-copy";
 import { AdminPageHeader, AdminShell } from "./AdminShell";
 
 type DashboardState = "checking" | "forbidden" | "ready";
-type AdminActionIconName = "sofas" | "new-sofa" | "fabrics" | "tags";
+type AdminActionIconName =
+  | "analytics"
+  | "sofas"
+  | "new-sofa"
+  | "fabrics"
+  | "tags";
 
 export interface AdminDashboardDependencies {
   clearTrustedDevice(): Promise<void>;
@@ -185,6 +190,22 @@ export default function AdminDashboard({
           aria-label={ADMIN_COPY.dashboard.actionsAriaLabel}
         >
           <Link
+            aria-label={ADMIN_COPY.dashboard.actions.analytics.label}
+            className="admin-action-card"
+            href="/admin/analytics"
+          >
+            <span className="admin-action-card-top">
+              <span className="admin-action-kicker">
+                {ADMIN_COPY.dashboard.actions.analytics.kicker}
+              </span>
+              <AdminActionIcon name="analytics" />
+            </span>
+            <strong>{ADMIN_COPY.dashboard.actions.analytics.label}</strong>
+            <span aria-hidden="true">
+              {ADMIN_COPY.dashboard.actions.analytics.description}
+            </span>
+          </Link>
+          <Link
             aria-label={ADMIN_COPY.dashboard.actions.sofas.label}
             className="admin-action-card"
             href="/admin/sofas"
@@ -255,6 +276,18 @@ export default function AdminDashboard({
 }
 
 function AdminActionIcon({ name }: { name: AdminActionIconName }) {
+  if (name === "analytics") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
+        <path d="M6 25h20" />
+        <path d="M10 25V14" />
+        <path d="M16 25V8" />
+        <path d="M22 25V18" />
+        <path d="M7 9c4 2 7 2 10 0 3-2 5-2 8 1" />
+      </svg>
+    );
+  }
+
   if (name === "sofas") {
     return (
       <svg aria-hidden="true" viewBox="0 0 32 32" className="admin-action-icon">
