@@ -756,6 +756,25 @@ export async function handleUseRenderCandidateRequest(
   });
 }
 
+export async function handleDeleteRenderCandidateRequest(
+  input: RenderCandidateInput,
+) {
+  return withAuthorizedStore(input, async (store) => {
+    const error = await store.deleteRenderCandidate(input.candidateId);
+
+    if (error) {
+      return catalogErrorResponse(error);
+    }
+
+    return new Response(null, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+      status: 204,
+    });
+  });
+}
+
 export async function handleSetManualRenderRequest(
   input: RenderCellRequestInput,
 ) {

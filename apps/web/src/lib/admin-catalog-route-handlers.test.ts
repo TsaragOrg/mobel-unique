@@ -23,6 +23,7 @@ import {
   handleCreateTagRequest,
   handleCreateUploadRequest,
   handleCreateVisualMatrixColumnRequest,
+  handleDeleteRenderCandidateRequest,
   handleDeleteTagRequest,
   handleDeleteVisualMatrixColumnRequest,
   handleGetFabricRenderJobRequest,
@@ -874,6 +875,61 @@ function createFakeStore(): AdminCatalogStore {
       }
 
       tags.delete(tagId);
+
+      return null;
+    },
+    async deleteRenderCandidate(candidateId) {
+      const candidate = renderCandidates.get(candidateId);
+
+      if (!candidate) {
+        return {
+          code: "FABRIC_RENDER_CANDIDATE_NOT_FOUND",
+          message: "Fabric render candidate was not found.",
+          status: 404,
+        };
+      }
+
+      const cell = renderCells.get(candidate.render_cell_id as string);
+
+      if (!cell) {
+        return {
+          code: "RENDER_CELL_NOT_FOUND",
+          message: "Render cell was not found.",
+          status: 404,
+        };
+      }
+
+      const sofa = sofas.get(cell.sofa_id as string);
+
+      if (sofa?.lifecycle_state !== "draft") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Only draft sofa render candidates can be deleted.",
+          status: 409,
+        };
+      }
+
+      if (
+        cell.accepted_fabric_render_candidate_id === candidateId ||
+        cell.current_private_asset_id === candidate.asset_id
+      ) {
+        return {
+          code: "FABRIC_RENDER_CANDIDATE_IN_USE",
+          message: "The current render candidate cannot be deleted.",
+          status: 409,
+        };
+      }
+
+      renderCandidates.delete(candidateId);
+      const asset = assets.get(candidate.asset_id as string);
+
+      if (asset) {
+        assets.set(candidate.asset_id as string, {
+          ...asset,
+          deleted_at: "2026-04-28T10:45:00.000Z",
+          lifecycle_state: "deleted",
+        });
+      }
 
       return null;
     },
@@ -2770,6 +2826,252 @@ describe("admin catalog route handlers", () => {
           current_public_asset_id: null,
           source_type: "manual_upload",
         },
+      },
+    });
+  });
+
+  it("deletes an unselected render candidate through the admin route", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Candidate cleanup sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+    const sourceFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Cleanup source fabric",
+          is_premium: false,
+          public_name: "Cleanup source fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const targetFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Cleanup target fabric",
+          is_premium: false,
+          public_name: "Cleanup target fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const sourceFabricId = sourceFabricBody.data.fabric.id as string;
+    const targetFabricId = targetFabricBody.data.fabric.id as string;
+
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: sourceFabricId,
+      request: jsonRequest({
+        public_order: 1,
+      }),
+      sofaId,
+    });
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: targetFabricId,
+      request: jsonRequest({
+        public_order: 2,
+      }),
+      sofaId,
+    });
+
+    const columnBody = await (
+      await handleCreateVisualMatrixColumnRequest({
+        ...input,
+        request: jsonRequest({
+          admin_label: "Front internal",
+          public_label: "Front",
+          sequence: 1,
+        }),
+        sofaId,
+      })
+    ).json();
+    const columnId = columnBody.data.visual_matrix_column.id as string;
+    await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1800,
+        content_type: "image/png",
+        original_fabric_id: sourceFabricId,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaId,
+        visual_matrix_column_id: columnId,
+      }),
+    });
+    await handleCompleteUploadRequest({
+      ...input,
+      uploadId: "sofa-source-photo-upload",
+    });
+
+    const jobBody = await (
+      await handleCreateFabricRenderJobRequest({
+        ...input,
+        request: jsonRequest({
+          fabric_id: targetFabricId,
+          generation_mode: "initial",
+          prompt_note: null,
+          sofa_id: sofaId,
+          visual_matrix_column_id: columnId,
+        }),
+      })
+    ).json();
+    const renderCellId = jobBody.data.fabric_render_job
+      .render_cell_id as string;
+    const candidatesBody = await (
+      await handleListRenderCellCandidatesRequest({
+        ...input,
+        renderCellId,
+      })
+    ).json();
+    const candidate = candidatesBody.data.render_candidates[0];
+
+    const deleteResponse = await handleDeleteRenderCandidateRequest({
+      ...input,
+      candidateId: candidate.id,
+    });
+
+    expect(deleteResponse.status).toBe(204);
+    const candidatesAfterDelete = await (
+      await handleListRenderCellCandidatesRequest({
+        ...input,
+        renderCellId,
+      })
+    ).json();
+    expect(candidatesAfterDelete.data.render_candidates).toEqual([]);
+  });
+
+  it("rejects deleting the current render candidate through the admin route", async () => {
+    const store = createFakeStore();
+    const input = createInput(store);
+    const createSofaBody = await (
+      await handleCreateSofaRequest({
+        ...input,
+        request: jsonRequest({
+          internal_name: "Current candidate sofa",
+          tag_ids: [],
+        }),
+      })
+    ).json();
+    const sofaId = createSofaBody.data.sofa.id as string;
+    const sourceFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Current source fabric",
+          is_premium: false,
+          public_name: "Current source fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const targetFabricBody = await (
+      await handleCreateFabricRequest({
+        ...input,
+        request: jsonRequest({
+          ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+          internal_name: "Current target fabric",
+          is_premium: false,
+          public_name: "Current target fabric",
+          swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        }),
+      })
+    ).json();
+    const sourceFabricId = sourceFabricBody.data.fabric.id as string;
+    const targetFabricId = targetFabricBody.data.fabric.id as string;
+
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: sourceFabricId,
+      request: jsonRequest({
+        public_order: 1,
+      }),
+      sofaId,
+    });
+    await handleAssignSofaFabricRequest({
+      ...input,
+      fabricId: targetFabricId,
+      request: jsonRequest({
+        public_order: 2,
+      }),
+      sofaId,
+    });
+
+    const columnBody = await (
+      await handleCreateVisualMatrixColumnRequest({
+        ...input,
+        request: jsonRequest({
+          admin_label: "Front internal",
+          public_label: "Front",
+          sequence: 1,
+        }),
+        sofaId,
+      })
+    ).json();
+    const columnId = columnBody.data.visual_matrix_column.id as string;
+    await handleCreateUploadRequest({
+      ...input,
+      request: jsonRequest({
+        byte_size: 1800,
+        content_type: "image/png",
+        original_fabric_id: sourceFabricId,
+        purpose: "sofa_source_photo",
+        sofa_id: sofaId,
+        visual_matrix_column_id: columnId,
+      }),
+    });
+    await handleCompleteUploadRequest({
+      ...input,
+      uploadId: "sofa-source-photo-upload",
+    });
+
+    const jobBody = await (
+      await handleCreateFabricRenderJobRequest({
+        ...input,
+        request: jsonRequest({
+          fabric_id: targetFabricId,
+          generation_mode: "initial",
+          prompt_note: null,
+          sofa_id: sofaId,
+          visual_matrix_column_id: columnId,
+        }),
+      })
+    ).json();
+    const renderCellId = jobBody.data.fabric_render_job
+      .render_cell_id as string;
+    const candidatesBody = await (
+      await handleListRenderCellCandidatesRequest({
+        ...input,
+        renderCellId,
+      })
+    ).json();
+    const candidate = candidatesBody.data.render_candidates[0];
+
+    await handleUseRenderCandidateRequest({
+      ...input,
+      candidateId: candidate.id,
+    });
+    const deleteResponse = await handleDeleteRenderCandidateRequest({
+      ...input,
+      candidateId: candidate.id,
+    });
+
+    expect(deleteResponse.status).toBe(409);
+    await expect(deleteResponse.json()).resolves.toMatchObject({
+      error: {
+        code: "FABRIC_RENDER_CANDIDATE_IN_USE",
       },
     });
   });

@@ -411,6 +411,7 @@ function createDependencies(
       sofa_id: sofaId,
     })),
     deleteTag: vi.fn(async () => {}),
+    deleteRenderCandidate: vi.fn(async () => {}),
     deleteVisualMatrixColumn: vi.fn(async () => {}),
     getAccessToken: vi.fn(async () => "admin-token"),
     getFabric: vi.fn(async () => fabric),
@@ -3054,6 +3055,206 @@ describe("Admin catalog pages", () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Utiliser la variante" }),
+    ).toBeInTheDocument();
+  });
+
+  it("deletes only an unselected candidate from the review list", async () => {
+    // RU: Эти значения описывают диван, ткань, позицию и два готовых варианта картинки.
+    // FR: Ces valeurs decrivent le canape, le tissu, la place et deux options d'image pretes.
+    const sofaId = "00000000-0000-4000-8000-000000000701";
+    const fabricId = "00000000-0000-4000-8000-000000000903";
+    const columnId = "00000000-0000-4000-8000-000000000906";
+    const renderCellId = "00000000-0000-4000-8000-000000000905";
+    const currentCandidateId = "00000000-0000-4000-8000-000000000908";
+    const currentCandidateAssetId = "00000000-0000-4000-8000-000000000907";
+    const unusedCandidateId = "00000000-0000-4000-8000-000000000909";
+    const unusedCandidateAssetId = "00000000-0000-4000-8000-000000000917";
+    // RU: Эта строка говорит проверке, убрал ли админ лишний вариант.
+    // FR: Cette ligne dit au test si l'admin a enleve l'option inutile.
+    let deletedCandidate = false;
+    // RU: Эти данные показывают одну выбранную ткань для строки таблицы.
+    // FR: Ces donnees montrent un tissu choisi pour la ligne du tableau.
+    const assignedFabric: AdminCatalogSofaFabric = {
+      assigned_at: "2026-04-28T10:15:00.000Z",
+      fabric: {
+        ai_reference_asset: null,
+        ai_reference_asset_id: "00000000-0000-4000-8000-000000000902",
+        archived_at: null,
+        created_at: "2026-04-28T10:00:00.000Z",
+        id: fabricId,
+        internal_name: "Internal fabric",
+        is_premium: false,
+        lifecycle_state: "active",
+        public_name: "Boucle ivoire",
+        swatch_asset: null,
+        swatch_asset_id: "00000000-0000-4000-8000-000000000901",
+        swatch_preview_url: "https://storage.example/swatch.png",
+        updated_at: "2026-04-28T10:05:00.000Z",
+      },
+      fabric_id: fabricId,
+      public_order: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:15:00.000Z",
+    };
+    // RU: Эти данные показывают одну позицию картинки в колонке таблицы.
+    // FR: Ces donnees montrent une place d'image dans la colonne du tableau.
+    const visualColumn = {
+      admin_label: "Front internal",
+      created_at: "2026-04-28T10:00:00.000Z",
+      current_source_photo: null,
+      current_source_photo_id: null,
+      deleted_at: null,
+      id: columnId,
+      public_label: "Front",
+      sequence: 1,
+      sofa_id: sofaId,
+      updated_at: "2026-04-28T10:05:00.000Z",
+    };
+    // RU: Эта ячейка уже имеет выбранную картинку и один лишний вариант.
+    // FR: Cette case a deja une image choisie et une option en trop.
+    const renderCell = {
+      accepted_fabric_render_candidate_id: currentCandidateId,
+      blockers: [],
+      can_generate_initial: true,
+      candidate_count: deletedCandidate ? 1 : 2,
+      current_private_asset_id: currentCandidateAssetId,
+      current_public_asset_id: null,
+      fabric_id: fabricId,
+      has_private_render: true,
+      has_public_render: false,
+      id: renderCellId,
+      latest_job: null,
+      sofa_id: sofaId,
+      source_photo_id: null,
+      source_type: "ai_generated",
+      updated_at: "2026-04-28T10:40:00.000Z",
+      visual_matrix_column_id: columnId,
+    };
+    // RU: Эти два варианта попадают в список выбора картинки.
+    // FR: Ces deux options vont dans la liste de choix d'image.
+    const currentCandidate = {
+      accepted_at: "2026-04-28T10:40:00.000Z",
+      asset: {
+        asset_kind: "fabric_render_candidate",
+        byte_size: 2400,
+        content_type: "image/png",
+        height_px: 1200,
+        id: currentCandidateAssetId,
+        lifecycle_state: "active",
+        visibility: "private",
+        width_px: 1600,
+      },
+      asset_id: currentCandidateAssetId,
+      created_at: "2026-04-28T10:35:00.000Z",
+      fabric_id: fabricId,
+      generation_mode: "initial",
+      id: currentCandidateId,
+      is_current: true,
+      job_id: "00000000-0000-4000-8000-000000000906",
+      preview_url: "https://storage.example/current-candidate-preview",
+      prompt_version: "v007",
+      provider_model: "mock-fabric-render-v1",
+      provider_name: "mock",
+      render_cell_id: renderCellId,
+      sofa_id: sofaId,
+      visual_matrix_column_id: columnId,
+    };
+    const unusedCandidate = {
+      ...currentCandidate,
+      accepted_at: null,
+      asset: {
+        ...currentCandidate.asset,
+        id: unusedCandidateAssetId,
+      },
+      asset_id: unusedCandidateAssetId,
+      id: unusedCandidateId,
+      is_current: false,
+      preview_url: "https://storage.example/unused-candidate-preview",
+    };
+    // RU: Эти действия заменяют сервер и дают странице нужные ответы.
+    // FR: Ces actions remplacent le serveur et donnent les bonnes reponses a la page.
+    const dependencies = createDependencies({
+      deleteRenderCandidate: vi.fn(async () => {
+        deletedCandidate = true;
+      }),
+      getRenderCoverage: vi.fn(async () => ({
+        render_cells: [
+          {
+            ...renderCell,
+            candidate_count: deletedCandidate ? 1 : 2,
+          },
+        ],
+        sofa_fabrics: [assignedFabric],
+        sofa_id: sofaId,
+        visual_matrix_columns: [visualColumn],
+      })),
+      listRenderCellCandidates: vi.fn(async () =>
+        deletedCandidate
+          ? [currentCandidate]
+          : [currentCandidate, unusedCandidate],
+      ),
+      listSofaFabrics: vi.fn(async () => [assignedFabric]),
+      listVisualMatrixColumns: vi.fn(async () => [visualColumn]),
+    });
+
+    render(<AdminSofaEditPage dependencies={dependencies} sofaId={sofaId} />);
+
+    await screen.findByRole("heading", { name: "Manual test sofa" });
+    fireEvent.click(screen.getByRole("tab", { name: /Rendus/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Boucle ivoire, Front : Pr.t/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Cellule de rendu/i });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Voir les variantes" }),
+    );
+
+    const currentCard = await within(dialog).findByRole("article", {
+      name: /Variante 00000000-0000-4000-8000-000000000908/i,
+    });
+    const unusedCard = within(dialog).getByRole("article", {
+      name: /Variante 00000000-0000-4000-8000-000000000909/i,
+    });
+    expect(
+      within(currentCard).queryByRole("button", {
+        name: `Supprimer la variante ${currentCandidateId}`,
+      }),
+    ).not.toBeInTheDocument();
+
+    const deleteButton = within(unusedCard).getByRole("button", {
+      name: `Supprimer la variante ${unusedCandidateId}`,
+    });
+    expect(deleteButton.querySelector(".admin-delete-icon")).toBeInTheDocument();
+    fireEvent.click(deleteButton);
+
+    const confirmButton = within(unusedCard).getByRole("button", {
+      name: `Confirmer la suppression de la variante ${unusedCandidateId}`,
+    });
+    expect(
+      confirmButton.querySelector(".admin-delete-icon"),
+    ).toBeInTheDocument();
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(dependencies.deleteRenderCandidate).toHaveBeenCalledWith(
+        "admin-token",
+        unusedCandidateId,
+      );
+    });
+    expect(
+      within(dialog).queryByRole("article", {
+        name: /Variante 00000000-0000-4000-8000-000000000909/i,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("article", {
+        name: /Variante 00000000-0000-4000-8000-000000000908/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        within(dialog).getByRole("group", { name: "Voir les variantes" }),
+      ).getByText("1"),
     ).toBeInTheDocument();
   });
 
@@ -6848,6 +7049,7 @@ describe("Admin catalog pages", () => {
     );
     await dependencies.listRenderCellCandidates("admin-token", renderCellId);
     await dependencies.useRenderCandidate("admin-token", candidateId);
+    await dependencies.deleteRenderCandidate("admin-token", candidateId);
     await dependencies.setManualRender("admin-token", renderCellId, {
       asset_id: "00000000-0000-4000-8000-000000000909",
     });
@@ -6891,6 +7093,7 @@ describe("Admin catalog pages", () => {
       "/api/admin/fabric-render-jobs/00000000-0000-4000-8000-000000000906",
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/candidates",
       "/api/admin/render-candidates/00000000-0000-4000-8000-000000000908/use-as-current",
+      "/api/admin/render-candidates/00000000-0000-4000-8000-000000000908",
       "/api/admin/render-cells/00000000-0000-4000-8000-000000000905/manual-render",
       "/api/admin/storage-assets/00000000-0000-4000-8000-000000000907/preview?variant=original",
     ]);
