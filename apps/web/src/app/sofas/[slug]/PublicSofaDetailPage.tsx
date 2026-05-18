@@ -254,30 +254,38 @@ export function PublicSofaDetailPage({ slug }: { slug: string }) {
     displayedRender?.render_original_url ??
     null;
 
-  // RU: Заранее качаем и расшифровываем картинки всех тканей выбранного вида, чтобы переключение было быстрым.
-  // FR: On telecharge et on prepare a l'avance les images de tous les tissus de la vue choisie pour un changement rapide.
+  // RU: Заранее качаем и готовим картинки выбранного вида и выбранной ткани, чтобы кнопки ткани и фото отвечали быстрее.
+  // FR: On telecharge et prepare a l'avance les images de la vue choisie et du tissu choisi pour accelerer les boutons de tissu et de photo.
   useEffect(() => {
-    if (!detail || !selectedVisualPositionId) {
+    if (!detail || !selectedFabricId || !selectedVisualPositionId) {
       return;
     }
 
+    const preloadedUrls = new Set<string>();
+
     for (const render of detail.renders) {
-      if (render.visual_position_id !== selectedVisualPositionId) {
+      const isSelectedVisualPosition =
+        render.visual_position_id === selectedVisualPositionId;
+      const isSelectedFabric = render.fabric_id === selectedFabricId;
+
+      if (!isSelectedVisualPosition && !isSelectedFabric) {
         continue;
       }
 
-      if (!render.render_medium_url) {
+      if (!render.render_medium_url || preloadedUrls.has(render.render_medium_url)) {
         continue;
       }
+
+      preloadedUrls.add(render.render_medium_url);
 
       const preloader = new Image();
       preloader.src = render.render_medium_url;
       preloader.decode().catch(() => {
-        // RU: Ошибка ранней расшифровки безопасна: видимая картинка повторит попытку при переключении.
+        // RU: Ошибка ранней подготовки безопасна: видимая картинка повторит попытку при переключении.
         // FR: Une erreur de preparation reste sans risque: l'image visible reessayera lors du changement.
       });
     }
-  }, [detail, selectedVisualPositionId]);
+  }, [detail, selectedFabricId, selectedVisualPositionId]);
 
   // RU: Меняем видимую картинку только когда новая полностью готова к показу, чтобы не было пустого белого места.
   // FR: On change l'image visible seulement quand la nouvelle est prete a etre affichee, pour eviter un blanc.
