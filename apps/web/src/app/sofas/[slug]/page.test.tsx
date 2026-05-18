@@ -19,10 +19,9 @@ describe("Sofa detail page", () => {
       "href",
       "/",
     );
-    expect(screen.getByRole("link", { name: "Retour au catalogue" })).toHaveAttribute(
-      "href",
-      "/catalog",
-    );
+    expect(
+      screen.getByRole("article", { name: "Chargement du canape" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
   });
 
