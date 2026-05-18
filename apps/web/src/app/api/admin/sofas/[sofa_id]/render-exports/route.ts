@@ -7,6 +7,7 @@ import { createServerAdminAuth } from "../../../../../../lib/admin-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 interface RenderExportsRouteContext {
   params: Promise<{
