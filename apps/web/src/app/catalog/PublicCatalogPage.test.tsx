@@ -808,9 +808,14 @@ describe("PublicCatalogPage", () => {
     if (!detailLink) {
       throw new Error("Detail link for canape-rivoli not found");
     }
-    // RU: Проверяем, что подпись кнопки — это просто «Simuler», без названия дивана и звёздочки.
-    // FR: On verifie que le texte du bouton est seulement «Simuler», sans le nom du canape ni l'etoile.
-    expect(detailLink.textContent?.trim()).toBe("Simuler");
+    // RU: Проверяем, что подпись кнопки прямо говорит о домашней симуляции, без имени дивана и звездочки.
+    // FR: On verifie que le texte du bouton parle directement de simulation chez soi, sans le nom du canape ni l'etoile.
+    expect(detailLink).toHaveAttribute(
+      "aria-label",
+      "Voir ce canapé chez vous avec une photo de votre pièce",
+    );
+    expect(detailLink).toHaveTextContent("Voir ce canapé chez vous");
+    expect(detailLink).toHaveTextContent("Avec une photo de votre pièce");
     detailLink.addEventListener("click", (event) => event.preventDefault());
     fireEvent.click(detailLink);
     expect(window.sessionStorage.getItem("mobel-unique:catalog-selection:canape-rivoli")).toContain(
