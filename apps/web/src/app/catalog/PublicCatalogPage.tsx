@@ -632,11 +632,13 @@ function CatalogCard({ item }: { item: PublicCatalogItemResponse }) {
           ) : null}
         </div>
         <a
+          aria-label="Voir ce canapé chez vous avec une photo de votre pièce"
           className="catalog-card-link"
           href={`/sofas/${item.public_slug}`}
           onClick={rememberSelection}
         >
-          <span>Simuler</span>
+          <span>Voir ce canapé chez vous</span>
+          <small>Avec une photo de votre pièce</small>
         </a>
       </div>
     </article>

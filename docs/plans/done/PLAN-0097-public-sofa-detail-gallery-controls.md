@@ -24,6 +24,8 @@ mobile.
   below the product image.
 - Make the image expand affordance quieter so it does not compete with product
   inspection.
+- Remove the product image enter animation so fabric changes swap directly
+  without a bounce effect.
 - Replace the old floating catalog return text with an explicit, aligned
   return link above the product detail layout.
 - Keep public API contracts, catalog data shape, simulation context handoff,
@@ -35,6 +37,7 @@ mobile.
       previous or next photo controls.
 - [x] Update `apps/web/src/app/sofas/[slug]/PublicSofaDetailPage.tsx`.
 - [x] Update public detail styles in `apps/web/src/app/globals.css`.
+- [x] Remove the sofa detail image enter animation from the shared public CSS.
 - [x] Update `docs/roadmap/web.md`.
 - [x] Run the targeted web test, web typecheck, and specification guard.
 

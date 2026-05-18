@@ -87,6 +87,7 @@ describe("global public catalog styles", () => {
 
     expect(css).toContain(`.catalog-card .public-tag-list {
   align-items: flex-start;
+  grid-row: 2;
   max-height: 66px;
   overflow: hidden;
 }`);
@@ -108,10 +109,69 @@ describe("global public catalog styles", () => {
     expect(css).toContain(".catalog-card-skeleton");
     expect(css).toContain(".catalog-card-skeleton .catalog-card-image");
     expect(css).toContain(".catalog-skeleton-action");
-    expect(css).toContain(`@media (max-width: 1040px) {
-  .catalog-grid {`);
+    expect(css).toContain(`.catalog-grid {
+  align-items: stretch;
+  display: grid;
+  column-gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));`);
+    expect(css).toContain(`.catalog-card {
+  border-bottom: 1px solid var(--public-line);
+  border-right: 1px solid var(--public-line);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-width: 0;
+}`);
+    expect(css).toContain(`.catalog-card:nth-child(2n) {
+  border-right: 0;
+}`);
     expect(css).toContain(`@media (max-width: 680px) {
   .public-header {`);
+  });
+
+  it("keeps catalog card CTAs as full-width card footers", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(css).toContain(`.catalog-card-body {
+  display: grid;
+  gap: 16px;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 0;
+  padding: 22px;
+}`);
+    expect(css).toContain(`.catalog-card-link {
+  background: #ffffff;
+  border-color: var(--public-line);
+  border-left: 0;
+  border-radius: 0;
+  border-right: 0;
+  border-bottom: 0;
+  color: var(--public-ink);`);
+    expect(css).toContain(`  justify-self: stretch;
+  margin: 6px -22px -22px;
+  min-height: 76px;`);
+    expect(css).toContain(`.catalog-card-link::after {
+  border-right: 1.5px solid rgb(12 12 12 / 58%);
+  border-top: 1.5px solid rgb(12 12 12 / 58%);`);
+    expect(css).toContain(`  display: grid;
+  grid-row: 4;
+  grid-template-columns: minmax(0, 1fr) auto;`);
+    expect(css).not.toContain(".catalog-card-link::before");
+    expect(css).toContain(`.catalog-card-link small {
+  color: var(--public-muted);
+  font-size: 0.78rem;
+  grid-column: 1;
+  line-height: 1.25;
+}`);
+    expect(css).toContain(`.catalog-card-link:hover {
+  background: #f7f7f4;
+  box-shadow: inset 0 -1px 0 var(--public-line);
+}`);
+    expect(css).toContain(`.catalog-card-link:focus-visible {
+  outline: 2px solid var(--public-ink);
+  outline-offset: -2px;
+}`);
   });
 
   it("keeps sofa detail loading skeletons aligned to the real hero layout", () => {
@@ -123,6 +183,15 @@ describe("global public catalog styles", () => {
     expect(css).toContain(".sofa-detail-skeleton .sofa-detail-copy");
     expect(css).toContain(".sofa-detail-skeleton-actions");
     expect(css).toContain(".sofa-detail-skeleton-info");
+  });
+
+  it("does not animate the sofa detail image when fabric changes", () => {
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(css).not.toContain("sofa-detail-image-enter");
+    expect(css).not.toContain(`.sofa-detail-image-button img {
+  animation:`);
   });
 
   it("keeps sofa detail tags as a two-line expandable chip list", () => {
