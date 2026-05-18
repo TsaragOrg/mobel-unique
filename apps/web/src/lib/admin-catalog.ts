@@ -337,6 +337,9 @@ export interface AdminCatalogStore {
     columnId: string,
   ): Promise<AdminCatalogOperationErrorData | null>;
   deleteTag(tagId: string): Promise<AdminCatalogOperationErrorData | null>;
+  deleteRenderCandidate(
+    candidateId: string,
+  ): Promise<AdminCatalogOperationErrorData | null>;
   getFabric(fabricId: string): Promise<AdminFabricRecord | JsonObject | null>;
   getFabricRenderJob(
     jobId: string,
@@ -2480,6 +2483,76 @@ export function createSupabaseAdminCatalogStore(
           foreignKeyMessage: "Assigned tags cannot be deleted.",
         });
       }
+
+      return null;
+    },
+    async deleteRenderCandidate(candidateId) {
+      const candidate = await fetchRenderCandidateById(
+        client,
+        candidateId,
+        env,
+      );
+
+      if (!candidate) {
+        return {
+          code: "FABRIC_RENDER_CANDIDATE_NOT_FOUND",
+          message: "Fabric render candidate was not found.",
+          status: 404,
+        };
+      }
+
+      const renderCell = await fetchRenderCellById(
+        client,
+        candidate.render_cell_id,
+      );
+
+      if (!renderCell) {
+        return {
+          code: "RENDER_CELL_NOT_FOUND",
+          message: "Render cell was not found.",
+          status: 404,
+        };
+      }
+
+      const sofa = await fetchSofaLifecycle(client, renderCell.sofa_id);
+
+      if (!sofa) {
+        return {
+          code: "SOFA_NOT_FOUND",
+          message: "Sofa was not found.",
+          status: 404,
+        };
+      }
+
+      if (sofa.lifecycle_state !== "draft") {
+        return {
+          code: "SOFA_CONFLICT",
+          message: "Only draft sofa render candidates can be deleted.",
+          status: 409,
+        };
+      }
+
+      if (
+        renderCell.accepted_fabric_render_candidate_id === candidateId ||
+        renderCell.current_private_asset_id === candidate.asset_id
+      ) {
+        return {
+          code: "FABRIC_RENDER_CANDIDATE_IN_USE",
+          message: "The current render candidate cannot be deleted.",
+          status: 409,
+        };
+      }
+
+      const { error } = await client
+        .from("fabric_render_candidates")
+        .delete()
+        .eq("id", candidateId);
+
+      if (error) {
+        throw mapSupabaseError(error);
+      }
+
+      await tryMarkStorageAssetDeleted(client, candidate.asset_id);
 
       return null;
     },

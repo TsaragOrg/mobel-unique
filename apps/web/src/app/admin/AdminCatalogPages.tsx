@@ -513,6 +513,7 @@ export interface AdminCatalogPageDependencies {
     columnId: string,
   ): Promise<void>;
   deleteTag(accessToken: string, tagId: string): Promise<void>;
+  deleteRenderCandidate(accessToken: string, candidateId: string): Promise<void>;
   getAccessToken(): Promise<string | null>;
   getFabric(accessToken: string, fabricId: string): Promise<AdminCatalogFabric>;
   getFabricRenderJob(
@@ -928,6 +929,15 @@ export function createDefaultAdminCatalogDependencies(
       await requestAdminJson(accessToken, `/api/admin/tags/${tagId}`, {
         method: "DELETE",
       });
+    },
+    async deleteRenderCandidate(accessToken, candidateId) {
+      await requestAdminJson(
+        accessToken,
+        `/api/admin/render-candidates/${candidateId}`,
+        {
+          method: "DELETE",
+        },
+      );
     },
     async getAccessToken() {
       const supabase = getBrowserSupabaseClient();
@@ -4857,6 +4867,11 @@ function RenderCoverageSection({
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null);
   const [reviewCellId, setReviewCellId] = useState<string | null>(null);
+  // RU: Это значение хранит вариант, для которого админ видит подтверждение удаления.
+  // FR: Cette valeur garde l'option pour laquelle l'admin voit la confirmation de suppression.
+  const [pendingDeleteCandidateId, setPendingDeleteCandidateId] = useState<
+    string | null
+  >(null);
   const [reviewCandidates, setReviewCandidates] = useState<
     AdminCatalogRenderCandidate[]
   >([]);
@@ -4953,6 +4968,7 @@ function RenderCoverageSection({
   // FR: Cette action affiche le champ d'amelioration pour l'option choisie.
   function handleOpenRefineCandidate(candidateId: string) {
     setErrorMessage(null);
+    setPendingDeleteCandidateId(null);
     setOpenRefineCandidateId(candidateId);
   }
 
@@ -4980,6 +4996,7 @@ function RenderCoverageSection({
     setSelectedCellId(cell.id);
     setReviewCellId(null);
     setReviewCandidates([]);
+    setPendingDeleteCandidateId(null);
     setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
     setLargeImagePreview(null);
@@ -4999,6 +5016,7 @@ function RenderCoverageSection({
     setSelectedCellId(null);
     setReviewCellId(null);
     setReviewCandidates([]);
+    setPendingDeleteCandidateId(null);
     setOpenRefineCandidateId(null);
     setCompareCandidateId(null);
     setLargeImagePreview(null);
@@ -5426,6 +5444,7 @@ function RenderCoverageSection({
       );
       setReviewCandidates(candidates);
       setReviewCellId(cell.id);
+      setPendingDeleteCandidateId(null);
       setOpenRefineCandidateId(null);
       setCompareCandidateId(null);
       setLargeImagePreview(null);
@@ -5487,6 +5506,47 @@ function RenderCoverageSection({
 
   // RU: Это действие выбирает одну готовую картинку как текущую.
   // FR: Cette action choisit une image prete comme image actuelle.
+  // RU: Это действие показывает подтверждение удаления для лишнего варианта.
+  // FR: Cette action montre la confirmation de suppression pour une option en trop.
+  function handleAskDeleteCandidate(candidateId: string) {
+    setErrorMessage(null);
+    setOpenRefineCandidateId(null);
+    setPendingDeleteCandidateId(candidateId);
+  }
+
+  // RU: Это действие прячет подтверждение удаления, если админ передумал.
+  // FR: Cette action cache la confirmation de suppression si l'admin change d'avis.
+  function handleCancelDeleteCandidate() {
+    setPendingDeleteCandidateId(null);
+  }
+
+  // RU: Это действие удаляет лишний вариант из списка проверки.
+  // FR: Cette action supprime l'option inutile de la liste de verification.
+  async function handleDeleteCandidate(candidate: AdminCatalogRenderCandidate) {
+    setErrorMessage(null);
+    setActiveCellId(candidate.render_cell_id);
+    setOpenRefineCandidateId(null);
+    setPendingDeleteCandidateId(null);
+    setLargeImagePreview(null);
+
+    if (compareCandidateId === candidate.id) {
+      setCompareCandidateId(null);
+    }
+
+    try {
+      await dependencies.deleteRenderCandidate(accessToken, candidate.id);
+      setReviewCandidates((current) =>
+        current.filter((entry) => entry.id !== candidate.id),
+      );
+      setPendingDeleteCandidateId(null);
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(readErrorMessage(error));
+    } finally {
+      setActiveCellId(null);
+    }
+  }
+
   async function handleUseCandidate(candidate: AdminCatalogRenderCandidate) {
     setErrorMessage(null);
     setActiveCellId(candidate.render_cell_id);
@@ -5512,6 +5572,7 @@ function RenderCoverageSection({
       setReviewCellId(null);
       setReviewCandidates([]);
       setOpenRefineCandidateId(null);
+      setPendingDeleteCandidateId(null);
       setCompareCandidateId(null);
     } catch (error) {
       setErrorMessage(readErrorMessage(error));
@@ -6165,6 +6226,8 @@ function RenderCoverageSection({
                           const candidateState = candidate.is_current
                             ? "current"
                             : "ready";
+                          const isConfirmingDelete =
+                            pendingDeleteCandidateId === candidate.id;
 
                           return (
                             <article
@@ -6276,6 +6339,60 @@ function RenderCoverageSection({
                                     >
                                       Améliorer la variante
                                     </button>
+                                  ) : null}
+                                  {!candidate.is_current ? (
+                                    isConfirmingDelete ? (
+                                      <>
+                                        {/* RU: Эти кнопки удаляют только лишний вариант после подтверждения. */}
+                                        {/* FR: Ces boutons suppriment seulement une option en trop apres confirmation. */}
+                                        <button
+                                          aria-label={
+                                            activeCellId === selectedCell.id
+                                              ? `Suppression de la variante ${candidate.id}`
+                                              : `Confirmer la suppression de la variante ${candidate.id}`
+                                          }
+                                          className="admin-danger-button admin-icon-button"
+                                          disabled={
+                                            activeCellId === selectedCell.id
+                                          }
+                                          onClick={() =>
+                                            void handleDeleteCandidate(
+                                              candidate,
+                                            )
+                                          }
+                                          type="button"
+                                        >
+                                          <AdminDeleteIcon />
+                                        </button>
+                                        <button
+                                          aria-label={`Annuler la suppression de la variante ${candidate.id}`}
+                                          className="admin-secondary-button"
+                                          disabled={
+                                            activeCellId === selectedCell.id
+                                          }
+                                          onClick={handleCancelDeleteCandidate}
+                                          type="button"
+                                        >
+                                          Annuler
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        aria-label={`Supprimer la variante ${candidate.id}`}
+                                        className="admin-quiet-button admin-icon-button"
+                                        disabled={
+                                          activeCellId === selectedCell.id
+                                        }
+                                        onClick={() =>
+                                          handleAskDeleteCandidate(
+                                            candidate.id,
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        <AdminDeleteIcon />
+                                      </button>
+                                    )
                                   ) : null}
                                 </div>
                               </div>

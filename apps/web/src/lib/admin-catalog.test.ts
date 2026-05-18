@@ -1239,6 +1239,64 @@ describe("admin catalog publication helpers", () => {
   });
 });
 
+describe("admin catalog render candidate deletion", () => {
+  it("deletes an unselected candidate and marks its asset deleted", async () => {
+    const fakeSupabase = createFakeRenderCandidateDeleteSupabaseClient();
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+
+    const result = await store.deleteRenderCandidate(
+      fabricRenderCandidateRecord.id,
+    );
+
+    expect(result).toBeNull();
+    expect(fakeSupabase.deletedCandidateIds).toEqual([
+      fabricRenderCandidateRecord.id,
+    ]);
+    expect(fakeSupabase.deletedAssetIds).toEqual([
+      fabricRenderCandidateRecord.asset_id,
+    ]);
+  });
+
+  it("rejects deletion when the candidate is current for the cell", async () => {
+    const fakeSupabase = createFakeRenderCandidateDeleteSupabaseClient({
+      currentCandidate: true,
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+
+    const result = await store.deleteRenderCandidate(
+      fabricRenderCandidateRecord.id,
+    );
+
+    expect(result).toMatchObject({
+      code: "FABRIC_RENDER_CANDIDATE_IN_USE",
+      status: 409,
+    });
+    expect(fakeSupabase.deletedCandidateIds).toEqual([]);
+    expect(fakeSupabase.deletedAssetIds).toEqual([]);
+  });
+
+  it("rejects deletion when the owning sofa is not draft", async () => {
+    const fakeSupabase = createFakeRenderCandidateDeleteSupabaseClient({
+      sofaLifecycleState: "published",
+    });
+    supabaseMocks.createClient.mockReturnValue(fakeSupabase.client);
+    const store = createSupabaseAdminCatalogStore(createStoreEnv());
+
+    const result = await store.deleteRenderCandidate(
+      fabricRenderCandidateRecord.id,
+    );
+
+    expect(result).toMatchObject({
+      code: "SOFA_CONFLICT",
+      status: 409,
+    });
+    expect(fakeSupabase.deletedCandidateIds).toEqual([]);
+    expect(fakeSupabase.deletedAssetIds).toEqual([]);
+  });
+});
+
 function createStoreEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -1246,6 +1304,150 @@ function createStoreEnv(): NodeJS.ProcessEnv {
     NEXT_PUBLIC_SUPABASE_URL: "https://supabase.example",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
   };
+}
+
+function createFakeRenderCandidateDeleteSupabaseClient(
+  input: {
+    currentCandidate?: boolean;
+    sofaLifecycleState?: string;
+  } = {},
+) {
+  const deletedAssetIds: string[] = [];
+  const deletedCandidateIds: string[] = [];
+  const candidateAsset = fabricRenderCandidateRecord.asset;
+  const renderCell = {
+    accepted_fabric_render_candidate_id: input.currentCandidate
+      ? fabricRenderCandidateRecord.id
+      : null,
+    current_private_asset_id: input.currentCandidate
+      ? fabricRenderCandidateRecord.asset_id
+      : null,
+    current_public_asset_id: null,
+    fabric_id: fabricRecord.id,
+    id: fabricRenderCandidateRecord.render_cell_id,
+    sofa_id: sofaRecord.id,
+    source_photo_id: null,
+    source_type: "ai_generated",
+    updated_at: "2026-04-28T10:35:00.000Z",
+    visual_matrix_column_id: visualMatrixColumnRecord.id,
+  };
+  const client = {
+    from(table: string) {
+      return createFakeRenderCandidateDeleteQuery({
+        candidate: fabricRenderCandidateRecord,
+        candidateAsset,
+        deletedAssetIds,
+        deletedCandidateIds,
+        renderCell,
+        sofaLifecycleState: input.sofaLifecycleState ?? "draft",
+        table,
+      });
+    },
+  };
+
+  return {
+    client,
+    deletedAssetIds,
+    deletedCandidateIds,
+  };
+}
+
+function createFakeRenderCandidateDeleteQuery(input: {
+  candidate: typeof fabricRenderCandidateRecord;
+  candidateAsset: Record<string, unknown>;
+  deletedAssetIds: string[];
+  deletedCandidateIds: string[];
+  renderCell: Record<string, unknown>;
+  sofaLifecycleState: string;
+  table: string;
+}) {
+  const filters = new Map<string, string>();
+  let mode: "select" | "delete" | "update" = "select";
+
+  const query = {
+    delete: vi.fn(() => {
+      mode = "delete";
+
+      return query;
+    }),
+    eq: vi.fn((column: string, value: string) => {
+      filters.set(column, value);
+
+      if (mode === "delete") {
+        if (input.table === "fabric_render_candidates" && column === "id") {
+          input.deletedCandidateIds.push(value);
+        }
+
+        return Promise.resolve({
+          data: null,
+          error: null,
+        });
+      }
+
+      if (mode === "update") {
+        if (input.table === "storage_assets" && column === "id") {
+          input.deletedAssetIds.push(value);
+        }
+
+        return Promise.resolve({
+          data: null,
+          error: null,
+        });
+      }
+
+      return query;
+    }),
+    in: vi.fn(async (_column: string, values: string[]) => ({
+      data:
+        input.table === "storage_assets" &&
+        values.includes(input.candidate.asset_id)
+          ? [input.candidateAsset]
+          : [],
+      error: null,
+    })),
+    maybeSingle: vi.fn(async () => {
+      if (input.table === "fabric_render_candidates") {
+        return {
+          data:
+            filters.get("id") === input.candidate.id ? input.candidate : null,
+          error: null,
+        };
+      }
+
+      if (input.table === "sofa_render_cells") {
+        return {
+          data:
+            filters.get("id") === input.renderCell.id
+              ? input.renderCell
+              : null,
+          error: null,
+        };
+      }
+
+      if (input.table === "sofas") {
+        return {
+          data: {
+            id: sofaRecord.id,
+            lifecycle_state: input.sofaLifecycleState,
+          },
+          error: null,
+        };
+      }
+
+      return {
+        data: null,
+        error: null,
+      };
+    }),
+    select: vi.fn(() => query),
+    update: vi.fn(() => {
+      mode = "update";
+
+      return query;
+    }),
+  };
+
+  return query;
 }
 
 function createFakeUploadSupabaseClient(input: {
