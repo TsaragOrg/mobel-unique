@@ -14,6 +14,7 @@ export interface SimulationJobContext {
   sofaName: string;
   fabricName: string;
   visualPositionLabel: string;
+  shopifyOrderUrl?: string | null;
 }
 
 export function stashJobContext(jobId: string, context: SimulationJobContext): void {
@@ -42,7 +43,16 @@ export function readJobContext(jobId: string): SimulationJobContext | null {
       typeof parsed.fabricName === "string" &&
       typeof parsed.visualPositionLabel === "string"
     ) {
-      return parsed as SimulationJobContext;
+      return {
+        slug: parsed.slug,
+        sofaName: parsed.sofaName,
+        fabricName: parsed.fabricName,
+        visualPositionLabel: parsed.visualPositionLabel,
+        shopifyOrderUrl:
+          typeof parsed.shopifyOrderUrl === "string"
+            ? parsed.shopifyOrderUrl
+            : null
+      };
     }
     return null;
   } catch {

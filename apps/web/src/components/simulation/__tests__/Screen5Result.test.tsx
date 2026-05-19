@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет экран результата симуляции.
+RU: В проверках видны картинка результата, кнопки и ссылки.
+RU: Здесь проверяется, что посетитель может скачать картинку, запустить новую генерацию, вернуться к дивану и перейти к покупке.
+FR: Ce fichier verifie l'ecran du resultat de simulation.
+FR: Dans les verifications, on voit l'image du resultat, les boutons et les liens.
+FR: Ici, on verifie que le visiteur peut telecharger l'image, lancer une nouvelle generation, revenir au canape et aller acheter.
+*/
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -5,6 +14,8 @@ import { Screen5Result } from "../Screen5Result";
 
 afterEach(cleanup);
 
+// RU: Эти данные дают проверкам обычный успешный результат.
+// FR: Ces donnees donnent aux verifications un resultat reussi simple.
 const baseProps = {
   jobId: "sim-1",
   sofaName: "Canapé Rivoli",
@@ -17,6 +28,8 @@ const baseProps = {
   onRegenerationStarted: vi.fn()
 };
 
+// RU: Эти типы описывают действия, которые проверки заменяют быстрыми ответами.
+// FR: Ces types decrivent les actions que les verifications remplacent par des reponses rapides.
 type RegenerateFn = (
   jobId: string
 ) => Promise<{ ok: true } | { ok: false; message?: string }>;
@@ -99,6 +112,46 @@ describe("Screen5Result", () => {
       filename: "mobel-unique-simulation-sim-1.png",
       imageUrl: "https://signed.example/output-1.png"
     });
+  });
+
+  it("shows the order CTA as a secondary link when a valid order URL is available", () => {
+    const propsWithOrder = {
+      ...baseProps,
+      orderHref: "https://shopify.example/products/canape-rivoli"
+    };
+
+    const { container } = render(
+      <Screen5Result
+        {...propsWithOrder}
+        regenerationAvailable={true}
+        requestRegeneration={vi.fn<RegenerateFn>(async () => ({ ok: true }))}
+      />
+    );
+
+    const orderLink = screen.getByRole("link", { name: "Commander" });
+    expect(orderLink).toHaveAttribute(
+      "href",
+      "https://shopify.example/products/canape-rivoli"
+    );
+    expect(orderLink).toHaveClass("public-secondary-link");
+    expect(container.textContent).not.toContain("https://signed.example/output-1.png");
+  });
+
+  it("hides the order CTA when the order URL is invalid", () => {
+    const propsWithInvalidOrder = {
+      ...baseProps,
+      orderHref: "javascript:alert(1)"
+    };
+
+    render(
+      <Screen5Result
+        {...propsWithInvalidOrder}
+        regenerationAvailable={true}
+        requestRegeneration={vi.fn<RegenerateFn>(async () => ({ ok: true }))}
+      />
+    );
+
+    expect(screen.queryByRole("link", { name: "Commander" })).not.toBeInTheDocument();
   });
 
   it("shows an inline download error when result image download fails", async () => {

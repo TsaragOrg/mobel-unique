@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет старт симуляции после выбора дивана.
+RU: В проверках видны выбранный диван, ткань, вид, фото комнаты и переход к результату.
+RU: Здесь проверяется, что выбор и ссылка покупки сохраняются для следующих страниц.
+FR: Ce fichier verifie le depart de la simulation apres le choix du canape.
+FR: Dans les verifications, on voit le canape choisi, le tissu, la vue, la photo de la piece et le passage au resultat.
+FR: Ici, on verifie que le choix et le lien d'achat restent disponibles pour les pages suivantes.
+*/
+
 import {
   cleanup,
   fireEvent,
@@ -48,6 +57,8 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
+// RU: Эти данные описывают открытый диван для проверок старта симуляции.
+// FR: Ces donnees decrivent le canape ouvert pour les verifications du depart de simulation.
 const detail: PublicSofaDetailResponse = {
   defaults: { fabric_id: "fabric-boucle", visual_position_id: "front" },
   fabrics: [
@@ -261,5 +272,57 @@ describe("PublicSimulationWizardEntry", () => {
     await waitFor(() =>
       expect(navigateToJob).toHaveBeenCalledWith("sim-from-route")
     );
+  });
+
+  it("stashes the sofa order URL with the job display context after upload", async () => {
+    const navigateToJob = vi.fn();
+    const detailWithOrder = {
+      ...detail,
+      sofa: {
+        ...detail.sofa,
+        shopify_order_url: "https://shopify.example/products/canape-rivoli"
+      }
+    } satisfies PublicSofaDetailResponse;
+
+    render(
+      <PublicSimulationWizardEntry
+        slug="canape-rivoli"
+        fetchSofa={async () => detailWithOrder}
+        readStoredSelection={() => ({
+          fabric_id: "fabric-boucle",
+          visual_position_id: "front"
+        })}
+        navigateToJob={navigateToJob}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /continuer/i })
+      ).toBeInTheDocument()
+    );
+
+    const fileInput = screen.getByTestId("simulation-file-input") as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          new File([new ArrayBuffer(1024)], "room.jpg", { type: "image/jpeg" })
+        ]
+      }
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /continuer/i })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /continuer/i }));
+
+    await waitFor(() =>
+      expect(navigateToJob).toHaveBeenCalledWith("sim-from-route")
+    );
+    expect(
+      window.sessionStorage.getItem(
+        "mobel-unique:simulation-job-context:sim-from-route"
+      )
+    ).toContain('"shopifyOrderUrl":"https://shopify.example/products/canape-rivoli"');
   });
 });
