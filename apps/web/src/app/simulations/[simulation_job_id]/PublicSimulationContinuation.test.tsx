@@ -1,3 +1,12 @@
+/*
+RU: Этот файл проверяет страницу продолжения симуляции.
+RU: В проверках видны ожидание, размеры, результат, ошибка и конец срока хранения.
+RU: Здесь проверяется, что страница показывает нужный шаг и дает перейти к покупке после результата.
+FR: Ce fichier verifie la page de suite de simulation.
+FR: Dans les verifications, on voit l'attente, les mesures, le resultat, l'erreur et la fin de duree.
+FR: Ici, on verifie que la page montre la bonne etape et permet d'aller acheter apres le resultat.
+*/
+
 import React from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +27,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// RU: Эти данные описывают выбранный диван для большинства проверок.
+// FR: Ces donnees decrivent le canape choisi pour la plupart des verifications.
 const baseContext = {
   slug: "canape-rivoli",
   sofaName: "Canapé Rivoli",
@@ -25,6 +36,8 @@ const baseContext = {
   visualPositionLabel: "Vue de face"
 };
 
+// RU: Эта помощь быстро создает ответ статуса для нужного шага.
+// FR: Cette aide cree vite une reponse de statut pour l'etape voulue.
 function snapshot(
   status: SimulationJobStatus,
   overrides: Partial<SimulationStatusResponse> = {}
@@ -131,6 +144,35 @@ describe("PublicSimulationContinuation", () => {
     expect(
       screen.getByRole("button", { name: /nouvelle génération/i })
     ).toBeInTheDocument();
+  });
+
+  it("passes the saved Shopify order URL into the successful result screen", async () => {
+    render(
+      <PublicSimulationContinuation
+        jobId="sim-1"
+        fetchStatus={async () =>
+          snapshot("succeeded", {
+            latest_output_url: "https://signed.example/output-1.png",
+            generated_output_count: 1,
+            regeneration_available: true
+          })
+        }
+        loadJobContext={() => ({
+          ...baseContext,
+          shopifyOrderUrl: "https://shopify.example/products/canape-rivoli"
+        })}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Commander" })).toHaveAttribute(
+        "href",
+        "https://shopify.example/products/canape-rivoli"
+      )
+    );
+    expect(screen.getByRole("link", { name: "Commander" })).toHaveClass(
+      "public-secondary-link"
+    );
   });
 
   it("renders Screen 6 error variant on failed status with a Restart link to the wizard entry", async () => {

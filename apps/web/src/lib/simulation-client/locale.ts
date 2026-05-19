@@ -171,6 +171,7 @@ export const SIMULATION_LOCALE = {
     regeneratingButton: "Nouvelle génération en cours",
     downloadButton: "Télécharger l'image",
     downloadingButton: "Téléchargement en cours",
+    orderLink: "Commander",
     downloadFailedNotice:
       "Le téléchargement n'a pas abouti. Réessayez dans quelques instants.",
     regenerationLimitNotice: "Limite de générations atteinte.",

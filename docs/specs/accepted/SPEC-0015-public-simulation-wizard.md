@@ -123,9 +123,10 @@ spec or its plans:
   and configured SMTP as the verification provider while the application owns
   consent persistence, verified simulation sessions, access-token issuance, and
   retention cleanup.
-- A direct Shopify return action on the result screen. The result screen ends
-  on a "Return to sofa" navigation back to `/sofas/[slug]` where the catalog
-  owner provides the Shopify call-to-action.
+- Cart, checkout, payment, or order-state handling inside the simulation
+  wizard. Screen 5 may expose a secondary "Order" CTA to the same public
+  Shopify order URL used by the sofa detail page when that URL is valid, but
+  the purchase flow remains outside this application.
 - Analytics events.
 - Production monitoring, alerting dashboards, observability tooling, error
   tracking, or admin operational dashboards.
@@ -392,6 +393,9 @@ Visible elements:
   `POST /api/public/simulations/{id}/regenerations`.
 - A secondary text link "Back to sofa" that navigates to
   `/sofas/[slug]`.
+- A secondary "Order" link that uses the same public Shopify order URL as the
+  sofa detail page when the simulated sofa has a valid `http` or `https` order
+  URL.
 - A button "Download image" that downloads the latest result image for the
   current visitor session without rendering the signed result URL as a link.
 - A short retention notice in muted text:
@@ -410,6 +414,8 @@ Behavior:
 - When `regeneration_available` is false, the regeneration button is removed
   from the DOM (not disabled). "Back to sofa" becomes the primary
   action.
+- The order link is absent when the simulation context has no valid Shopify
+  order URL.
 - While a regeneration request is being submitted, the regeneration button shows
   a submitting state.
 - While the download action is preparing the local file, the download button

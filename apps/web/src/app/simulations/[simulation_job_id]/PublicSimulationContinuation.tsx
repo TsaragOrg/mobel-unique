@@ -1,5 +1,14 @@
 "use client";
 
+/*
+RU: Этот файл нужен для страницы, которая продолжает уже созданную симуляцию.
+RU: На экране посетитель видит ожидание, ввод размеров, готовый результат или сообщение об ошибке.
+RU: Здесь можно дождаться результата, обновить картинку, скачать ее, вернуться к дивану или перейти к покупке.
+FR: Ce fichier sert a la page qui continue une simulation deja creee.
+FR: A l'ecran, le visiteur voit l'attente, la saisie des mesures, le resultat pret ou un message d'erreur.
+FR: Ici, on peut attendre le resultat, actualiser l'image, la telecharger, revenir au canape ou aller acheter.
+*/
+
 import { useEffect, useMemo, useState } from "react";
 
 import { PublicShell } from "../../PublicShell";
@@ -37,7 +46,8 @@ const FALLBACK_CONTEXT: SimulationJobContext = {
   slug: "",
   sofaName: "Simulation",
   fabricName: "",
-  visualPositionLabel: ""
+  visualPositionLabel: "",
+  shopifyOrderUrl: null
 };
 const REALTIME_CONNECTED_RECONCILE_POLL_MS = 30_000;
 const REALTIME_CONNECTING_POLL_MS = 10_000;
@@ -61,6 +71,8 @@ export function PublicSimulationContinuation(
   const subscribeProgress =
     props.subscribeProgress ?? subscribeToSimulationProgress;
 
+  // RU: Эти значения держат видимые данные во время пути.
+  // FR: Ces valeurs gardent les informations visibles pendant le parcours.
   const [context] = useState<SimulationJobContext>(
     () => loadJobContext(props.jobId) ?? FALLBACK_CONTEXT
   );
@@ -70,6 +82,8 @@ export function PublicSimulationContinuation(
   const [realtimeConnection, setRealtimeConnection] =
     useState<SimulationProgressConnectionState>("connecting");
 
+  // RU: Эти данные приходят от проверки статуса симуляции.
+  // FR: Ces donnees viennent de la verification du statut de simulation.
   const { snapshot, error, refresh } = useSimulationStatusPoll(props.jobId, {
     errorBackoffMs: STATUS_ERROR_BACKOFF_MS,
     fetchStatus: () => fetchStatus(props.jobId),
@@ -81,6 +95,8 @@ export function PublicSimulationContinuation(
         : REALTIME_CONNECTING_POLL_MS
   });
 
+  // RU: Этот автоматический блок слушает быстрые обновления симуляции.
+  // FR: Ce bloc automatique ecoute les mises a jour rapides de la simulation.
   useEffect(() => {
     return subscribeProgress({
       jobId: props.jobId,
@@ -93,28 +109,33 @@ export function PublicSimulationContinuation(
         refresh();
       }
     });
-    // Realtime is the primary progress channel. The poller is retained as a
-    // slow reconciliation read so a missed Realtime event cannot strand the UI.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Realtime is the primary progress path. The poller stays as a slow
+    // reconciliation read so a missed Realtime event cannot leave the UI behind.
   }, [props.jobId, subscribeProgress]);
 
+  // RU: Этот автоматический блок хранит последнюю удачную картинку.
+  // FR: Ce bloc automatique garde la derniere image reussie.
   useEffect(() => {
     if (snapshot?.status === "succeeded" && snapshot.latest_output_url) {
       setPreviousResultUrl(snapshot.latest_output_url);
     }
   }, [snapshot?.status, snapshot?.latest_output_url]);
 
+  // RU: Этот автоматический блок убирает старые данные после конца симуляции.
+  // FR: Ce bloc automatique enleve les anciennes donnees apres la fin de simulation.
   useEffect(() => {
     if (snapshot && POLL_TERMINAL_STATUSES.has(snapshot.status)) {
-      // Once a job reaches a terminal state, the cached display
-      // context is no longer needed; clear it so a different job
-      // under the same browser does not inherit stale labels.
+      // Once a job reaches a final result, the cached display context is no
+      // longer needed; clear it so a different job in the same browser does not
+      // inherit stale labels.
       if (snapshot.status === "expired") {
         clearJobContext(props.jobId);
       }
     }
   }, [snapshot?.status, props.jobId]);
 
+  // RU: Это значение выбирает, какой экран показать посетителю сейчас.
+  // FR: Cette valeur choisit quel ecran montrer au visiteur maintenant.
   const screen = useMemo(() => {
     const stripContext = {
       sofaName: context.sofaName,
@@ -229,6 +250,7 @@ function renderScreenForStatus(args: RenderScreenArgs) {
           jobId={jobId}
           onRegenerationStarted={onRefresh}
           onResultImageError={onRefresh}
+          orderHref={context.shopifyOrderUrl}
           regenerationAvailable={snapshot.regeneration_available}
           resultImageUrl={snapshot.latest_output_url}
         />

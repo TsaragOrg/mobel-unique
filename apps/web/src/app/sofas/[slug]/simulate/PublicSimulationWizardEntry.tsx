@@ -1,5 +1,14 @@
 "use client";
 
+/*
+RU: Этот файл нужен для первого экрана симуляции выбранного дивана.
+RU: На экране посетитель видит выбранный диван, выбранную ткань, выбранный вид и место для фото комнаты.
+RU: Здесь можно вернуться к дивану, добавить фото комнаты и перейти к созданной симуляции.
+FR: Ce fichier sert au premier ecran de simulation du canape choisi.
+FR: A l'ecran, le visiteur voit le canape choisi, le tissu choisi, la vue choisie et la place pour la photo de la piece.
+FR: Ici, on peut revenir au canape, ajouter une photo de la piece et aller a la simulation creee.
+*/
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -46,10 +55,14 @@ export function PublicSimulationWizardEntry(
   const readStoredSelection =
     props.readStoredSelection ?? defaultReadStoredSelection;
 
+  // RU: Эти значения держат данные дивана, выбор посетителя и текущий шаг.
+  // FR: Ces valeurs gardent les donnees du canape, le choix du visiteur et l'etape actuelle.
   const [detail, setDetail] = useState<PublicSofaDetailResponse | null>(null);
   const [selection, setSelection] = useState<StoredSelection | null>(null);
   const [status, setStatus] = useState<EntryStatus>("idle");
 
+  // RU: Этот автоматический блок загружает диван и читает прошлый выбор.
+  // FR: Ce bloc automatique charge le canape et lit le choix precedent.
   useEffect(() => {
     let isCurrent = true;
     setStatus("loading");
@@ -84,6 +97,8 @@ export function PublicSimulationWizardEntry(
     };
   }, [props.slug, fetchSofa, readStoredSelection]);
 
+  // RU: Это значение выбирает тип комнаты для подсказок и измерений.
+  // FR: Cette valeur choisit le type de piece pour les conseils et les mesures.
   const geometryMode = useMemo<RoomGeometryMode>(() => {
     if (!detail) return "back_wall";
     return detail.sofa.tags.some((tag) => tag.slug === CORNER_TAG_SLUG)
@@ -91,12 +106,16 @@ export function PublicSimulationWizardEntry(
       : "back_wall";
   }, [detail]);
 
+  // RU: Это значение находит выбранную ткань.
+  // FR: Cette valeur trouve le tissu choisi.
   const fabric = useMemo(
     () =>
       detail?.fabrics.find((entry) => entry.id === selection?.fabric_id) ?? null,
     [detail?.fabrics, selection?.fabric_id]
   );
 
+  // RU: Это значение находит выбранный вид дивана.
+  // FR: Cette valeur trouve la vue choisie du canape.
   const visualPosition = useMemo(
     () =>
       detail?.visual_positions.find(
@@ -105,6 +124,8 @@ export function PublicSimulationWizardEntry(
     [detail?.visual_positions, selection?.visual_position_id]
   );
 
+  // RU: Это значение находит картинку дивана для выбранной ткани и вида.
+  // FR: Cette valeur trouve l'image du canape pour le tissu et la vue choisis.
   const selectedRender = useMemo(
     () =>
       detail?.renders.find(
@@ -115,17 +136,22 @@ export function PublicSimulationWizardEntry(
     [detail?.renders, selection?.fabric_id, selection?.visual_position_id]
   );
 
+  // RU: Это значение готовит короткое имя выбранного вида.
+  // FR: Cette valeur prepare le nom court de la vue choisie.
   const visualPositionLabel = visualPosition
     ? visualPosition.public_label ?? `Vue ${visualPosition.sequence}`
     : "";
 
+  // RU: Это действие запоминает выбор после создания симуляции.
+  // FR: Cette action garde le choix apres la creation de la simulation.
   function handleJobCreated(jobId: string) {
     if (detail && fabric && visualPosition) {
       stashJobContext(jobId, {
         slug: props.slug,
         sofaName: detail.sofa.public_name,
         fabricName: fabric.public_name,
-        visualPositionLabel
+        visualPositionLabel,
+        shopifyOrderUrl: detail.sofa.shopify_order_url
       });
     }
     if (props.navigateToJob) {
@@ -174,6 +200,8 @@ export function PublicSimulationWizardEntry(
         </section>
       ) : null}
 
+      {/* RU: Этот большой блок показывает загрузку фото, когда выбор готов. */}
+      {/* FR: Ce grand bloc montre l'ajout de photo quand le choix est pret. */}
       {status === "ready" && detail && fabric && visualPosition && selection ? (
         <Screen1PhotoUpload
           backToSofaHref={`/sofas/${props.slug}`}
